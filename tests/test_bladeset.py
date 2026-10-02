@@ -16,6 +16,7 @@
 
 サーバーは要らない（1段目・§9.337）。
 """
+import inspect
 import re
 import sys
 import tempfile
@@ -590,6 +591,11 @@ got = bs.ring_color_save(c8, 'u', EQ, '紫', hex_code='#7b3fb0', od=312, bore=24
 g = [x for x in bs.ring_colors(c8, EQ) if x['color'] == '紫'][0]
 rec('色の保存: 新しい色は幅と本数で作る（外径・内径は幅ぜんぶで共通）',
     got['created'] == 2 and [w['width'] for w in g['widths']] == [50, 20] and g['total'] == 10 and g['od'] == 312, str(g))
+rec('下限は読まない（§9.539）: 送られた minQty は捨て、行は minQty を持たない',
+    all('minQty' not in w for w in g['widths']) and all('minQty' not in r for r in bs.ring_rows(c8, True, EQ)))
+rec('下限は受けない（§9.539）: 4つの部品の upsert は min_qty を名前に持たない',
+    all('min_qty' not in inspect.signature(f).parameters
+        for f in (bs.blade_upsert, bs.spacer_upsert, bs.ring_upsert, bs.finger_upsert)))
 rec('色の保存: 幅が無ければ断る', _reject(lambda: bs.ring_color_save(c8, 'u', EQ, '緋', hex_code='#aa0011', od=305, bore=241)))
 rec('色の保存: 同じ幅が2つなら断る',
     _reject(lambda: bs.ring_color_save(c8, 'u', EQ, '緋', hex_code='#aa0011', od=305, bore=241, widths=[{'width': 10}, {'width': 10}])))

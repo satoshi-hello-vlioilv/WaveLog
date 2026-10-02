@@ -57,13 +57,12 @@
   const c = ctx || {};
   const P = Object.assign({}, c.standardDefaults || {}, c.standard || {});
   const spacers = (c.spacers || [])
-   .map(x => ({ size: num(x.size), qty: Math.max(0, num(x.qty) || 0),
-                minQty: num(x.minQty) || 0, use: x.use || '' }))
+   .map(x => ({ size: num(x.size), qty: Math.max(0, num(x.qty) || 0), use: x.use || '' }))
    .filter(x => x.size > 0);
   const ringAll = (c.rings || [])
    .map(x => ({ color: x.color || '', hex: x.hex || '', od: num(x.od),
                 bore: num(x.bore) || num(P.ringBore), width: num(x.width),
-                qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
+                qty: Math.max(0, num(x.qty) || 0),
                 lube: !!x.lube, integ: !!x.integ && !x.lube }))
    .filter(x => x.od > 0 && x.width > 0);
   /* **潤滑リングは同じ表の別の役目**（§9.455）。区間を埋めるゴムリングの候補に
@@ -74,7 +73,7 @@
   const rings = ringAll.filter(x => !x.lube), lubes = ringAll.filter(x => x.lube);
   const fingers = (c.fingers || [])
    .map(x => ({ name: x.name || '', width: num(x.width), material: x.material || '',
-                qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
+                qty: Math.max(0, num(x.qty) || 0),
                 maxThickness: num(x.maxThickness),
                 /* 形（§9.379）。**図がここから寸法を取る**ので落とさない。 */
                 length: num(x.length), thickness: num(x.thickness),
@@ -83,7 +82,7 @@
   const blades = (c.blades || [])
    .map(x => ({ id: x.id, name: x.name || '', group: x.group || '',
                 thickness: num(x.thickness), currentDia: num(x.currentDia),
-                qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
+                qty: Math.max(0, num(x.qty) || 0),
                 lastGrind: x.lastGrind || '', grindCount: num(x.grindCount) || 0,
                 status: x.status || '',
                 /* セット（組）のカテゴリ・使用状態（§9.526）。答えはサーバーの刃セットの1箇所。 */
@@ -1101,7 +1100,7 @@
  const offsetBand = M => ({ min: -M.P.offsetTol, max: M.P.offsetTol,
                             hardMin: -M.P.offsetHardTol, hardMax: M.P.offsetHardTol });
 
- /* 在庫・研磨・使用限界の要確認をまとめて挙げる。 */
+ /* 研磨・使用限界の要確認をまとめて挙げる。在庫の下限は持たない（§9.539 利用者の指示で項目ごと外した）。 */
  function warnings(st, M) {
   const a = [], P = M.P;
   const days = d => (d ? Math.floor((Date.now() - new Date(d)) / 86400000) : null);
@@ -1114,23 +1113,6 @@
     if (d !== null && P.grindCycleDays && d >= P.grindCycleDays) {
      a.push({ kind: 'grind', text: `${k.name}：研磨から${d}日` });
     }
-   }
-   if (k.minQty && k.qty < k.minQty) a.push({ kind: 'stock', text: `刃 ${k.name}：在庫${k.qty}枚` });
-  });
-  M.rings.forEach(r => {
-   if (r.minQty && r.qty < r.minQty) {
-    a.push({ kind: 'stock', text: `ゴムリング${r.color}${r.od} 幅${r.width}：在庫${r.qty}本` });
-   }
-  });
-  M.spacers.forEach(s => {
-   if (s.minQty && s.qty < s.minQty) a.push({ kind: 'stock', text: `スペーサー${s.size}：在庫${s.qty}枚` });
-  });
-  M.fingers.forEach(f => {
-   if (f.minQty && f.qty < f.minQty) a.push({ kind: 'stock', text: `フィンガー${f.name}：在庫${f.qty}本` });
-  });
-  (M.lubes || []).forEach(r => {
-   if (r.minQty && r.qty < r.minQty) {
-    a.push({ kind: 'stock', text: `潤滑リング${r.color}${r.od} 幅${r.width}：在庫${r.qty}本` });
    }
   });
   return a;
@@ -1309,7 +1291,7 @@
  }
 
  /* ---------- 刃の径ゲージ（§9.536、利用者の選択 B-9／B-10） ----------
-    1行（セット×刃厚）ぶんの「使用限界径までの残り・研磨の予定・下限割れ」と、刃厚ごとの使える枚数。
+    1行（セット×刃厚）ぶんの「使用限界径までの残り・研磨の予定」と、刃厚ごとの使える枚数。
     盤の2つの見せ方（タイル／刃厚の木）は**この答えを読むだけ**（字もここ）。物差しはサーバーの`wear`
     （使用限界径・研磨周期・満タン）。`today`は 'YYYY-MM-DD'。 */
  const WEAR_NEAR = 0.25;   // 残りが幅の1/4未満で「残りわずか」（橙）。凡例が同じ数を言う。
@@ -1328,7 +1310,7 @@
    const at = dayNo(row.lastGrind) + +W.grindCycleDays, over = dayNo(today) - at;
    due = over > 0 ? { kind: 'over', days: over, at: mdOf(at) } : { kind: 'next', days: -over, at: mdOf(at) };
   }
-  return { left, frac, level, due, grind, special, low: !!(row.minQty && (+row.qty || 0) < +row.minQty),
+  return { left, frac, level, due, grind, special,
            ready: !grind && !special && row.enabled !== false };
  }
  /* 研磨の予定の字（`due.kind`→字の1箇所）。研磨中は札が言うので字を持たない（同じ事実を2度出さない）。 */

@@ -45,7 +45,7 @@ def _blade_save(x):
   return bs.blade_upsert(c, uid, equipment=x.get('equipment'), group=x.get('group'),
                          thickness=x.get('thickness'),
                          current_dia=x.get('currentDia'),
-                         qty=x.get('qty'), min_qty=x.get('minQty'),
+                         qty=x.get('qty'),
                          last_grind=x.get('lastGrind'),
                          grind_count=x.get('grindCount'),
                          note=x.get('note'),
@@ -57,7 +57,7 @@ def _blade_save(x):
 # 【§9.529】名称・状態は受けない（鍵は設備＋セット＋刃厚。カテゴリ・使用状態はセットが持つ）。
 _BLADE_SPEC = {'id': any_, 'equipment': any_, 'group': any_,
                'thickness': any_, 'currentDia': any_, 'qty': any_,
-               'minQty': any_, 'lastGrind': any_, 'grindCount': any_,
+               'lastGrind': any_, 'grindCount': any_,
                'note': any_, 'order': any_,
                'enabled': any_, 'enabledText': any_}
 
@@ -107,14 +107,14 @@ def _spacer_save(x):
  def fn(c):
   return bs.spacer_upsert(c, uid, equipment=x.get('equipment'),
                           size=x.get('size'), qty=x.get('qty'),
-                          min_qty=x.get('minQty'), use=x.get('use'),
+                          use=x.get('use'),
                           note=x.get('note'), order=x.get('order'),
                           enabled=_enabled(x), spacer_id=_rid(x))[0]
  return jsonify(ok=True, id=_op_read(fn), message='スペーサーを保存しました。')
 
 
 _SPACER_SPEC = {'id': any_, 'equipment': any_, 'size': any_, 'qty': any_,
-                'minQty': any_, 'use': any_, 'note': any_, 'order': any_,
+                'use': any_, 'note': any_, 'order': any_,
                 'enabled': any_, 'enabledText': any_}
 
 
@@ -170,7 +170,7 @@ def _ring_save(x):
       color=x.get('color'), hex_code=x.get('hex'),
       od=x.get('od'), bore=x.get('bore'),
       width=x.get('width'), qty=x.get('qty'),
-      min_qty=x.get('minQty'), note=x.get('note'),
+      note=x.get('note'),
       order=x.get('order'), enabled=_enabled(x), ring_id=_rid(x),
       # 種類（§9.455）。**呼び名（`lubeText`）を優先**し、送っていなければ触らない。
       # §9.531: `kind`（ゴムリング／潤滑リング／スペーサー一体型）で送れば、それが種類の答え。
@@ -193,7 +193,7 @@ def _ring_kind(x):
 
 _RING_SPEC = {'id': any_, 'equipment': any_, 'color': any_, 'hex': any_,
               'od': any_, 'bore': any_, 'width': any_, 'qty': any_,
-              'minQty': any_, 'note': any_, 'order': any_,
+              'note': any_, 'order': any_,
               'enabled': any_, 'enabledText': any_,
               'lube': any_, 'lubeText': any_, 'kind': any_}
 
@@ -291,7 +291,7 @@ def _finger_save(x):
  def fn(c):
   return bs.finger_upsert(c, uid, equipment=x.get('equipment'),
                           material=x.get('material'), width=x.get('width'),
-                          qty=x.get('qty'), min_qty=x.get('minQty'),
+                          qty=x.get('qty'),
                           max_thickness=x.get('maxThickness'),
                           note=x.get('note'), order=x.get('order'),
                           enabled=_enabled(x), finger_id=_rid(x))[0]
@@ -299,7 +299,7 @@ def _finger_save(x):
 
 
 _FINGER_SPEC = {'id': any_, 'equipment': any_, 'material': any_, 'width': any_,
-                'qty': any_, 'minQty': any_, 'maxThickness': any_,
+                'qty': any_, 'maxThickness': any_,
                 'note': any_, 'order': any_, 'enabled': any_,
                 'enabledText': any_}
 
