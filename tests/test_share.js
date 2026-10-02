@@ -17,7 +17,7 @@
     3. 開くとその端末へ取り込まれ、**子ロットデータ**も一緒に来る
    ============================================================ */
 'use strict';
-const {run}=require('./lib/harness.js');
+const {run,resetTerminal}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const ID='share-test-'+Date.now();
@@ -73,7 +73,11 @@ run('test_share: 途中経過を他のPCから続けられること(§9.91)', as
   rec('共有DBの一覧はペイロードを含まない(軽い)',
    !!onServer&&!('payload' in onServer),onServer?Object.keys(onServer).join(','):'');
 
-  /* ---- PC2: 別のプロファイル(=別のIndexedDB)から見る ---- */
+  /* ---- PC2: 別のプロファイル(=別のIndexedDB)から見る ----
+     **別のPCは端末の控えも別**（§9.545。控えは同じ端末のブラウザどうしを揃える仕組みで、
+     共有ではない）。同じサーバーに2つ目の文脈を開くと「同じ端末の別の窓」になるので、
+     控えを白紙へ戻してから開く——PC1 の控えが PC2 へ当たらない形が、本物の別のPC。 */
+  resetTerminal();
   const pc2=await browser.newContext({viewport:{width:1500,height:900}});
   const p2=await pc2.newPage();
   const t2=W.track(p2);

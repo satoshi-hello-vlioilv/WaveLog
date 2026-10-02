@@ -1,4 +1,4 @@
-# データの置き場と共有（73件）
+# データの置き場と共有（76件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 端末の測定データと設定は端末の控え（`terminal_store`・Python・`local_root()/terminal`）へも写す。`%TEMP%`・`db/`に置かない | `test_terminalstore.py` | [§9.545](../../docs/decisions/9.545.md) |
+| 記録は`updatedAt`の新しいほうを採り、消した印より古い記録は戻さない。突き合わせは`reconcileTerminal()`の1箇所 | `test_terminal.js` | [§9.545](../../docs/decisions/9.545.md) |
+| 設定は画面のJSより先に当てる（`terminal-sync.js`が先頭）。手元で変えて送れていない値は手元が勝つ（値の指紋） | `test_terminal.js` | [§9.545](../../docs/decisions/9.545.md) |
 | 共有の層（共有の基本部品を読むモジュール）は画面のポート・問い合わせの出どころ（`PORT`・`request.host`…）を読まない | `test_portdep.py` | [§9.544](../../docs/decisions/9.544.md) |
 | 権限を**読むのに書込を要らない**。無い列は空として読み、読めない理由は`permissionError` | `test_roleperm.py` | [§9.523](../../docs/decisions/9.523.md) |
 | 共有の元を見るのは`_remote_stat()`の1箇所。**前は届いていた元**だけ待って取り直す（合計2.5秒まで・`_known_good()`） | `test_dbmirror.py` | [§9.495](../../docs/decisions/9.495.md) |

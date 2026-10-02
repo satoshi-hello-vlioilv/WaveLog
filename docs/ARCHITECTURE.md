@@ -26,6 +26,11 @@
   （Box等）への閲覧用複製＝②が変わったら間隔ごとに丸ごと写す（読むだけ）。
   状態と設定はマスタ管理 >「測定データの保存」の1画面にまとまっている
   （`GET /api/measurement/storage`）。
+  **①は端末の控えへも写す**（§9.545）。ブラウザの保存領域はオリジンとブラウザごとに別で、
+  ブラウザ版（Edge）とデスクトップ版（WebView2）は互いの①を見られないため、Python が
+  `paths.local_root()/terminal/terminal.sqlite3`（`backend/terminal_store.py`）に記録と端末の設定を控え、
+  画面は開いたときに突き合わせる（記録＝`records-store.js`の`reconcileTerminal()`、設定＝
+  `static/js/core/terminal-sync.js`。JS_FILES の先頭で、画面のJSより先に当てる）。
 
 ## ディレクトリ構成
 

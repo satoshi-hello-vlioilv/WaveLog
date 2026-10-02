@@ -413,7 +413,11 @@ RULES = [
                                         'test_msteps')),
     ('static/js/measure/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
-    ('static/js/measure/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_master',
+    # 端末の控え（§9.545）。画面の側（設定を当てる・記録を運ぶ）とサーバーの側。
+    ('static/js/core/terminal-sync.js', g('test_terminal', 'test_terminalstore', 'test_share', 'test_flows')),
+    ('backend/terminal_store.py', g('test_terminal', 'test_terminalstore')),
+    ('backend/routes/terminal.py', g('test_terminal', 'test_terminalstore', 'test_modeguard')),
+    ('static/js/measure/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_master', 'test_terminal',
                                      'test_recperm', 'test_reccols', 'test_lcpanel',
                                      # §9.302: 使用設備の候補を「測定」で絞る
                                      'test_eqfeature',
@@ -616,6 +620,8 @@ RULES = [
     ('tests/setperm.py', [ALL]),
     # `import app` の探索先の答え（§9.404）。18本が読むので全部へ倒す。
     ('tests/apppath.py', [ALL]),
+    # 端末の控えを白紙へ戻す道具（§9.545）。ランナーと土台が1本ごとに呼ぶので全部へ倒す。
+    ('tests/reset_terminal.py', [ALL]),
     ('tests/make_split_fixture.py', g('test_scsplit')),
     ('tests/orphan_lot.js', g('test_audit', 'test_nav', 'test_orphan')),
     ('tests/audit_scale.js', g('test_audit')),

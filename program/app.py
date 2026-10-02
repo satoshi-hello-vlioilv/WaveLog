@@ -42,6 +42,7 @@ from backend.routes.logs import bp as logs_bp
 from backend.routes.cleanup import bp as cleanup_bp
 from backend.routes.master_tables import bp as master_tables_bp
 from backend.routes.presence import bp as presence_bp
+from backend.routes.terminal import bp as terminal_bp
 
 app.register_blueprint(core_bp)
 app.register_blueprint(tables_bp)
@@ -56,6 +57,7 @@ app.register_blueprint(logs_bp)
 app.register_blueprint(cleanup_bp)
 app.register_blueprint(master_tables_bp)
 app.register_blueprint(presence_bp)
+app.register_blueprint(terminal_bp)
 
 # 読み込みでは起こさない書込（旧config/local.jsonの一度きりの移行）は、
 # **アプリの起動がここで1回だけ**行う（§9.329）。import に副作用を持たせると、

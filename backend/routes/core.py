@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, jsonify, Response
 import json, os, re, subprocess, time
 
 from ..config import APP_ID, PORT
-from .. import app_icon, boot_status, desktop_shortcut
+from .. import app_icon, boot_status, desktop_shortcut, terminal_store
 # 更新者IDは名乗るだけ・答えるのは1箇所（§9.276 ③）。**読み込み時に入れる**
 # ——関数の中の import を増やさない（§9.349）。輪は作らない（access_mode は
 # routes を知らない）。
@@ -70,6 +70,9 @@ CSS_FILES=BOOT_CSS_FILES+BODY_CSS_FILES
 # **ここが唯一の一覧**——index.htmlへ書き写さない。`tests/test_loadorder.py`が
 # 「static/js の全部が1度ずつ載っている」「順の約束」を固定する。
 JS_FILES=[
+ # 端末の控え（§9.545）。**いちばん先**——画面のJSが localStorage を読む前に、
+ # 控えの設定（もう一方の窓で直したもの）を当てておく。
+ 'core/terminal-sync.js',
  'core/base.js',
  # 失敗を「開発へ報告できる形」で残す（§9.373）。**base のすぐ後**——
  # どの画面よりも先に在れば、読み込みの途中で起きた失敗も拾える。
@@ -239,7 +242,18 @@ def home():
  # バージョンは起動オーバーレイが最初の描画で出すため、APIを待たずに埋め込む
  # (画面本体のバッジは従来どおり /api/build を読んで差し替える)。
  return render_template('index.html', build='current', asset_token=token, app_version=APP_VERSION,
-                        js_files=JS_FILES)
+                        js_files=JS_FILES, terminal=_terminal_settings())
+
+
+def _terminal_settings():
+ """端末の控えの設定（§9.545）。画面のHTMLへ埋めて渡す——画面のJSが読む前に当てるため
+ （取りに行くと、その往復のあいだに画面が古い設定で組み上がる）。
+ **読めなくても画面は出す**（控えが無いだけで、ブラウザの保存領域はいつもどおり使える）。"""
+ try:
+  return terminal_store.settings(0)
+ except Exception as e:
+  app_logger().warning('端末の控えを読めませんでした（画面は控えなしで開きます）: %s',e)
+  return None
 # ========================================================================
 # 「更新は届いたが、まだ再起動していない」の検出(§9.200)
 # ------------------------------------------------------------------------

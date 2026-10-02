@@ -49,7 +49,10 @@ rec('JS_FILES に実体の無いファイルが無い', set(JS_FILES) <= set(on_
 
 # ---- 2. 順の約束 ----
 idx = {f: i for i, f in enumerate(JS_FILES)}
-rec('base.js が先頭', JS_FILES[0] == 'core/base.js')
+# base.js より前に置けるのは、localStorage へ端末の控えを当てる terminal-sync.js だけ（§9.545）。
+# 画面のJSが設定を読む前に当てる必要がある。ほかは base.js の土台（WL・$・api）を使うので後ろ。
+rec('base.js が先頭（前に置けるのは端末の控えを当てる terminal-sync.js だけ）',
+    JS_FILES[0] == 'core/base.js' or JS_FILES[:2] == ['core/terminal-sync.js', 'core/base.js'], str(JS_FILES[:2]))
 rec('access-mode.js が末尾', JS_FILES[-1] == 'core/access-mode.js')
 master = ['master/master-defs.js', 'master/master-maint.js', 'master/master-report.js',
           'master/master-data.js', 'master/master-opdata.js']
