@@ -3749,14 +3749,27 @@
    const roles=(f.excludedRoles||[]).join('・')||'開発者';
    return {word:'対象外',cls:'is-out',why:`${roles}の端末は、運用中の最新版の判定に数えません（まだ配っていない版を動かすため）`};
   }
+  /* 窓（exe）だけ古い端末も要更新（§9.552）。版は同じなので、**なぜかを`title`が言う**。 */
+  if(x.outdated&&x.shellOutdated&&!pzVerOld(x,f))
+   return {word:'要更新',cls:'is-old',why:`アプリの窓（exe）が配ってある版と違います（この端末 ${x.shell} ／ 配ってある窓 ${f.placedShell}）。開き直すと新しい窓になります`};
   return x.outdated?{word:'要更新',cls:'is-old',why:''}:{word:'最新',cls:'is-ok',why:''};
  }
+ /* 中身の版が運用中の最新版より古いか（窓だけ古い端末と言い分けるため）。比べ方はサーバーと同じ「数の並び」。 */
+ function pzVerOld(x,f){
+  const k=v=>String(v||'').match(/\d+/g)?.map(Number)||[];
+  const a=k(x.version),b=k(f.latestVersion);
+  for(let i=0;i<Math.max(a.length,b.length);i++){if((a[i]||0)!==(b[i]||0))return (a[i]||0)<(b[i]||0)}
+  return false;
+ }
+ /* 窓（exe）の版の字（§9.552）。窓の外（開発・網）は空、名乗らない古い窓は「?」。 */
+ function pzShell(x){return x.shell?`窓 ${x.shell}`:''}
  function pzStateHtml(x,f){
   const st=pzState(x,f);
   return `<b class="pz-vst ${st.cls}"${st.why?` title="${esc(st.why)}"`:''}>${st.word}</b>`;
  }
  function pzVerHtml(x,f){
-  return `${pzStateHtml(x,f)}<span class="pz-ver" title="${esc(Object.keys(x.versions||{}).map(v=>'VER'+v).join(' → ')||'')}">${esc(pzVer(x.version,f.recordingSince))}</span>`;
+  return `${pzStateHtml(x,f)}<span class="pz-ver" title="${esc(Object.keys(x.versions||{}).map(v=>'VER'+v).join(' → ')||'')}">${esc(pzVer(x.version,f.recordingSince))}</span>`
+   +(x.shell?`<small class="pz-shell${x.shellOutdated?' is-old':''}" title="アプリの窓（exe）を作ったコミット">${esc(pzShell(x))}</small>`:'');
  }
  /* 表の中身（見えている並び・絞り込みそのまま）。コピーとCSVはこれを使う
     ——**見えている表と写した表を違えない**。 */
@@ -3771,7 +3784,7 @@
   }
   const head=['版の状態','ログインID','PC名','版','最後に使った','累計接続回数','累計接続時間','初めて使った'];
   const rows=(f.terminals||[]).filter(t=>!old||t.outdated).map(t=>({x:t,cells:[
-   pzState(t,f).word,t.login||'（不明）',t.pc||'（不明）',pzVer(t.version,f.recordingSince),
+   pzState(t,f).word,t.login||'（不明）',t.pc||'（不明）',[pzVer(t.version,f.recordingSince),pzShell(t)].filter(Boolean).join('・'),
    t.online?'接続中':pzAt(t.lastAt),t.sessions?`${t.sessions}回`:'—',t.sessions?pzDur(t.totalSec):'—',pzAt(t.firstAt)]}));
   return {head,rows};
  }

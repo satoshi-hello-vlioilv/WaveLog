@@ -10,7 +10,7 @@
 """
 from flask import Blueprint, jsonify
 
-from .. import presence
+from .. import desktop_shell, presence
 from ..access_mode import current_login_id, current_pc_name, current_permission_flags, get_mode
 from ..repositories.master_repo import ROLE_DEFAULT, ROLES, role_can, role_capabilities
 from .body import body
@@ -62,12 +62,16 @@ def presence_list():
                                            and role_can(me['role'], 'presence:disconnect', role))))
     # 版の配布の答え（§9.513）。**運用中の最新版・古い版の端末・利用者ごとの合計**は
     # `presence.fleet_summary()`の1箇所が作る——画面は並べるだけ。
-    fleet = presence.fleet_summary(out, hist, presence.app_version(), roles=roles, my_key=me['key'])
+    # 配ってある窓（exe）は`WaveLog.build.json`が名乗る（§9.552）。名乗りが無ければ窓は比べない
+    placed = desktop_shell.short((desktop_shell.placed() or {}).get('commit'))
+    fleet = presence.fleet_summary(out, hist, presence.app_version(), roles=roles, my_key=me['key'],
+                                   placed_shell=placed)
     by_key = {t['key']: t for t in fleet['terminals']}
     for x in out:
         t = by_key.get(x['key']) or {}
         x['outdated'] = bool(t.get('outdated'))
         x['counted'] = t.get('counted', True)
+        x['shellOutdated'] = bool(t.get('shellOutdated'))
     return jsonify(ok=True,
                    items=out,
                    fleet=fleet,

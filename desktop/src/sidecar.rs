@@ -69,6 +69,9 @@ impl Sidecar {
             .current_dir(program)
             .env("PYTHONIOENCODING", "utf-8")
             .env("WAVELOG_SHELL", "desktop")
+            // 窓が何から作られたか・どこで動いているか（§9.552。答えは backend/desktop_shell.py の1箇所）
+            .env("WAVELOG_SHELL_COMMIT", env!("WAVELOG_BUILD_COMMIT"))
+            .env("WAVELOG_SHELL_EXE", std::env::current_exe().unwrap_or_default())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(stderr);

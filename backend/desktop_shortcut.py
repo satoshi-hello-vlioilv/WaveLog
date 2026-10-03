@@ -9,19 +9,23 @@
 「入口は1つ」）。ここで別の起動路（`start_app.bat`等）を指せるようにすると、
 **入口が2つ**になる——現場のショートカットだけが古い入口を指したまま残る。
 
-なぜWSH（`cscript`）で作るか
+なぜアプリの窓（`WaveLog.exe --lnk`）に作らせるか（§9.552）
 ---------------------------------------------------------------------------
-`.lnk`はただのファイルではなくシェルのオブジェクトなので、COM越しにしか
-作れない。**道は1本にする**——この端末では`Start.vbs`（WSH）が毎日動いて
-いるので、WSHは必ず使える。PowerShellも足すと同じことをする道が2つになり、
-片方だけ直した状態が作れる（しかも工場の端末はPowerShellを止めていることが
-ある）。
+`.lnk`はただのファイルではなくシェルのオブジェクトなので、Windows の部品
+（COM の`IShellLinkW`）越しにしか作れない。以前は WSH（`cscript`）で補助
+スクリプトを起こしていたが、WSH のための回り道が4つ要った（補助スクリプトを
+英数字だけで書く・空の引数の身代わり・読めない字の置き換え・補助スクリプトを
+ほかのプログラムの置き場へ置く——§9.486・§9.496）。窓（Rust）は同じ部品を直に
+呼べるので、頼みを JSON 1つで渡すだけになった。**道は1本**——作るのも読むのも
+`--lnk`の1つ。**決めるのはここ**（どこへ・どの名前で・上書きしてよいか・前の
+名前を片付けるか）で、窓は頼まれた1件を作る／読むだけ。
 
 **アイコンは2つから選べる**（利用者の問い「アイコンも設定できますか？」）:
   既定 … アプリのマーク（`app_icon.py`がその場で描く`.ico`）
   指定 … 利用者が選んだ`.ico`／`.exe`／`.dll`
 ===========================================================================
 """
+import json
 import os
 import subprocess
 import sys
@@ -29,8 +33,8 @@ import time
 from pathlib import Path
 
 from . import app_icon
-from . import paths
-from .paths import APP_ROOT
+from . import desktop_shell
+from .paths import APP_ROOT, PROGRAM_DIR
 from .quiet import quiet
 
 # ショートカットの既定の名前。**画面で名乗っている名前**にそろえる
@@ -38,41 +42,50 @@ from .quiet import quiet
 DEFAULT_NAME='測定伝送システム'
 # 行き先＝毎日の入口（§9.405・§9.406でリポジトリ直下に残した1本）。
 TARGET_NAME='Start.vbs'
-HELPER_NAME='make_shortcut.vbs'
 # 指定できるアイコンの種類。`.exe`／`.dll`は中の絵を使う（`,0`が既定）。
 ICON_SUFFIXES=('.ico','.exe','.dll')
-
-# 補助スクリプトは**ASCIIだけ**で書く。WSHはBOMの無い`.vbs`をANSIとして
-# 読むので、日本語を入れると端末の言語設定によっては文字化けで落ちる。
-# **道は1本**（§9.410）。作るのも読むのも同じ1枚で、先頭の引数が用途を言う
-# （`MAKE`／`READ`）。2枚目の`.vbs`を置くと、片方だけ古い状態が作れる。
-# `READ`は行き先（`TargetPath`）を1行で返す——**自分が作ったものかを
-# 確かめてから上書き・片付けをする**ため（§9.446）。無いファイルを読むと
-# `CreateShortcut`は空の器を返すので、行き先は空文字になる。
-# **絵が無いときは空ではなく`NO_ICON`（`-`）を渡す**（§9.486）——WSHは空の
-# 引数（`""`）を数えないことがあり、数えなければ後ろの引数が1つずつ前へずれる
-# （説明文が絵の場所に入り、`a(5)`が範囲外で落ちる）。位置で読む引数に空を置かない。
-NO_ICON='-'
-_HELPER=(
- 'Option Explicit\r\n'
- 'Dim a, sh, lnk\r\n'
- 'Set a = WScript.Arguments\r\n'
- 'Set sh = CreateObject("WScript.Shell")\r\n'
- 'Set lnk = sh.CreateShortcut(a(1))\r\n'
- 'If UCase(a(0)) = "READ" Then\r\n'
- '  WScript.Echo lnk.TargetPath\r\n'
- 'Else\r\n'
- '  lnk.TargetPath = a(2)\r\n'
- '  lnk.WorkingDirectory = a(3)\r\n'
- '  lnk.Description = a(5)\r\n'
- '  If a(4) <> "-" Then lnk.IconLocation = a(4)\r\n'
- '  lnk.Save\r\n'
- 'End If\r\n'
-)
+# 窓（exe）の副コマンド（`desktop/src/lnk.rs`の`ARG`と同じ字）。
+LNK_ARG='--lnk'
+DESCRIPTION='測定伝送システム（WaveLog）を起動します'
 
 
 def target_path():
  return APP_ROOT/TARGET_NAME
+
+
+def shell_exe():
+ """ショートカットを作る窓（exe）。**いま動いている窓**が先（窓が名乗る`WAVELOG_SHELL_EXE`・
+    手元へ写した版ごとのフォルダの中）。窓の外（開発の入口）では配ってある`program/WaveLog.exe`。"""
+ run=desktop_shell.running()['exe']
+ return Path(run) if run else PROGRAM_DIR/'WaveLog.exe'
+
+
+def _lnk(req):
+ """窓に`.lnk`を1件作らせる／読ませる（§9.552）。頼みも答えも JSON 1つ（字は UTF-8・位置で読まない）。
+    **答えを読めなくても落とさない**——理由を字で返す（画面は`error`をそのまま出す）。"""
+ exe=shell_exe()
+ if not exe.is_file():
+  return {'ok':False,'error':'ショートカットを作る窓（%s）が見つかりません'%exe}
+ try:
+  p=subprocess.run([str(exe),LNK_ARG],input=json.dumps(req,ensure_ascii=False),capture_output=True,
+                   timeout=30,text=True,encoding='utf-8',errors='replace',**_no_window())
+ except subprocess.TimeoutExpired:
+  return {'ok':False,'error':'ショートカットの読み書きが時間内に終わりませんでした'}
+ except OSError as e:
+  return {'ok':False,'error':'ショートカットを作る窓を起こせません（%s）: %s'%(exe,e)}
+ try:
+  out=json.loads((p.stdout or '').strip().splitlines()[-1])
+ except (ValueError,IndexError):
+  return {'ok':False,'error':'窓の答えを読めません（終了コード %s）%s'%(p.returncode,(p.stderr or '').strip()[:200])}
+ return out if isinstance(out,dict) else {'ok':False,'error':'窓の答えの形が違います'}
+
+
+def _icon_parts(spec):
+ """`IconLocation`の形（`C:\\x.exe,0`）を「絵のファイル」と「何番目の絵か」に分ける。"""
+ path,sep,idx=str(spec or '').rpartition(',')
+ if sep and idx.strip().lstrip('-').isdigit():
+  return path,int(idx)
+ return str(spec or ''),0
 
 
 def supported():
@@ -133,37 +146,10 @@ def _icon_spec(icon):
  return str(made),'既定',''
 
 
-def _helper_path():
- """補助スクリプト。**中身が違うときだけ**書き直す（毎回書くと共有の掃除と
-    競合する）。
-
- 置き場は**ほかのプログラムからも見える置き場**（`paths.browser_dir()`・§9.496）。
- 読むのは`wscript.exe`（別のプログラム）なので、Microsoft Store 版の Python が
- `AppData\\Local`への書込を私的な写しへ回す端末では、`runtime_dir()`に置くと
- 「スクリプト ファイルが見つかりません」になる（端末によって作れる・作れないが分かれた）。"""
- path=paths.browser_dir()/HELPER_NAME
- try:
-  if path.exists() and path.read_text(encoding='ascii',errors='ignore')==_HELPER:
-   return path
-  path.parent.mkdir(parents=True,exist_ok=True)
-  path.write_text(_HELPER,encoding='ascii',newline='')
-  return path
- except Exception as _e:
-  quiet('ショートカットの補助スクリプトを置けない',_e)
-  return None
-
-
 def _no_window():
  """黒い画面を出さずに実行する（`setup_check._no_window()`と同じ作法）。"""
  if sys.platform!='win32':return {}
  return {'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0)}
-
-
-def _run_text():
- """`cscript`の出力の読み方（§9.486）。**読めない字で落とさない**——端末の
-    言語設定と違う字（行き先の道・VBScriptの断り）が1字でも混ざると、
-    `text=True`だけでは`UnicodeDecodeError`で作成そのものが500になる。"""
- return {'text':True,'errors':'replace'}
 
 
 def _same_path(a,b):
@@ -182,18 +168,14 @@ def link_target(path):
 
     上書き・片付けの前に「**自分が作ったものか**」を確かめるために要る——
     同じ名前の、利用者が自分で作った別のショートカットを黙って消さない
-    （§CLAUDE 5「危ない操作を主要動線に置かない」）。読むのもWSHの1枚
-    （`_HELPER`の`READ`）で、道を2本にしない。"""
+    （§CLAUDE 5「危ない操作を主要動線に置かない」）。読むのも作るのと同じ
+    窓の1つの道（`_lnk()`の`read`）で、道を2本にしない。"""
  if sys.platform!='win32':return ''
- helper=_helper_path()
- if helper is None:return ''
- try:
-  p=subprocess.run(['cscript','//nologo',str(helper),'READ',str(path)],
-                   capture_output=True,timeout=20,**_run_text(),**_no_window())
- except (FileNotFoundError,subprocess.TimeoutExpired) as _e:
-  quiet('ショートカットの行き先を読めない（別物として扱う）',_e)
+ out=_lnk({'op':'read','path':str(path)})
+ if not out.get('ok'):
+  quiet('ショートカットの行き先を読めない（別物として扱う）',out.get('error'))
   return ''
- return (p.stdout or '').strip()
+ return str(out.get('target') or '').strip()
 
 
 def is_ours(path):
@@ -308,9 +290,6 @@ def create(name=None,icon=None,uid=None,overwrite=False):
       置いていくと同じ物が2つデスクトップに並ぶ——「書き換え」にならない。"""
  ok,why=supported()
  if not ok:return {'ok':False,'error':why}
- helper=_helper_path()
- if helper is None:
-  return {'ok':False,'error':'ショートカットを作る補助スクリプトを置けませんでした'}
  spec,source,bad=_icon_spec(icon)
  if bad:return {'ok':False,'error':bad}
  link=link_path(name)
@@ -323,22 +302,11 @@ def create(name=None,icon=None,uid=None,overwrite=False):
   link.parent.mkdir(parents=True,exist_ok=True)
  except Exception as _e:
   quiet('デスクトップのフォルダを用意できない',_e)
- # **`//B`（バッチモード）は付けない**（§9.486）。付けるとVBScriptの断り
- # （書き込めない・場所が無い）が**1字も出ず**、画面には「終了コード 1」しか
- # 言えなかった。`cscript`は窓を出さずに断りを標準エラーへ書くので、外しても
- # 黒い画面や確認の窓は出ない（`_no_window()`）。
- args=['cscript','//nologo',str(helper),'MAKE',str(link),str(target_path()),
-       str(APP_ROOT),spec or NO_ICON,'測定伝送システム（WaveLog）を起動します']
- try:
-  p=subprocess.run(args,capture_output=True,timeout=30,**_run_text(),**_no_window())
- except FileNotFoundError:
-  return {'ok':False,'error':'cscript が見つかりません（Windows Script Host が無効になっている可能性があります）'}
- except subprocess.TimeoutExpired:
-  return {'ok':False,'error':'ショートカットの作成が時間内に終わりませんでした'}
- if p.returncode!=0 or not link.exists():
-  detail=(p.stderr or p.stdout or '').strip().splitlines()
-  return {'ok':False,'error':'ショートカットを作れませんでした: '
-          +(detail[-1] if detail else f'終了コード {p.returncode}')}
+ icon_file,icon_index=_icon_parts(spec)
+ made=_lnk({'op':'make','path':str(link),'target':str(target_path()),'workdir':str(APP_ROOT),
+            'icon':icon_file,'iconIndex':icon_index,'description':DESCRIPTION})
+ if not made.get('ok') or not link.exists():
+  return {'ok':False,'error':'ショートカットを作れませんでした: '+str(made.get('error') or '作ったはずのファイルがありません')}
  # **名前を変えたなら、前に作ったほうを片付ける**（§9.446）。片付けるのは
  # **自分が作った物だけ**——同じ名前で利用者が置いた別の物は触らない。
  dropped=''

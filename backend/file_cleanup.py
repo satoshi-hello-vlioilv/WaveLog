@@ -348,24 +348,19 @@ def _scan_work():
  return out
 
 
-# 作り直せる起動の部品（§9.497）。**名前で選ぶ**（置き場には残す物も同居しているため）。
+# 起動の部品の置き場に残る書きかけ（§9.497）。**名前で選ぶ**（置き場には残す物も同居しているため）。
 # 入れない物: 起動前確認の刻印（ready.json）・ショートカットの絵（wavelog.ico——デスクトップの
 # ショートカットが指しており、作り直すのは作るときだけ。消すと絵が白紙になる）。
-# ブラウザ版だけが使っていた物（待機画面の写し・進捗・起動中の印）は§9.548で外し、
-# 片付けは`setup_check.RETIRED_LOCAL`が持つ。
-RUNTIME_REGENERABLE = ('make_shortcut.vbs',)
-
-
+# もう使わない物（ブラウザ版の待機画面の写し・進捗・起動中の印〈§9.548〉、ショートカットの
+# 補助スクリプト〈§9.552で窓が作るようにした〉）の片付けは`setup_check.RETIRED_LOCAL`が持つ。
 def _scan_runtime():
- """作り直せる起動の部品。書きかけ（`.tmp`）は**若いうちは触らない**。"""
+ """起動の部品の置き場の書きかけ（`.tmp`）。**若いうちは触らない**。"""
  out = []
  for d in _runtime_dirs():
   if not _safe(d.is_dir, False):
    continue
   for p in _safe(lambda dd=d: [x for x in dd.iterdir() if x.is_file()], []) or []:
-   if p.name in RUNTIME_REGENERABLE:
-    out.append(_item(p))
-   elif p.name.endswith('.tmp'):
+   if p.name.endswith('.tmp'):
     it = _item(p)
     if time.time() - (it['mtime'] or 0) < TMP_MIN_AGE_SEC:
      it['keep'] = 'まだ書いている途中かもしれません'
@@ -401,8 +396,8 @@ CATEGORIES = [
   'note': '置き場所を変える前のインストールが残した作業用の写しです。',
   'why': 'いま使っているフォルダ以外を消します。',
   'auto': False, 'scan': _scan_work},
- {'key': 'runtime', 'label': '起動の部品（作り直せるもの）', 'icon': '起',
-  'note': 'ショートカットを作る補助スクリプトです。使うときに作り直されます。',
+ {'key': 'runtime', 'label': '起動の部品（書きかけ）', 'icon': '起',
+  'note': '書いている途中で残ったファイル（.tmp）です。',
   'why': '**自動では消しません。** 押したときと、update.bat で更新したときだけ消します（起動前確認の刻印・ショートカットの絵は残します）。',
   'auto': False, 'scan': _scan_runtime},
  {'key': 'pycache', 'label': 'Pythonのバイトコード', 'icon': '速',

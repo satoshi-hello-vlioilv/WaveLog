@@ -3616,6 +3616,8 @@ html[data-hint="off"] .mm-def-hint{display:none}
 /* 判定の外（§9.516・開発者の端末）。要更新でも最新でもない——色は付けず、字が言う。 */
 .pz-vst.is-out{color:var(--ink-3);font-weight:700}
 .pz-ver{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.pz-shell{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.pz-shell.is-old{color:var(--warn-fg);font-weight:700}
 /* 接続の記録の表。道具の帯は一覧と同じ並び（左＝見せ方の選択・右端＝写す）。 */
 .pz-tools{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
 .pz-tools-end{margin-left:auto;display:inline-flex;gap:var(--space-2)}

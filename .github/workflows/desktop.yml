@@ -39,6 +39,8 @@ jobs:
         shell: pwsh
     env:
       PYTHONIOENCODING: utf-8
+      # exe が名乗る「作ったコミット」（§9.552）。publish が WaveLog.build.json に書く commit と同じ値
+      WAVELOG_BUILD_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 

@@ -57,7 +57,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import atomic_io, paths
+from . import atomic_io, desktop_shell, paths
 from .changelog_data import APP_VERSION
 from .db_access import DBS, connect
 from .repositories.master_repo import ROLE_DEFAULT, ROLE_DEVELOPER
@@ -205,12 +205,21 @@ def version_key(v):
     return tuple(int(x) for x in re.findall(r'\d+', str(v or '')))
 
 
+def shell_mark():
+    """在席と記録へ書く「窓の版」（§9.552）。窓の外（開発・網）は空、窓の中は作ったコミットの
+    短い形、コミットを名乗らない古い exe は`?`（窓の中なのは確か・版は分からない）。"""
+    run = desktop_shell.running()
+    if not run['kind']:
+        return ''
+    return desktop_shell.short(run['commit']) or '?'
+
+
 # ---- 接続の記録（§9.513） ---------------------------------------------------
 def _history_path(key):
     return presence_dir()[0] / HISTORY_DIR / f'{key}{SUFFIX}'
 
 
-def _record(key, login_id, pc_name, version, now, new_session, final=False):
+def _record(key, login_id, pc_name, version, now, new_session, final=False, shell=''):
     """自分の記録を1つ進める。**書くのはこの端末だけ**（在席と同じ理由）。
 
     `new_session`＝接続の始まり（回数を1つ足してその場で書く）。それ以外は
@@ -236,6 +245,9 @@ def _record(key, login_id, pc_name, version, now, new_session, final=False):
         h.setdefault('sessions', 1)
         h.setdefault('totalSec', 0)
         h['lastAt'] = iso
+        # 窓（exe）の版（§9.552）。窓の外（開発・網）では空のまま——前に記録した窓を消さない
+        if shell:
+            h['shell'] = shell
         if version:
             h['version'] = version
             vers = dict(h.get('versions') or {})
@@ -270,7 +282,7 @@ def history_entries():
                     'firstAt': str(h.get('firstAt') or ''), 'lastAt': str(h.get('lastAt') or ''),
                     'sessionAt': str(h.get('sessionAt') or ''),
                     'sessions': int(h.get('sessions') or 0), 'totalSec': int(h.get('totalSec') or 0),
-                    'versions': dict(h.get('versions') or {})})
+                    'versions': dict(h.get('versions') or {}), 'shell': str(h.get('shell') or '')})
     return out
 
 
@@ -357,13 +369,15 @@ def version_notice(role=''):
             'outdated': counts_for_latest(role) and version_key(mine) < version_key(latest)}
 
 
-def fleet_summary(online, history, my_version, roles=None, my_key=''):
+def fleet_summary(online, history, my_version, roles=None, my_key='', placed_shell=''):
     """接続中と記録を合わせて「版の配布」の答えを作る。**ここ1箇所**（§9.163）。
 
     ・運用中の最新版＝`latest_version()`（**数える区分**の端末の版の最大・§9.516）
     ・数えない区分の端末（開発者）は`counted=False`で、**要更新にも最新にも数えない**
     ・版が空＝**記録を書かない古い版**（§9.513より前）なので、最新ではないと数える
     ・利用者ごと＝ログインIDでまとめる（1人が複数のPCを使うことがある）
+    ・窓（exe）が配ってある exe（`placed_shell`＝短いコミット）と違う端末も要更新（§9.552。
+      理由は`shellOutdated`）。窓の版が分からない（空・`?`）端末と、配布の名乗りが無いときは比べない
     """
     online = list(online or [])
     history = list(history or [])
@@ -380,11 +394,16 @@ def fleet_summary(online, history, my_version, roles=None, my_key=''):
         # いま動いている版は在席のほうが新しい（記録は最大60秒遅れる）
         if o.get('version'):
             t['version'] = o['version']
+        if o.get('shell'):
+            t['shell'] = o['shell']
     terms = []
     for t in by.values():
         t['role'] = roles.get(t['key']) or ''
         t['counted'] = counts_for_latest(roles.get(t['key']))
-        t['outdated'] = t['counted'] and bool(latest) and version_key(t.get('version')) < lk
+        sh = str(t.get('shell') or '')
+        t['shell'] = sh
+        t['shellOutdated'] = t['counted'] and bool(placed_shell) and sh not in ('', '?') and sh != placed_shell
+        t['outdated'] = t['counted'] and ((bool(latest) and version_key(t.get('version')) < lk) or t['shellOutdated'])
         terms.append(t)
     # **古い版が先**・その中は最後に使った順（配る相手から読めるように）
     terms.sort(key=lambda t: t.get('lastAt') or '', reverse=True)
@@ -411,6 +430,7 @@ def fleet_summary(online, history, my_version, roles=None, my_key=''):
     for u in ul:
         u['versions'].sort(key=version_key, reverse=True)
     return {'latestVersion': latest, 'myVersion': my_version, 'recordingSince': HISTORY_SINCE,
+            'placedShell': placed_shell,
             # 判定に数えない区分（画面は「開発者の端末を除く」と出どころを言う）
             'excludedRoles': list(LATEST_EXCLUDED_ROLES),
             'terminals': terms, 'users': ul,
@@ -443,13 +463,14 @@ def touch(login_id, pc_name, mode='', role='', view='', force=False):
         _session['last'] = now
         since = _session['since']
     version = app_version()
+    shell = shell_mark()
     payload = {'key': key, 'login': str(login_id or ''), 'pc': str(pc_name or ''),
                'mode': str(mode or ''), 'role': str(role or ''), 'view': str(view or ''),
-               'version': version, 'since': since,
+               'version': version, 'shell': shell, 'since': since,
                'at': datetime.now().isoformat()}
     ok = _write_json(_entry_path(key), payload)
     try:
-        _record(key, login_id, pc_name, version, now, new_session)
+        _record(key, login_id, pc_name, version, now, new_session, shell=shell)
     except Exception as e:
         # 記録が書けなくても在席は出す（記録は運用のための副産物）
         app_logger().warning('接続の記録を書けませんでした: %s', e)
@@ -505,7 +526,7 @@ def leave(login_id, pc_name):
             _session['last'] = now
     if mine:
         try:
-            _record(key, login_id, pc_name, app_version(), now, False, final=True)
+            _record(key, login_id, pc_name, app_version(), now, False, final=True, shell=shell_mark())
         except Exception as e:
             app_logger().warning('接続の記録を書けませんでした: %s', e)
         with _lock:
@@ -577,6 +598,7 @@ def entries():
                     'at': str(entry.get('at') or ''),
                     # 版と接続した時刻（§9.513）。**古い版は書かない**ので空のまま運ぶ
                     'version': str(entry.get('version') or ''),
+                    'shell': str(entry.get('shell') or ''),
                     'since': str(entry.get('since') or ''),
                     'durationSec': _since_sec(entry.get('since')),
                     'idleSec': int(age),

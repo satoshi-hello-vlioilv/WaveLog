@@ -1,7 +1,8 @@
 //! 測定伝送システム（WaveLog）デスクトップ版の窓（Tauri）。設計は docs/DESKTOP_MIGRATION_DESIGN.md、記録は §9.544。
 //!
 //! 役割の分け方:
-//!   - Rust（この exe）: 窓・起動と終了・1つだけ起動・静的ファイル・中身（Python）の監督と起こし直し・外のリンク
+//!   - Rust（この exe）: 窓・起動と終了・1つだけ起動・静的ファイル・中身（Python）の監督と起こし直し・外のリンク・
+//!     デスクトップのショートカット（`--lnk`・決めるのは Python・§9.552）
 //!   - Python（program/sidecar.py）: 画面と API のすべて（Flask のアプリそのまま）。**共有DBの管理も Python のまま**
 //!     （錠・改訂番号・写し・在席・書込役。ブラウザ版の端末と同じ作法で共有へ書くため。§9.544）
 //!   - 画面（WebView2）: これまでと同じ HTML/JS/CSS。問い合わせは自前の仕組み（wavelog）で Rust が受ける
@@ -12,6 +13,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod frame;
+mod lnk;
 mod locate;
 mod router;
 mod sidecar;
@@ -283,7 +285,7 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>) {
     log(&format!("READY version={} elapsed={elapsed:.2}", ready["version"].as_str().unwrap_or("?")));
     splash.step(&app, "backend", "ok", &format!("版 {} ・ {:.1} 秒", ready["version"].as_str().unwrap_or("?"), elapsed));
     let info = json!({
-        "shell": "tauri", "shell_version": env!("CARGO_PKG_VERSION"), "protocol": sidecar::PROTOCOL,
+        "shell": "tauri", "shell_version": env!("CARGO_PKG_VERSION"), "commit": env!("WAVELOG_BUILD_COMMIT"), "protocol": sidecar::PROTOCOL,
         "program": program, "python": py_text, "backend": ready, "url": app_url("/").as_str(),
     });
     let static_dir = program.parent().unwrap_or(Path::new(".")).join("static");
@@ -296,6 +298,10 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>) {
 }
 
 fn main() {
+    // 副コマンド: ショートカットを1件作る／読むだけで終わる（窓・1つだけ起動の仕組みより前に分ける・§9.552）
+    if std::env::args().nth(1).as_deref() == Some(lnk::ARG) {
+        std::process::exit(lnk::run());
+    }
     let slot: Arc<OnceLock<AppRouter>> = Arc::default();
     let splash: Arc<Splash> = Arc::default();
     let proto_slot = slot.clone();

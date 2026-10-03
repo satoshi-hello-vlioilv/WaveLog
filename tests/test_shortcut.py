@@ -143,10 +143,11 @@ rec('残せなくても作成そのものは失敗にしない（黙って捨て
 # ・**自分が作ったもの**（行き先が Start.vbs）は、そのまま上書きする。
 # ・**別のショートカット**は `overwrite` が真のときだけ上書きする（黙って消さない）。
 # ・**名前を変えたとき**は前のほうを片付ける（デスクトップに2つ残さない）。
-rec('補助スクリプトは1枚で、作る(MAKE)と読む(READ)の両方を持つ',
-    'READ' in desktop_shortcut._HELPER and 'lnk.Save' in desktop_shortcut._HELPER
-    and desktop_shortcut._HELPER.isascii(),
-    '行き先を読む道がある' if 'READ' in desktop_shortcut._HELPER else desktop_shortcut._HELPER[:60])
+LNK_RS = (ROOT / 'desktop' / 'src' / 'lnk.rs').read_text(encoding='utf-8')
+rec('作るのも読むのも窓の副コマンド1つ（make／read・§9.552）',
+    f'pub const ARG: &str = "{desktop_shortcut.LNK_ARG}";' in LNK_RS
+    and '"read" =>' in LNK_RS and '"make" =>' in LNK_RS,
+    desktop_shortcut.LNK_ARG)
 rec('行き先を読めない端末では空を返す（落ちない・別物として扱う）',
     desktop_shortcut.link_target(ROOT / 'Start.vbs') == '',
     repr(desktop_shortcut.link_target(ROOT / 'Start.vbs')))
@@ -181,46 +182,38 @@ rec('前の名前を片付けるのは、それが自分の作った物のとき
 rec('片付けられなくても作成は失敗にしない（理由は1行残す）',
     src.count('quiet(') >= 1 and "out['renamedFrom']" in src)
 
-# ---- 8) 作るときに渡す引数が、補助スクリプトの読む位置と合う（§9.486、利用者の報告） ----
-# 「作成もうまくいかなかった」——§9.446で補助スクリプトの**1つ目を用途**
-# （MAKE／READ）にしたのに、作る側だけ用途を渡しておらず、引数が1つずつ前へ
-# ずれていた（`Start.vbs`をショートカットの名前として保存しようとして必ず落ちる）。
-# しかも`//B`で断りが捨てられ、画面は「終了コード 1」しか言えなかった。
-# この端末はWindowsではないので、**WSHが実際に受け取る並び**を組み立てて、
-# 補助スクリプトが`a(i)`で読む位置と突き合わせる（`cscript`そのものは測っていない）。
-def _wsh_args(argv):
-    """`cscript`へ渡した並び → スクリプトの`WScript.Arguments`。WSHは**空の引数を
-    数えないことがある**ので、厳しいほうで数える（空を落とす）。"""
-    i = next(k for k, a in enumerate(argv) if str(a).lower().endswith('.vbs'))
-    return [str(a) for a in argv[i + 1:] if str(a) != '']
-
-
-def _capture_create(icon_spec):
+# ---- 8) 窓（exe）へ渡す頼みと、答えの読み方（§9.552。§9.486の「位置で読む」を置き換えた） ----
+# 以前は`cscript`へ位置で渡し、1つずれただけで作れなかった（§9.486・利用者の報告「作成もうまく
+# いかなかった」）。いまは**名前の付いた JSON 1つ**で渡すので、位置はずれようがない。
+# この端末は Windows ではないので、**窓が受け取る頼み**を組み立てて確かめる（`.lnk`そのものは
+# Windows の CI の自己診断が作って読み戻す——selftest.js の「ショートカット」）。
+def _capture_create(icon_spec, answer='{"ok": true}', make_file=True):
+    import json as _json
     import subprocess as _sp
     import tempfile
     seen = []
     tmp = Path(tempfile.mkdtemp())
+    exe = tmp / 'WaveLog.exe'
+    exe.write_bytes(b'MZ')
     keep = {k: getattr(desktop_shortcut, k) for k in
-            ('supported', '_helper_path', 'desktop_dir', '_icon_spec', 'remember', 'saved')}
+            ('supported', 'desktop_dir', '_icon_spec', 'remember', 'saved', 'shell_exe')}
     real_run = _sp.run
 
     def fake_run(argv, **kw):
-        seen.append(list(argv))
-        a = _wsh_args(argv)
-        # 補助スクリプトの MAKE と同じ読み方: a(1) を保存先として作る。
-        if len(a) > 5 and a[0].upper() == 'MAKE' and a[1].lower().endswith('.lnk'):
-            Path(a[1]).write_bytes(b'lnk')
-            return _sp.CompletedProcess(argv, 0, '', '')
-        return _sp.CompletedProcess(argv, 1, '', 'error')
+        req = _json.loads(kw.get('input') or '{}')
+        seen.append((list(argv), req, kw))
+        if req.get('op') == 'make' and make_file:
+            Path(req['path']).write_bytes(b'lnk')
+        return _sp.CompletedProcess(argv, 0 if '"ok": true' in answer else 1, answer, '')
     try:
         desktop_shortcut.supported = lambda: (True, '')
-        desktop_shortcut._helper_path = lambda: tmp / desktop_shortcut.HELPER_NAME
         desktop_shortcut.desktop_dir = lambda: tmp
         desktop_shortcut._icon_spec = lambda icon: (icon_spec, '既定', '')
         desktop_shortcut.remember = lambda *a, **k: None
         desktop_shortcut.saved = lambda key: ''
+        desktop_shortcut.shell_exe = lambda: exe
         _sp.run = fake_run
-        out = desktop_shortcut.create('試し', '', None, False)
+        out = desktop_shortcut.create('試し 測定', '', None, False)
     finally:
         _sp.run = real_run
         for k, v in keep.items():
@@ -228,44 +221,70 @@ def _capture_create(icon_spec):
     return out, seen
 
 
-_uses = sorted({int(n) for n in re.findall(r'a\((\d+)\)', desktop_shortcut._HELPER)})
-for _label, _spec in (('既定の絵あり', r'C:\x\wavelog.ico'), ('絵なし（作れなかった）', '')):
+for _label, _spec, _want in (('既定の絵', r'C:\x\wavelog.ico', (r'C:\x\wavelog.ico', 0)),
+                             ('exe の中の絵', r'C:\x\a,b.exe,0', (r'C:\x\a,b.exe', 0)),
+                             ('絵なし（作れなかった）', '', ('', 0))):
     _out, _seen = _capture_create(_spec)
-    _make = [c for c in _seen if 'READ' not in c]
-    _a = _wsh_args(_make[0]) if _make else []
-    rec(f'作るときの引数が補助スクリプトの読む位置と合う（{_label}・§9.486）',
-        bool(_a) and _a[0] == 'MAKE' and _a[1].endswith('.lnk')
-        and _a[2] == str(desktop_shortcut.target_path()) and len(_a) > max(_uses),
-        f'a(0..)={_a[:3]} 数{len(_a)}／読む位置{_uses}')
-    rec(f'その並びで作成が成功として返る（{_label}）', bool(_out.get('ok') and _out.get('created')),
+    _make = [r for _a, r, _k in _seen if r.get('op') == 'make']
+    _r = _make[0] if _make else {}
+    rec(f'窓へ渡す頼みは名前付きの1件（{_label}・§9.552）',
+        bool(_r) and _seen[0][0][1:] == [desktop_shortcut.LNK_ARG] and _r['path'].endswith('試し 測定.lnk')
+        and _r['target'] == str(desktop_shortcut.target_path()) and (_r['icon'], _r['iconIndex']) == _want,
+        str({k: _r.get(k) for k in ('icon', 'iconIndex')}))
+    rec(f'その頼みで作成が成功として返る（{_label}）', bool(_out.get('ok') and _out.get('created')),
         str(_out.get('error') or '')[:80])
-# `//B`は断りを1字も出さない。外して、失敗の理由を画面まで届ける。
-rec('作るときに //B を付けない（失敗の理由を捨てない・§9.486）',
-    all('//B' not in c for c in _capture_create('x.ico')[1]))
-rec('cscript の出力は読めない字で落とさない（errors=replace）',
-    "'errors':'replace'" in inspect.getsource(desktop_shortcut._run_text)
-    and src.count('_run_text()') >= 1)
+_kw = _capture_create('')[1][0][2]
+rec('頼みは UTF-8 の JSON で渡す（日本語の名前・道を字化けさせない）',
+    _kw.get('encoding') == 'utf-8' and _kw.get('text') is True, str({k: _kw.get(k) for k in ('encoding', 'text')}))
+# 窓が断ったら、**窓の言った理由**が画面まで届く（「終了コード 1」だけにしない・§9.486の趣旨）。
+_out, _ = _capture_create('', answer='{"ok": false, "error": "ショートカットを保存できません（X）: アクセスが拒否されました"}',
+                          make_file=False)
+rec('窓の断りの理由をそのまま返す', _out.get('ok') is False and 'アクセスが拒否' in str(_out.get('error')),
+    str(_out.get('error'))[:80])
+_out, _ = _capture_create('', answer='これはJSONではない', make_file=False)
+rec('窓の答えが読めなくても落ちず、読めないと言う', _out.get('ok') is False and '読めません' in str(_out.get('error')),
+    str(_out.get('error'))[:80])
+_srcmod = inspect.getsource(desktop_shortcut)
+rec('cscript・補助スクリプトの道は残っていない（§9.552）',
+    'cscript' not in _srcmod.split('"""', 2)[2] and '_HELPER' not in _srcmod and 'NO_ICON' not in _srcmod)
 
-# ---- 補助スクリプトは「ほかのプログラムからも見える置き場」へ（§9.496、利用者の報告） ----
-# 「ショートカットが作成できない端末が出ています。端末によってできる出来ないがある？」
-# ——Microsoft Store 版の Python は`AppData\Local`への書込を**このアプリからしか見えない写し**へ
-# 回す。補助スクリプトをそこへ置くと、読む`wscript.exe`（別のプログラム）には「見つかりません」。
-# 置き場の答えは待機画面と同じ`paths.browser_dir()`の1箇所（MSIXの端末でだけ外へ移す）。
+# ---- 窓の場所（§9.552） ----
+# 作るのは**いま動いている窓**（手元へ写した版ごとのフォルダ）——Box の上の exe を起こすと掴んで
+# 更新を止める（設計書 §7）。窓の外（開発の入口）では配ってある exe。
+import os as _os  # noqa: E402
+_keep_env = {k: _os.environ.get(k) for k in ('WAVELOG_SHELL', 'WAVELOG_SHELL_EXE')}
+try:
+    _os.environ['WAVELOG_SHELL'] = 'desktop'
+    _os.environ['WAVELOG_SHELL_EXE'] = r'C:\Users\u\AppData\Local\WaveLog\desktop\1-2\WaveLog.exe'
+    _in = desktop_shortcut.shell_exe()
+    _os.environ.pop('WAVELOG_SHELL')
+    _out_shell = desktop_shortcut.shell_exe()
+finally:
+    for k, v in _keep_env.items():
+        if v is None:
+            _os.environ.pop(k, None)
+        else:
+            _os.environ[k] = v
+rec('窓の中では、いま動いている窓（手元へ写した exe）に作らせる', str(_in).endswith(r'1-2\WaveLog.exe'), str(_in))
+rec('窓の外では配ってある program/WaveLog.exe', _out_shell == ROOT / 'program' / 'WaveLog.exe', str(_out_shell))
+
+# ---- 絵は「ほかのプログラムからも見える置き場」へ（§9.496、利用者の報告） ----
+# Microsoft Store 版の Python は`AppData\Local`への書込を**このアプリからしか見えない写し**へ回す。
+# 絵（.ico）を読むのはエクスプローラー（別のプログラム）——見えないと白紙の絵になる。
+# 置き場の答えは`paths.browser_dir()`の1箇所（MSIXの端末でだけ外へ移す）。
 import tempfile as _tf  # noqa: E402
 from backend import paths as _paths  # noqa: E402
 _vis = Path(_tf.mkdtemp()) / 'visible'
 _keep_bd = _paths.browser_dir
 try:
     _paths.browser_dir = lambda: _vis
-    _hp = desktop_shortcut._helper_path()
     _ip = app_icon.icon_path()
 finally:
     _paths.browser_dir = _keep_bd
-rec('補助スクリプトはほかのプログラムからも見える置き場に置く（§9.496）',
-    _hp is not None and Path(_hp).parent == _vis and Path(_hp).is_file(), str(_hp))
-# 絵（.ico）も同じ。読むのはエクスプローラー（別のプログラム）——見えないと白紙の絵になる。
-rec('ショートカットの絵もほかのプログラムからも見える置き場に置く（§9.496）',
+rec('ショートカットの絵はほかのプログラムからも見える置き場に置く（§9.496）',
     Path(_ip).parent == _vis, str(_ip))
+from backend.launcher import setup_check as _sc  # noqa: E402
+rec('使わなくなった補助スクリプトは端末の手元から片付ける（§9.552）', 'make_shortcut.vbs' in _sc.RETIRED_LOCAL)
 
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
