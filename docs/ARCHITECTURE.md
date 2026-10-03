@@ -69,6 +69,8 @@ Start.vbs → `program/WaveLog.exe`（手元へ写して起動）→ 窓が子�
 | `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出、`config/local.json` の読込(`load_local_config`/`configured_path`。マスタDB自体の置き場所を決める3項目専用のブートストラップ設定。それ以外の運用設定はパス設定マスタ(`db_access.py`)へ移行済み) |
 | `backend/logging_setup.py` | ログ初期化。`launcher.log`(起動・停止) と `app.log`(本体) の2系統 |
 | `backend/watchdog.py` | プロセスの寿命。片付けて終わる`_exit()`の1箇所・明示停止(`/api/shutdown`)・終了ボタン(`/api/app/quit`)・ハートビート（在席と版の知らせ） |
+| `backend/desktop_shell.py` | いま動いている窓（exe）と配ってある exe（`program/WaveLog.build.json`）の答え。窓の版は exe を作ったコミットで、窓だけ古いかは`stale()`の1箇所（§9.552） |
+| `backend/desktop_shortcut.py`／`desktop/src/lnk.rs` | デスクトップの起動ショートカット。決めるのは Python、`.lnk`を作る・読むのは窓の副コマンド`WaveLog.exe --lnk`（Windows の部品を直に呼ぶ・§9.552） |
 
 `_pycache_bootstrap.py` は `program/setup_app.py`・`program/app.py`・`program/sidecar.py` の3つすべてで、
 `_approot`の**次に**importしている(直接実行され得るのはこの3本)。

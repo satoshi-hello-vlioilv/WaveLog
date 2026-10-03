@@ -1,6 +1,6 @@
 # デスクトップ版への移行（Tauri / Rust / Python）——事前確認と段取り
 
-**状態: P0（事前確認）・P1（Python の窓口・[§9.544](decisions/9.544.md)）・P3（端末の控え・[§9.545](decisions/9.545.md)）・P2（Rust の窓・[§9.546](decisions/9.546.md)）・端末ごとの起動のしかた（[§9.547](decisions/9.547.md)）・**exe 起動への一本化（段3・[§9.548](decisions/9.548.md)）**まで済み。P4 は §4-3（LotData-Link の言い分け・[§9.550](decisions/9.550.md)）から着手。**
+**状態: P0（事前確認）・P1（Python の窓口・[§9.544](decisions/9.544.md)）・P3（端末の控え・[§9.545](decisions/9.545.md)）・P2（Rust の窓・[§9.546](decisions/9.546.md)）・端末ごとの起動のしかた（[§9.547](decisions/9.547.md)）・**exe 起動への一本化（段3・[§9.548](decisions/9.548.md)）**まで済み。P4 は §4-3（LotData-Link の言い分け・[§9.550](decisions/9.550.md)）・§4-5（印刷と保存・[§9.551](decisions/9.551.md)）・窓の版（[§9.552](decisions/9.552.md)）まで済み。ショートカットは窓が作る（§6・[§9.552](decisions/9.552.md)）。**
 本物の WebView2（Windows）の自己診断は CI（`.github/workflows/desktop.yml`）が受け持ち、**20/20 で通った**（数値は§9.546）。以下は最初の事前確認。
 
 利用者の依頼「Defect-Pitch-Analyzer で行ったように、Flask/Python で補っていた部分を
@@ -32,7 +32,7 @@ Tauri/Rust/Python に変換し、ポートによる影響や得意な分野ご�
 | 4 | マスタの共有（§9.263） | `master.lock.json`＋`共有メタ`の改訂番号（`master_share.py`） | なし | Python のまま |
 | 5 | 測定データ（共有） | 設備ごとの `records.sqlite3`（§9.258・1ファイル1書き手） | なし | Python のまま |
 | 6 | 読み取り専用DBの写し | `db_mirror.py`（バックアップAPI→検査→世代名で置換） | なし | Python のまま |
-| 7 | 在席・失効・最新版 | `presence/<端末>.json`・`.revoke.json` | なし | Python のまま。版にデスクトップの殻の版を添えるかは P4 で決める |
+| 7 | 在席・失効・最新版 | `presence/<端末>.json`・`.revoke.json` | なし | Python のまま。窓の版（作ったコミット）も添える（[§9.552](decisions/9.552.md)） |
 | 8 | 共有スケジュールの見張り | 改訂番号だけ見て変わったら写す（`schedule_watch.py`） | なし | Python のまま |
 | 9 | **端末の中の測定データ** | IndexedDB `MeasurementLocal`＋localStorage `MeasurementLocalMirrorV31` | **オリジン（ポートを含む）** | **端末の控えで揃える**（P3 済み・§9.545） |
 
@@ -85,7 +85,7 @@ E1 は P1 で網にした（`test_portdep.py`・常に回す）。対象は名�
 | P2 ✓ | Rust の殻 `desktop/`（窓・1つだけ起動・`/static/` の直配り・Python の監督と起こし直し・外のリンクは PC の既定のブラウザ）。Windows の CI で本物の WebView2 の自己診断 | `cargo test`・自己診断・E5 |
 | P3 ✓ | 端末の控え（記録と設定を保存のたびに Python の控えへも写し、開いたときに新しいほうを採る） | E6 |
 | P2+ ✓ | 端末ごとの起動のしかた（ブラウザ版／デスクトップ版）。引数なしの Start.vbs が手元の設定を読む（[§9.547](decisions/9.547.md)） | `test_launchmode`・CI は引数なしで起こす |
-| P4 | WebView2 で違う所（§4 の 3〜6）と、版の知らせ。§4-3（[§9.550](decisions/9.550.md)）・§4-5（[§9.551](decisions/9.551.md)）は済み | 自己診断の項目 |
+| P4 | WebView2 で違う所（§4 の 3〜6）と、版の知らせ。§4-3（[§9.550](decisions/9.550.md)）・§4-5（[§9.551](decisions/9.551.md)）・版の知らせ（窓の版・[§9.552](decisions/9.552.md)）は済み | 自己診断の項目 |
 | P5 ✓ | 配り方（main へ入ったら CI が exe を置く）と、ブラウザ版の起動の道・ポートのための仕組みを外す（[§9.548](decisions/9.548.md)） | 利用者の確認 |
 
 **exe 起動への一本化**（利用者の指示「最終的にはexe起動に一本化したい」→「一本化を進めて」・[§9.548](decisions/9.548.md)）: **段3まで済み**。
@@ -96,7 +96,7 @@ E1 は P1 で網にした（`test_portdep.py`・常に回す）。対象は名�
 
 | 受け持つもの | 何を | 理由 |
 | --- | --- | --- |
-| **Rust**（`desktop/`） | 窓、起動と終了、1つだけ起動、起動画面（`loading.html` の役）、`/static/` の配信、Python の監督と起こし直し（「再起動待ち」・§9.200 も殻が起こし直せる）、外のリンク | OS の窓・プロセス・ファイルを直接扱える。ポートのための推し量りが要らなくなる |
+| **Rust**（`desktop/`） | 窓、起動と終了、1つだけ起動、起動画面（`loading.html` の役）、`/static/` の配信、Python の監督と起こし直し（「再起動待ち」・§9.200 も殻が起こし直せる）、外のリンク、デスクトップのショートカット（`.lnk`を Windows の部品で直に作る・`--lnk`・決めるのは Python・[§9.552](decisions/9.552.md)） | OS の窓・プロセス・ファイルを直接扱える。ポートのための推し量りが要らなくなる |
 | **Python**（`backend/`・そのまま） | 画面の HTML・API のすべて、**共有DBの書込サイクル・写し・在席・書込役**、RNE 抽出（Navigator の DLL）、Excel の読み書き、計算 | 共有の手順は網で固めてあり、移行のあいだブラウザ版と**同じコード**で動くことが混在の安全の根拠になる。遅さの原因は意図した待ち（錠の確かめ）で、言語の速さではない |
 | **画面**（WebView2） | これまでと同じ HTML/JS/CSS。問い合わせは相対の `fetch` のまま | 変えない |
 
