@@ -154,10 +154,11 @@ def _no_window():
 
 def _same_path(a,b):
  """同じ場所を指しているか。Windowsは大文字小文字を区別しないので
-    `normcase`で揃える（`C:\\WaveLog`と`c:\\wavelog`は同じ）。"""
+    `normcase`で揃える（`C:\\WaveLog`と`c:\\wavelog`は同じ）。短い名前も実際の場所へ直してから比べる。"""
  if not a or not b:return False
  try:
-  return os.path.normcase(os.path.abspath(str(a)))==os.path.normcase(os.path.abspath(str(b)))
+  # `realpath`＝実際の場所（Windows では 8.3 の短い名前〈`RUNNER~1`〉も長い名前へ直る・§9.552で踏んだ）
+  return os.path.normcase(os.path.realpath(str(a)))==os.path.normcase(os.path.realpath(str(b)))
  except Exception as _e:
   quiet('道を比べられない（別物として扱う）',_e)
   return False

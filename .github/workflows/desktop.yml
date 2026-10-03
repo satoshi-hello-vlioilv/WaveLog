@@ -2,7 +2,8 @@
 #
 # 1. Python の網を Windows で回す（窓口の枠・fd の向け直しは OS で振る舞いが違いうる）
 #      test_portdep（共有の層は画面のポートを知らない）・test_terminalstore（端末の控え）・
-#      test_sidecar（窓口の答えがポートの版と同じ・閉じたら片付けて終わる）
+#      test_sidecar（窓口の答えがポートの版と同じ・閉じたら片付けて終わる）・
+#      test_shortcut（ショートカットの判断・短い名前と長い名前を同じ場所と見る・§9.552）
 # 2. cargo test → cargo build --release
 # 3. 作った exe を program/ に置き、**Start.vbs で起こす**（手元へ写して起動する道そのものを通す・§9.548）。
 #    窓は WAVELOG_SELFTEST に結果を書いて終わる。結果と exe は Artifacts に置く。
@@ -54,7 +55,7 @@ jobs:
       - name: Python の網（Windows）
         run: |
           $ng = 0
-          foreach ($t in "test_portdep", "test_terminalstore", "test_sidecar") {
+          foreach ($t in "test_portdep", "test_terminalstore", "test_sidecar", "test_shortcut") {
             Write-Host "=== $t"
             python "tests/$t.py"
             if ($LASTEXITCODE -ne 0) { $ng++ }

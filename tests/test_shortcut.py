@@ -148,9 +148,11 @@ rec('作るのも読むのも窓の副コマンド1つ（make／read・§9.552�
     f'pub const ARG: &str = "{desktop_shortcut.LNK_ARG}";' in LNK_RS
     and '"read" =>' in LNK_RS and '"make" =>' in LNK_RS,
     desktop_shortcut.LNK_ARG)
-rec('行き先を読めない端末では空を返す（落ちない・別物として扱う）',
-    desktop_shortcut.link_target(ROOT / 'Start.vbs') == '',
-    repr(desktop_shortcut.link_target(ROOT / 'Start.vbs')))
+# Windows では本物の窓（exe）を起こすことになる——ここでは起こさない（作って読み戻すのは自己診断と cargo test）。
+if sys.platform != 'win32':
+    rec('行き先を読めない端末では空を返す（落ちない・別物として扱う）',
+        desktop_shortcut.link_target(ROOT / 'Start.vbs') == '',
+        repr(desktop_shortcut.link_target(ROOT / 'Start.vbs')))
 rec('同じ道は書き方が違っても同じと見る（`..`は畳む）',
     desktop_shortcut._same_path(ROOT / 'Start.vbs', ROOT / 'db' / '..' / 'Start.vbs')
     and not desktop_shortcut._same_path(ROOT / 'a.lnk', ROOT / 'b.lnk'))
@@ -159,6 +161,18 @@ rec('同じ道は書き方が違っても同じと見る（`..`は畳む）',
 # ——道具に任せていることだけを確かめる（§9.369「測れないなら測っていないと書く」）。
 rec('大文字小文字の揺れは os.path.normcase に任せる（Windowsで畳まれる）',
     'normcase' in inspect.getsource(desktop_shortcut._same_path))
+# 8.3 の短い名前（`RUNNER~1`）と長い名前は同じ場所（§9.552・Windows の CI で踏んだ——読み戻した行き先は長い名前になる）。
+# **Windows でだけ測れる**（desktop.yml の「Python の網（Windows）」が回す）。ここ（Linux）では測っていない。
+if sys.platform == 'win32':
+    import ctypes, tempfile as _tmpf  # noqa: E401
+    _d = Path(_tmpf.mkdtemp()) / 'とても長い名前のフォルダ'
+    _d.mkdir()
+    _f = _d / 'Start.vbs'
+    _f.write_text("'x", encoding='ascii')
+    _buf = ctypes.create_unicode_buffer(1024)
+    ctypes.windll.kernel32.GetShortPathNameW(str(_f), _buf, 1024)
+    rec('短い名前（8.3）と長い名前を同じ場所と見る（Windows）',
+        _buf.value and _buf.value != str(_f) and desktop_shortcut._same_path(_buf.value, _f), f'{_buf.value} / {_f}')
 rec('空の行き先は「自分のもの」と見ない（読めなかったものを消さない）',
     not desktop_shortcut._same_path('', str(desktop_shortcut.target_path())))
 # 付け替えの判断は**字だけで決まる**ので、ここで直に確かめられる。

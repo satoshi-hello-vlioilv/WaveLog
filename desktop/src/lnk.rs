@@ -153,7 +153,9 @@ mod tests {
         let (l, t) = (link.to_string_lossy().to_string(), target.to_string_lossy().to_string());
         handle(&json!({"op": "make", "path": l, "target": t, "workdir": dir, "icon": "", "description": "説明"})).unwrap();
         let got = handle(&json!({"op": "read", "path": l})).unwrap();
-        assert_eq!(got["target"].as_str().unwrap().to_lowercase(), t.to_lowercase());
+        // 一時フォルダは 8.3 の短い名前（runner~1）で来ることがあり、読み戻すと長い名前になる——実際の場所で比べる
+        let real = |p: &str| std::fs::canonicalize(p).unwrap();
+        assert_eq!(real(got["target"].as_str().unwrap()), real(&t));
         assert_eq!(handle(&json!({"op": "read", "path": dir.join("無い.lnk")})).unwrap()["target"], "");
         let _ = std::fs::remove_dir_all(&dir);
     }
