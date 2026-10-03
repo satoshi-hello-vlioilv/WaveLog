@@ -111,7 +111,7 @@
  }
  function plotKey(){
   const s=st.summary||{},n=st.points.length,out=s.outliers||0,inb=s.inBand||0;
-  return `<p class="lf-key"><span><i class="lf-sw is-in"></i>帯の中 ${inb}件</span><span><i class="lf-sw is-off"></i>帯の外 ${Math.max(0,(s.n||0)-inb)}件</span>`
+  return `<p class="lf-legend"><span><i class="lf-sw is-in"></i>帯の中 ${inb}件</span><span><i class="lf-sw is-off"></i>帯の外 ${Math.max(0,(s.n||0)-inb)}件</span>`
    +`<span><i class="lf-sw is-out"></i>外れ値（係数に使っていない） ${out}件</span><span><i class="lf-sw is-band"></i>80%の帯</span>`
    +(s.total>n?`<span>新しい ${n}件を表示（全 ${s.total}件）</span>`:'')+`</p>`;
  }
