@@ -1778,11 +1778,7 @@
     return `wavelog-filters-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
   }
   function ioDownload(name,text){
-    const blob=new Blob([text],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download=name;
-    document.body.append(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    WL.base.saveBlob(new Blob([text],{type:'application/json'}),name);
   }
   function ioParse(text){
     let data;

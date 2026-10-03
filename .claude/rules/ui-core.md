@@ -1,4 +1,4 @@
-# 画面の土台（45件）
+# 画面の土台（46件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ファイルの保存は`WL.base.saveBlob()`／`saveFrom()`の1箇所。添付へページを移さない（断られると画面が JSON に置き換わる） | `test_saveio.js` | [§9.551](../../docs/decisions/9.551.md) |
 | 乗せると浮く面は`WL.popMenu.peek()`の1箇所（鍵盤の焦点だけで開く・乗せた物の下か上。横へ出さない） | `test_equse.js`・`test_partboards.js` | [§9.542](../../docs/decisions/9.542.md) |
 | 入力欄の候補の器は`WL.popMenu.suggest()`の1箇所。判定表のセルは**↑↓で選ぶまで選ばない**（`pick:false`） | `test_bladepick.js`・`test_formula.js` | [§9.529](../../docs/decisions/9.529.md) |
 | 「画面を印刷」の中身と説明は画面が名乗る（`registerView({print, printHint})`）。名乗らない画面はブラウザの印刷 | `test_screenprint.js` | [§9.525](../../docs/decisions/9.525.md) |

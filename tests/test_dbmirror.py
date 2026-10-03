@@ -164,9 +164,14 @@ try:
                                     'wait_after_1st': db_mirror.next_wait_sec([g1]),
                                     'wait_after_2nd': db_mirror.next_wait_sec([g2]),
                                     'manual_wait': manual_wait, 'interval': db_mirror.interval_sec()}))
+    # 境目は**待って取り直すときの合計の半分**（§9.551）。欠陥（待って取り直す）なら必ず合計
+    # （STAT_RETRY_SEC の和＝2.5秒）以上かかり、待たないなら1回見るだけ。以前は 0.3秒で切っており、
+    # `--pure`（並列8本）の重さで1回見るだけでも 0.70秒かかって落ちた（単独では3回とも通る）。
+    LIMIT = sum(db_mirror.STAT_RETRY_SEC) / 2
     rec('一度も写せていない元が無いとき、待って取り直さない（起動の最初の周回を遅らせない）（§9.495の追補）',
-        first_sec < 0.3, f'{first_sec:.2f}秒')
-    rec('続けて届かない元は待って取り直さない（2回目は1回見るだけ）（§9.495の追補）', second_sec < 0.3, f'{second_sec:.2f}秒')
+        first_sec < LIMIT, f'{first_sec:.2f}秒（境目 {LIMIT:.2f}秒）')
+    rec('続けて届かない元は待って取り直さない（2回目は1回見るだけ）（§9.495の追補）', second_sec < LIMIT,
+        f'{second_sec:.2f}秒（境目 {LIMIT:.2f}秒）')
     rec('早めに取り直すのは届かなくなった最初の1回だけ（2回目からは通常の間隔）（§9.495の追補）',
         db_mirror.next_wait_sec([g1]) < db_mirror.interval_sec() and db_mirror.next_wait_sec([g2]) == db_mirror.interval_sec(),
         f'1回目のあと {db_mirror.next_wait_sec([g1])}秒／2回目のあと {db_mirror.next_wait_sec([g2])}秒')

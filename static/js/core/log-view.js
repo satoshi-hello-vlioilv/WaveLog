@@ -92,11 +92,7 @@
   if(await copyText(text))showToast(msg,`${num(lines.length)}行`);
   else showToast('コピーできませんでした','手動で選択してコピーしてください。',5200);
  };
- const saveText=(text,name)=>{
-  const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));
-  const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
- };
+ const saveText=(text,name)=>WL.base.saveBlob(new Blob([text],{type:'text/plain;charset=utf-8'}),name);
 
  /* ====================================================================
     ① 報告する
@@ -472,8 +468,16 @@
   box.innerHTML=`<table class="lg-table"><thead><tr><th>種類</th><th>ファイル</th><th>大きさ</th><th>更新</th><th></th></tr></thead><tbody>`
    +state.files.map(f=>`<tr><td>${esc(f.streamLabel)}${f.current?'':`<small>（${f.generation}世代前）</small>`}</td>
      <td>${esc(f.name)}</td><td class="lg-num">${num(Math.round(f.size/1024))} KB</td><td class="lg-num">${esc(f.mtime||'')}</td>
-     <td><a class="lg-link" href="/api/logs/download?file=${encodeURIComponent(f.name)}" title="このログをそのままファイルとして保存します">保存</a></td></tr>`).join('')
+     <td><a class="lg-link" href="/api/logs/download?file=${encodeURIComponent(f.name)}" data-log-save title="このログをそのままファイルとして保存します">保存</a></td></tr>`).join('')
    +'</tbody></table>';
+  /* 保存は`WL.base.saveFrom()`の1本（§9.551。ページを移す形だと、断られたとき画面が JSON に置き換わる）。 */
+  box.onclick=e=>{
+   const a=e.target.closest('[data-log-save]');if(!a)return;
+   e.preventDefault();
+   WL.base.saveFrom(a.getAttribute('href'),'wavelog.log')
+    .then(n=>showToast('ログを保存しました',n+'（「ダウンロード」フォルダ）'))
+    .catch(err=>showToast('ログを保存できませんでした',err.message,5200));
+  };
  };
  /* 押せるかは**モードと選んだ件数**で決まる。押せないときは理由を字で
     （押しても何も起きないボタンを残さない・§CLAUDE 4）。 */

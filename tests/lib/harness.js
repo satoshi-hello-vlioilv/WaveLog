@@ -54,7 +54,9 @@ async function run(title,body,opts={}){
   if(opts.mode)await setMode(opts.mode);
   resetTerminal();   // まっさらなブラウザで始める（単独で回したときも、前に開いた画面の控えを当てない）
   sideSnap=await masterSnapshot(SIDE_EFFECT_TABLES).catch(()=>null);
-  b=await chromium.launch({executablePath:exe});
+  /* ファイル名の文字コードは UTF-8（§9.551）。この網の環境は POSIX（UTF-8 でない）なので、Chromium は日本語の
+     保存の名前（a.download）を使えず「download」へ倒す——現場の Windows では日本語のまま保存される。 */
+  b=await chromium.launch({executablePath:exe,env:{...process.env,LC_CTYPE:process.env.LC_CTYPE||'C.UTF-8'}});
   /* 文脈を1つ作る。`init` は最初の航行より前に走らせる小さな仕込み
      （localStorage へ使用設備を入れる等。test_listcache が使う）。 */
   const ctx=await b.newContext({viewport:opts.viewport||{width:1700,height:1000}});

@@ -1,7 +1,8 @@
 /* 自己診断（環境変数 WAVELOG_SELFTEST=結果のファイル で起動したときだけ、窓が画面に流し込む・§9.544）。
    本物の WebView の中から、ブラウザ版と同じに動くかを確かめて /__desktop/selftest へ送る。窓は結果を書いて終わる。
    調べること: 起動が終わる・画面（Python）・部品（Rust）・連結した CSS（Python）・API・404/400・大きな日本語の本文・
-   日本語の問い合わせ・40本同時・安全な文脈（クリップボード）・保存領域・端末の控え（§9.545）・速さ。 */
+   日本語の問い合わせ・40本同時・安全な文脈（クリップボード）・保存領域・端末の控え（§9.545）・保存（1つの画面で1本）と
+   印刷の書類の組み立て（§9.551）・速さ。印刷の窓とファイルを選ぶ窓は人が操作する窓なので、ここでは開かない（実機で確かめる）。 */
 (async () => {
   const res = [];
   const ok = (name, cond, info = "") => res.push({ name, ok: !!cond, info: String(info).slice(0, 300) });
@@ -75,6 +76,52 @@
     let gone = false;
     for (let i = 0; i < 25 && !gone; i++) { await sleep(200); gone = JSON.parse((await get("/api/terminal/records")).text).items.some((x) => x.id === id && x.deletedAt); }
     ok("消した記録は控えに「消した印」が残る", gone);
+
+    // 10) 保存（ダウンロード・§9.551）。窓は自己診断のときだけ保存を記録し、/__desktop/downloads で答える
+    const saved = async (match, ms = 20000) => {
+      const end = performance.now() + ms;
+      while (performance.now() < end) {
+        const f = (await (await fetch("/__desktop/downloads")).json()).find((x) => x.state === "finished" && match(x));
+        if (f) return f;
+        await sleep(200);
+      }
+      return null;
+    };
+    //   保存の答えは画面の WL.base.saveFrom（fetch → Blob → a[download]・CSV・フィルタ・列の設定・ログ・Excel が通る1箇所）。
+    //   **1つの画面で落とすのは1本だけ**——窓（WebView2）は人の操作なしに続けて2本目以降を落とすと止める（§9.551 で実測:
+    //   1本目はどの形でも届き、2本目は Blob でも止まった）。現場では押すたびに人の操作が入る（2回目は実機で確かめる）。
+    const named = await WL.base.saveFrom("/api/roll-master/export", "export.xlsx");
+    const s2 = await saved((r) => r.url.startsWith("blob:"));
+    ok("保存: 中身が返す Excel（日本語の名前）が、画面の保存の道（saveFrom）で名前どおり・中身どおりに届く",
+       s2 && s2.success && s2.head === "504b0304" && /ロールマスタ.*\.xlsx$/.test(s2.path || "") && /^ロールマスタ_.*\.xlsx$/.test(named),
+       JSON.stringify({ named, s2 }));
+
+    // 11) 印刷の書類の組み立て（帳票は見えない iframe へ書いて刷る・report-dashboard の rpPrintFrame と同じ形）
+    const fr = document.createElement("iframe");
+    fr.style.cssText = "position:fixed;left:-10000px;top:0;width:210mm;height:297mm";
+    document.body.append(fr);
+    const hrefs = [...document.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute("href")).filter(Boolean);
+    const d = fr.contentDocument;
+    d.open();
+    d.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8">${hrefs.map((h) => `<link rel="stylesheet" href="${h}">`).join("")}`
+      + `<style>@page{size:A4 portrait;margin:8mm}</style></head><body class="rp-print-doc"><div class="rp-page">印刷の試し</div></body></html>`);
+    d.close();
+    const links = [...d.querySelectorAll('link[rel="stylesheet"]')];
+    const loaded = await new Promise((done) => {
+      let left = links.length;
+      if (!left) return done(0);
+      const t = setTimeout(() => done(links.length - left), 10000);
+      links.forEach((l) => {
+        l.addEventListener("load", () => { if (--left === 0) { clearTimeout(t); done(links.length); } });
+        l.addEventListener("error", () => { clearTimeout(t); done(-1); });
+      });
+    });
+    const w = fr.contentWindow;
+    const teal = w.getComputedStyle(d.documentElement).getPropertyValue("--teal").trim();
+    ok("印刷: 帳票の書類（見えない iframe）が画面と同じ CSS で組み上がり、print を呼べる",
+       links.length > 0 && loaded === links.length && teal !== "" && typeof w.print === "function" && "onafterprint" in w,
+       `CSS ${loaded}/${links.length} 本・--teal=${teal}`);
+    fr.remove();
 
     // 9) 速さ（参考）: Python へ 30 回・Rust の部品 30 回の平均（ミリ秒）
     const avg = async (url) => { const s = performance.now(); for (let i = 0; i < 30; i++) await (await fetch(url)).arrayBuffer(); return (performance.now() - s) / 30; };
