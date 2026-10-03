@@ -136,7 +136,11 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
    const txt = all.filter(e => !e.matches('.hd-caret') && [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim()));
    const set = a => [...new Set(a)].sort();
    return { fs: set(txt.map(e => parseFloat(getComputedStyle(e).fontSize))), h: set(ctl.map(e => Math.round(e.getBoundingClientRect().height))),
-            r: set(ctl.map(e => getComputedStyle(e).borderTopLeftRadius)), n: ctl.length };
+            r: set(ctl.map(e => getComputedStyle(e).borderTopLeftRadius)), n: ctl.length,
+            /* 落ちたとき「どの字が何px か」を名指す（大きさごとに最初の3つ） */
+            who: Object.fromEntries(set(txt.map(e => parseFloat(getComputedStyle(e).fontSize))).map(f => [f,
+              txt.filter(e => parseFloat(getComputedStyle(e).fontSize) === f).slice(0, 3)
+                 .map(e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${[...e.classList].join('.')}「${e.textContent.trim().slice(0, 12)}」`)])) };
   });
   rec('帯の字は1つの大きさ（前: 4種 10・11・12・14px）', uni.fs.length === 1 && uni.fs[0] >= 11, JSON.stringify(uni));
   rec('帯の押す物は1つの高さ・1つの角丸（前: 高さ2種・角丸3種）', uni.h.length === 1 && uni.r.length === 1 && uni.n >= 6, JSON.stringify(uni));

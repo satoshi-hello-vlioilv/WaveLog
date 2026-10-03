@@ -1,4 +1,4 @@
-# 起動・停止・監視（51件）
+# 起動・停止・監視（53件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 窓の版は exe を作ったコミット（CI が埋める）。窓だけ古いかは`desktop_shell.stale()`の1箇所 | `test_presence.py` | [§9.552](../../docs/decisions/9.552.md) |
+| `.lnk`を作る・読むのは窓の副コマンド`--lnk`（JSON 1つ）。決めるのは`desktop_shortcut.py` | `test_shortcut.py` | [§9.552](../../docs/decisions/9.552.md) |
 | 窓の自己診断は保存（1つの画面で1本だけ）と印刷の書類も見る。保存の受け手（`on_download`）は**自己診断のときだけ**付ける（付けると既定の案内が消える） | — | [§9.551](../../docs/decisions/9.551.md) |
 | 利用者の起動はデスクトップ版だけ（Start.vbs → `program/WaveLog.exe`）。HTTP の入口`program/app.py`は開発と網のため | `test_faststart.py` | [§9.548](../../docs/decisions/9.548.md) |
 | main へは CI が exe を置く（`publish`・作った元の指紋で置き直しを決める）。手で作った exe を足さない | — | [§9.548](../../docs/decisions/9.548.md) |
@@ -23,7 +25,7 @@
 | update.bat は**版を最初に言う**（`ready.version_note()`の1箇所・前回の刻印と比べる） | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
 | update.bat は確かめる前に作り直せる物を片付ける（`file_cleanup.run_for_update()`）。ショートカットの絵は残す | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
 | アプリの外（update.bat）から設定を読むのは`path_config`。**`db_access`を読み込まない**（読み込むと共有マスタの写しを作り直す） | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
-| ほかのプログラムが読むファイル（補助スクリプト・絵）の置き場は`paths.browser_dir()`の1箇所 | `test_shortcut.py` | [§9.496](../../docs/decisions/9.496.md) |
+| ほかのプログラムが読むファイル（ショートカットの絵）の置き場は`paths.browser_dir()`の1箇所 | `test_shortcut.py` | [§9.496](../../docs/decisions/9.496.md) |
 | `say`の約束は`say(m, bad=False, quiet=False)`。`say=lambda`で渡すときも`quiet`を受ける | `test_faststart.py` | [§9.495](../../docs/decisions/9.495.md) |
 | `update.bat`の画面は「結果」と「次にすること」だけ（記録は`to_console=False`で`launcher.log`へ） | `test_faststart.py` | [§9.431](../../docs/decisions/9.431.md) |
 | `setup_check.run()`へ渡す`say`は`quiet=True`（記録だけ）を受ける。結果の言葉は`setup_app.py`の1箇所 | `test_faststart.py` | [§9.431](../../docs/decisions/9.431.md) |
@@ -38,7 +40,7 @@
 | 起動画面の地は深い紺＋斜めの光。**カードは不透明な白のまま**（透かすと本文が薄れ、描画も重い） | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |
 | 波紋はヘッダーの帯の中だけ（`overflow:hidden`）。輪は**幅と高さ**で広げる（`scale`は線まで太る） | `test_theme.js` | [§9.411](../../docs/decisions/9.411.md) |
 | ショートカットの行き先は`Start.vbs`1本、アイコンは`app_icon.py`が描く。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](../../docs/decisions/9.410.md) |
-| 補助スクリプト（`make_shortcut.vbs`）へは**用途（`MAKE`／`READ`）から**位置で渡す。空の引数は置かない（`NO_ICON`）・`//B`は付けない | `test_shortcut.py` | [§9.486](../../docs/decisions/9.486.md) |
+| 【§9.552で撤回】補助スクリプト（`make_shortcut.vbs`）へ位置で渡す——いまは窓の副コマンドへ JSON 1つ | `test_shortcut.py` | [§9.486](../../docs/decisions/9.486.md) |
 | 起動前の確認は`update.bat`（旧`setup.bat`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](../../docs/decisions/9.225.md) |
 | 入口の名前は「いつ押すか」を言う。旧名を入口として残さない（入口は1つ） | `test_faststart.py` | [§9.405](../../docs/decisions/9.405.md) |
 | 置き場・名前が変わった古いファイルは`MOVED_AWAY`で片付ける。**新しいほうが在るときだけ**（片方しか無いうちは触らない） | `test_faststart.py` | [§9.405](../../docs/decisions/9.405.md) |

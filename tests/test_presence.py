@@ -25,7 +25,7 @@
     自分が開発者なら自分の版も・区分が分からなければ数える・知らせも同じ・開発者は急かさない
 ============================================================
 """
-import json, pathlib, shutil, sys, tempfile
+import json, os, pathlib, shutil, sys, tempfile
 from datetime import datetime, timedelta
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -368,6 +368,68 @@ try:
     mc.close()
     rec('まとめて引く区分は1件ずつの答えと同じ（一致の読み方は1箇所）',
         got == want and got[('dev', 'PC-D')] == mr.ROLE_DEVELOPER and got[('nobody', 'PC-Z')] == mr.ROLE_DEFAULT, str(got))
+
+    # ---- 窓（exe）の版（§9.552、利用者の指示「1と2を進めて」の 1-C） ----------
+    # 窓は Python が止まると起こし直すので、**窓だけ古い**ことが起こる（`.py`の更新時刻では
+    # 「再起動が要る」と言えない）。答えは desktop_shell.stale() の1箇所。
+    from backend import desktop_shell as ds
+    put = {'commit': '3e1b43ed1bd5aee32ff1f2a965502248901a3827'}
+    rec('窓の版: 窓が作ったコミットと配ってある exe が違えば「違う」',
+        ds.stale({'kind': 'desktop', 'commit': '0123456789'}, put) is True
+        and ds.stale({'kind': 'desktop', 'commit': put['commit']}, put) is False)
+    rec('窓の版: 比べられないときは「分からない」（窓の外・名乗らない古い窓・配布の名乗りなし）',
+        ds.stale({'kind': '', 'commit': ''}, put) is None
+        and ds.stale({'kind': 'desktop', 'commit': ''}, put) is None
+        and ds.stale({'kind': 'desktop', 'commit': '0123456789'}, {}) is None)
+    keep_env = {k: os.environ.get(k) for k in ('WAVELOG_SHELL', 'WAVELOG_SHELL_COMMIT')}
+    try:
+        os.environ.pop('WAVELOG_SHELL', None)
+        outside = presence.shell_mark()
+        os.environ['WAVELOG_SHELL'] = 'desktop'
+        os.environ.pop('WAVELOG_SHELL_COMMIT', None)
+        unnamed = presence.shell_mark()
+        os.environ['WAVELOG_SHELL_COMMIT'] = put['commit']
+        named = presence.shell_mark()
+    finally:
+        for k, v in keep_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    rec('在席へ書く窓の版: 窓の外は空・名乗らない古い窓は「?」・窓は短いコミット',
+        (outside, unnamed, named) == ('', '?', '3e1b43e'), str((outside, unnamed, named)))
+    on = [{'key': 'A', 'login': 'a', 'pc': 'PC-A', 'version': '2.10.0', 'shell': '0123456'},
+          {'key': 'B', 'login': 'b', 'pc': 'PC-B', 'version': '2.10.0', 'shell': '3e1b43e'},
+          {'key': 'C', 'login': 'c', 'pc': 'PC-C', 'version': '2.10.0', 'shell': '?'},
+          {'key': 'D', 'login': 'd', 'pc': 'PC-D', 'version': '2.10.0', 'shell': ''}]
+    f = presence.fleet_summary(on, [], '2.10.0', placed_shell='3e1b43e')
+    by = {t['key']: t for t in f['terminals']}
+    rec('接続状況: 窓だけ違う端末も要更新（理由は shellOutdated）・分からない窓と窓の外は比べない',
+        [(by[k]['outdated'], by[k]['shellOutdated']) for k in 'ABCD'] == [(True, True), (False, False), (False, False), (False, False)]
+        and f['counts']['outdated'] == 1 and f.get('placedShell') == '3e1b43e',
+        str([(k, by[k]['outdated'], by[k]['shellOutdated']) for k in 'ABCD']))
+    f = presence.fleet_summary(on, [], '2.10.0', placed_shell='')
+    rec('接続状況: 配布の名乗りが無ければ窓は比べない', f['counts']['outdated'] == 0, str(f['counts']))
+    f = presence.fleet_summary(on[:1], [], '2.10.0', roles={'A': mr.ROLE_DEVELOPER}, placed_shell='3e1b43e')
+    rec('接続状況: 開発者の端末は窓が違っても要更新にしない（判定の外）',
+        f['terminals'][0]['outdated'] is False and f['terminals'][0]['shellOutdated'] is False)
+
+    # 再起動の知らせ（§9.200）も窓だけ古いときに出す。理由は言い分ける（画面の字が変わる）
+    from backend.routes import core as rc
+    keep = (rc._python_changed, ds.stale)
+    try:
+        cases = {}
+        for py, win in ((False, True), (True, True), (False, False), (None, True), (None, None), (False, None)):
+            rc._python_changed, ds.stale = (lambda v=py: v), (lambda v=win: v)
+            cases[(py, win)] = rc._restart_needed()
+    finally:
+        rc._python_changed, ds.stale = keep
+    rec('再起動の知らせ: 窓だけ古いときも出し、理由を言い分ける（中身が先）',
+        cases[(False, True)] == (True, 'window') and cases[(True, True)] == (True, 'python')
+        and cases[(None, True)] == (True, 'window') and cases[(False, False)] == (False, '')
+        and cases[(False, None)] == (False, ''), str(cases))
+    rec('再起動の知らせ: 中身を確かめられなければ「分からない」（不要と言わない）',
+        cases[(None, None)] == (None, ''), str(cases[(None, None)]))
 
     # ---- 段の宣言 --------------------------------------------------------
     # **3モードとも許すのは意図**（区分は編集可否と別の軸）。宣言を落とすと

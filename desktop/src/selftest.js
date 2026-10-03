@@ -2,7 +2,7 @@
    本物の WebView の中から、ブラウザ版と同じに動くかを確かめて /__desktop/selftest へ送る。窓は結果を書いて終わる。
    調べること: 起動が終わる・画面（Python）・部品（Rust）・連結した CSS（Python）・API・404/400・大きな日本語の本文・
    日本語の問い合わせ・40本同時・安全な文脈（クリップボード）・保存領域・端末の控え（§9.545）・保存（1つの画面で1本）と
-   印刷の書類の組み立て（§9.551）・速さ。印刷の窓とファイルを選ぶ窓は人が操作する窓なので、ここでは開かない（実機で確かめる）。 */
+   印刷の書類の組み立て（§9.551）・窓の版とショートカット（§9.552）・速さ。印刷の窓とファイルを選ぶ窓は人が操作する窓なので、ここでは開かない（実機で確かめる）。 */
 (async () => {
   const res = [];
   const ok = (name, cond, info = "") => res.push({ name, ok: !!cond, info: String(info).slice(0, 300) });
@@ -122,6 +122,22 @@
        links.length > 0 && loaded === links.length && teal !== "" && typeof w.print === "function" && "onafterprint" in w,
        `CSS ${loaded}/${links.length} 本・--teal=${teal}`);
     fr.remove();
+
+    // 12) 窓の版とショートカット（§9.552）。窓が作ったコミットが中身（Python）へ届き、ショートカットは窓（--lnk）が
+    //     Windows の部品で作って読み戻す（作る名前は自己診断の専用・CI の使い捨ての机に置いたまま終わる）
+    const bi = JSON.parse((await get("/api/build")).text);
+    const info = await (await fetch("/__desktop/info")).json();
+    ok("窓の版: 窓を作ったコミットが中身（Python）へ届く", bi.shell === "desktop" && !!bi.shellCommit && String(info.commit || "").startsWith(bi.shellCommit),
+       `窓 ${bi.shellCommit} / 配ってある窓 ${bi.shellPlaced || "（名乗りなし）"} / 違う=${bi.shellStale}`);
+    const lnkName = "WaveLog自己診断";
+    if (/Windows/.test(navigator.userAgent)) {
+      const mk = await get("/api/app/shortcut", json("POST", { name: lnkName, icon: "", overwrite: true }));
+      const st = JSON.parse((await get("/api/app/shortcut?name=" + encodeURIComponent(lnkName))).text);
+      ok("ショートカット: 窓（--lnk）が作り、読み戻した行き先が Start.vbs（自分の物と分かる）",
+         mk.r.ok && st.exists && st.mine && /Start\.vbs$/i.test(st.linkTarget || ""), `${mk.r.status} ${mk.text.slice(0, 120)} → ${st.linkTarget}`);
+    } else {
+      ok("ショートカット: 測っていない（.lnk は Windows でだけ作る）", true, navigator.userAgent);
+    }
 
     // 9) 速さ（参考）: Python へ 30 回・Rust の部品 30 回の平均（ミリ秒）
     const avg = async (url) => { const s = performance.now(); for (let i = 0; i < 30; i++) await (await fetch(url)).arrayBuffer(); return (performance.now() - s) / 30; };

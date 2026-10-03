@@ -504,8 +504,9 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .lf-pt.is-out{fill:none;stroke:var(--look-red);stroke-width:1.4}
 .lf-pt.is-sel{fill:var(--look-violet);fill-opacity:1;stroke:var(--surface);stroke-width:1.5}
 .lf-pt.is-hit{stroke:var(--look-green-dark);stroke-width:2.2}
-.lf-key{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--muted)}
-.lf-key span{display:inline-flex;align-items:center;gap:var(--space-1)}
+/* 換算係数の散布図の凡例（§9.543）。一覧の帯の`.lf-key`（§9.505）と名前が重なり、帯の「元データ」の字を小さくしていたので改名した（§9.552） */
+.lf-legend{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--muted);font-weight:500}
+.lf-legend span{display:inline-flex;align-items:center;gap:var(--space-1)}
 .lf-sw{display:inline-block;width:10px;height:10px;border-radius:var(--radius-round)}
 .lf-sw.is-in{background:var(--teal)}
 .lf-sw.is-off{background:var(--warn)}
@@ -3616,6 +3617,8 @@ html[data-hint="off"] .mm-def-hint{display:none}
 /* 判定の外（§9.516・開発者の端末）。要更新でも最新でもない——色は付けず、字が言う。 */
 .pz-vst.is-out{color:var(--ink-3);font-weight:700}
 .pz-ver{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.pz-shell{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.pz-shell.is-old{color:var(--warn-fg);font-weight:700}
 /* 接続の記録の表。道具の帯は一覧と同じ並び（左＝見せ方の選択・右端＝写す）。 */
 .pz-tools{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
 .pz-tools-end{margin-left:auto;display:inline-flex;gap:var(--space-2)}

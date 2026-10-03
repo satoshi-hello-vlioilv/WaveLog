@@ -76,8 +76,9 @@ RETIRED = (
     # §9.404・§9.406 より前の置き場（直下）に残っている同じ物
     'start_app.py', 'process_manager.py', 'loading.html', 'start_app.bat', 'stop.bat',
 )
-# 端末の手元に残る、ブラウザ版だけが使っていた物（待機画面の写し・進捗・起動中の印）。
-RETIRED_LOCAL = ('loading.html', 'loading.next.html', 'boot_status.js', 'instance.json')
+# 端末の手元に残る、もう使わない物——ブラウザ版だけが使っていた物（待機画面の写し・進捗・起動中の印）と、
+# ショートカットの補助スクリプト（§9.552。いまは窓〈exe〉が直に作る）。
+RETIRED_LOCAL = ('loading.html', 'loading.next.html', 'boot_status.js', 'instance.json', 'make_shortcut.vbs')
 
 
 def _no_window():

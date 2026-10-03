@@ -48,7 +48,10 @@ run('test_scsave: 変更が戻ってしまう不具合・保存できない不�
   });
   rec('404は投げる',err.threw&&err.status===404,JSON.stringify(err).slice(0,120));
   rec('生のHTMLをそのまま見せない',!/<!doctype|<html|<title>/i.test(err.msg||''),err.msg);
-  rec('打つ手を書く（再起動）',/再起動/.test(err.msg||''),err.msg);
+  /* 打つ手の字は`WL.RESTART_HOW`の1箇所（§9.548で「再起動」から「開き直す」へ言い換えた）。
+     字そのものではなく、**その1箇所の打つ手が入っているか**で見る。 */
+  const how=await page.evaluate(()=>WL.RESTART_HOW);
+  rec('打つ手を書く（開き直す）',!!how&&(err.msg||'').includes(how),err.msg);
   rec('生の本文は診断用に残す',/404|Not Found|<!doctype/i.test(err.body||''),err.body);
 
   /* ---- 4) 更新後に再起動していないかをサーバーが答える ---- */

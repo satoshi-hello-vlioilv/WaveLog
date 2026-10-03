@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, jsonify, Response
 import subprocess, time
 
 from ..config import APP_ID, PORT
-from .. import app_icon, desktop_shortcut, terminal_store
+from .. import app_icon, desktop_shell, desktop_shortcut, terminal_store
 # 更新者IDは名乗るだけ・答えるのは1箇所（§9.276 ③）。**読み込み時に入れる**
 # ——関数の中の import を増やさない（§9.349）。輪は作らない（access_mode は
 # routes を知らない）。
@@ -276,8 +276,8 @@ def _python_sources():
  except OSError:pass
  return [p for p in out if '__pycache__' not in p.parts]
 
-def _restart_needed():
- """戻り値: True(要再起動) / False(不要) / None(確かめられなかった)。"""
+def _python_changed():
+ """`.py`が起動より後に更新されたか。True／False／None(確かめられなかった)。"""
  newest=0.0;seen=False
  for p in _python_sources():
   try:
@@ -290,12 +290,28 @@ def _restart_needed():
  # 1秒の余裕。書き出しと起動が同じ秒に重なるだけで「要再起動」にしない。
  return newest>(_STARTED_AT+1.0)
 
+def _restart_needed():
+ """戻り値: (要再起動か, 理由)。要再起動か＝True／False／None(確かめられなかった)。
+
+ 理由は2つ（§9.552）——`python`＝中身の`.py`が起動より後に更新された／`window`＝窓（exe）が
+ 配ってある exe より古い（窓は中身を起こし直すので、Python だけ新しくなることがある）。
+ **どちらかが真なら真**。中身を確かめられなければ None（「分からない」を「不要」と言わない。
+ 窓の側の None は「窓の外・比べる名乗りが無い」なので、不要と同じに扱う）。"""
+ try:py=_python_changed()
+ except Exception as _e:quiet('中身の更新を確かめられない',_e);py=None
+ try:win=desktop_shell.stale()
+ except Exception as _e:quiet('窓の版を確かめられない',_e);win=None
+ if py:return True,'python'
+ if win:return True,'window'
+ if py is None:return None,''
+ return False,''
+
 @bp.get('/api/build')
 def build():
- try:restart=_restart_needed()
- except Exception as _e:quiet('再起動が要るかを確かめられない（案内を出さない）',_e);restart=None
+ restart,why=_restart_needed()
  return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current',
-                port=PORT, app_id=APP_ID, restartNeeded=restart, startedAt=_STARTED_AT, **GIT_VERSION)
+                port=PORT, app_id=APP_ID, restartNeeded=restart, restartWhy=why, startedAt=_STARTED_AT,
+                **desktop_shell.summary(), **GIT_VERSION)
 
 @bp.get('/api/whoami')
 def whoami():

@@ -237,7 +237,10 @@ stop_server(){
 }
 restart_server(){
   stop_server
-  ( cd "$ROOT" && nohup python3 -u program/app.py >"$ROOT/tests/server.log" 2>&1 & )
+  # 裏へ回すのは**単純な命令1つ**（§9.552で踏んだ）。`cd && nohup … &`だと「cd と nohup の組」ごと裏の子シェルになり、
+  # その子シェルがサーバーの終わりを待ち続ける。呼び出しに`>/dev/null`が付いていると、bash が退避した元の出力
+  # （fd 10/11）を子シェルが握ったままになり、`run_all.sh … | tail`の管が閉じない（サーバーが動く限り固まる）。
+  ( cd "$ROOT" || exit 1; nohup python3 -u program/app.py >"$ROOT/tests/server.log" 2>&1 & )
   for _ in $(seq 1 30); do server_up && return 0; sleep 1; done
   echo "!! サーバーを起動できませんでした ($ROOT/tests/server.log を確認)" >&2
   return 1

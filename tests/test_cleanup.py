@@ -209,7 +209,7 @@ try:
     # 「update.batでアップデートの版の表示追加と、古いデータの処理など」
     rt, vis = tmp / 'runtime', tmp / 'visible'
     for d0 in (rt, vis):
-        for n in ('make_shortcut.vbs', 'x.html.tmp'):
+        for n in ('a.json.tmp', 'x.html.tmp'):
             touch(d0 / n, 64, age_days=2)
         # **残す物**: 起動前確認の刻印・絵（デスクトップのショートカットが指している。作り直すのは
         # 作るときだけなので、消すと白紙になる）。待機画面・進捗・起動中の印は§9.548で外した
@@ -230,7 +230,7 @@ try:
     try:
         cat = next((c for c in file_cleanup.survey()['categories'] if c['key'] == 'runtime'), None)
         names = sorted({e['name'] for e in (cat or {}).get('examples', [])})
-        rec('更新で作り直せる起動の部品を数える（補助スクリプト・書きかけ）（§9.497）',
+        rec('更新で片付ける起動の部品の書きかけを数える（§9.497）',
             cat is not None and cat['removable'] == 4 and cat['auto'] is False,
             f"{cat and cat['removable']}件 {names}")
         upd = getattr(file_cleanup, 'run_for_update', None)

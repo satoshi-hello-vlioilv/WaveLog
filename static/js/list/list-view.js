@@ -26,17 +26,23 @@ async function init(){
   const need=build.restartNeeded===true;
   restartBox.hidden=!need;
   if(need){
+   const winOnly=build.restartWhy==='window';
    restartBox.innerHTML='<b>⚠ 更新が届いています</b>'
-    +'<small>アプリを再起動するまで、新しい機能はサーバー側に反映されません'
-    +'（保存できない・404と出る場合はこれが原因です）。</small>'
+    +(winOnly?'<small>アプリの窓（exe）だけが古い版のまま動いています（中身は新しい版です）。</small>'
+     :'<small>アプリを再起動するまで、新しい機能はサーバー側に反映されません'
+      +'（保存できない・404と出る場合はこれが原因です）。</small>')
     +'<small>'+WL.RESTART_HOW+'</small>';
-   restartBox.title='プログラムのファイルが、いま動いているアプリの起動より後に更新されています。';
+   /* 理由はサーバーの答えをそのまま言う（§9.552）——窓（exe）だけ古いときは、Python は新しい。 */
+   restartBox.title=winOnly
+    ?`アプリの窓（exe）が、配ってある版より古いままです（いまの窓 ${build.shellCommit||'?'} ／ 配ってある窓 ${build.shellPlaced||'?'}）。`
+    :'プログラムのファイルが、いま動いているアプリの起動より後に更新されています。';
   }
   WL.versionNotice.paint();   // 再起動待ちの間は版の知らせを伏せる（§9.515）
  }
  document.querySelectorAll('.build-badge').forEach(badge=>{
   badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
-  badge.title=(build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''} / `:'')+'クリックで更新履歴を表示';
+  badge.title=(build.commit?`コミット: ${build.commit}${build.commit_at?' / '+new Date(build.commit_at).toLocaleString('ja-JP'):''}${build.dirty?'（未コミットの変更あり）':''} / `:'')
+   +(build.shell?`窓（exe）: ${build.shellCommit||'版を名乗らない古い窓'} / `:'')+'クリックで更新履歴を表示';
   badge.classList.add('build-badge-clickable');
   badge.tabIndex=0;badge.setAttribute('role','button');badge.setAttribute('aria-label','更新履歴を表示');
   badge.onclick=openChangelog;

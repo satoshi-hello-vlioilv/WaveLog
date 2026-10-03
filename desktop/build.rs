@@ -9,6 +9,10 @@ d=pathlib.Path('icons');d.mkdir(exist_ok=True);\
 (d/'icon.ico').write_bytes(app_icon.build());(d/'icon.png').write_bytes(app_icon.png(256))";
 
 fn main() {
+    // exe が名乗る「作ったコミット」（§9.552）。CI が渡す（desktop.yml の WAVELOG_BUILD_COMMIT）。
+    // 手元で作った exe は空——窓の版は「分からない」になり、配ってある exe と比べない（古いと言わない）
+    println!("cargo:rerun-if-env-changed=WAVELOG_BUILD_COMMIT");
+    println!("cargo:rustc-env=WAVELOG_BUILD_COMMIT={}", std::env::var("WAVELOG_BUILD_COMMIT").unwrap_or_default());
     println!("cargo:rerun-if-changed=../backend/app_icon.py");
     println!("cargo:rerun-if-env-changed=WAVELOG_PYTHON");
     let py = std::env::var("WAVELOG_PYTHON").unwrap_or_else(|_| if cfg!(windows) { "python".into() } else { "python3".into() });
