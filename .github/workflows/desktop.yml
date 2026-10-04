@@ -81,14 +81,15 @@ jobs:
           WAVELOG_PYTHON: python
         run: cargo build --release --locked
 
-      # 入口の道（§9.554・§9.559）を3回たどる。
+      # 入口の道（§9.554・§9.559・§9.561）を4回たどる。
       #   1回目: アプリのフォルダの program\WaveLog.exe を直に起こす。ZIP で届いた物と同じ「インターネットから来た」
       #          印を付けておき、exe が版ごとの写しと入口を置いて、**どちらからも印を外した**ことを確かめる。
       #   2回目: 入口（この PC の exe・起動アイコンの行き先）から。入口が写しへ渡す（毎日の道）。
+      #   4回目: 配る版を新しくして起動（版の確かめと Python の起動を同時に進め、違えば止めて入れ替える・§9.561）。
       #   3回目: 共有の置き場の配る入口から、**まだアプリの無い PC**へ（§9.559）。置き場は本物の道（publish_zip・set_release）
       #          で作り、写す先は WAVELOG_INSTALL_ROOT。写した中身で起動し、入口・置き場の控えが置かれたことを確かめる。
       # 起こすのは呼び出し（CreateProcess）なので、印があっても実行前の警告は出ない（警告はエクスプローラー・WSH の道）。
-      - name: 自己診断（本物の WebView2・ポートなし・入口の道を3回）
+      - name: 自己診断（本物の WebView2・ポートなし・入口の道を4回）
         run: |
           Copy-Item desktop\target\release\WaveLog.exe program\WaveLog.exe
           Set-Content -Path program\WaveLog.exe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
@@ -118,8 +119,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Host "共有の置き場を作れませんでした"; exit 7 }
           Remove-Item "$dir\program.txt" -ErrorAction SilentlyContinue
           $r3 = Run-Selftest "install" { & "$share\WaveLog.exe" }
+          # 4回目: 配る版を新しくしてから、写した PC で起動する。版の確かめと Python の起動を同時に進め（§9.561）、
+          #        違うと分かったら Python を止めてから入れ替え、起こし直す
+          python tests\lib\make_share.py $share --bump
+          if ($LASTEXITCODE -ne 0) { Write-Host "新しい版を置けませんでした"; exit 7 }
+          $r4 = Run-Selftest "update" { & "$dir\WaveLog.exe" --program "$env:WAVELOG_INSTALL_ROOT\program" }
           Get-ChildItem "$env:LOCALAPPDATA\WaveLog\logs" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.Name)"; Get-Content $_.FullName -Tail 25 -Encoding utf8 }
-          if (-not $r1 -or -not $r2 -or -not $r3) { exit 2 }
+          if (-not $r1 -or -not $r2 -or -not $r3 -or -not $r4) { exit 2 }
+          if (-not (Select-String -Path "$env:WAVELOG_INSTALL_ROOT\backend\changelog_data.py" -Pattern "-ci'" -Quiet)) { Write-Host "起動のときに配る版へそろっていません"; exit 9 }
+          if (-not (Select-String -Path "$env:LOCALAPPDATA\WaveLog\logs\desktop.log" -Pattern "TIMING" -Quiet)) { Write-Host "起動の時間の記録（TIMING）がありません"; exit 9 }
           if (-not (Test-Path "$env:WAVELOG_INSTALL_ROOT\program\sidecar.py")) { Write-Host "共有の入口から写していません（$env:WAVELOG_INSTALL_ROOT）"; exit 8 }
           if (-not (Test-Path "$env:WAVELOG_INSTALL_ROOT\config\update.json")) { Write-Host "置き場の控え（config\update.json）がありません"; exit 8 }
           if ($r3.program -and $r3.program -notlike "$env:WAVELOG_INSTALL_ROOT*") { Write-Host "写した中身で起動していません: $($r3.program)"; exit 8 }
@@ -128,7 +136,7 @@ jobs:
           if ($marked) { Write-Host "印が残っている写し: $($marked.FullName -join ', ')"; exit 5 }
           if (-not (Get-Item program\WaveLog.exe -Stream Zone.Identifier -ErrorAction SilentlyContinue)) { Write-Host "配った exe の印まで消えています（触らない約束）"; exit 6 }
           if (Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*hostedtoolcache*" }) { Write-Host "Python が残っています（窓を閉じても中身が終わっていない）"; exit 4 }
-          if (-not $r1.ok -or -not $r2.ok -or -not $r3.ok) { exit 1 }
+          if (-not $r1.ok -or -not $r2.ok -or -not $r3.ok -or -not $r4.ok) { exit 1 }
           Copy-Item "$env:RUNNER_TEMP\selftest-entry.json" "$env:RUNNER_TEMP\selftest.json"
 
       # 置く物をまとめる: exe・自己診断の結果・**作った元の指紋**（publish が比べる）。

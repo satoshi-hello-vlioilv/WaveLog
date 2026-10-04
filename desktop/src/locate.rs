@@ -100,10 +100,7 @@ pub fn python() -> Result<Python, String> {
     let cands = python_candidates(env::var_os("WAVELOG_PYTHON").map(PathBuf::from), &path);
     cands.iter().find(|c| exists(&c.exe)).cloned().ok_or_else(|| {
         let tried: Vec<String> = cands.iter().map(|c| format!("  {}", c.exe.display())).collect();
-        format!(
-            "Python が見つかりません。PATH で最初に見つかる Python を使います。\n探した場所:\n{}",
-            tried.join("\n")
-        )
+        format!("Python が見つかりません。PATH で最初に見つかる Python を使います。\n探した場所:\n{}", tried.join("\n"))
     })
 }
 

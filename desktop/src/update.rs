@@ -214,30 +214,49 @@ fn exe_stamp(app_root: &Path) -> Option<String> {
     sha256_of(&app_root.join("program").join(crate::launch::EXE)).ok()
 }
 
-/// 配る版を読み、違えばそろえる（起動画面の中・Python を起こす前に1回）。
-pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Outcome {
+/// 配る版と手元の版を比べた答え（入れ替える前・§9.561）。読むだけなので、Python を起こすのと同時に進めてよい。
+#[derive(Debug, PartialEq)]
+pub enum Peek {
+    /// 配る版と同じ
+    Same(String),
+    /// 確かめなかった理由（届かない・配る版が無い・開発の作業ツリー）
+    Skip(String),
+    /// 配る版の字が正しくない
+    Bad(String),
+    /// 違う（そろえる）
+    Differs { have: String, want: String, dir: PathBuf },
+}
+
+/// 配る版を読んで手元と比べる（入れ替えない）。届かなければ `REACH` で打ち切る。
+pub fn peek(app_root: &Path) -> Peek {
     if app_root.join(".git").exists() && std::env::var_os("WAVELOG_UPDATE_FORCE").is_none() {
-        return Outcome::Skipped("開発の作業ツリーなので更新しません".into());
+        return Peek::Skip("開発の作業ツリーなので更新しません".into());
     }
     let dir = update_dir(app_root);
     let want = match release_version(&dir, REACH) {
         Ok(Some(v)) => v,
-        Ok(None) => return Outcome::Skipped("配る版が決まっていません".into()),
-        Err(e) => return Outcome::Skipped(e),
+        Ok(None) => return Peek::Skip("配る版が決まっていません".into()),
+        Err(e) => return Peek::Skip(e),
     };
     if !safe_version(&want) {
-        return Outcome::Failed(format!("配る版の字が正しくありません: {want:?}"));
+        return Peek::Bad(format!("配る版の字が正しくありません: {want:?}"));
     }
     let have = local_version(app_root).unwrap_or_default();
     if have == want {
-        return Outcome::UpToDate(have);
+        Peek::Same(have)
+    } else {
+        Peek::Differs { have, want, dir }
     }
+}
+
+/// 配る版へそろえる（`peek()`が Differs と答えたとき・**Python が止まっているときに**呼ぶ）。
+pub fn apply(app_root: &Path, dir: &Path, have: &str, want: &str, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Outcome {
     progress(&format!("{have} → {want} にそろえています"));
     let work = app_root.join(WORK);
     let stage_dir = work.join(format!("{want}.stage"));
-    let old = work.join(format!("{}.old", if safe_version(&have) { have.as_str() } else { "unknown" }));
+    let old = work.join(format!("{}.old", if safe_version(have) { have } else { "unknown" }));
     let before = exe_stamp(app_root);
-    let payload = match stage(&dir.join("versions").join(&want), &stage_dir, progress) {
+    let payload = match stage(&dir.join("versions").join(want), &stage_dir, progress) {
         Ok(p) => p,
         Err(e) => {
             let _ = std::fs::remove_dir_all(&stage_dir);
@@ -257,7 +276,17 @@ pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&s
         }
     }
     log(&format!("UPDATE {have} → {want}（{}）", dir.display()));
-    Outcome::Applied { from: have, to: want, exe_changed: exe_stamp(app_root) != before }
+    Outcome::Applied { from: have.to_string(), to: want.to_string(), exe_changed: exe_stamp(app_root) != before }
+}
+
+/// 配る版を読み、違えばそろえる（`peek()`→`apply()`を続けて・初回のインストールと網が使う）。
+pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Outcome {
+    match peek(app_root) {
+        Peek::Same(v) => Outcome::UpToDate(v),
+        Peek::Skip(why) => Outcome::Skipped(why),
+        Peek::Bad(why) => Outcome::Failed(why),
+        Peek::Differs { have, want, dir } => apply(app_root, &dir, &have, &want, log, progress),
+    }
 }
 
 #[cfg(test)]

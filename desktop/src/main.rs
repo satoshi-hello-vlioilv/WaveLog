@@ -28,7 +28,7 @@ use sidecar::{Progress, Reply, Supervisor};
 use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
@@ -297,33 +297,70 @@ fn cleanup_old_copies() {
     }
 }
 
-/// 共有の置き場の「配る版」にそろえる（`update.rs`）。exe も変わって新しい窓で開き直すなら true（この窓は終わる）。
-/// そろえられなくても起動は止めない（いまの版で開き、理由を起動画面と記録に残す）。
-fn bring_up_to_date(app: &AppHandle, program: &Path, splash: &Arc<Splash>) -> bool {
-    let Some(root) = program.parent() else { return false };
-    splash.step(app, "update", "now", "共有の置き場で、配る版を確かめています…");
-    let (a, s) = (app.clone(), splash.clone());
-    let progress = move |t: &str| s.step(&a, "update", "now", t);
-    match update::check_and_apply(root, &log, &progress) {
-        update::Outcome::UpToDate(v) => splash.step(app, "update", "ok", &format!("版 {v}（配る版と同じ）")),
-        update::Outcome::Skipped(why) => {
+/// 版の確かめ（共有の置き場・最大3秒）を裏で始める（§9.561、利用者の承認「起動の順番…同時に進める改善は、進めてよい」）。
+/// 前は確かめ終わってから Python を起こしていた（起動＝確かめ＋Python の起動）。いまは同時に進め、起動＝長いほうになる。
+fn peek_in_background(root: &Path) -> mpsc::Receiver<(update::Peek, Duration)> {
+    let (tx, rx) = mpsc::channel();
+    let (root, t0) = (root.to_path_buf(), Instant::now());
+    std::thread::spawn(move || {
+        let p = update::peek(&root);
+        let _ = tx.send((p, t0.elapsed()));
+    });
+    rx
+}
+
+/// 確かめた答えに従う。配る版と違えば**Python を止めてから**入れ替え、起こし直す（動いている Python のファイルを入れ替えない）。
+/// exe も変わって新しい窓で開き直すなら None（この窓は終わる）。そろえられなくても起動は止めない（理由は起動画面と記録へ）。
+fn settle_update(
+    app: &AppHandle,
+    root: &Path,
+    peek: update::Peek,
+    sup: &Supervisor,
+    started: Result<Arc<sidecar::Sidecar>, String>,
+    splash: &Arc<Splash>,
+) -> Option<Result<Arc<sidecar::Sidecar>, String>> {
+    let (have, want, dir) = match peek {
+        update::Peek::Same(v) => {
+            splash.step(app, "update", "ok", &format!("版 {v}（配る版と同じ）"));
+            return Some(started);
+        }
+        update::Peek::Skip(why) => {
             log(&format!("UPDATE 確かめませんでした: {why}"));
             splash.step(app, "update", "ok", &format!("確かめませんでした（{why}）。いまの版で起動します"));
+            return Some(started);
         }
-        update::Outcome::Failed(why) => {
+        update::Peek::Bad(why) => {
+            log(&format!("UPDATE そろえられませんでした: {why}"));
+            splash.step(app, "update", "warn", &format!("そろえられませんでした（{why}）。いまの版で起動します"));
+            return Some(started);
+        }
+        update::Peek::Differs { have, want, dir } => (have, want, dir),
+    };
+    // 持っている写し（Arc）を先に手放す——残すと Supervisor が手放しても Python が終わらず、ファイルを掴んだまま入れ替えに当たる
+    drop(started);
+    sup.stop();
+    let (a, s) = (app.clone(), splash.clone());
+    let progress = move |t: &str| s.step(&a, "update", "now", t);
+    match update::apply(root, &dir, &have, &want, &log, &progress) {
+        update::Outcome::Applied { from, to, exe_changed } => {
+            splash.step(app, "update", "ok", &format!("{from} → {to} にそろえました"));
+            if exe_changed && launch::relaunch(&root.join("program"), &log) {
+                splash.step(app, "open", "now", "窓も新しくなったので、開き直しています…");
+                app.exit(0);
+                return None;
+            }
+        }
+        other => {
+            let why = match other {
+                update::Outcome::Failed(w) | update::Outcome::Skipped(w) => w,
+                _ => String::new(),
+            };
             log(&format!("UPDATE そろえられませんでした: {why}"));
             splash.step(app, "update", "warn", &format!("そろえられませんでした（{why}）。いまの版で起動します"));
         }
-        update::Outcome::Applied { from, to, exe_changed } => {
-            splash.step(app, "update", "ok", &format!("{from} → {to} にそろえました"));
-            if exe_changed && launch::relaunch(program, &log) {
-                splash.step(app, "open", "now", "窓も新しくなったので、開き直しています…");
-                app.exit(0);
-                return true;
-            }
-        }
     }
-    false
+    splash.step(app, "backend", "now", "新しい版の中身を読み込んでいます…");
+    Some(sup.get())
 }
 
 /// 初回のインストール（§9.559）。この PC にアプリが在ればそれを使い、無ければ`%USERPROFILE%\WaveLog`へ配る版を写す。
@@ -350,10 +387,10 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>, fr
             Err(e) => return splash.fail(&app, "アプリの中身が見つかりません", &e),
         },
     };
-    // 配る版にそろえる（§9.555）。中身（Python）を起こす前に——動いている Python のファイルを入れ替えない
-    if bring_up_to_date(&app, &program, &splash) {
-        return;
-    }
+    // 配る版の確かめ（§9.555）は裏で始め、そのあいだに中身（Python）を起こす（§9.561）。入れ替えるのは Python を止めてから
+    let root = program.parent().unwrap_or(&program).to_path_buf();
+    splash.step(&app, "update", "now", "共有の置き場で、配る版を確かめています…");
+    let peeked = peek_in_background(&root);
     // 入口（ショートカットの行き先）をこの版にそろえる。中身（Python）がショートカットを付け替える前に置く（§9.554）
     launch::refresh_entry(&log);
     let py = match locate::python() {
@@ -373,7 +410,14 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>, fr
         splash_p.step(&app_p, "backend", if h["bad"] == true { "warn" } else { "now" }, text);
     });
     let sup = Supervisor::new(py, program.clone(), locate::local_root().join("logs"), progress);
-    let ready = match sup.get() {
+    let t0 = Instant::now();
+    let started = sup.get();
+    let py_took = t0.elapsed();
+    // 版の答えを待つ（中身の起動と重なったぶん、前より早い）。起動に失敗していても、配る版へそろえれば直ることがある
+    let (peek, peek_took) = peeked.recv().unwrap_or((update::Peek::Skip("版の確かめが途中で止まりました".into()), Duration::ZERO));
+    log(&format!("TIMING 版の確かめ {}ms・中身の起動 {}ms（同時に進めた）", peek_took.as_millis(), py_took.as_millis()));
+    let Some(started) = settle_update(&app, &root, peek, &sup, started, &splash) else { return };
+    let ready = match started {
         Ok(s) => s.ready.clone(),
         Err(e) => {
             splash.step(&app, "backend", "bad", "起動できません");

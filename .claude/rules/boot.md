@@ -1,4 +1,4 @@
-# 起動・停止・監視（63件）
+# 起動・停止・監視（69件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 版の確かめ（`update::peek()`）は Python の起動と同時に進める。違えば Python を止めて（写しを手放してから）`apply()`、起こし直す | `test_appupdate.py` | [§9.561](../../docs/decisions/9.561.md) |
 | 終わる入口は×だけ。閉じる前に聞くのは`close.rs`の`Gate`（名乗った画面だけ・2秒で閉じる） | `test_appquit.js` | [§9.556](../../docs/decisions/9.556.md) |
 | 版を置く進み具合は`app_update.progress()`の1箇所。同時に1本・書きかけは1時間より古い物だけ片付ける | `test_appupdate.py`・`test_appupdateui.js` | [§9.556](../../docs/decisions/9.556.md) |
 | 更新の置き場はこの PC の local.json → 共有の設定 → 既定の順（Python と窓が同じ順・控えは`config/update.json`） | `test_appupdate.py` | [§9.557](../../docs/decisions/9.557.md) |

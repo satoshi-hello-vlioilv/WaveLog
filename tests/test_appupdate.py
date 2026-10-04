@@ -276,6 +276,16 @@ rec('入口と渡す設定の名前・鍵は窓（install.rs）と同じ字',
     f'pub const ENTRY: &str = "{app_update.ENTRY_EXE}";' in INS and f'pub const SEED: &str = "{app_update.SEED}";' in INS
     and 'pub const SEED_KEYS: [&str; 2] = [%s];' % ', '.join('"%s"' % k for k in app_update.SEED_KEYS) in INS)
 rec('Start.vbs は版に入れない（§9.559で外した）', 'Start.vbs' not in app_update.PAYLOAD)
+# ---- 10) 版の確かめと Python の起動を同時に進める（§9.561、利用者の承認） ----
+MAIN = (ROOT / 'desktop' / 'src' / 'main.rs').read_text(encoding='utf-8')
+UPD = (ROOT / 'desktop' / 'src' / 'update.rs').read_text(encoding='utf-8')
+i_peek, i_get = MAIN.find('peek_in_background(&root)'), MAIN.find('let started = sup.get();')
+rec('版の確かめを裏で始めてから Python を起こす（起動＝長いほう）', 0 < i_peek < i_get, f'{i_peek} < {i_get}')
+body = MAIN[MAIN.find('fn settle_update('):]
+rec('違えば写しを手放してから Python を止め、入れ替え、起こし直す',
+    0 < body.find('drop(started);') < body.find('sup.stop();') < body.find('update::apply(') < body.find('Some(sup.get())'))
+rec('更新は「読むだけ」と「入れ替える」に分かれ、続けて呼ぶ口も残る',
+    'pub fn peek(' in UPD and 'pub fn apply(' in UPD and 'pub fn check_and_apply(' in UPD)
 
 ok = sum(1 for _, x in R if x)
 print(f'\n== {ok}/{len(R)} PASS ==')
