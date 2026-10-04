@@ -19,7 +19,7 @@ body.ac-mode .pager{display:none}
 .ac-head{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;min-width:0}
 /* 名前（設備・期間・日付）は**細く薄く**、値は太く濃く（§9.507。一覧の帯と同じ書き分け・前は名前も値も700）。 */
 .ac-field{display:flex;align-items:center;gap:var(--space-1);
- font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-3);white-space:nowrap}
+ font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2);white-space:nowrap}
 .ac-field select,.ac-field input{height:var(--ctl-h-sm);font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
 .ac-field select{max-width:var(--w-lg)}
 .ac-presets{display:flex;align-items:center;gap:var(--space-1)}
@@ -48,7 +48,7 @@ body.ac-mode .pager{display:none}
 .ac-note-line{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
 .ac-note-line b{font-weight:var(--fw-strong);color:var(--ink)}
 .ac-note-line .ac-bad{color:var(--danger-fg,#9d2020)}
-.ac-note-line span{color:var(--ink-3)}
+.ac-note-line span{color:var(--ink-2)}
 
 /* 一覧は器の側で行の寸法を定義し直す（§9.161。カスタムプロパティは
    定義した場所で解決される）。1つの表の中は同じ文字サイズにする。 */
@@ -75,7 +75,7 @@ body.ac-mode .pager{display:none}
  padding:0 var(--space-2);position:relative}
 .ac-row.head>span{cursor:default}
 .ac-num{text-align:right;font-variant-numeric:tabular-nums}
-.ac-idx{display:flex;align-items:center;gap:var(--space-1);color:var(--ink-3)}
+.ac-idx{display:flex;align-items:center;gap:var(--space-1);color:var(--ink-2)}
 .ac-pick{display:flex;align-items:center;gap:var(--space-1);cursor:pointer}
 .ac-pick input{margin:0}
 .ac-act{display:flex;align-items:center;gap:var(--space-1)}
@@ -97,7 +97,7 @@ body.ac-mode .pager{display:none}
 /* 用紙の「大きさ」「向き」の見出し（§9.252）。**群に分けたことが読める
    ように**、札の並びの上へ小さく置く（見出しが無いと2列の札が1つの群に
    見える）。 */
-.os-pv-sub{margin:var(--space-1) 0 2px;color:var(--ink-3);
+.os-pv-sub{margin:var(--space-1) 0 2px;color:var(--ink-2);
   font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .os-print-area{display:none}
 .os-page{font-size:10px;line-height:1.25;box-sizing:border-box;
@@ -158,18 +158,18 @@ body.ac-mode .pager{display:none}
 .rcl-wrap{display:grid;grid-template-columns:var(--w-lg) minmax(0,1fr) var(--w-lg);gap:var(--space-3);
  height:100%;min-height:0}
 .rcl-wrap h4{margin:0 0 var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
-.rcl-wrap h4 small{margin-left:var(--space-2);font-weight:var(--fw-body);color:var(--ink-3);font-size:var(--fs-micro)}
+.rcl-wrap h4 small{margin-left:var(--space-2);font-weight:var(--fw-body);color:var(--ink-2);font-size:var(--fs-micro)}
 .rcl-pal{display:flex;flex-direction:column;min-height:0;gap:var(--space-1)}
 .rcl-search{height:var(--ctl-h-sm);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 var(--ctl-pad-x-xs);font-size:var(--fs-sm)}
 .rcl-pal-list{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable}
-.rcl-grp{display:flex;justify-content:space-between;margin:var(--space-2) 0 var(--space-1);font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.rcl-grp{display:flex;justify-content:space-between;margin:var(--space-2) 0 var(--space-1);font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .rcl-grp small{font-weight:var(--fw-body)}
 .rcl-pal-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--space-1);
  padding:2px var(--space-1);border-bottom:1px solid var(--line-soft);font-size:var(--fs-sm);cursor:pointer}
 .rcl-pal-item>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcl-pal-item.is-sel{background:var(--pale)}
 .rcl-st{font-style:normal;font-size:var(--fs-micro);color:var(--teal-dark);white-space:nowrap}
-.rcl-st.is-auto{color:var(--ink-3)}
+.rcl-st.is-auto{color:var(--ink-2)}
 .rcl-st.is-off{color:var(--muted)}
 .rcl-st.is-bad,.rcl-bad{color:var(--warn-fg)}
 .rcl-main{display:grid;grid-template-columns:var(--space-6) minmax(0,1fr);grid-template-rows:auto auto auto;
@@ -183,7 +183,7 @@ body.ac-mode .pager{display:none}
 .rcl-btn--primary{background:var(--teal);border-color:var(--teal);color:var(--surface)}
 .rcl-btn--primary:hover{background:var(--teal-dark)}
 .rcl-lanes{display:grid;grid-template-rows:repeat(var(--rcl-lines,2),var(--ctl-h-lg));row-gap:var(--space-1);
- padding:var(--space-1) 0;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+ padding:var(--space-1) 0;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .rcl-lanes span{display:flex;align-items:center}
 /* 盤。**目盛り（1マスの縦線）を地に描く**——どの縦線にそろっているかが見える。 */
 .rcl-board{position:relative;display:grid;grid-template-columns:repeat(24,minmax(0,1fr));
@@ -200,10 +200,10 @@ body.ac-mode .pager{display:none}
 .rcl-grip{position:absolute;top:0;right:0;bottom:0;width:8px;background:var(--teal);opacity:.35;cursor:ew-resize}
 .rcl-ghost{border:2px solid var(--teal);border-radius:var(--radius-sm);background:transparent;pointer-events:none}
 .rcl-ghost.is-bad{border-style:dashed;border-color:var(--warn-fg)}
-.rcl-note{grid-column:2;margin:0;font-size:var(--fs-micro);color:var(--ink-3);min-height:2.6em}
+.rcl-note{grid-column:2;margin:0;font-size:var(--fs-micro);color:var(--ink-2);min-height:2.6em}
 .rcl-insp{min-width:0}
 .rcl-insp dl{display:grid;grid-template-columns:var(--w-xs) minmax(0,1fr);gap:var(--space-2);margin:0 0 var(--space-2);font-size:var(--fs-sm)}
-.rcl-insp dt{color:var(--ink-3);font-weight:var(--fw-strong)}
+.rcl-insp dt{color:var(--ink-2);font-weight:var(--fw-strong)}
 .rcl-insp dd{margin:0}
 .rcl-insp input[type=number]{width:var(--w-xs);height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 .rcl-seg{display:inline-flex;gap:var(--gap-hair)}
@@ -223,7 +223,7 @@ body.ac-mode .pager{display:none}
 .rcl-c.rcl-l1{border-bottom:1px solid var(--line-soft)}
 .rcl-head .rcl-c.rcl-l2{font-weight:var(--fw-strong)}
 .rcl-num{justify-content:flex-end;font-variant-numeric:tabular-nums}
-.rcl-lead,.rcl-tail{grid-column:1;display:flex;align-items:center;gap:var(--space-1);padding:0 var(--space-2);color:var(--ink-3);
+.rcl-lead,.rcl-tail{grid-column:1;display:flex;align-items:center;gap:var(--space-1);padding:0 var(--space-2);color:var(--ink-2);
  border-right:1px solid var(--line-soft)}
 .rcl-tail{grid-column:-2;border-right:0;border-left:1px solid var(--line-soft)}
 .rcl-over{margin:var(--space-2);font-size:var(--fs-sm);color:var(--warn-fg)}
@@ -251,9 +251,9 @@ body.ac-mode .pager{display:none}
  box-shadow:0 18px 50px #0b2b3355}
 .os-pv-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
  padding:var(--pad-card);border-bottom:1px solid var(--line-soft);background:var(--surface-2)}
-.os-pv-head small{display:block;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.os-pv-head small{display:block;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .os-pv-head h2{margin:0;font-size:var(--fs-title);color:var(--ink)}
-.os-pv-x{border:0;background:transparent;font-size:var(--fs-lg);cursor:pointer;color:var(--ink-3)}
+.os-pv-x{border:0;background:transparent;font-size:var(--fs-lg);cursor:pointer;color:var(--ink-2)}
 .os-pv-body{flex:1;min-height:0;display:grid;grid-template-columns:var(--w-xl,300px) minmax(0,1fr)}
 .os-pv-side{min-height:0;overflow:auto;padding:var(--pad-card);
  border-right:1px solid var(--line-soft);display:flex;flex-direction:column;gap:var(--space-3);
@@ -264,7 +264,7 @@ body.ac-mode .pager{display:none}
  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
  color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
 .os-pv-seg button:hover{background:var(--surface-2)}
-.os-pv-note{margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--ink-3)}
+.os-pv-note{margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--ink-2)}
 .os-pv-check{display:flex;align-items:center;gap:var(--space-1);
  font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
 .os-pv-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);
@@ -276,7 +276,7 @@ body.ac-mode .pager{display:none}
 .os-pv-sum dl{margin:0;display:flex;flex-direction:column;gap:var(--space-1)}
 .os-pv-sum dl>div{display:grid;grid-template-columns:var(--w-sm,7em) minmax(0,1fr);
  gap:var(--space-2);font-size:var(--fs-micro)}
-.os-pv-sum dt{color:var(--ink-3);font-weight:var(--fw-strong)}
+.os-pv-sum dt{color:var(--ink-2);font-weight:var(--fw-strong)}
 .os-pv-sum dd{margin:0;color:var(--ink-2)}
 .os-pv-main{min-height:0;display:flex;flex-direction:column}
 .os-pv-bar{display:flex;align-items:center;gap:var(--space-2);

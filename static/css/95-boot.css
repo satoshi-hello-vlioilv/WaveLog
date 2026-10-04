@@ -124,7 +124,7 @@
 }
 .boot-detail{
  margin:0; text-align:center; min-height:1.6em;
- font-size:var(--fs-sm); color:var(--ink-3);
+ font-size:var(--fs-sm); color:var(--ink-2);
 }
 
 /* ---- ステータスバー(進み具合に答えるのは**この1本だけ**) ---- */
@@ -150,7 +150,7 @@
 @keyframes bootSheen{to{transform:translateX(100%)}}
 .boot-meta{
  display:flex; align-items:baseline; gap:var(--gap-inline); margin:var(--space-2) 0 0;
- font-size:var(--fs-sm); color:var(--ink-3); font-variant-numeric:tabular-nums;
+ font-size:var(--fs-sm); color:var(--ink-2); font-variant-numeric:tabular-nums;
 }
 .boot-pct{font-size:var(--fs-lg); font-weight:var(--fw-strong); color:var(--teal-dark); line-height:1}
 .boot-elapsed{margin-left:auto}

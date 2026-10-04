@@ -17,7 +17,7 @@
  padding:var(--space-1) var(--space-2) var(--space-1) var(--space-3);border:0;border-radius:var(--radius-sm);background:transparent}
 /* 見出しは枠(作業時間)が文脈を与えているので「開始/終了」で足りる。
    短くしたぶんを日時の表示幅へ回す(打刻した時刻が読めることが最優先)。 */
-.work-time-item>span{grid-column:auto;min-width:2.6em;color:#526970;font-weight:var(--fw-strong);white-space:nowrap}
+.work-time-item>span{grid-column:auto;min-width:2.6em;color:var(--ink-2);font-weight:var(--fw-strong);white-space:nowrap}
 .work-time-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--gap-inline);align-items:center}
 /* **高さはトークンから**（§9.157）。`36px`の直値だったため、隣のボタン
    (39px)・参考値のボタン(33px)と3種類が1枚の中に並んでいた（利用者の指摘
@@ -25,7 +25,7 @@
 .work-time-row input{width:100%;min-width:0;height:var(--ctl-h-sm);background:#fff;font-variant-numeric:tabular-nums}
 .work-time-actions{display:flex;gap:var(--gap-hair)}
 .work-time-actions button{white-space:nowrap;background:var(--teal);color:#fff;border-color:var(--teal);font-weight:var(--fw-strong)}
-.work-time-actions .ghost{background:#fff;color:#3a5a52;border-color:#9fb9b2}
+.work-time-actions .ghost{background:#fff;color:var(--ink-2);border-color:#9fb9b2}
 .work-time-actions .ghost:hover{background:var(--bg);border-color:#6da6ad}
 /* 打刻・消去は**アイコンだけ**（§9.157、利用者の指示）。「現在」「クリア」の
    文字が横に110px取っており、そのぶん日時の欄が狭く、**秒が切れて読めなかった**
@@ -38,7 +38,7 @@
 #workTimeHint{display:block;margin-top:6px;color:var(--warn-fg)}
 /* ---------- 作業時間: 過去実績比較 ---------- */
 .worktime-benchmark{margin-top:10px;padding:var(--space-3);background:var(--bg);border:1px solid #9fc9c2;border-radius:var(--radius-sm)}
-.worktime-benchmark .wtb-empty{font-size:var(--fs-micro);color:var(--ink-soft);line-height:1.35}
+.worktime-benchmark .wtb-empty{font-size:var(--fs-micro);color:var(--muted);line-height:1.35}
 /* 比較できるものが無いときは「無い」と言うだけの枠。常時2行を占めていたので、
    囲みを外して1行の注記へ落とす(§9.55。情報が増えたら通常のカードへ戻る)。 */
 .worktime-benchmark:has(.wtb-empty){padding:2px 0;border:0;background:none;min-height:0}
@@ -47,8 +47,8 @@
 .wtb-title small{font-weight:var(--fw-ui);color:#4c7a72;margin-left:4px}
 .wtb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:var(--gap-inline)}
 .wtb-cell{display:flex;flex-direction:column;gap:var(--gap-hair);padding:var(--pad-row);background:#fff;border:1px solid #cfe4e0;border-radius:var(--radius-sm)}
-.wtb-cell small{font-size:var(--fs-badge);color:#6f8783}
-.wtb-cell b{font-size:var(--fs);font-variant-numeric:tabular-nums;color:#1f3a37}
+.wtb-cell small{font-size:var(--fs-badge);color:var(--muted)}
+.wtb-cell b{font-size:var(--fs);font-variant-numeric:tabular-nums;color:var(--ink)}
 .wtb-cell.wtb-slower{background:#fff6e0;border-color:#e0c26a}
 .wtb-cell.wtb-slower b{color:#8a6600}
 .wtb-cell.wtb-faster{background:#eafaf1;border-color:#7cc9a0}
@@ -102,7 +102,7 @@
    配ってしまうので、器は`div[role=button]`にしてある。 */
 .mm-nav-group-label{display:flex;align-items:center;gap:2px;width:100%;
  padding:2px 4px;border:0;background:transparent;cursor:pointer;
- font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.03em;color:#6f8f96;text-align:left}
+ font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.03em;color:var(--muted);text-align:left}
 .mm-nav-group-label:hover{color:var(--teal-dark)}
 .mm-nav-caret{flex:0 0 auto;width:.9em;color:var(--muted)}
 .mm-nav-group-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -110,7 +110,7 @@
  background:#dceff1;color:#0a6570;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* 危ない操作は器の右端へ寄せる（§CLAUDE 5。「完了」の隣に「削除」を置かない）。 */
 .mm-form-head #mmDropTable{margin-left:auto}
-.mm-nav button{display:flex;align-items:center;gap:var(--gap-inline);border:1px solid transparent;background:#fff;color:#23454d;font-weight:var(--fw-strong);cursor:pointer;transition:.12s;text-align:left}
+.mm-nav button{display:flex;align-items:center;gap:var(--gap-inline);border:1px solid transparent;background:#fff;color:var(--ink);font-weight:var(--fw-strong);cursor:pointer;transition:.12s;text-align:left}
 .mm-nav button:hover{border-color:#9fc3c8;background:var(--surface-2)}
 .mm-nav button.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 4px 12px #087c8940}
 .mm-nav-ico{display:grid;place-items:center;width:26px;height:26px;border-radius:var(--radius-sm);background:#dceff1;color:#0a6570;font-weight:var(--fw-strong);font-size:var(--fs-base-sm);flex:0 0 auto}
@@ -124,8 +124,8 @@
 .mm-toolbar{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-card);background:#fff;border-bottom:1px solid var(--line)}
 .mm-toolbar-left{display:flex;align-items:baseline;gap:var(--gap-section);min-width:0}
 .mm-toolbar-left b{font-size:var(--fs-title);color:var(--ink);white-space:nowrap}
-.mm-count{color:#607981;font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
-.mm-btn-ghost{border:1px solid #9fb9b2;background:#fff;color:#2c5049;font-weight:var(--fw-strong);cursor:pointer;white-space:nowrap}
+.mm-count{color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
+.mm-btn-ghost{border:1px solid #9fb9b2;background:#fff;color:var(--ink-2);font-weight:var(--fw-strong);cursor:pointer;white-space:nowrap}
 .mm-btn-ghost:hover{background:var(--bg);border-color:#6da6ad}
 .mm-btn-ghost.sm{}
 .mm-form{padding:12px 18px;background:#ffffff;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:var(--gap-section)}
@@ -136,7 +136,7 @@
 .mm-mode-chip small{color:#94794a;font-weight:var(--fw-strong)}
 /* マスタ種別ごとの補足説明(MASTER_DEFS[].hint)。警告ではなく前提知識の
    案内のため、mm-import-warningより控えめな配色にする。 */
-.mm-def-hint{margin:0;padding:8px 12px;border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2);color:#526970;font-size:var(--fs-sm);line-height:1.5}
+.mm-def-hint{margin:0;padding:8px 12px;border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.5}
 /* 気をつけてほしいこと(§9.192)。**注意は注意の見た目で**——同じ薄い枠に
    混ぜると読み飛ばされる。色だけに頼らず、文で何が起きるかを書く。 */
 .mm-warn-note{margin:var(--space-2) 0 0;padding:var(--space-2) var(--space-3);
@@ -145,7 +145,7 @@
 .mm-warn-note code{font-size:var(--fs-tiny)}
 .mm-form-fields{display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:flex-start}
 .mm-field{display:flex;flex-direction:column;gap:var(--space-1);min-width:0}
-.mm-field>span{font-size:var(--fs-sm);color:#526970;font-weight:var(--fw-ui);display:flex;align-items:center;gap:var(--gap-tight);white-space:nowrap}
+.mm-field>span{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui);display:flex;align-items:center;gap:var(--gap-tight);white-space:nowrap}
 .mm-field>span i{color:var(--invalid);font-style:normal}
 .mm-keytag{font-style:normal;font-size:var(--fs-badge);font-weight:var(--fw-ui);color:#0a6570;background:#dcecef;border-radius:var(--radius-sm);padding:1px 6px}
 /* **チェック・ラジオには当てない**(§9.197)。以前は`input`をまとめて
@@ -164,11 +164,11 @@
 }
 .mm-field input:focus-visible,.mm-field select:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
 .mm-field-wide{flex-basis:100%}
-.mm-field-hint{color:#8a9aa0;font-size:var(--fs-sm)}
+.mm-field-hint{color:var(--muted);font-size:var(--fs-sm)}
 .mm-checkbox-group{display:flex;flex-wrap:wrap;gap:var(--gap-inline) var(--gap-section);padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;max-height:150px;overflow:auto}
-.mm-checkbox{display:inline-flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm);color:#2c4750;white-space:nowrap;cursor:pointer}
+.mm-checkbox{display:inline-flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap;cursor:pointer}
 .mm-checkbox input{margin:0}
-.mm-empty-inline{color:#8a9aa0;font-size:var(--fs-sm)}
+.mm-empty-inline{color:var(--muted);font-size:var(--fs-sm)}
 /* 作業可能設備タグ入力: 氏名・ヨミガナと同じ行に収まるコンパクトな
    タグフィールド。フォーカス(認識優先)でサジェストを出し、クリックで
    連続追加できるようにする。フォーム自体を低くすることで、下の一覧
@@ -178,7 +178,7 @@
 .mm-tag-box{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);min-height:var(--ctl-h);padding:var(--pad-row);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:text}
 .mm-tag-box:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
 /* 「すべての設備」を選んでいるあいだの個別選択欄。触れないことを見た目でも示す。 */
-.mm-tag-all{display:inline-flex;align-items:center;gap:var(--space-1);margin-bottom:var(--space-1);font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav);cursor:pointer}
+.mm-tag-all{display:inline-flex;align-items:center;gap:var(--space-1);margin-bottom:var(--space-1);font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);cursor:pointer}
 .mm-tag{display:inline-flex;align-items:center;gap:var(--gap-hair);height:var(--ctl-h-xs);padding:0 4px 0 10px;border-radius:var(--radius-lg);background:#eafafa;color:#0a6570;font-weight:var(--fw-ui);font-size:var(--fs-sm);white-space:nowrap}
 .mm-tag-remove{width:18px;height:18px;border:0;border-radius:var(--radius-round);background:transparent;color:#0a6570;font-size:var(--fs-base-sm);line-height:1;cursor:pointer;padding:0}
 .mm-tag-remove:hover{background:#0a657026}
@@ -186,15 +186,15 @@
 .mm-tag-box input.mm-tag-search:focus-visible{outline:0;box-shadow:none}
 .mm-tag-suggest{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:230px;overflow:auto;display:flex;flex-direction:column;gap:var(--gap-hair);padding:var(--space-2);background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:0 10px 26px rgba(20,40,45,.16)}
 .mm-tag-suggest[hidden]{display:none}
-.mm-tag-suggest-item{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:var(--radius-sm);background:transparent;color:#2c4750;font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
+.mm-tag-suggest-item{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
 .mm-tag-suggest-item:hover,.mm-tag-suggest-item:focus-visible{outline:0;background:#eafafa;color:#0a6570}
-.mm-tag-suggest-empty{padding:7px 10px;color:#8a9aa0;font-size:var(--fs-sm)}
+.mm-tag-suggest-empty{padding:7px 10px;color:var(--muted);font-size:var(--fs-sm)}
 .mm-form-tail{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
 .mm-form-tail[hidden]{display:none}
 .mm-btn-primary{border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .mm-btn-primary:hover{background:var(--teal-dark)}
 .mm-btn-primary.sm{}
-.mm-form-hint{color:#6a7d83;font-size:var(--fs-sm)}
+.mm-form-hint{color:var(--muted);font-size:var(--fs-sm)}
 /* 入力項目が多いマスタ(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)は上部フォームを
    「追加ボタン+説明」だけに縮め、その分を一覧の表示領域へ回す。 *//* ---------- 設定ページ形式のマスタ(パス設定) §9.68 ----------
    一覧を編集するマスタではなく「設定画面」なので、上部フォーム+下部一覧では
@@ -233,12 +233,12 @@
  align-items:stretch;gap:var(--space-3);padding:12px 14px;margin-bottom:10px;
  background:#fff;border:1px solid var(--line);border-radius:var(--radius-md)}
 .mm-imp-state-col{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
-.mm-imp-state-label{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:#6f8f96;letter-spacing:.04em}
+.mm-imp-state-label{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted);letter-spacing:.04em}
 .mm-imp-state-list{margin:0;padding-left:18px;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.8}
 .mm-imp-state-list b{font-variant-numeric:tabular-nums;color:var(--ink)}
 .mm-imp-arrow{align-self:center;font-size:var(--fs-lg);color:#9fb4ba;font-weight:var(--fw-strong)}
 .mm-imp-preview{padding:9px 12px;border:1px dashed var(--line);border-radius:var(--radius-sm);
- background:var(--surface-2);color:var(--ink-soft);font-size:var(--fs-sm);line-height:1.7}
+ background:var(--surface-2);color:var(--muted);font-size:var(--fs-sm);line-height:1.7}
 .mm-imp-preview-row{font-size:var(--fs-base-sm);margin-bottom:6px}
 .mm-imp-preview-plan+.mm-imp-preview-plan{margin-top:8px}
 .mm-imp-plan-title{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:#0c5d67}
@@ -306,7 +306,7 @@
 .mm-field-inline{flex-direction:row;align-items:center;gap:var(--space-2)}
 .mm-field-inline>span{white-space:nowrap}
 .mm-field-inline select{min-width:220px}
-.mm-raw-meta{padding:6px 2px;color:#607981;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+.mm-raw-meta{padding:6px 2px;color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* .mm-list-wrapが縦スクロールを持つため、生データ表側は横スクロールだけを
    受け持つ(表が広いときにページ全体が横に伸びないようにする)。 */
 .mm-raw-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
@@ -316,7 +316,7 @@
 .mm-raw-table tbody tr:nth-child(even){background:var(--surface-2)}
 .mm-cd-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--gap-section)}
 .mm-cd-dbtabs{display:flex;gap:var(--gap-inline);flex-wrap:wrap}
-.mm-cd-tab{height:34px;padding:0 16px;border:1.5px solid #c7d4d8;border-radius:var(--radius-lg);background:#fff;color:#526970;font-weight:var(--fw-ui);font-size:var(--fs-sm);cursor:pointer}
+.mm-cd-tab{height:34px;padding:0 16px;border:1.5px solid #c7d4d8;border-radius:var(--radius-lg);background:#fff;color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-sm);cursor:pointer}
 .mm-cd-tab:hover{border-color:#9fb4ba}
 .mm-cd-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 /* 逆の結果になるボタン(取り込む / 削除する)を隣り合わせで並べない。
@@ -333,7 +333,7 @@
 .mm-imp-badge{display:inline-block;padding:var(--pad-chip);border-radius:var(--radius-md);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .mm-imp-badge.new{background:var(--success-bg);color:var(--success)}
 .mm-imp-badge.overwrite{background:#fff2d9;color:#8a5a00}
-.mm-imp-badge.unsupported{background:var(--bg);color:#888}
+.mm-imp-badge.unsupported{background:var(--bg);color:var(--muted)}
 /* 横スクロールは出さない(列はminmax(0,fr)で縮み、あふれる文字は省略記号)。
    生データタブだけは列数が読めないため、内側の.mm-raw-scrollが横スクロールを持つ。 */
 .mm-list-wrap{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 18px 18px}
@@ -563,7 +563,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
  margin-top:var(--space-2);padding:var(--pad-row);
  border-left:3px solid var(--teal);border-radius:var(--radius-xs);
  background:var(--pale);color:var(--computed-fg);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.mm-group-head span{color:var(--ink-3);font-weight:var(--fw-ui);font-size:var(--fs-micro)}
+.mm-group-head span{color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-micro)}
 /* 見出しそのものが開閉のつまみ(§9.241 ①)。**押せることを形と文字の両方で
    言う**（§3）——印(▸/▾)だけだと色と同じで「見れば分かる人にしか分からない」
    ので、畳んでいるときは文字も出す。 */
@@ -583,7 +583,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-fold{display:flex;align-items:center;gap:var(--gap-inline);flex:0 0 auto;margin-left:auto}
 .mm-fold[hidden]{display:none}
 .mm-fold-state{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);white-space:nowrap}
-.mm-fold-state span{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.mm-fold-state span{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .mm-fold button[disabled]{opacity:.5;cursor:default}
 .mm-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md);margin-top:14px}
 .mm-empty.error{color:#8a2b2b;border-color:#d8a6a6;background:#fff5f5}
@@ -631,7 +631,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .qa-v7 .qa-primary:hover{background:var(--teal-dark)}
 .qa-v7 .qa-secondary{background:var(--surface);border-color:var(--line);color:var(--ink-2)}
 .qa-v7 .qa-step-tabs{display:flex;gap:var(--gap-inline);padding:var(--pad-row);background:#fff;border-bottom:1px solid #dbe7ea;flex:0 0 auto}
-.qa-v7 .qa-step-tabs button{padding:0 var(--ctl-pad-x);border:1px solid #b7ccd0;background:var(--surface-2);color:#36515c;font-weight:var(--fw-strong)}
+.qa-v7 .qa-step-tabs button{padding:0 var(--ctl-pad-x);border:1px solid #b7ccd0;background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-strong)}
 .qa-v7 .qa-step-tabs button.active{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 3px 10px #087c8933}
 .qa-v7 .qa-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .qa-v7 .qa-step-pane{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
@@ -663,7 +663,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-cap-row.is-ng .mm-cap-mark{color:var(--muted)}
 .mm-cap-name{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
 .mm-cap-note{font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
-.mm-cap-note i{display:block;font-style:normal;color:var(--ink-3);font-size:var(--fs-tiny)}
+.mm-cap-note i{display:block;font-style:normal;color:var(--ink-2);font-size:var(--fs-tiny)}
 .mm-cap-error{margin:0;font-size:var(--fs-sm);color:var(--warn-fg);line-height:1.6}
 .mm-cap-foot{margin:var(--space-1) 0 0;font-size:var(--fs-tiny);color:var(--muted);line-height:1.6}
 
@@ -679,7 +679,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ds-sum b{font-size:var(--fs);color:var(--ink);font-variant-numeric:tabular-nums}
 /* 状態は**色だけで伝えない**。文字（件数と語）が必ず付いている。 */
 .ds-sum.is-warn,.ds-sum.is-warn b{color:var(--warn-fg)}
-.ds-sum.is-pending,.ds-sum.is-pending b{color:var(--nav);font-weight:var(--fw-strong)}
+.ds-sum.is-pending,.ds-sum.is-pending b{color:var(--ink);font-weight:var(--fw-strong)}
 .ds-summary-act{margin-left:auto;display:flex;gap:var(--gap-inline)}
 /* データ接続の一覧(§9.193)。**1行＝1データソース**で、列は見出しと同じ
    グリッド定義を共有する（見出しとセルで別々に組むと左端がずれる。§9.176と
@@ -717,7 +717,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ds-c-caps{display:flex;flex-wrap:wrap;gap:var(--gap-inline);min-width:0}
 .ds-c-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
 /* 2行目（打つ手があるときだけ）。行の全幅を使う。 */
-.ds-c-note{grid-column:2/-1;font-size:var(--fs-micro);color:var(--nav)}
+.ds-c-note{grid-column:2/-1;font-size:var(--fs-micro);color:var(--ink)}
 .ds-listed{font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--ink-2)}
 .ds-listed.is-off{color:var(--muted);font-weight:var(--fw-body)}
 .ds-role{
@@ -735,10 +735,10 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ds-flag{flex:none;padding:var(--pad-chip);border-radius:var(--radius-sm);
   font-size:var(--fs-tiny);font-weight:var(--fw-ui)}
 .ds-flag.is-pending{background:var(--nav);color:#fff}
-.ds-flag.is-off{background:var(--surface-3);color:var(--ink-3)}
-.ds-cap{font-size:var(--fs-tiny);color:var(--ink-3);white-space:nowrap;
+.ds-flag.is-off{background:var(--surface-3);color:var(--ink-2)}
+.ds-cap{font-size:var(--fs-tiny);color:var(--ink-2);white-space:nowrap;
   display:inline-flex;align-items:center;gap:2px}
-.ds-cap i{font-style:normal;font-weight:var(--fw-strong);color:var(--ink-soft)}
+.ds-cap i{font-style:normal;font-weight:var(--fw-strong);color:var(--muted)}
 .ds-cap.is-ok{color:var(--computed-fg)}
 .ds-cap.is-ok i{color:var(--teal-dark)}
 /* ---- 編集ウィンドウ ----
@@ -813,7 +813,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    ——押せる場所はチェックだけ。 */
 .qj-check{display:flex;align-items:flex-start;gap:var(--gap-inline);
   margin-top:var(--gap-inline);font-size:var(--fs-sm);color:var(--ink);cursor:pointer}
-.qj-check small{display:block;font-size:var(--fs-tiny);color:var(--ink-3);font-weight:var(--fw-body)}
+.qj-check small{display:block;font-size:var(--fs-tiny);color:var(--ink-2);font-weight:var(--fw-body)}
 
 /* ---- 結合の仕方(§9.194) ----
    6通りを**図・名前・一行説明・行の増減**の4点セットで並べる。図だけでは
@@ -984,13 +984,13 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   font-size:var(--fs-sm);color:var(--ink-2)}
 .pc-source b{color:var(--ink)}
 .pc-source code{font-size:var(--fs-tiny);color:var(--muted);letter-spacing:.04em}
-.pc-source-next{font-style:normal;font-size:var(--fs-tiny);color:var(--nav);font-weight:var(--fw-ui)}
+.pc-source-next{font-style:normal;font-size:var(--fs-tiny);color:var(--ink);font-weight:var(--fw-ui)}
 /* 共有スケジュールの書き込み役(§9.192)。読み取り専用の状態表示なので
    入力欄風の枠を付けない（§9.129）。役が「このPC」かどうかは色だけで
    なく文で言い、色は補助に留める。 */
 .pc-owner-status{display:grid;gap:var(--gap-hair);font-size:var(--fs-sm);color:var(--ink-2)}
 .pc-owner-who{color:var(--ink)}
-.pc-owner-who.is-me{color:var(--nav)}
+.pc-owner-who.is-me{color:var(--ink)}
 .pc-owner-off{color:var(--muted)}
 .pc-owner-lines{display:flex;flex-wrap:wrap;gap:var(--space-2);
   font-size:var(--fs-tiny);color:var(--muted)}
@@ -1026,11 +1026,11 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ms-kv dd{margin:0;font-size:var(--fs-sm);color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
 .ms-kv dd.is-warn{color:var(--warn-fg);font-weight:var(--fw-strong)}
 .ms-note{margin:0;font-size:var(--fs-tiny);color:var(--muted);line-height:1.7}
-.ms-note code{font-size:var(--fs-tiny);color:var(--ink-3);word-break:break-all;white-space:normal}
+.ms-note code{font-size:var(--fs-tiny);color:var(--ink-2);word-break:break-all;white-space:normal}
 /* 段と段のあいだ。**幅を取らない**（縦積みなので1行の高さだけ）。 */
 .ms-arrow{display:flex;align-items:baseline;gap:var(--gap-tight);
   padding-left:calc(var(--w-md) / 2)}
-.ms-arrow b{font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--ink-3)}
+.ms-arrow b{font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--ink-2)}
 .ms-arrow i{font-style:normal;font-size:var(--fs-sm);color:var(--teal);line-height:1}
 .ms-arrow small{font-size:var(--fs-tiny);color:var(--muted)}
 .ms-err{margin:0 0 var(--space-2);font-size:var(--fs-sm);color:var(--danger)}
@@ -1062,7 +1062,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   border:0;background:transparent;cursor:pointer}
 .mm-head-user>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--ink);border-bottom:1px dotted var(--line-mid)}
-.mm-head-user:hover>b{color:var(--nav);border-bottom-color:var(--nav)}
+.mm-head-user:hover>b{color:var(--ink);border-bottom-color:var(--nav)}
 /* **取れていないことは色だけで伝えない**（§CLAUDE 3）——文字はJSが書く。 */
 .mm-head-user.is-unknown>b{color:var(--danger);border-bottom-style:dashed}
 /* 印だけのボタン。**中身なりの正方形**にして、名前はaria-labelが持つ。 */
@@ -1097,7 +1097,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-bar-scope.is-one{background:var(--pale);color:var(--computed-fg)}
 .op-bar-scope b{font-weight:var(--fw-strong)}
 .op-bar-scope i{color:var(--muted);font-style:normal}
-.op-bar-note{flex:1 1 260px;min-width:0;color:var(--ink-3);font-size:var(--fs-sm)}
+.op-bar-note{flex:1 1 260px;min-width:0;color:var(--ink-2);font-size:var(--fs-sm)}
 .op-bar-state{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ok-fg)}
 .op-bar-state.is-bad{color:var(--danger)}
 /* 設定はモーダルへ移した（§9.218 ①）ので、盤は**器いっぱい**。以前は
@@ -1111,8 +1111,8 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
   padding:var(--pad-row);border-bottom:1px solid var(--line-soft);
 }
-.op-board-head b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav)}
-.op-board-head small{flex:1 1 200px;min-width:0;color:var(--ink-3);font-size:var(--fs-badge)}
+.op-board-head b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
+.op-board-head small{flex:1 1 200px;min-width:0;color:var(--ink-2);font-size:var(--fs-badge)}
 .op-board-count{font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--muted)}
 .op-board-grid{
   display:grid;grid-template-columns:repeat(var(--op-cols,12),minmax(0,1fr));
@@ -1125,8 +1125,8 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   margin-top:var(--space-1);padding:var(--space-1) 0;
   border-top:1px dashed var(--line-mid);
 }
-.op-band-name{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav)}
-.op-band-note{flex:1 1 auto;min-width:0;color:var(--ink-3);font-size:var(--fs-badge);
+.op-band-name{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
+.op-band-note{flex:1 1 auto;min-width:0;color:var(--ink-2);font-size:var(--fs-badge);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .op-band-tools{display:flex;gap:var(--gap-tight);flex:0 0 auto}
 .op-band-tools button{min-height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-badge)}
@@ -1142,7 +1142,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-band-span>button{
   min-height:var(--ctl-h-xs);padding:0 var(--space-1);
   border:0;border-radius:0;background:none;
-  color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer;
+  color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer;
 }
 .op-band-span>button:hover{background:var(--surface)}
 /* ---------- 空き（ダミー）の群（§9.227 ③、利用者の指示） ----------
@@ -1150,21 +1150,21 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    「そこが空きである」ことが読めないと困るので、**斜線の地**で出す
    （§9.222 ③の空きマスと同じ見せ方にそろえる）。 */
 .op-band.is-dummy{
-  border-style:dashed;color:var(--ink-3);
+  border-style:dashed;color:var(--ink-2);
   background:repeating-linear-gradient(135deg,
     var(--surface-2) 0 6px,var(--surface-3) 6px 12px);
 }
-.op-band.is-dummy .op-band-name{color:var(--ink-3)}
+.op-band.is-dummy .op-band-name{color:var(--ink-2)}
 /* 空きのカード（§9.228 ②）。**盤では斜線で「ここは空き」と分かるように**
    出すが、名前も型も持たない——測定画面では何も描かないので、盤で名前が
    目立つと「出るもの」に見える。 */
 .op-tile.is-pad{
-  border-style:dashed;border-color:var(--line-mid);color:var(--ink-3);
+  border-style:dashed;border-color:var(--line-mid);color:var(--ink-2);
   background:repeating-linear-gradient(135deg,
     var(--surface-2) 0 6px,var(--surface-3) 6px 12px);
   align-items:center;justify-content:center;
 }
-.op-tile-pad{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-3);letter-spacing:.08em}
+.op-tile-pad{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);letter-spacing:.08em}
 /* ---------- 盤の右クリックメニュー（§9.228 ⑤、利用者の指示） ----------
    「右クリックメニューを実装してください。削除やサイズ変更などよく使う
     メニューに絞って実装してほしいです。」
@@ -1177,13 +1177,13 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   box-shadow:0 8px 24px color-mix(in srgb,var(--ink) 22%,transparent);
 }
 .op-menu-head{
-  padding:var(--space-1) var(--space-2);color:var(--ink-3);
+  padding:var(--space-1) var(--space-2);color:var(--ink-2);
   font-size:var(--fs-badge);font-weight:var(--fw-ui);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:var(--w-xl);
 }
 .op-menu-sep{height:1px;margin:var(--space-1) 0;background:var(--line-soft)}
 .op-menu-row{display:flex;align-items:center;gap:2px;padding:0 var(--space-1)}
-.op-menu-row>b{flex:none;min-width:3.2em;color:var(--ink-3);font-size:var(--fs-badge);font-weight:var(--fw-ui)}
+.op-menu-row>b{flex:none;min-width:3.2em;color:var(--ink-2);font-size:var(--fs-badge);font-weight:var(--fw-ui)}
 .op-menu button{
   display:block;width:100%;min-height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:0;border-radius:var(--radius-xs);background:none;color:var(--ink);
@@ -1201,7 +1201,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    群の見出しと説明で**出どころを文字で言う**（§CLAUDE 6）。 */
 .op-menu-auto{max-width:var(--w-2xl);max-height:60vh;overflow:auto;scrollbar-gutter:stable}
 .op-menu-note{
-  padding:0 var(--space-2) var(--space-1);color:var(--ink-3);
+  padding:0 var(--space-2) var(--space-1);color:var(--ink-2);
   font-size:var(--fs-badge);font-weight:var(--fw-ui);white-space:normal;
 }
 .op-menu-group{
@@ -1246,13 +1246,13 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-tile-name{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .op-tile-meta{display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:wrap;
-  font-size:var(--fs-micro);color:var(--ink-3)}
+  font-size:var(--fs-micro);color:var(--ink-2)}
 .op-tile-span{margin-left:auto;font-weight:var(--fw-ui)}
 .op-chip{
   padding:0 4px;border-radius:var(--radius-xs);background:var(--surface-3);
   color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);
 }
-.op-chip-builtin{background:var(--nav-soft,var(--surface-3));color:var(--nav)}
+.op-chip-builtin{background:var(--nav-soft,var(--surface-3));color:var(--ink)}
 .op-chip-req{background:var(--required-bg);color:var(--required)}
 .op-chip-off{background:var(--surface-3);color:var(--muted)}
 /* レイアウトの出どころのチップ（§9.239 ②）。 */
@@ -1283,7 +1283,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   font-style:normal;text-align:center;color:var(--muted);font-size:var(--fs-micro);
   border-top:1px dashed var(--line-soft);
 }
-.op-tile-gear{margin-left:auto;color:var(--nav);font-size:var(--fs-micro);font-weight:var(--fw-ui);opacity:0}
+.op-tile-gear{margin-left:auto;color:var(--ink);font-size:var(--fs-micro);font-weight:var(--fw-ui);opacity:0}
 .op-tile:hover .op-tile-gear,.op-tile:focus-visible .op-tile-gear{opacity:1}
 .op-chip-widget{background:var(--pale);color:var(--teal)}
 /* §9.220 ②③。盤の上で「初期値がある／手打ちできる」が分かるようにする。 */
@@ -1291,7 +1291,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-chip-free{background:var(--warn-bg);color:var(--warn-fg)}
 .op-chip-issue{background:var(--look-red-pale);color:var(--look-red-dark)}
 /* §9.541 F-5。盤のタイルの範囲の1行。端が開いているか（上下限なし）は記号が言う（├…┤／├…→）。 */
-.op-tile-range{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-micro);color:var(--ink-3);
+.op-tile-range{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-micro);color:var(--ink-2);
   font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .op-tile-range i{flex:0 0 auto;width:28px;height:6px;border:1px solid var(--look-green);border-width:0 2px;
   background:var(--look-green-pale)}
@@ -1323,8 +1323,8 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* 見本の帯の1行目（§9.288 ④）。**1行**——「何を見ているか／マスの説明／
    `?`／いまの値」。縦に積むと、固定した高さのうち見本そのものの取り分が減る。 */
 .op-prev-head{display:flex;flex-wrap:nowrap;align-items:center;gap:var(--gap-inline);
-  flex:0 0 auto;max-width:38%;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav)}
-.op-prev-head small{font-weight:var(--fw-body);color:var(--ink-3);font-size:var(--fs-badge);
+  flex:0 0 auto;max-width:38%;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
+.op-prev-head small{font-weight:var(--fw-body);color:var(--ink-2);font-size:var(--fs-badge);
   min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
 /* 記録される値は**帯の右端**（§9.299。見出しの行から出したので、
    ここで場所を持つ）。 */
@@ -1358,7 +1358,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   gap:var(--gap-inline);padding:var(--pad-row);width:max-content;
   border:1px solid var(--line-mid);border-radius:var(--radius-md);background:var(--surface);
 }
-.op-prev-band{grid-column:1/-1;font-size:var(--fs);font-weight:var(--fw-strong);color:var(--ink-3);letter-spacing:.04em}
+.op-prev-band{grid-column:1/-1;font-size:var(--fs);font-weight:var(--fw-strong);color:var(--ink-2);letter-spacing:.04em}
 .op-prev-field{min-width:0}
 /* **見本もグリッドで組む**（§9.221 ⑦）。単位を欄へ重ねる`内部`は
    「欄と単位を同じマスへ置く」で出しており、flexだと同じマスという概念が
@@ -1366,7 +1366,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    食い違う。段の見え方（縦に積む）は変わらない。 */
 .op-prev-field .opf{display:grid;grid-auto-rows:min-content;gap:2px;min-width:0;font-size:var(--fs-sm)}
 .op-prev-field .opf select,.op-prev-field .opf input{width:100%;max-width:100%}
-.op-prev-note{margin:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
+.op-prev-note{margin:0;color:var(--ink-2);font-size:var(--fs-badge);line-height:1.6}
 /* 隣の欄（§9.250 ⑤）は**やめた**（§9.276 ⑥、利用者の指示「変更中の対象項目
    だけの再現で十分」）——マスタの行から自前で組み立てていたので単位の置き場も
    高さも本物と揃わず、群が大きいと器に入りきらなかった。残りのマスは
@@ -1389,7 +1389,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-prev-value>b{color:var(--teal);font-weight:var(--fw-strong)}
 .op-prev-facts{
   display:grid;gap:var(--gap-hair);margin:0;padding:0;list-style:none;
-  color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6;
+  color:var(--ink-2);font-size:var(--fs-badge);line-height:1.6;
 }
 .op-prev-facts>li{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--gap-inline)}
 .op-prev-facts>li>b{color:var(--ink-2);font-weight:var(--fw-strong)}
@@ -1403,7 +1403,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* 色の意味と件数（§9.234 ⑦）。**分類名と件数を必ず文字で出す**（§9.105）。 */
 .op-auto-legend{
   display:flex;align-items:center;gap:var(--space-1) var(--space-2);flex-wrap:wrap;
-  margin:0 0 var(--space-2);color:var(--ink-3);font-size:var(--fs-micro);
+  margin:0 0 var(--space-2);color:var(--ink-2);font-size:var(--fs-micro);
 }
 .op-auto-legend small{color:var(--muted)}
 .op-modal-form{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
@@ -1430,10 +1430,10 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-form-sec+.op-form-sec{padding-top:var(--space-3);border-top:1px solid var(--line-soft)}
 .op-form-sec-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);
   margin:0;font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--teal-dark)}
-.op-form-sec-head>small{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.op-form-sec-head>small{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 /* 組み込みの欄で「ここは決められない」ことを**文字で**言う（§CLAUDE 4）。 */
 .op-form-locked{margin:0;padding:var(--pad-card);border-radius:var(--radius-sm);
-  background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-sm);line-height:1.6}
+  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.6}
 .op-form-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2);align-items:start}
 .op-form-label{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);padding-top:4px}
 .op-form-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);min-width:0}
@@ -1445,7 +1445,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    広がり、単位のような2〜3文字の欄にも同じ幅が付く。基は`--w-md`のまま、
    伸びる側だけを止める。 */
 .op-form-ctl>input[type=text]{flex:0 1 var(--w-md);min-width:0}
-.op-form-note{flex:1 1 100%;min-width:0;font-style:normal;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
+.op-form-note{flex:1 1 100%;min-width:0;font-style:normal;color:var(--ink-2);font-size:var(--fs-badge);line-height:1.6}
 .op-form-empty{margin:0;flex:1 1 100%;color:var(--muted);font-size:var(--fs-badge)}
 .op-seg{display:flex;gap:0}
 .op-seg button,.op-toggle,.op-when button{
@@ -1505,7 +1505,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-try-out{fill:url(#opTryHatch)}
 .op-try-hb{fill:var(--look-red-pale)} .op-try-hl{stroke:var(--look-red);stroke-width:1.2}
 .op-try-tick{stroke:var(--look-green-dark);stroke-width:1}
-.op-try-axis{stroke:var(--ink-3);stroke-width:1.2}
+.op-try-axis{stroke:var(--ink-2);stroke-width:1.2}
 .op-try-end{stroke:var(--ink-2);stroke-width:1.5}
 .op-try-lab{font-weight:var(--fw-strong)}
 .op-try-init{fill:var(--look-violet);stroke:var(--surface)}
@@ -1547,7 +1547,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 }
 .op-widget-tile>b{font-size:var(--fs-title);line-height:1}
 .op-widget-tile>span{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.op-widget-tile>small{color:var(--ink-3);font-size:var(--fs-micro);white-space:normal}
+.op-widget-tile>small{color:var(--ink-2);font-size:var(--fs-micro);white-space:normal}
 .op-widget-tile.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal)}
 .op-widget-tile[disabled]{opacity:.45;cursor:not-allowed}
 .op-choice-pick{display:flex;gap:var(--gap-tight);flex:1 1 100%;min-width:0}
@@ -1564,7 +1564,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    勧められているのか」が読めず、押す前に開いて確かめることになる。 */
 .op-suggest{display:flex;flex-wrap:wrap;gap:var(--gap-tight);flex:1 1 100%;min-width:0;
   align-items:stretch}
-.op-suggest-lead{flex:1 1 100%;color:var(--ink-3);font-size:var(--fs-badge);font-weight:var(--fw-ui)}
+.op-suggest-lead{flex:1 1 100%;color:var(--ink-2);font-size:var(--fs-badge);font-weight:var(--fw-ui)}
 .op-suggest-btn{
   display:flex;flex-direction:column;align-items:flex-start;gap:1px;
   min-width:0;max-width:var(--w-lg);padding:var(--space-1) var(--space-2);
@@ -1573,7 +1573,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 }
 .op-suggest-btn:hover{border-style:solid;border-color:var(--teal);background:var(--pale)}
 .op-suggest-btn>b{color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.op-suggest-btn>small{color:var(--ink-3);font-size:var(--fs-micro)}
+.op-suggest-btn>small{color:var(--ink-2);font-size:var(--fs-micro)}
 .op-suggest-btn>i{color:var(--muted);font-size:var(--fs-micro);font-style:normal;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 /* 初期値が候補に無いことの断り書き（§9.220 ②）。**色だけで伝えない**ので
@@ -1586,7 +1586,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* 窓の脚は廃止した（§9.223 ②）——保存は右上の端、状態はタブの下の1行。 */
 /* 選択肢の一覧に「どの項目が使っているか」を出す（§9.216 ④）。
    **使い道の見えない選択肢は消してよいのか判断できない。** */
-.op-usage{color:var(--ink-3);font-size:var(--fs-badge)}
+.op-usage{color:var(--ink-2);font-size:var(--fs-badge)}
 /* ================================================================
    §9.223 ②: 窓を広く・タブでステップを見せる（利用者の指示）
    ----------------------------------------------------------------
@@ -1697,13 +1697,13 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   flex:0 0 auto;display:inline-grid;place-items:center;
   width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
   border:1px solid var(--line);border-radius:var(--radius-round);
-  background:var(--surface);color:var(--ink-3);font-size:var(--fs-sm);font-weight:var(--fw-ui);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);
 }
 .op-prev-info:hover{border-color:var(--teal);color:var(--teal-dark)}
 .op-prev-info[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .op-prev-info-pop{min-width:var(--w-2xl);max-width:min(92vw,640px);max-height:60vh;overflow:auto}
 .op-prev-info-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:var(--fw-strong)}
-.op-prev-info-head small{display:block;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:var(--fw-body)}
+.op-prev-info-head small{display:block;color:var(--muted);font-size:var(--fs-tiny);font-weight:var(--fw-body)}
 /* 本体は**器いっぱい**。列の中だけが必要なら流れる（§9.299。窓ごと
    スクロールさせない——見出しと保存が流れて消えるため）。 */
 .op-modal-form{flex:1 1 auto;min-height:0;overflow:hidden;
@@ -1730,7 +1730,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-pop-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .op-pop-btn>b{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .op-pop-btn>small{min-width:0;overflow:hidden;text-overflow:ellipsis;
-  color:var(--ink-3);font-weight:var(--fw-body);font-size:var(--fs-micro)}
+  color:var(--ink-2);font-weight:var(--fw-body);font-size:var(--fs-micro)}
 /* **覆う面積は小さく**（§9.299）——浮き出しは他の列の上に出るので、
    外側を1回押して畳むまで下の欄が押せない。4枚×約200pxが入る幅で足りる。 */
 .op-pop{position:fixed;z-index:var(--z-popover);
@@ -1740,12 +1740,12 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-pop[hidden]{display:none}
 .op-pop-head{display:flex;align-items:baseline;gap:var(--space-2);margin:0 0 var(--space-2);
   font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--teal-dark)}
-.op-pop-head small{font-weight:var(--fw-body);color:var(--ink-3);font-size:var(--fs-micro)}
+.op-pop-head small{font-weight:var(--fw-body);color:var(--ink-2);font-size:var(--fs-micro)}
 /* 塊の`?`（§9.299。長い説明は**消さずに畳む**・§9.234 ①）。 */
 .op-sec-info{margin-left:auto;display:inline-grid;place-items:center;
   width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
   border:1px solid var(--line);border-radius:var(--radius-round);
-  background:var(--surface);color:var(--ink-3);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
 .op-sec-info:hover{border-color:var(--teal);color:var(--teal-dark)}
 .op-sec-info[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .op-help-pop p{margin:0 0 var(--space-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.7}
@@ -1813,15 +1813,15 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    同じ段のタイルだけが伸びて下の段が動く。 */
 .op-widget-tile{min-height:calc(var(--ctl-h-sm) + 5.2em)}
 .op-widget-tile{gap:3px}
-.op-widget-icon{font-size:var(--fs);line-height:1;color:var(--ink-3)}
+.op-widget-icon{font-size:var(--fs);line-height:1;color:var(--ink-2)}
 .op-widget-name{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.op-widget-note{color:var(--ink-3);font-size:var(--fs-micro);white-space:normal;line-height:1.3}
+.op-widget-note{color:var(--ink-2);font-size:var(--fs-micro);white-space:normal;line-height:1.3}
 .op-widget-demo{display:block;min-height:1.6em;pointer-events:none}
 .op-widget-tile.is-on .op-widget-icon{color:var(--teal)}
 /* --- 小さな見本の絵。**本物ではなく絵**（12個ぶんの本物は重い）。
        形の違いが分かる最小限にして、本物は左の見本1枚で確かめる。 --- */
 .opd{display:flex;align-items:center;gap:2px;font-size:var(--fs-micro);font-weight:var(--fw-ui);
-  color:var(--ink-3);line-height:1;min-width:0;overflow:hidden}
+  color:var(--ink-2);line-height:1;min-width:0;overflow:hidden}
 .opd>i{font-style:normal;padding:1px 3px;border-radius:var(--radius-xs);background:var(--surface-2);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .opd .opd-on{background:var(--teal);color:#fff}
@@ -1901,14 +1901,14 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* 帯は「窓ではない」ので浮かせない（§9.206。器の名前で詳細度を上げる）。 */
 .opd-index>em.opd-index-rail{box-shadow:none;border-style:dashed}
 .opd-index-rail>b{padding:0 2px;border-radius:var(--radius-pill);
-  background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
+  background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .opd-index-rail>b:first-child{background:var(--pale);color:var(--teal-dark)}
 .opd-index>em>i{flex:1 1 0;min-height:7px;padding:0 2px;border:1px solid var(--line-soft);
   border-radius:var(--radius-xs);background:var(--surface)}
 .opd-index>em .opd-on{background:var(--pale);color:var(--teal-dark);border-color:var(--teal)}
 .opd-dial{gap:2px;padding:1px 3px;border:1px solid var(--line);
   border-radius:var(--radius-xs);background:var(--surface)}
-.opd-dial>b{color:var(--ink-3);font-size:var(--fs-micro);line-height:.8}
+.opd-dial>b{color:var(--ink-2);font-size:var(--fs-micro);line-height:.8}
 .opd-dial>u{flex:0 1 auto;min-width:0;overflow:hidden;color:var(--muted);
   text-decoration:none;font-size:var(--fs-micro)}
 .opd-dial>i{flex:1 1 auto;text-align:center}
@@ -1924,7 +1924,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   border-radius:var(--radius-xs);background:var(--surface)}
 .opd-spin>i{flex:1 1 auto;background:none;padding:0}
 .opd-spin>u{display:flex;flex-direction:column;gap:0;text-decoration:none}
-.opd-spin>u>b{display:block;line-height:.8;font-size:var(--fs-micro);color:var(--ink-3)}
+.opd-spin>u>b{display:block;line-height:.8;font-size:var(--fs-micro);color:var(--ink-2)}
 .opd-step>b,.opd-pad>b{display:inline-flex;align-items:center;justify-content:center;
   min-width:1.2em;padding:1px 2px;border:1px solid var(--line);border-radius:var(--radius-xs);
   background:var(--surface);font-weight:var(--fw-strong)}
@@ -1967,7 +1967,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-look-swatch{
   display:flex;flex-direction:column;align-items:center;gap:2px;
   padding:2px var(--space-1);border:1px solid transparent;border-radius:var(--radius-xs);
-  background:none;cursor:pointer;color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);
+  background:none;cursor:pointer;color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);
 }
 .op-look-swatch>i{display:block;width:18px;height:18px;border-radius:var(--radius-round);
   border:2px solid var(--line-mid);background:var(--surface)}
@@ -2010,7 +2010,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 }
 .op-role-strip.is-bad{border-left-color:var(--danger);background:var(--danger-bg)}
 .op-role-head{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
-  margin:0;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav)}
+  margin:0;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
 .op-role-stat{padding:1px var(--space-2);border-radius:var(--radius-pill);
   font-size:var(--fs-badge);font-weight:var(--fw-ui)}
 .op-role-stat.is-ok{background:var(--ok-bg);color:var(--ok-fg)}
@@ -2045,7 +2045,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* 見せるが触らせない欄（§9.219 ②）。**隠さない**——隠すと「なぜ中身を
    変えられないのか」が読めなくなる。触れないことを面と色で示す。 */
 .mm-field-ro>input{
-  background:var(--surface-2);color:var(--ink-3);
+  background:var(--surface-2);color:var(--ink-2);
   border-style:dashed;cursor:default;
 }
 
@@ -2076,7 +2076,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 }
 .op-upad-cell{
   min-height:0;padding:0;border:1px solid var(--line-soft);border-radius:var(--radius-xs);
-  background:var(--surface);color:var(--ink-3);
+  background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
 }
@@ -2084,7 +2084,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-upad-cell:disabled{opacity:.4;cursor:not-allowed}
 .op-upad-gap{border-radius:var(--radius-xs);background:repeating-linear-gradient(135deg,var(--surface) 0 4px,var(--surface-2) 4px 8px)}
 .op-look-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);flex:1 1 100%}
-.op-look-line>b{font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--ink-3);min-width:var(--w-sm)}
+.op-look-line>b{font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--ink-2);min-width:var(--w-sm)}
 .op-mini{
   min-height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:1px solid var(--line-mid);border-radius:var(--radius-xs);
@@ -2104,7 +2104,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 }
 .op-btint.is-on{background:var(--surface);border-color:var(--teal);
   box-shadow:inset 0 0 0 1px var(--teal);color:var(--ink)}
-.op-look-digits{display:flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-badge);color:var(--ink-3)}
+.op-look-digits{display:flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-badge);color:var(--ink-2)}
 .op-look-digits input{width:var(--w-xs)}
 /* **効かない設定は薄くして理由を文で言う**（§4）。消してしまうと、
    ゼロ埋めを選んだときにどこへ桁数を入れるのか分からない。 */
@@ -2220,7 +2220,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .oc-group-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .oc-group:hover{background:var(--surface-2)}
 .oc-group>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
-.oc-group-meta{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.oc-group-meta{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 /* **使い道は文字で言う**（§9.216 ④）。色だけだと「使われていない」ことに
    気づけず、消してよいかを判断できない。 */
 .oc-group-use{font-size:var(--fs-micro);color:var(--muted)}
@@ -2278,13 +2278,13 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .oc-row[data-oc-id]:nth-of-type(even):hover{background:var(--surface-3)}
 .oc-cell{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font-size:var(--fs-sm);color:var(--ink)}
-.oc-cell.is-sub{color:var(--ink-3)}
+.oc-cell.is-sub{color:var(--ink-2)}
 .oc-cell.is-blank{color:var(--muted)}
 .oc-grip{color:var(--muted);cursor:grab;text-align:center;user-select:none}
 .oc-row input.oc-f{height:var(--ctl-h-sm);min-width:0;width:100%;padding:0 var(--space-2);
   border:1px solid var(--line);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
 .oc-on{display:flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-micro);
-  color:var(--ink-3);white-space:nowrap}
+  color:var(--ink-2);white-space:nowrap}
 .oc-del{height:var(--ctl-h-xs);padding:0 var(--space-2);border:1px solid var(--line-mid);
   border-radius:var(--radius-xs);background:var(--surface);color:var(--danger);
   font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer}
@@ -2295,7 +2295,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    部分のマスの位置とラベルの位置がずれています」）。 */
 .oc-add{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);
   border-top:1px solid var(--line-soft);padding-top:var(--space-2);flex:none}
-.oc-add-note{font-size:var(--fs-micro);color:var(--ink-3)}
+.oc-add-note{font-size:var(--fs-micro);color:var(--ink-2)}
 .oc-eq-tags{display:flex;flex-wrap:nowrap;gap:2px;min-width:0;overflow:hidden}
 .oc-eq-tag{font-size:var(--fs-micro);font-weight:var(--fw-ui);line-height:1;white-space:nowrap;
   padding:2px var(--space-1);border:1px solid var(--line-mid);border-radius:var(--radius-xs);
@@ -2369,7 +2369,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ssb-stop>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
 .ssb-stop-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
 .ssb-stop-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ssb-stop-eq{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.ssb-stop-eq{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 /* **持っていないことも文字で言う**（§CLAUDE 3）——色や空欄だけだと
    「内訳を作っていない」のか「読めていない」のかが分からない。 */
 .ssb-stop-n{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--teal-dark)}
@@ -2403,13 +2403,13 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    ——1件しか無い段では印を付けなくても最初から選ばれるので、押せなくする。 */
 .ssb-def{height:var(--ctl-h-xs);padding:0 var(--space-2);white-space:nowrap;
   border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
-  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3);cursor:pointer}
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2);cursor:pointer}
 .ssb-def:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
 .ssb-def:disabled{border-color:transparent;background:transparent;color:var(--muted);cursor:default}
 .ssb-row.is-head>span:last-child{font-size:var(--fs-micro)}
 .ssb-row.is-head{position:sticky;top:0;z-index:1;background:var(--surface-2);
   border-bottom:1px solid var(--line-soft)}
-.ssb-row.is-head>span{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.ssb-row.is-head>span{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .ssb-row[data-ssb-id]:nth-of-type(even){background:var(--surface-2)}
 .ssb-row input.ssb-f{height:var(--ctl-h-sm);min-width:0;width:100%;padding:0 var(--space-2);
   border:1px solid var(--line);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
@@ -2426,14 +2426,14 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    器いっぱい（実測350px）まで伸びて「＋ 下へ」が押し出される。余りは空白。 */
 .ssb-under{justify-self:start;height:var(--ctl-h-xs);padding:0 var(--space-2);white-space:nowrap;
   border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
-  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3);cursor:pointer}
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2);cursor:pointer}
 .ssb-under:hover{border-color:var(--teal);color:var(--teal-dark)}
 .ssb-add-where{flex:1 1 100%;display:flex;align-items:center;gap:var(--gap-inline);
   font-size:var(--fs-badge);color:var(--ink-2)}
 .ssb-add-where>b{color:var(--teal-dark)}
 .ssb-add-where>button{height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
-  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3);cursor:pointer}
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2);cursor:pointer}
 .ssb-add{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
 .ssb-add input{height:var(--ctl-h-sm);padding:0 var(--space-2);
   border:1px solid var(--line);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
@@ -2441,7 +2441,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ssb-add input#ssbNewMin{flex:none;width:var(--w-sm)}
 /* **空欄にしたら何分になるか**を、欄の見切れではなく1行の文で言う（§CLAUDE 6）
    ——欄の中の説明は器の幅で切れる（実測「分（空欄なら…」で途切れていた）。 */
-.ssb-add-note{flex:1 1 100%;font-size:var(--fs-micro);color:var(--ink-3)}
+.ssb-add-note{flex:1 1 100%;font-size:var(--fs-micro);color:var(--ink-2)}
 .ssb-add-note>b{color:var(--ink-2)}
 
 /* ================================================================
@@ -2533,7 +2533,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fb-axis>button{min-height:var(--ctl-h-xs);padding:0 var(--space-1);
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);
-  background:var(--surface);color:var(--ink-3);
+  background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer}
 .fb-axis>button:disabled{opacity:.45;cursor:not-allowed}
 /* 軸を落とす箱（§9.278、利用者の指示「軸単位のドラッグアンドドロップ」）。
@@ -2544,7 +2544,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    入れると、盤で見た形と刷り上がりがまた食い違う（§9.163）。 */
 .rb-preview{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0}
 .rb-preview-head{display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0}
-.rb-preview-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav);flex:none}
+.rb-preview-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);flex:none}
 .rb-preview-head>small{color:var(--muted);font-size:var(--fs-micro);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fb-axboxes{display:flex;flex:1 1 100%;min-width:0;gap:var(--gap-tight);flex-wrap:wrap}
@@ -2554,7 +2554,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   border-radius:var(--radius-xs);background:var(--surface)}
 .fb-axbox.is-over{border-color:var(--nav);border-style:solid;background:var(--surface-3)}
 .fb-axbox.is-deny{border-color:var(--danger);border-style:solid}
-.fb-axbox-cap{flex:none;color:var(--nav);font-size:var(--fs-badge);font-weight:var(--fw-ui)}
+.fb-axbox-cap{flex:none;color:var(--ink);font-size:var(--fs-badge);font-weight:var(--fw-ui)}
 .fb-axbox-list{display:flex;align-items:center;gap:var(--gap-hair);
   flex:1 1 auto;min-width:0;flex-wrap:wrap}
 .fb-axbox-none{font-style:normal;color:var(--muted);font-size:var(--fs-micro)}
@@ -2567,19 +2567,19 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .fb-axes-opt{display:flex;flex:1 1 100%;min-width:0;align-items:center;
   gap:var(--gap-inline);flex-wrap:wrap}
 .fb-axes-chk{display:inline-flex;align-items:center;gap:var(--gap-hair);
-  color:var(--ink-3);font-size:var(--fs-micro);cursor:pointer}
+  color:var(--ink-2);font-size:var(--fs-micro);cursor:pointer}
 .fb-axes-chk input{margin:0}
 .fb-axes-note{color:var(--muted);font-size:var(--fs-micro);
   border-bottom:1px dotted var(--line-mid);cursor:help}
 /* いまの形。**軸の位置と数を文字で出す**（§9.277）。 */
-.fb-axes-now{flex:1 1 100%;min-width:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:var(--lh)}
+.fb-axes-now{flex:1 1 100%;min-width:0;color:var(--ink-2);font-size:var(--fs-badge);line-height:var(--lh)}
 .fb-axes-bad{font-style:normal;color:var(--danger)}
 .fb-pick-head,.fb-chosen-head{display:flex;align-items:center;gap:var(--gap-inline);
   min-width:0;flex-wrap:wrap;row-gap:var(--space-1)}
-.fb-pick-head>b,.fb-chosen-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav);flex:none}
+.fb-pick-head>b,.fb-chosen-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);flex:none}
 .fb-search{flex:1 1 auto;min-width:0;height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface)}
-.fb-count{flex:1 1 auto;color:var(--ink-3);font-size:var(--fs-badge)}
+.fb-count{flex:1 1 auto;color:var(--ink-2);font-size:var(--fs-badge)}
 .fb-clear{flex:none;min-height:var(--ctl-h-xs);padding:0 var(--space-2);font-size:var(--fs-badge)}
 .fb-cats{display:flex;flex-wrap:wrap;gap:2px}
 .fb-cat{
@@ -2598,7 +2598,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   display:flex;flex-wrap:wrap;align-content:flex-start;gap:var(--gap-tight);
   flex:1 1 auto;min-height:6em;overflow:auto;
 }
-.fb-note{flex:1 1 100%;margin:0;color:var(--ink-3);font-size:var(--fs-micro)}
+.fb-note{flex:1 1 100%;margin:0;color:var(--ink-2);font-size:var(--fs-micro)}
 .fb-item{
   display:inline-flex;flex-direction:column;align-items:flex-start;gap:0;
   min-height:var(--ctl-h-xs);padding:2px var(--space-2);
@@ -2624,7 +2624,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .fb-label{min-width:0;height:var(--ctl-h-xs);padding:0 var(--space-1);
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface)}
 .fb-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  color:var(--ink-3);font-size:var(--fs-micro)}
+  color:var(--ink-2);font-size:var(--fs-micro)}
 /* 効いている書式と「候補に無い道」の印（§9.285 ③④）。**縮む役は出どころ
    だけ**（§9.229 ⑤）なので、印は中身なりの幅で固定する。
    **色だけで伝えない**（§CLAUDE 3）ので、どちらも文字を持つ。 */
@@ -2633,13 +2633,13 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   font-size:var(--fs-micro);line-height:1.5;
   padding:0 var(--space-1);border-radius:var(--radius-xs);
 }
-.fb-fmttag{color:var(--nav);background:var(--surface-2);border:1px solid var(--line-soft)}
+.fb-fmttag{color:var(--ink);background:var(--surface-2);border:1px solid var(--line-soft)}
 .fb-warn{color:var(--warn-fg);background:var(--warn-bg);
   border:1px solid var(--warn-border);font-weight:var(--fw-strong)}
 .fb-del{
   min-width:var(--ctl-h-xs);min-height:var(--ctl-h-xs);padding:0;
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);
-  background:var(--surface);color:var(--ink-3);cursor:pointer;
+  background:var(--surface);color:var(--ink-2);cursor:pointer;
 }
 .fb-del:hover{border-color:var(--danger);color:var(--danger)}
 .fb-empty{margin:0;color:var(--muted);font-size:var(--fs-badge);line-height:1.6}
@@ -2651,11 +2651,11 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-xio{margin-top:var(--space-2);padding:var(--pad-row);
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2)}
 .mm-xio-head{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-inline)}
-.mm-xio-head>b{flex:0 0 auto;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3);
+.mm-xio-head>b{flex:0 0 auto;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2);
   letter-spacing:.04em}
 /* **縮んでよいのは説明だけ**（§9.229 ⑤）——ボタンまで縮むと文字が見切れる。 */
 .mm-xio-head>button{flex:0 0 auto}
-.mm-xio-note{flex:1 1 var(--w-xl);min-width:0;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
+.mm-xio-note{flex:1 1 var(--w-xl);min-width:0;color:var(--ink-2);font-size:var(--fs-micro);line-height:1.5}
 .mm-xio-note i{color:var(--muted);font-style:normal}
 .mm-xio-result{margin-top:var(--space-2);padding:var(--pad-row);
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface);
@@ -2664,27 +2664,27 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-xio-result.is-bad{border-color:var(--danger-border);background:var(--danger-bg)}
 .mm-xio-sum{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-inline)}
 .mm-xio-sum>b{font-size:var(--fs-sm)}
-.mm-xio-sum>span{font-size:var(--fs-micro);color:var(--ink-3)}
+.mm-xio-sum>span{font-size:var(--fs-micro);color:var(--ink-2)}
 .mm-xio-num{padding:var(--pad-chip);border-radius:var(--radius-xs);
   background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .mm-xio-num b{font-size:var(--fs-sm)}
 .mm-xio-num.is-bad{background:var(--danger-bg);color:var(--danger)}
 .mm-xio-go{display:flex;align-items:center;gap:var(--gap-inline);margin-top:var(--space-2)}
-.mm-xio-go span{color:var(--ink-3);font-size:var(--fs-micro)}
+.mm-xio-go span{color:var(--ink-2);font-size:var(--fs-micro)}
 .mm-xio-done{margin:var(--space-1) 0 0;font-size:var(--fs-sm)}
 .mm-xio-skip{margin-top:var(--space-2);font-size:var(--fs-micro)}
 .mm-xio-skip summary{cursor:pointer;color:var(--danger);font-weight:var(--fw-strong)}
-.mm-xio-skip ul{margin:var(--space-1) 0 0;padding-left:var(--space-4);color:var(--ink-3)}
+.mm-xio-skip ul{margin:var(--space-1) 0 0;padding-left:var(--space-4);color:var(--ink-2)}
 .mm-xio-skip li{margin:2px 0;line-height:1.5}
 .mm-xio-skip li b{color:var(--ink-2)}
 /* ---------- 全削除・完全入替（§9.251、利用者の指示） ----------
    **消える件数は色だけで伝えない**（§3）ので、数字と理由は必ず文字で出す。
    ここで足す色は「気づかせる」ためだけの補助。 */
 .mm-xio-mode{flex:0 0 auto;display:flex;align-items:center;gap:var(--space-1);
-  color:var(--ink-3);font-size:var(--fs-micro)}
+  color:var(--ink-2);font-size:var(--fs-micro)}
 .mm-xio-mode select{max-width:var(--w-xl)}
 .mm-xio-num.is-warn{background:var(--warn-bg);color:var(--warn-fg)}
-.mm-xio-kept{margin:var(--space-1) 0 0;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
+.mm-xio-kept{margin:var(--space-1) 0 0;color:var(--ink-2);font-size:var(--fs-micro);line-height:1.5}
 .mm-xio-done.is-bad{color:var(--danger)}
 .mm-xio-skip.is-warn summary{color:var(--warn-fg)}
 /* **取り消せない操作は主要動線から離す**（§CLAUDE 5）——帯のいちばん右へ。 */
@@ -2711,8 +2711,8 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-bulk-pick:hover{border-color:var(--line-mid);background:var(--surface-2)}
 .mm-bulk-pick em{margin-left:auto;font-style:normal;font-weight:var(--fw-strong);color:var(--danger)}
 .mm-bulk-pick.is-all{border-color:var(--danger-border);background:var(--danger-bg)}
-.mm-bulk-need{color:var(--ink-3);font-size:var(--fs-micro)}
-.mm-bulk-tip{color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
+.mm-bulk-need{color:var(--ink-2);font-size:var(--fs-micro)}
+.mm-bulk-tip{color:var(--ink-2);font-size:var(--fs-micro);line-height:1.5}
 /* 見本のロットで帳票を見る（§9.253）。**追加の隣に置く**——実データが
    要らない確認は危ない操作ではないので、主要動線の中で構わない
    （消す操作だけが右端へ離れる・§CLAUDE 5）。 */
@@ -2736,13 +2736,13 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 }
 .rl-pool>h4,.rl-board>h4{
   display:flex;align-items:baseline;gap:var(--gap-inline);
-  margin:0 0 var(--space-1);color:var(--nav);font-size:var(--fs-sm);font-weight:var(--fw-ui);
+  margin:0 0 var(--space-1);color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);
 }
 .rl-pool>h4>small,.rl-board>h4>small{
   color:var(--muted);font-size:var(--fs-badge);font-weight:var(--fw-ui);
   font-variant-numeric:tabular-nums;
 }
-.rl-hint{margin:0 0 var(--space-2);color:var(--ink-3);font-size:var(--fs-badge)}
+.rl-hint{margin:0 0 var(--space-2);color:var(--ink-2);font-size:var(--fs-badge)}
 .rl-legend b{color:var(--ink-2);font-variant-numeric:tabular-nums}
 /* 凡例は**盤の頭**なので2段組を跨がせる（片方の列だけに出ると、右の列の
    点線が何なのか読めない）。 */
@@ -2762,7 +2762,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .rl-group{break-inside:avoid;margin-bottom:var(--space-3);border-radius:var(--radius-sm);padding:var(--space-1)}
 .rl-group>b{
   display:flex;align-items:baseline;gap:var(--gap-inline);
-  margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs-sm);
+  margin-bottom:var(--space-1);color:var(--ink-2);font-size:var(--fs-sm);
   font-weight:var(--fw-ui);letter-spacing:.04em;
 }
 .rl-group-name{cursor:text;text-decoration:underline dotted var(--line-mid)}
@@ -2819,7 +2819,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .fb-rows.is-matrix .fb-empty{grid-column:1/-1}
 .fb-cols{display:inline-flex;align-items:center;gap:var(--gap-tight);margin-left:auto}
 .fb-cols>i{color:var(--muted);font-style:normal;font-size:var(--fs-badge)}
-.fb-hint{margin:0 0 var(--space-1);color:var(--ink-3);font-size:var(--fs-badge)}
+.fb-hint{margin:0 0 var(--space-1);color:var(--ink-2);font-size:var(--fs-badge)}
 /* ---------- マスの大きさも「− 数 ＋」（§9.311 D/E） ----------
    横12枚＋縦4枚＝16個の札を1マスの下段に並べていたので、列数を増やすと
    **折り返して下のマスへ重なっていた**（§9.303 ②）。並べるのをやめる。 */
@@ -2840,11 +2840,11 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
  font-size:var(--fs-badge);font-weight:var(--fw-ui)}
 /* 空きマスは**斜線の地**（§9.222 ③の空きマスと同じ見せ方にそろえる）。 */
 .fb-row-blank{
-  border-style:dashed;color:var(--ink-3);
+  border-style:dashed;color:var(--ink-2);
   background:repeating-linear-gradient(135deg,
     var(--surface-2) 0 6px,var(--surface-3) 6px 12px);
 }
-.fb-blank-name{flex:1 1 auto;min-width:0;font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--ink-3)}
+.fb-blank-name{flex:1 1 auto;min-width:0;font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--ink-2)}
 
 /* 横／縦の見出し（§9.255 ②）。**数字だけを並べない**——「4」が4列なのか
    4段なのか読めない。 */
@@ -2874,7 +2874,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    面を変える（色だけで伝えない・§CLAUDE 3ので、下段に「見出し」と書く）。 */
 .fb-row-head{background:var(--surface-2);border-color:var(--line-mid)}
 .fb-kindtag{font-style:normal;font-size:var(--fs-micro);font-weight:var(--fw-ui);
-  color:var(--nav);flex:0 0 auto}
+  color:var(--ink);flex:0 0 auto}
 /* ラベルを出さないマスは、名前の欄を薄くして「紙には出ない」ことを示す。 */
 .fb-row-bare .fb-label{color:var(--muted);border-style:dashed}
 /* 選んでいるマス。**下の設定欄がどのマスの話かを言う**（§CLAUDE 3）。 */
@@ -2886,19 +2886,19 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .fb-insp-empty{margin:0;color:var(--muted);font-size:var(--fs-badge);line-height:1.7}
 .fb-insp-head{display:flex;align-items:baseline;gap:var(--gap-inline);
   margin-bottom:var(--space-1);min-width:0}
-.fb-insp-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav);flex:none}
+.fb-insp-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);flex:none}
 .fb-insp-who{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--ink-2)}
 .fb-insp-at{flex:none;color:var(--muted);font-size:var(--fs-micro)}
 .fb-insp-body{display:flex;flex-wrap:wrap;gap:var(--gap-inline) var(--gap-section);
   align-items:center}
 .fb-insp-row{display:inline-flex;align-items:center;gap:var(--gap-tight);min-width:0}
-.fb-insp-row>span:first-child{color:var(--ink-3);font-size:var(--fs-badge);
+.fb-insp-row>span:first-child{color:var(--ink-2);font-size:var(--fs-badge);
   font-weight:var(--fw-ui);flex:0 0 auto}
 .fb-insp-note{flex:0 1 auto;min-width:0;font-style:normal;color:var(--muted);
   font-size:var(--fs-micro)}
 .fb-insp-chk{display:inline-flex;align-items:center;gap:2px;
-  color:var(--ink-3);font-size:var(--fs-badge)}
+  color:var(--ink-2);font-size:var(--fs-badge)}
 .fb-fnum{width:var(--w-xs);height:var(--ctl-h-xs);padding:0 var(--space-1);
   border:1px solid var(--line);border-radius:var(--radius-xs);
   background:var(--card-bg);font-size:var(--fs-badge)}
@@ -2936,7 +2936,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
  padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-card);background:var(--card-bg)}
 .cl-gauge-main{display:flex;align-items:baseline;gap:var(--gap-inline)}
 .cl-gauge-main>b{font-size:var(--fs-xl);font-weight:var(--fw-strong);color:var(--teal-dark);line-height:1.1}
-.cl-gauge-main>span{color:var(--ink-3);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+.cl-gauge-main>span{color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .cl-gauge-sub{color:var(--muted);font-size:var(--fs-badge)}
 .cl-bar{height:var(--space-2);margin-top:var(--space-1);border-radius:var(--radius-pill);
  background:var(--surface-3);overflow:hidden}
@@ -2953,16 +2953,16 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .cl-card{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;
  padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-card);background:#fff}
 .cl-card.is-on{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal-soft)}
-.cl-card.is-empty{background:var(--surface);color:var(--ink-3)}
+.cl-card.is-empty{background:var(--surface);color:var(--ink-2)}
 .cl-card-head{display:flex;align-items:center;gap:var(--gap-inline);min-width:0;cursor:pointer}
 .cl-card.is-empty .cl-card-head{cursor:default}
-.cl-card-head>b{min-width:0;flex:1 1 auto;font-size:var(--fs);font-weight:var(--fw-strong);color:var(--nav)}
+.cl-card-head>b{min-width:0;flex:1 1 auto;font-size:var(--fs);font-weight:var(--fw-strong);color:var(--ink)}
 .cl-ico{flex:0 0 auto;display:grid;place-items:center;width:var(--ctl-h-sm);height:var(--ctl-h-sm);
  border-radius:var(--radius-sm);background:var(--pale);color:var(--teal-dark);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .cl-badge{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-pill);
  background:var(--teal);color:#fff;font-size:var(--fs-badge);font-weight:var(--fw-ui);white-space:nowrap}
 .cl-badge.is-none{background:var(--surface-3);color:var(--muted)}
-.cl-note{margin:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
+.cl-note{margin:0;color:var(--ink-2);font-size:var(--fs-badge);line-height:1.6}
 .cl-kv{display:grid;grid-template-columns:var(--w-info-label) minmax(0,1fr);gap:2px var(--gap-inline);margin:0}
 .cl-kv>dt{color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .cl-kv>dd{margin:0;min-width:0;color:var(--ink-2);font-size:var(--fs-badge);line-height:1.6}
@@ -2974,10 +2974,10 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .cl-ex ul,.cl-keep ul{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:1px}
 .cl-ex li,.cl-keep li{display:flex;align-items:baseline;gap:var(--gap-tight);min-width:0;font-size:var(--fs-micro)}
 .cl-ex code,.cl-keep code{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
-.cl-ex em{flex:0 0 auto;font-style:normal;font-weight:var(--fw-strong);color:var(--ink-3)}
+.cl-ex em{flex:0 0 auto;font-style:normal;font-weight:var(--fw-strong);color:var(--ink-2)}
 .cl-ex i,.cl-keep i{flex:0 0 auto;font-style:normal;color:var(--muted)}
 .cl-more{color:var(--muted)}
-.cl-keep>span{color:var(--ink-3);font-size:var(--fs-micro)}
+.cl-keep>span{color:var(--ink-2);font-size:var(--fs-micro)}
 
 /* 足の帯。**押す前に何が消えるかを数字で言う**（推測させない）。 */
 .cl-foot{position:sticky;bottom:0;z-index:1;display:flex;align-items:center;gap:var(--gap-section);
@@ -2992,24 +2992,24 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 
 /* 定期掃除の設定。**この画面に置く**（同じ設定を2画面に置かない）。 */
 .cl-auto{margin-top:var(--space-4);padding-top:var(--space-3);border-top:1px solid var(--line)}
-.cl-auto>h4{margin:0 0 var(--space-1);font-size:var(--fs);color:var(--nav)}
+.cl-auto>h4{margin:0 0 var(--space-1);font-size:var(--fs);color:var(--ink)}
 .cl-on,.cl-off{padding:var(--pad-chip);border-radius:var(--radius-pill);font-size:var(--fs-badge);font-weight:var(--fw-ui)}
 .cl-on{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
 .cl-off{background:var(--surface-3);color:var(--muted);border:1px solid var(--line)}
-.cl-auto-lead{margin:0 0 var(--space-2);color:var(--ink-3);font-size:var(--fs-badge);line-height:1.7}
+.cl-auto-lead{margin:0 0 var(--space-2);color:var(--ink-2);font-size:var(--fs-badge);line-height:1.7}
 .cl-auto-fields{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--space-3);margin-bottom:var(--space-2)}
 .cl-auto-fields>.mm-field{flex:0 0 auto}
 .cl-auto-fields .mm-field-hint{max-width:var(--w-xl)}
 .cl-places{margin-top:var(--space-3)}
 
 /* いま空の種別は1行の札に畳む。**消さずに畳む**ので、何を見ているのかは残る。 */
-.cl-none{margin:0;padding:var(--space-4);text-align:center;color:var(--ink-3);font-size:var(--fs-sm);
+.cl-none{margin:0;padding:var(--space-4);text-align:center;color:var(--ink-2);font-size:var(--fs-sm);
  border:1px dashed var(--line);border-radius:var(--radius-card);background:var(--surface)}
 .cl-cold{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-tight);margin-top:var(--space-3)}
 .cl-cold>b{color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-ui);margin-right:var(--space-1)}
 .cl-cold-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);
  border:1px solid var(--line-soft);border-radius:var(--radius-pill);background:var(--surface);
- color:var(--ink-3);font-size:var(--fs-micro);white-space:nowrap}
+ color:var(--ink-2);font-size:var(--fs-micro);white-space:nowrap}
 .cl-cold-chip>i{font-style:normal;color:var(--muted);font-weight:var(--fw-strong)}
 .cl-cold-chip>em{font-style:normal;color:var(--muted)}
 
@@ -3103,7 +3103,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* いま何を決めてあるか（§2「思い出させない」）。**畳んだ段でも読める。** */
 .mm-tab-sum{
   min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  color:var(--ink-3);font-size:var(--fs-micro);line-height:var(--lh);font-weight:var(--fw-ui);
+  color:var(--ink-2);font-size:var(--fs-micro);line-height:var(--lh);font-weight:var(--fw-ui);
 }
 .mm-tabpanel[hidden]{display:none}
 
@@ -3139,7 +3139,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .pc-acc>summary:hover{background:var(--surface-2)}
 .pc-acc>summary b{font-size:var(--fs-sm);color:var(--ink)}
 /* **畳んだままでも「いま何が効いているか」を出す**（§3・§9.125）。 */
-.pc-acc-now{font-size:var(--fs-sm);color:var(--ink-3);min-width:0;
+.pc-acc-now{font-size:var(--fs-sm);color:var(--ink-2);min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pc-acc-body{display:flex;flex-direction:column;gap:var(--gap-inline);
   padding:0 var(--space-2) var(--space-2);min-width:0}
@@ -3223,7 +3223,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
     ——1マスが数pxだと四方の掴みどころが狙えない（§9.250 ④）。 */
  --rb-paper-h:min(56vh,38em)}
 .rb-aside-head{display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:wrap}
-.rb-aside-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav)}
+.rb-aside-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
 .rb-aside-tools{display:flex;gap:var(--gap-tight);margin-left:auto}
 /* 見本の出し方を切り替える札（§9.250 ⑤）。**入切は面で言う**（§9.229 ②）。 */
 .rb-tgl{
@@ -3261,7 +3261,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   border-left:3px solid var(--nav);border-radius:var(--radius-xs);
   background:var(--surface-2);color:var(--ink-2);
   font-size:var(--fs-micro);line-height:1.7}
-.rb-where>b{display:block;color:var(--nav);font-weight:var(--fw-strong)}
+.rb-where>b{display:block;color:var(--ink);font-weight:var(--fw-strong)}
 .rb-where>i{display:block;color:var(--muted);font-style:normal}
 .rb-where:empty{display:none}
 
@@ -3281,8 +3281,8 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .mm-hint-sec{flex:0 1 auto;max-width:100%;
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2)}
 .mm-hint-sec>summary{padding:var(--space-1) var(--space-2);
-  color:var(--ink-3);font-size:var(--fs-badge);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
-.mm-hint-sec>summary:hover{color:var(--nav)}
+  color:var(--ink-2);font-size:var(--fs-badge);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
+.mm-hint-sec>summary:hover{color:var(--ink)}
 .mm-hint-sec[open]{flex-basis:100%}
 .mm-hint-sec[open]>summary{border-bottom:1px solid var(--line-soft)}
 .mm-hint-sec>div{padding:var(--space-2)}
@@ -3383,7 +3383,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .mm-card-opt:hover{border-color:var(--teal-soft)}
 .mm-card-ico{flex:0 0 auto;display:grid;place-items:center;
  width:var(--ctl-h-sm);height:var(--ctl-h-sm);border-radius:var(--radius-xs);
- background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+ background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .mm-card-opt>b{display:block;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .mm-card-opt>small{display:block;color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-body)}
 /* 札の中は「絵／名前と一言」の2枚。**折り返さない**——折り返すと札ごとに
@@ -3469,11 +3469,11 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .rly-paper>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
 .rly-paper-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
 .rly-paper-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rly-paper-meta{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.rly-paper-meta{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .rly-paper-gone{font-size:var(--fs-micro);color:var(--warn-fg);font-weight:var(--fw-ui)}
 /* 紙の割り（列×段）。**いまの値を札で言う**（§CLAUDE 3）。 */
 .rly-grid{display:flex;align-items:center;gap:var(--gap-tight);margin-left:auto;
-  font-size:var(--fs-micro);color:var(--ink-3);font-weight:var(--fw-ui)}
+  font-size:var(--fs-micro);color:var(--ink-2);font-weight:var(--fw-ui)}
 .rly-grid-pick{display:inline-flex;gap:1px;border-radius:var(--radius-xs);
   border:1px solid var(--line);overflow:hidden}
 .rly-grid-pick>button{
@@ -3496,7 +3496,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
     minmax(var(--w-xs),auto) minmax(var(--w-sm),auto);
   padding:2px var(--space-2);border-bottom:1px solid var(--line-soft)}
 .rly-row.is-head{position:sticky;top:0;z-index:1;background:var(--surface);
-  border-bottom:1px solid var(--line);color:var(--ink-3);font-weight:var(--fw-strong)}
+  border-bottom:1px solid var(--line);color:var(--ink-2);font-weight:var(--fw-strong)}
 .rly-row.is-head>span{font-size:var(--fs-micro)}
 .rly-row:nth-of-type(even){background:var(--surface-2)}
 /* **出していない塊は薄くする。ただし色だけで伝えない**（§CLAUDE 3）
@@ -3517,9 +3517,9 @@ html[data-hint="off"] .mm-def-hint{display:none}
 /* 既定と違うところ（§9.254 ③）。**色だけで伝えない**ので、既定の値と
    いまの値を両方文字で出す。 */
 .rly-diff{font-style:normal;margin-left:var(--gap-tight);color:var(--warn-fg);font-weight:var(--fw-strong)}
-.rly-pos{color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rly-pos{color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
 .rly-act{display:flex;justify-content:flex-end}
-.rly-note{margin:0;flex:none;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.7}
+.rly-note{margin:0;flex:none;color:var(--ink-2);font-size:var(--fs-micro);line-height:1.7}
 /* ---------- 式で作る自動値（§9.256、利用者の指示） ----------
    **候補は押して入れる**（§CLAUDE 2「思い出させない」）——名前を打たせない。
    寸法・色はトークンから取る（リテラルを新しく足さない・§CLAUDE 7）。 */
@@ -3536,7 +3536,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
   max-height:calc(var(--ctl-h) * 4);overflow:auto;scrollbar-gutter:stable;
   padding:var(--pad-row);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
   background:var(--surface-2)}
-.op-formula-group{flex:0 0 100%;color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
+.op-formula-group{flex:0 0 100%;color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .op-formula-name{min-height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:1px solid var(--line-mid);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--ink-2);
@@ -3551,7 +3551,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
   border-radius:var(--radius-xs);background:var(--surface-2);
   border:1px solid var(--line-soft)}
 .ms-where.is-on{border-left:3px solid var(--teal)}
-.ms-where-label{font-size:var(--fs-micro);color:var(--ink-3);font-weight:var(--fw-ui)}
+.ms-where-label{font-size:var(--fs-micro);color:var(--ink-2);font-weight:var(--fw-ui)}
 .ms-where-path{flex:1 1 var(--w-lg);min-width:0;font-family:var(--font-mono,monospace);
   font-size:var(--fs-micro);color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -3567,19 +3567,19 @@ html[data-hint="off"] .mm-def-hint{display:none}
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface)}
 .pz-sum-cell{display:grid;gap:var(--space-1);align-content:start;min-width:0;padding:var(--space-2) var(--space-3)}
 .pz-sum-cell+.pz-sum-cell{border-left:1px solid var(--line-soft)}
-.pz-sum-cell>span{color:var(--ink-3);font-size:var(--fs-sm);font-weight:var(--fw-body)}
+.pz-sum-cell>span{color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-body)}
 .pz-sum-cell>b{color:var(--ink);font-size:var(--fs-lg);font-weight:var(--fw-strong);font-variant-numeric:tabular-nums;white-space:nowrap}
-.pz-sum-cell>b>i{margin-left:2px;font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-3)}
-.pz-sum-cell>small{color:var(--ink-soft);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pz-sum-cell>b>i{margin-left:2px;font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2)}
+.pz-sum-cell>small{color:var(--muted);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 配る相手がいるときだけ、そのマスを橙で言う（語も添えてある・§CLAUDE 3） */
 .pz-sum-cell.is-old{background:var(--warn-bg)}
 .pz-sum-cell.is-old>b,.pz-sum-cell.is-old>small{color:var(--warn-fg)}
 .pz-me{margin:0 0 var(--space-3);color:var(--ink-2);font-size:var(--fs-sm)}
-.pz-me small{display:block;margin-top:2px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pz-me small{display:block;margin-top:2px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pz-sec{margin-bottom:var(--space-4)}
 .pz-sec-head{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-2)}
 .pz-sec-head h4{margin:0;color:var(--ink);font-size:var(--fs);font-weight:var(--fw-strong)}
-.pz-sec-head small{color:var(--ink-soft);font-size:var(--fs-sm)}
+.pz-sec-head small{color:var(--muted);font-size:var(--fs-sm)}
 
 /* 1行=1端末。**見出しとセルは同じグリッド定義を共有する**（列がずれない）。 */
 .pz-table{border:1px solid var(--line-soft);border-radius:var(--radius-sm);overflow:hidden}
@@ -3591,7 +3591,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
   border-bottom:1px solid var(--line-soft)}
 .pz-row:last-child{border-bottom:0}
 .pz-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pz-headrow{background:var(--surface-3);color:var(--ink-3);font-weight:var(--fw-strong)}
+.pz-headrow{background:var(--surface-3);color:var(--ink-2);font-weight:var(--fw-strong)}
 .pz-row.is-me{background:var(--surface-2)}
 .pz-row :is(.pz-c-since,.pz-c-dur,.pz-c-seen){font-variant-numeric:tabular-nums}
 .pz-badge{display:inline-block;padding:0 var(--space-2);border-radius:var(--radius-pill);
@@ -3604,23 +3604,23 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .pz-vst.is-ok{color:var(--success)}
 .pz-vst.is-old{color:var(--warn-fg)}
 /* 判定の外（§9.516・開発者の端末）。要更新でも最新でもない——色は付けず、字が言う。 */
-.pz-vst.is-out{color:var(--ink-3);font-weight:var(--fw-strong)}
+.pz-vst.is-out{color:var(--ink-2);font-weight:var(--fw-strong)}
 .pz-ver{color:var(--ink-2);font-variant-numeric:tabular-nums}
-.pz-shell{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.pz-shell{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--ink-2);font-variant-numeric:tabular-nums}
 .pz-shell.is-old{color:var(--warn-fg);font-weight:var(--fw-strong)}
 /* 接続の記録の表。道具の帯は一覧と同じ並び（左＝見せ方の選択・右端＝写す）。 */
 .pz-tools{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
 .pz-tools-end{margin-left:auto;display:inline-flex;gap:var(--space-2)}
 .pz-seg{display:inline-flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
 .pz-seg button{height:calc(var(--ctl-h-sm) - 4px);padding:0 var(--ctl-pad-x-xs);border:1px solid transparent;
-  border-radius:var(--radius-sm);background:transparent;color:var(--ink-3);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
+  border-radius:var(--radius-sm);background:transparent;color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
 .pz-check{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
-.pz-count-note{color:var(--ink-3);font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
+.pz-count-note{color:var(--ink-2);font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
 .pz-htable-wrap{border:1px solid var(--line-soft);border-radius:var(--radius-sm);overflow:auto}
 .pz-htable{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 .pz-htable th,.pz-htable td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
   text-align:left;white-space:nowrap;max-width:var(--w-xl);overflow:hidden;text-overflow:ellipsis}
-.pz-htable th{position:sticky;top:0;background:var(--surface-3);color:var(--ink-3);font-weight:var(--fw-strong)}
+.pz-htable th{position:sticky;top:0;background:var(--surface-3);color:var(--ink-2);font-weight:var(--fw-strong)}
 .pz-htable tr:last-child td{border-bottom:0}
 .pz-htable td.pz-num{font-variant-numeric:tabular-nums}
 .pz-htable td.is-online{color:var(--teal-dark);font-weight:var(--fw-strong)}

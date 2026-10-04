@@ -1175,7 +1175,7 @@ const columnTint=(()=>{
     決め直すことになる（§CLAUDE 画面基準 3。色だけで伝えないので、
     呼び名と意味は必ず文字で出す）。 */
  const PALETTE={
-  gray  :{label:'灰',   note:'目立たせない', bg:'var(--surface-2)',    ink:'var(--ink-3)',      line:'var(--line-mid)'},
+  gray  :{label:'灰',   note:'目立たせない', bg:'var(--surface-2)',    ink:'var(--ink-2)',      line:'var(--line-mid)'},
   slate :{label:'石',   note:'締め・基準',   bg:'var(--rs-slate-bg)',  ink:'var(--rs-slate)',   line:'var(--rs-slate-border)'},
   teal  :{label:'青緑', note:'基準・進行',   bg:'var(--pale)',         ink:'var(--teal-dark)',  line:'var(--teal)'},
   cyan  :{label:'水',   note:'確認・検査',   bg:'var(--rs-cyan-bg)',   ink:'var(--rs-cyan)',    line:'var(--rs-cyan-border)'},

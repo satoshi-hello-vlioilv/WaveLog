@@ -16,7 +16,7 @@
 .db-state-badge{display:inline-block;padding:var(--pad-chip);border-radius:var(--radius-md);
  font-size:var(--fs-micro);font-weight:var(--fw-ui);border:1px solid transparent}
 .db-state-badge.running{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
-.db-state-badge.idle{background:var(--bg);border-color:var(--line-soft);color:var(--ink-soft)}
+.db-state-badge.idle{background:var(--bg);border-color:var(--line-soft);color:var(--muted)}
 .db-state-badge.done{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .db-state-badge.ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
 .db-state-badge.editing{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
@@ -68,7 +68,7 @@
 .cal-detail-empty{margin:auto;padding:var(--space-5);color:var(--muted);text-align:center;font-size:var(--fs-base-sm)}
 .cal-detail-head{position:sticky;top:0;display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);padding:var(--pad-card);background:var(--bg);border-bottom:1px solid var(--line);z-index:1}
 .cal-detail-head b{font-size:var(--fs);color:var(--ink)}
-.cal-detail-head span{font-size:var(--fs-micro);color:#526970;font-weight:var(--fw-ui)}
+.cal-detail-head span{font-size:var(--fs-micro);color:var(--ink-2);font-weight:var(--fw-ui)}
 .cal-lot-list{display:flex;flex-direction:column}
 .cal-lot-row{display:flex;flex-direction:column;gap:var(--space-1);padding:10px 16px;border-bottom:1px solid var(--bg)}
 .cal-lot-main{display:flex;align-items:center;gap:var(--space-2)}

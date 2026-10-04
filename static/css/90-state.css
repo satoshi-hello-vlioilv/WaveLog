@@ -97,7 +97,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 #complete.validation-blocked{background:var(--warn-solid);border-color:var(--warn-solid)}
 .dimension-locked{
   background:var(--surface-3);
-  color:#66777c;
+  color:var(--muted);
   cursor:not-allowed;
 }
 .dimension-locked::placeholder{color:#66777c}

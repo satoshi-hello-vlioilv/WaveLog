@@ -111,7 +111,7 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar :is(.sc-mode-toggle-btn,.sc-board-window-btn,.ac-chip){height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
 /* ログ・診断の段（報告する／ログを見る／点検と整理・§9.510）も同じ部品。 */
 .hd-viewbar .lg-step{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
-.hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:var(--radius-pill);background:var(--pale);border:1px solid var(--card-border);color:var(--nav);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
+.hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:var(--radius-pill);background:var(--pale);border:1px solid var(--card-border);color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
 .hd-viewbar .sc-lock-badge{padding:var(--pad-chip);border-radius:var(--radius-pill);font-size:var(--fs-micro)}
 /* 編集権の在席表示（§9.211 ②）。ヘッダーへ相乗りしたときも、
    **文字は読める大きさのまま**にする（状態を色だけで伝えないため）。 */
@@ -120,7 +120,7 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
   font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;
 }
 /* 件数は帯の字と同じ大きさ（§9.507。前は11px）。仕掛一覧の「全 N件」と同じ顔。 */
-.hd-viewbar .record-search-result{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-3);white-space:nowrap;
+.hd-viewbar .record-search-result{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 .hd-viewbar .sc-refresh,.hd-viewbar .rp-btn-secondary{border-color:var(--teal);color:#0c5d67}
 /* 実績カレンダー: 月送り・今月と、指標/対象ステータスの2択(.db-seg)。 */
