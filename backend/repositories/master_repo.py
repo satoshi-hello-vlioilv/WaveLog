@@ -1996,6 +1996,28 @@ def column_layout_targets(c,owner=''):
   cur.execute(f'SELECT DISTINCT [対象] FROM [{COLUMN_LAYOUT_TABLE}] ORDER BY [対象]')
  return [str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()]
 
+def _layout_column_maps(sorts,aligns,places):
+ """列ごとの並べ替え・揃え・配置を、書く形へ整える（`set_column_layout()`の下ごしらえ）。
+ **どれも既定の行は持たない**（`extra`で「設定がある列」を数えるので、空の指定を残すと
+ 並びに載っていない列が理由なく生き残る）。"""
+ from .. import sort_order
+ sortspec={}
+ for k,v in (sorts if isinstance(sorts,dict) else {}).items():
+  txt=sort_order.spec_json(v)
+  if txt:sortspec[str(k or '').strip()]=txt
+ # 揃え(§9.239 ④)。
+ align={}
+ for k,v in (aligns if isinstance(aligns,dict) else {}).items():
+  if not isinstance(v,dict):continue
+  va=normalize_align(v.get('data'));ha=normalize_align(v.get('head'),True)
+  if va or ha:align[str(k or '').strip()]={'data':va,'head':ha}
+ # 段組の配置(§9.553)。読めない・盤からはみ出す値は持たない（自動で置く）。
+ place={}
+ for k,v in (places if isinstance(places,dict) else {}).items():
+  pl=normalize_place(v)
+  if pl and str(k or '').strip():place[str(k).strip()]=pl
+ return sortspec,align,place
+
 def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None,
                       formulas=None,locks=None,sorts=None,aligns=None,fields=None,owner='',places=None):
  """対象(target)の行をまとめて書き直す。渡された順序がそのまま表示順になる。
@@ -2039,24 +2061,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  rule=rules if isinstance(rules,dict) else {}
  formula=formulas if isinstance(formulas,dict) else {}
  lock={str(x or '').strip() for x in (locks or []) if str(x or '').strip()}
- from .. import sort_order
- sortspec={}
- for k,v in (sorts if isinstance(sorts,dict) else {}).items():
-  txt=sort_order.spec_json(v)
-  if txt:sortspec[str(k or '').strip()]=txt
- # 揃え(§9.239 ④)。**どちらも既定の行は持たない**（下の`extra`で
- # 「設定がある列」を数えるので、空の指定を残すと並びに載っていない列が
- # 理由なく生き残る）。
- align={}
- for k,v in (aligns if isinstance(aligns,dict) else {}).items():
-  if not isinstance(v,dict):continue
-  va=normalize_align(v.get('data'));ha=normalize_align(v.get('head'),True)
-  if va or ha:align[str(k or '').strip()]={'data':va,'head':ha}
- # 段組の配置(§9.553)。読めない・盤からはみ出す値は持たない（自動で置く）。
- place={}
- for k,v in (places if isinstance(places,dict) else {}).items():
-  pl=normalize_place(v)
-  if pl and str(k or '').strip():place[str(k).strip()]=pl
+ sortspec,align,place=_layout_column_maps(sorts,aligns,places)
  cur=c.cursor()
  # 所有者の行だけを書き直す(§9.259)。**所有者を絞り忘れると、個人の設定を
  # 保存した瞬間に共通の設定が消える**（あるいはその逆）。

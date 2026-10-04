@@ -707,6 +707,21 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
          「0件選択中」と出ているのは読まれない飾りにしかならない。 -->
     <div class="sc-pick-bar" id="scPickBar" hidden></div>
    </div></template>
+<!-- 段組の配置の盤（§9.553・`record-layout.js`の`board()`）。左＝使うデータ・中＝盤・右＝選んだ項目。 -->
+<template id="tpl-record-board"><div class="rcl-wrap">
+    <aside class="rcl-pal"><h4>使うデータ<small>チェックで盤へ置く</small></h4>
+     <input type="search" class="rcl-search" placeholder="項目を探す" aria-label="項目を探す">
+     <div class="rcl-pal-list"></div></aside>
+    <section class="rcl-main"><header class="rcl-head"><h4>1件ぶんの配置<small>横<i data-tpl-slot="units"></i>マス。掴んで動かす・右端を引いて幅・矢印キーで1マス（Shift＋←→で幅）・重なった項目は空いた所へ押し出す</small></h4>
+      <span class="rcl-grow"></span>
+      <button type="button" class="rcl-btn" data-rl="lane">＋ 段を足す</button>
+      <button type="button" class="rcl-btn" data-rl="auto" title="置いた位置を全部捨てて、幅から自動で並べ直します">すべて自動に戻す</button>
+      <button type="button" class="rcl-btn" data-rl="close" title="保存せずに盤を閉じます（下書きは捨てます）">やめる</button>
+      <button type="button" class="rcl-btn rcl-btn--primary" data-rl="save">この配置を保存</button></header>
+     <div class="rcl-lanes"></div>
+     <div class="rcl-board" role="group" aria-label="1件ぶんの配置の盤"></div>
+     <p class="rcl-note" role="status"></p></section>
+    <aside class="rcl-insp"></aside></div></template>
 <template id="tpl-filter-bar">
       <div class="filter-search-row">
         <!-- ---------- 並びは「絞り込む（広い→狭い）」→ 右端に「見せ方」（§9.505、利用者の指示） ----------

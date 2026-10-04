@@ -145,207 +145,220 @@
 
  /* ---------- 画面の2段組（一覧） ----------
     `src`: {plan, head:k=>見出しのHTML, rows:[{key,attrs,lead,tail,cell:k=>{html,cls,title}}], leadHead, tailHead}
-    1件＝1つの`.rl-rec`（段ぶんの行を持つ grid）。**先頭（選ぶ印）と末尾（操作）は段をまたぐ**。 */
+    1件＝1つの`.rcl-rec`（段ぶんの行を持つ grid）。**先頭（選ぶ印）と末尾（操作）は段をまたぐ**。 */
  function gridHtml(src){
   const p=src.plan,L=p.lines;
   const col=c=>`grid-column:${c.col+2}/span ${c.span};grid-row:${c.line}`;
-  const lead=h=>`<span class="rl-lead" style="grid-row:1/span ${L}">${h||''}</span>`;
-  const tail=h=>`<span class="rl-tail" style="grid-row:1/span ${L}">${h||''}</span>`;
-  const head=`<div class="rl-rec rl-head" style="--rl-lines:${L}">`+lead(src.leadHead)
-   +p.cells.map(c=>`<span class="rl-c rl-l${c.line}" style="${col(c)}" title="${esc(src.title?src.title(c.k):'')}">${src.head(c.k)}</span>`).join('')
+  const lead=h=>`<span class="rcl-lead" style="grid-row:1/span ${L}">${h||''}</span>`;
+  const tail=h=>`<span class="rcl-tail" style="grid-row:1/span ${L}">${h||''}</span>`;
+  const head=`<div class="rcl-rec rcl-head" style="--rcl-lines:${L}">`+lead(src.leadHead)
+   +p.cells.map(c=>`<span class="rcl-c rcl-l${c.line}" style="${col(c)}" title="${esc(src.title?src.title(c.k):'')}">${src.head(c.k)}</span>`).join('')
    +tail(src.tailHead)+`</div>`;
-  const body=(src.rows||[]).map(r=>`<div class="rl-rec${r.cls?' '+r.cls:''}" style="--rl-lines:${L}"${r.attrs||''}>`+lead(r.lead)
+  const body=(src.rows||[]).map(r=>`<div class="rcl-rec${r.cls?' '+r.cls:''}" style="--rcl-lines:${L}"${r.attrs||''}>`+lead(r.lead)
    +p.cells.map(c=>{const v=r.cell(c.k)||{};
-     return `<span class="rl-c rl-l${c.line}${v.cls?' '+v.cls:''}" data-col="${esc(c.k)}" style="${col(c)}" title="${esc(v.title||'')}">${v.html||''}</span>`}).join('')
+     return `<span class="rcl-c rcl-l${c.line}${v.cls?' '+v.cls:''}" data-col="${esc(c.k)}" style="${col(c)}" title="${esc(v.title||'')}">${v.html||''}</span>`}).join('')
    +tail(r.tail)+`</div>`).join('');
-  return `<div class="rl-grid" style="--rl-units:${UNITS}">${head}${body}</div>`;
+  return `<div class="rcl-grid" style="--rcl-units:${UNITS}">${head}${body}</div>`;
  }
 
+ /* 盤の状態と、状態から引く答え（描く・動かす・配線が同じ1つを読む）。 */
+ function boardState(host,src){
+  const l0=WL.columnLayout.get(src.target)||{};
+  const st={places:JSON.parse(JSON.stringify(l0.places||{})),hidden:new Set(src.initialHidden?src.initialHidden():(l0.hidden||[])),
+   frozen:false,sel:'',drag:null,msg:'',query:'',lanes:DEFAULT_LINES};
+  st.frozen=Object.keys(st.places).length>0;
+  const B={host,src,st};
+  B.keys=()=>src.keys();
+  B.cur=()=>plan(B.keys().filter(k=>!st.hidden.has(k)),{placeOf:k=>st.places[k]||null,naturalPx:src.naturalPx,
+   usablePx:src.usablePx(),lineHint:st.frozen?null:src.lineHint});
+  B.push=()=>src.onDraft({places:{...st.places},hidden:[...st.hidden]});
+  /* 盤に出す段の数＝足した段か、使っている段の多いほう（使っている段は消さない）。 */
+  B.lanes=pl=>Math.max(st.lanes,(pl||B.cur()).lines);
+  B.nm=(line,pl)=>lineName(line,B.lanes(pl));
+  /* 最初の1手で今の見た目を固める（自動のままだと残りが詰め直されて跳ぶ）。 */
+  B.freezeNow=()=>{if(!st.frozen){st.places=freeze(B.cur());st.frozen=true}};
+  B.paint=()=>boardPaint(B);
+  B.$=sel=>host.querySelector(sel);
+  return B;
+ }
+ const hitsOf=(cells,k,p)=>cells.filter(c=>c.k!==k&&c.line===p.line&&c.col<p.col+p.span&&p.col<c.col+c.span);
+ /* 位置を変える答えは1本（掴む・矢印キー・数の欄が同じ道を通る）。
+    **重なった項目は押し出して空いた所へ回す**（自動の位置・点線になる）——盤が埋まっていても
+    並べ替えられるように。押し出した先が無い（盤に入らない）ときだけ置かずに理由を言う。 */
+ function boardMove(B,k,p){
+  const {st,src}=B;
+  B.freezeNow();
+  const q={line:Math.min(LINES,Math.max(1,p.line)),span:Math.min(UNITS,Math.max(1,p.span)),col:0};
+  q.col=Math.min(UNITS-q.span,Math.max(0,p.col));
+  const before=B.cur();
+  const hits=hitsOf(before.cells,k,q).map(c=>c.k);
+  const keep={...st.places};
+  hits.forEach(h=>{delete st.places[h]});
+  st.places[k]=q;
+  /* **新しく盤からあふれる項目が出るときだけ**断る（もともと入りきらない項目は数えない）。 */
+  const lost=B.cur().overflow.filter(x=>!before.overflow.includes(x));
+  if(lost.length){
+   st.places=keep;
+   st.msg=`ここへ置くと「${lost.map(h=>src.labelOf(h)).join('・')}」の入る所が盤に残りません（${B.nm(q.line)}の${q.col+1}〜${q.col+q.span}マス目）。段を足すか、使わない項目を外してください。`;
+   B.paint();return false;
+  }
+  st.msg=hits.length?`「${hits.map(h=>src.labelOf(h)).join('・')}」を押し出して空いた所へ回しました（点線＝自動の位置）。`:'';
+  B.push();B.paint();return true;
+ }
+ function boardSetUse(B,k,on){
+  const {st}=B;
+  if(on){st.hidden.delete(k);}
+  else{st.hidden.add(k);delete st.places[k];if(st.sel===k)st.sel=''}
+  B.push();B.paint();
+ }
+ function boardPaint(B){
+  const pl=B.cur();
+  paintPalette(B,pl);paintBoard(B,pl);paintNote(B,pl);paintInspector(B,pl);
+ }
+ /* 使うデータ（左）: 群ごとに、使う印と「いまどこにあるか」。 */
+ function paintPalette(B,pl){
+  const {st,src}=B;
+  const placedAt={};pl.cells.forEach(c=>{placedAt[c.k]=c});
+  const q=st.query.trim();
+  const groups=new Map();
+  B.keys().filter(k=>!q||String(src.labelOf(k)).includes(q)||String(k).includes(q)).forEach(k=>{
+   const g=src.groupOf(k)||'その他';if(!groups.has(g))groups.set(g,[]);groups.get(g).push(k);
+  });
+  const where=k=>{
+   if(st.hidden.has(k))return '<i class="rcl-st is-off">使わない</i>';
+   const c=placedAt[k];
+   if(!c)return pl.overflow.includes(k)?'<i class="rcl-st is-bad">盤に入らない</i>':'';
+   return `<i class="rcl-st${c.auto?' is-auto':''}">${B.nm(c.line,pl)} ${c.col+1}〜${c.col+c.span}${c.auto?'（自動）':''}</i>`;
+  };
+  B.$('.rcl-pal-list').innerHTML=[...groups].map(([g,list])=>
+   `<div class="rcl-grp">${esc(g)}<small>${list.filter(k=>!st.hidden.has(k)).length} / ${list.length}</small></div>`
+   +list.map(k=>`<label class="rcl-pal-item${st.sel===k?' is-sel':''}" data-k="${esc(k)}"><input type="checkbox" data-use="${esc(k)}"${st.hidden.has(k)?'':' checked'}>`
+    +`<span>${esc(src.labelOf(k))}</span>${where(k)}</label>`).join('')).join('')
+   ||'<p class="rcl-empty">当たる項目がありません。</p>';
+ }
+ /* 盤（中）: 段の名前・項目の札・掴んでいる間の影。 */
+ function paintBoard(B,pl){
+  const {st,src}=B;
+  const bd=B.$('.rcl-board'),L=B.lanes(pl),ln=B.$('.rcl-lanes');
+  bd.style.setProperty('--rcl-lines',String(L));
+  ln.style.setProperty('--rcl-lines',String(L));
+  ln.innerHTML=Array.from({length:L},(_,i)=>`<span>${B.nm(i+1,pl)}</span>`).join('');
+  const add=B.$('[data-rl="lane"]');
+  add.disabled=L>=LINES;add.title=L>=LINES?`段は${LINES}段までです`:`段を1つ足します（いま${L}段・最大${LINES}段）`;
+  bd.innerHTML=pl.cells.map(c=>`<button type="button" class="rcl-chip${c.auto?' is-auto':''}${st.sel===c.k?' is-sel':''}" data-k="${esc(c.k)}"`
+   +` style="grid-column:${c.col+1}/span ${c.span};grid-row:${c.line}" title="${esc(src.labelOf(c.k))}（${B.nm(c.line,pl)} ${c.col+1}〜${c.col+c.span}マス目${c.auto?'・自動':''}）　掴んで動かす／右端を引いて幅／矢印キーで1マス・Shift＋←→で幅">`
+   +`<span>${esc(src.labelOf(c.k))}</span><i class="rcl-grip" data-grip="${esc(c.k)}" aria-hidden="true"></i></button>`).join('')
+   +(st.drag?`<span class="rcl-ghost${st.drag.bad?' is-bad':''}" style="grid-column:${st.drag.p.col+1}/span ${st.drag.p.span};grid-row:${st.drag.p.line}"></span>`:'');
+ }
+ /* 盤の下の1行: 入らない・重なった・断った理由。無ければ置いた数と1マスの紙の寸法。 */
+ function paintNote(B,pl){
+  const {st,src}=B;
+  const n=pl.cells.length,auto=pl.cells.filter(c=>c.auto).length;
+  const names=list=>list.map(k=>esc(src.labelOf(k))).join('・');
+  const notes=[];
+  if(pl.conflicts.length)notes.push(`<b class="rcl-bad">重なっていた ${pl.conflicts.length}項目を空いた所へ回しました</b>（${names(pl.conflicts)}）`);
+  if(pl.overflow.length)notes.push(`<b class="rcl-bad">盤に入らない ${pl.overflow.length}項目は紙にも一覧にも出ません</b>（${names(pl.overflow)}）。段を足すか、使わない項目を外してください。`);
+  if(st.msg)notes.push(`<b class="rcl-bad">${esc(st.msg)}</b>`);
+  B.$('.rcl-note').innerHTML=notes.join('<br>')
+   ||`${n}項目を置いています${auto?`（うち自動 ${auto}・点線）。掴んで動かすとその場所で固まります`:''}。1マスは紙で約${src.mmPerUnit().toFixed(1)}mmです。`;
+ }
+ /* 選んだ項目（右）: 段・位置・幅を数で直す。 */
+ function paintInspector(B,pl){
+  const {st,src}=B;
+  const box=B.$('.rcl-insp');
+  const c=pl.cells.find(x=>x.k===st.sel);
+  if(!c){box.innerHTML='<h4>選んだ項目</h4><p class="rcl-empty">盤の項目を押すと、ここで段・位置・幅を数で直せます。</p>';return}
+  box.innerHTML=`<h4>選んだ項目</h4><dl>
+   <dt>項目</dt><dd><b>${esc(src.labelOf(c.k))}</b>${c.auto?' <small>（自動の位置）</small>':''}</dd>
+   <dt>段</dt><dd><span class="rcl-seg">${Array.from({length:B.lanes(pl)},(_,i)=>`<button type="button" data-line="${i+1}" class="${c.line===i+1?'is-on':''}">${B.nm(i+1,pl)}</button>`).join('')}</span></dd>
+   <dt>位置</dt><dd><input type="number" min="1" max="${UNITS}" value="${c.col+1}" data-num="col"> マス目から</dd>
+   <dt>幅</dt><dd><input type="number" min="1" max="${UNITS}" value="${c.span}" data-num="span"> マス（紙 約${Math.round(c.span*src.mmPerUnit())}mm）</dd>
+  </dl><button type="button" class="rcl-btn" data-off="${esc(c.k)}">この項目を使わない</button>`;
+  box.querySelectorAll('[data-line]').forEach(b=>b.onclick=()=>boardMove(B,c.k,{line:Number(b.dataset.line),col:c.col,span:c.span}));
+  box.querySelectorAll('[data-num]').forEach(inp=>inp.onchange=()=>{
+   const v=Math.round(Number(inp.value)||1);
+   boardMove(B,c.k,inp.dataset.num==='col'?{line:c.line,col:v-1,span:c.span}:{line:c.line,col:c.col,span:v});
+  });
+  box.querySelector('[data-off]').onclick=()=>boardSetUse(B,c.k,false);
+ }
+ /* 盤の上の位置（マス・段）。**器の内寸**で測る（枠と余白を引く）。 */
+ function cellAt(B,ev){
+  const bd=B.$('.rcl-board'),r=bd.getBoundingClientRect(),cs=getComputedStyle(bd);
+  const pl=parseFloat(cs.paddingLeft)||0,pt=parseFloat(cs.paddingTop)||0;
+  const w=(r.width-pl-(parseFloat(cs.paddingRight)||0))/UNITS;
+  const L=B.lanes();
+  const h=(r.height-pt-(parseFloat(cs.paddingBottom)||0))/L;
+  return {u:Math.floor((ev.clientX-r.left-pl)/w),line:1+Math.max(0,Math.min(L-1,Math.floor((ev.clientY-r.top-pt)/h))),w};
+ }
+ /* 掴んで動かす・右端を引いて幅（離すと`boardMove()`の1本を通る）。 */
+ function wireDrag(B){
+  const {st}=B,bd=B.$('.rcl-board');
+  bd.addEventListener('pointerdown',e=>{
+   const chip=e.target.closest('.rcl-chip');if(!chip)return;
+   const k=chip.dataset.k,c=B.cur().cells.find(x=>x.k===k);if(!c)return;
+   st.sel=k;
+   const at=cellAt(B,e);
+   st.drag={k,mode:e.target.closest('[data-grip]')?'span':'move',grab:at.u-c.col,from:{...c},p:{line:c.line,col:c.col,span:c.span},bad:false,moved:false};
+   try{bd.setPointerCapture(e.pointerId)}catch(err){WL.quiet.note('掴めない（掴まなくても動かせる）',err)}
+   e.preventDefault();B.paint();
+  });
+  bd.addEventListener('pointermove',e=>{
+   const d=st.drag;if(!d)return;
+   const at=cellAt(B,e);
+   const p=d.mode==='span'?{line:d.from.line,col:d.from.col,span:Math.max(1,Math.min(UNITS-d.from.col,at.u-d.from.col+1))}
+                          :{line:at.line,col:Math.max(0,Math.min(UNITS-d.from.span,at.u-d.grab)),span:d.from.span};
+   if(p.line===d.p.line&&p.col===d.p.col&&p.span===d.p.span)return;
+   d.p=p;d.moved=true;d.bad=hitsOf(B.cur().cells,d.k,p).length>0;B.paint();   // 重なる所は縁の色で言う（離すと押し出す）
+  });
+  bd.addEventListener('pointerup',()=>{
+   const d=st.drag;if(!d)return;st.drag=null;
+   if(d.moved)boardMove(B,d.k,d.p);else B.paint();
+  });
+  bd.addEventListener('pointercancel',()=>{st.drag=null;B.paint()});
+ }
+ /* 鍵盤: 矢印で1マス・Shift＋←→で幅・Deleteで使わない。 */
+ function wireKeys(B){
+  B.$('.rcl-board').addEventListener('keydown',e=>{
+   const chip=e.target.closest('.rcl-chip');if(!chip)return;
+   const c=B.cur().cells.find(x=>x.k===chip.dataset.k);if(!c)return;
+   const k=c.k;let p=null;
+   if(e.key==='ArrowLeft')p=e.shiftKey?{...c,span:c.span-1}:{...c,col:c.col-1};
+   else if(e.key==='ArrowRight')p=e.shiftKey?{...c,span:c.span+1}:{...c,col:c.col+1};
+   else if(e.key==='ArrowUp')p={...c,line:c.line-1};
+   else if(e.key==='ArrowDown')p={...c,line:c.line+1};
+   else if(e.key==='Delete'){e.preventDefault();boardSetUse(B,k,false);return}
+   if(!p)return;
+   e.preventDefault();B.st.sel=k;boardMove(B,k,p);
+   B.$(`.rcl-chip[data-k="${CSS.escape(k)}"]`)?.focus();
+  });
+ }
+ function wireBoard(B){
+  const {st,src}=B;
+  B.$('.rcl-search').oninput=e=>{st.query=e.target.value;B.paint()};
+  B.$('.rcl-pal-list').addEventListener('click',e=>{
+   const cb=e.target.closest('[data-use]');
+   if(cb){boardSetUse(B,cb.dataset.use,cb.checked);return}
+   const it=e.target.closest('[data-k]');
+   if(it&&!st.hidden.has(it.dataset.k)){st.sel=it.dataset.k;B.paint()}
+  });
+  wireDrag(B);wireKeys(B);
+  B.$('[data-rl="auto"]').onclick=()=>{st.places={};st.frozen=false;st.msg='';st.lanes=DEFAULT_LINES;B.push();B.paint()};
+  B.$('[data-rl="lane"]').onclick=()=>{st.lanes=Math.min(LINES,B.lanes()+1);B.paint()};
+  B.$('[data-rl="save"]').onclick=()=>src.onSave({places:{...st.places},hidden:[...st.hidden]});
+  B.$('[data-rl="close"]').onclick=()=>src.onClose();
+ }
  /* ---------- 配置の盤 ----------
     `src`: {
       target, keys():候補の全列, labelOf(k), groupOf(k):群の名前, naturalPx(k), usablePx(), lineHint(k),
       mmPerUnit():1マスが紙で何mmか, onDraft(layout):下書きを当てる, onSave(body):保存, onClose()
     }
-    盤の中身は**下書き**（`places`/`hidden`）。保存を押すまで保存済みは変わらない（§9.212 ③）。 */
+    盤の中身は**下書き**（`places`/`hidden`）。保存を押すまで保存済みは変わらない（§9.212 ③）。
+    骨組みは`index.html`の`<template id="tpl-record-board">`（§9.522）。 */
  function board(host,src){
-  const st={places:{},hidden:new Set(),frozen:false,sel:'',drag:null,msg:'',query:'',lanes:DEFAULT_LINES};
-  const l0=WL.columnLayout.get(src.target)||{};
-  st.places=JSON.parse(JSON.stringify(l0.places||{}));
-  st.frozen=Object.keys(st.places).length>0;
-  st.hidden=new Set(src.initialHidden?src.initialHidden():(l0.hidden||[]));
-  const keys=()=>src.keys();
-  const visible=()=>keys().filter(k=>!st.hidden.has(k));
-  const cur=()=>plan(visible(),{placeOf:k=>st.places[k]||null,naturalPx:src.naturalPx,
-   usablePx:src.usablePx(),lineHint:st.frozen?null:src.lineHint});
-  const push=()=>src.onDraft({places:{...st.places},hidden:[...st.hidden]});
-  /* 盤に出す段の数＝足した段か、使っている段の多いほう（使っている段は消さない）。 */
-  const lanes=pl=>Math.max(st.lanes,(pl||cur()).lines);
-  const nm=(line,pl)=>lineName(line,lanes(pl));
-  /* 最初の1手で今の見た目を固める（自動のままだと残りが詰め直されて跳ぶ）。 */
-  const freezeNow=()=>{if(!st.frozen){st.places=freeze(cur());st.frozen=true}};
-  const overlapOf=(k,p)=>{
-   const pl=cur();
-   return pl.cells.find(c=>c.k!==k&&c.line===p.line&&c.col<p.col+p.span&&p.col<c.col+c.span)||null;
-  };
-  /* 位置を変える答えは1本（掴む・矢印キー・数の欄が同じ道を通る）。
-     **重なった項目は押し出して空いた所へ回す**（自動の位置・点線になる）——盤が埋まっていても
-     並べ替えられるように。押し出した先が無い（盤に入らない）ときだけ置かずに理由を言う。 */
-  function move(k,p){
-   freezeNow();
-   const q={line:Math.min(LINES,Math.max(1,p.line)),span:Math.min(UNITS,Math.max(1,p.span)),col:0};
-   q.col=Math.min(UNITS-q.span,Math.max(0,p.col));
-   const before=cur();
-   const hits=before.cells.filter(c=>c.k!==k&&c.line===q.line&&c.col<q.col+q.span&&q.col<c.col+c.span).map(c=>c.k);
-   const keep={...st.places};
-   hits.forEach(h=>{delete st.places[h]});
-   st.places[k]=q;
-   /* **新しく盤からあふれる項目が出るときだけ**断る（もともと入りきらない項目は数えない）。 */
-   const lost=cur().overflow.filter(x=>!before.overflow.includes(x));
-   if(lost.length){
-    st.places=keep;
-    st.msg=`ここへ置くと「${lost.map(h=>src.labelOf(h)).join('・')}」の入る所が盤に残りません（${nm(q.line)}の${q.col+1}〜${q.col+q.span}マス目）。段を足すか、使わない項目を外してください。`;
-    paint();return false;
-   }
-   st.msg=hits.length?`「${hits.map(h=>src.labelOf(h)).join('・')}」を押し出して空いた所へ回しました（点線＝自動の位置）。`:'';
-   push();paint();return true;
-  }
-  function setUse(k,on){
-   if(on){st.hidden.delete(k);}
-   else{st.hidden.add(k);delete st.places[k];if(st.sel===k)st.sel=''}
-   push();paint();
-  }
-  function paint(){
-   const pl=cur();
-   const placedAt={};pl.cells.forEach(c=>{placedAt[c.k]=c});
-   const q=st.query.trim();
-   const groups=new Map();
-   keys().filter(k=>!q||String(src.labelOf(k)).includes(q)||String(k).includes(q)).forEach(k=>{
-    const g=src.groupOf(k)||'その他';if(!groups.has(g))groups.set(g,[]);groups.get(g).push(k);
-   });
-   const where=k=>{
-    if(st.hidden.has(k))return '<i class="rl-st is-off">使わない</i>';
-    const c=placedAt[k];
-    if(!c)return pl.overflow.includes(k)?'<i class="rl-st is-bad">盤に入らない</i>':'';
-    return `<i class="rl-st${c.auto?' is-auto':''}">${nm(c.line,pl)} ${c.col+1}〜${c.col+c.span}${c.auto?'（自動）':''}</i>`;
-   };
-   host.querySelector('.rl-pal-list').innerHTML=[...groups].map(([g,list])=>
-    `<div class="rl-grp">${esc(g)}<small>${list.filter(k=>!st.hidden.has(k)).length} / ${list.length}</small></div>`
-    +list.map(k=>`<label class="rl-pal-item${st.sel===k?' is-sel':''}" data-k="${esc(k)}"><input type="checkbox" data-use="${esc(k)}"${st.hidden.has(k)?'':' checked'}>`
-     +`<span>${esc(src.labelOf(k))}</span>${where(k)}</label>`).join('')).join('')
-    ||'<p class="rl-empty">当たる項目がありません。</p>';
-   const bd=host.querySelector('.rl-board');
-   const L=lanes(pl);
-   bd.style.setProperty('--rl-lines',String(L));
-   const ln=host.querySelector('.rl-lanes');
-   ln.style.setProperty('--rl-lines',String(L));
-   ln.innerHTML=Array.from({length:L},(_,i)=>`<span>${nm(i+1,pl)}</span>`).join('');
-   const add=host.querySelector('[data-rl="lane"]');
-   if(add){add.disabled=L>=LINES;add.title=L>=LINES?`段は${LINES}段までです`:`段を1つ足します（いま${L}段・最大${LINES}段）`}
-   bd.innerHTML=pl.cells.map(c=>`<button type="button" class="rl-chip${c.auto?' is-auto':''}${st.sel===c.k?' is-sel':''}" data-k="${esc(c.k)}"`
-    +` style="grid-column:${c.col+1}/span ${c.span};grid-row:${c.line}" title="${esc(src.labelOf(c.k))}（${nm(c.line,pl)} ${c.col+1}〜${c.col+c.span}マス目${c.auto?'・自動':''}）　掴んで動かす／右端を引いて幅／矢印キーで1マス・Shift＋←→で幅">`
-    +`<span>${esc(src.labelOf(c.k))}</span><i class="rl-grip" data-grip="${esc(c.k)}" aria-hidden="true"></i></button>`).join('')
-    +(st.drag?`<span class="rl-ghost${st.drag.bad?' is-bad':''}" style="grid-column:${st.drag.p.col+1}/span ${st.drag.p.span};grid-row:${st.drag.p.line}"></span>`:'');
-   const n=pl.cells.length,auto=pl.cells.filter(c=>c.auto).length;
-   const notes=[];
-   if(pl.conflicts.length)notes.push(`<b class="rl-bad">重なっていた ${pl.conflicts.length}項目を空いた所へ回しました</b>（${pl.conflicts.map(k=>esc(src.labelOf(k))).join('・')}）`);
-   if(pl.overflow.length)notes.push(`<b class="rl-bad">盤に入らない ${pl.overflow.length}項目は紙にも一覧にも出ません</b>（${pl.overflow.map(k=>esc(src.labelOf(k))).join('・')}）。項目を減らすか幅を詰めてください。`);
-   if(st.msg)notes.push(`<b class="rl-bad">${esc(st.msg)}</b>`);
-   host.querySelector('.rl-note').innerHTML=notes.join('<br>')
-    ||`${n}項目を置いています${auto?`（うち自動 ${auto}・点線）。掴んで動かすとその場所で固まります`:''}。1マスは紙で約${src.mmPerUnit().toFixed(1)}mmです。`;
-   paintInspector(pl);
-  }
-  function paintInspector(pl){
-   const box=host.querySelector('.rl-insp');
-   const c=pl.cells.find(x=>x.k===st.sel);
-   if(!c){box.innerHTML='<h4>選んだ項目</h4><p class="rl-empty">盤の項目を押すと、ここで段・位置・幅を数で直せます。</p>';return}
-   box.innerHTML=`<h4>選んだ項目</h4><dl>
-    <dt>項目</dt><dd><b>${esc(src.labelOf(c.k))}</b>${c.auto?' <small>（自動の位置）</small>':''}</dd>
-    <dt>段</dt><dd><span class="rl-seg">${Array.from({length:lanes(pl)},(_,i)=>`<button type="button" data-line="${i+1}" class="${c.line===i+1?'is-on':''}">${nm(i+1,pl)}</button>`).join('')}</span></dd>
-    <dt>位置</dt><dd><input type="number" min="1" max="${UNITS}" value="${c.col+1}" data-num="col"> マス目から</dd>
-    <dt>幅</dt><dd><input type="number" min="1" max="${UNITS}" value="${c.span}" data-num="span"> マス（紙 約${Math.round(c.span*src.mmPerUnit())}mm）</dd>
-   </dl><button type="button" class="rl-btn" data-off="${esc(c.k)}">この項目を使わない</button>`;
-   box.querySelectorAll('[data-line]').forEach(b=>b.onclick=()=>move(c.k,{line:Number(b.dataset.line),col:c.col,span:c.span}));
-   box.querySelectorAll('[data-num]').forEach(inp=>inp.onchange=()=>{
-    const v=Math.round(Number(inp.value)||1);
-    move(c.k,inp.dataset.num==='col'?{line:c.line,col:v-1,span:c.span}:{line:c.line,col:c.col,span:v});
-   });
-   box.querySelector('[data-off]').onclick=()=>setUse(c.k,false);
-  }
-  /* 盤の上の位置（マス・段）。**器の内寸**で測る（枠と余白を引く）。 */
-  function cellAt(ev){
-   const bd=host.querySelector('.rl-board'),r=bd.getBoundingClientRect(),cs=getComputedStyle(bd);
-   const pl=parseFloat(cs.paddingLeft)||0,pt=parseFloat(cs.paddingTop)||0;
-   const w=(r.width-pl-(parseFloat(cs.paddingRight)||0))/UNITS;
-   const L=lanes();
-   const h=(r.height-pt-(parseFloat(cs.paddingBottom)||0))/L;
-   return {u:Math.floor((ev.clientX-r.left-pl)/w),line:1+Math.max(0,Math.min(L-1,Math.floor((ev.clientY-r.top-pt)/h))),w};
-  }
-  function wire(){
-   host.querySelector('.rl-search').oninput=e=>{st.query=e.target.value;paint()};
-   host.querySelector('.rl-pal-list').addEventListener('click',e=>{
-    const cb=e.target.closest('[data-use]');
-    if(cb){setUse(cb.dataset.use,cb.checked);return}
-    const it=e.target.closest('[data-k]');
-    if(it&&!st.hidden.has(it.dataset.k)){st.sel=it.dataset.k;paint()}
-   });
-   const bd=host.querySelector('.rl-board');
-   bd.addEventListener('pointerdown',e=>{
-    const chip=e.target.closest('.rl-chip');if(!chip)return;
-    const k=chip.dataset.k,pl=cur(),c=pl.cells.find(x=>x.k===k);if(!c)return;
-    st.sel=k;
-    const at=cellAt(e);
-    st.drag={k,mode:e.target.closest('[data-grip]')?'span':'move',grab:at.u-c.col,from:{...c},p:{line:c.line,col:c.col,span:c.span},bad:false,moved:false};
-    try{bd.setPointerCapture(e.pointerId)}catch(err){WL.quiet.note('掴めない（掴まなくても動かせる）',err)}
-    e.preventDefault();paint();
-   });
-   bd.addEventListener('pointermove',e=>{
-    const d=st.drag;if(!d)return;
-    const at=cellAt(e);
-    const p=d.mode==='span'?{line:d.from.line,col:d.from.col,span:Math.max(1,Math.min(UNITS-d.from.col,at.u-d.from.col+1))}
-                           :{line:at.line,col:Math.max(0,Math.min(UNITS-d.from.span,at.u-d.grab)),span:d.from.span};
-    if(p.line===d.p.line&&p.col===d.p.col&&p.span===d.p.span)return;
-    d.p=p;d.moved=true;d.bad=!!overlapOf(d.k,p);paint();   // 重なる所は縁の色で言う（離すと押し出す）
-   });
-   const drop=()=>{
-    const d=st.drag;if(!d)return;st.drag=null;
-    if(d.moved)move(d.k,d.p);else paint();
-   };
-   bd.addEventListener('pointerup',drop);
-   bd.addEventListener('pointercancel',()=>{st.drag=null;paint()});
-   bd.addEventListener('keydown',e=>{
-    const chip=e.target.closest('.rl-chip');if(!chip)return;
-    const c=cur().cells.find(x=>x.k===chip.dataset.k);if(!c)return;
-    const k=c.k;let p=null;
-    if(e.key==='ArrowLeft')p=e.shiftKey?{...c,span:c.span-1}:{...c,col:c.col-1};
-    else if(e.key==='ArrowRight')p=e.shiftKey?{...c,span:c.span+1}:{...c,col:c.col+1};
-    else if(e.key==='ArrowUp')p={...c,line:c.line-1};
-    else if(e.key==='ArrowDown')p={...c,line:c.line+1};
-    else if(e.key==='Delete'){e.preventDefault();setUse(k,false);return}
-    if(!p)return;
-    e.preventDefault();st.sel=k;move(k,p);
-    host.querySelector(`.rl-chip[data-k="${CSS.escape(k)}"]`)?.focus();
-   });
-   host.querySelector('[data-rl="auto"]').onclick=()=>{st.places={};st.frozen=false;st.msg='';st.lanes=DEFAULT_LINES;push();paint()};
-   host.querySelector('[data-rl="lane"]').onclick=()=>{st.lanes=Math.min(LINES,lanes()+1);paint()};
-   host.querySelector('[data-rl="save"]').onclick=()=>src.onSave({places:{...st.places},hidden:[...st.hidden]});
-   host.querySelector('[data-rl="close"]').onclick=()=>src.onClose();
-  }
-  host.innerHTML=`<div class="rl-wrap">
-    <aside class="rl-pal"><h4>使うデータ<small>チェックで盤へ置く</small></h4>
-     <input type="search" class="rl-search" placeholder="項目を探す" aria-label="項目を探す">
-     <div class="rl-pal-list"></div></aside>
-    <section class="rl-main"><header class="rl-head"><h4>1件ぶんの配置<small>横${UNITS}マス。掴んで動かす・右端を引いて幅・矢印キーで1マス（Shift＋←→で幅）・重なった項目は空いた所へ押し出す</small></h4>
-      <span class="rl-grow"></span>
-      <button type="button" class="rl-btn" data-rl="lane">＋ 段を足す</button>
-      <button type="button" class="rl-btn" data-rl="auto" title="置いた位置を全部捨てて、幅から自動で並べ直します">すべて自動に戻す</button>
-      <button type="button" class="rl-btn" data-rl="close" title="保存せずに盤を閉じます（下書きは捨てます）">やめる</button>
-      <button type="button" class="rl-btn rl-btn--primary" data-rl="save">この配置を保存</button></header>
-     <div class="rl-lanes"></div>
-     <div class="rl-board" role="group" aria-label="1件ぶんの配置の盤"></div>
-     <p class="rl-note" role="status"></p></section>
-    <aside class="rl-insp"></aside></div>`;
-  wire();paint();
-  return {paint,state:st,plan:cur};
+  host.replaceChildren(WL.template('record-board',{'units':String(UNITS)}));
+  const B=boardState(host,src);
+  wireBoard(B);B.paint();
+  return {paint:B.paint,state:B.st,plan:B.cur};
  }
 
  WL.recordLayout={UNITS,LINES,DEFAULT_LINES,lineName,validPlace,spansFromWidths,autoLines,plan,segments,freeze,gridHtml,board};

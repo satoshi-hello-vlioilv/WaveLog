@@ -286,7 +286,7 @@
          1つだけ選ぶ切り替えなので、期間の札と同じ部品（§9.507）。 -->
     <span class="ac-presets ac-view" id="acView" role="radiogroup" aria-label="一覧の見せ方">
      <button type="button" class="ac-chip" role="radio" data-view="line" title="1件を1行で出します（表示列の設定）">1行</button>
-     <button type="button" class="ac-chip" role="radio" data-view="stack" title="1件を操業データ表と同じ2段組で出します（配置の盤）">2段組</button></span>
+     <button type="button" class="ac-chip" role="radio" data-view="stack" title="1件を操業データ表と同じ段組で出します（既定は2段・配置の盤で段・位置・幅を決める）">段組</button></span>
     <!-- 表示列の入口は**どの画面でも同じ印**（§9.476・fa-table-columns。スケジュール表・仕掛一覧と同じ）。
          2段組のときは**配置の盤**を開く（1行の表示列を変えても2段組は変わらない——押して何も起きない物を残さない）。 -->
     <button type="button" id="acColumns" class="ac-btn" title="この一覧に出す列・並び・幅・書式を決めます"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> <span id="acColumnsWord">表示列</span></button>
@@ -512,7 +512,7 @@
    e.stopPropagation();
    const id=cb.dataset.pick;
    if(cb.checked)acState.selected.add(id);else acState.selected.delete(id);
-   cb.closest('.ac-row,.rl-rec')?.classList.toggle('is-picked',cb.checked);
+   cb.closest('.ac-row,.rcl-rec')?.classList.toggle('is-picked',cb.checked);
    syncSelectionUi();
   });
   list.querySelectorAll('[data-report]').forEach(b=>b.onclick=e=>{
@@ -525,7 +525,7 @@
     読み込むたびに揃え直す（`prepare`）——前の設備の配置で今の設備の実績を並べない。 */
  function renderStack(list){
   if(!WL.opSheet||typeof WL.opSheet.listHtml!=='function'){
-   list.innerHTML='<div class="ac-empty">2段組を出せません（操業データ表の画面が読み込まれていません）。「1行」に戻してください。</div>';return;
+   list.innerHTML='<div class="ac-empty">段組を出せません（操業データ表の画面が読み込まれていません）。「1行」に戻してください。</div>';return;
   }
   const items=filtered();
   if(!items.length){
@@ -535,10 +535,10 @@
   }
   const want=acState.equipment+'|'+acState.gen;
   if(acState.stackFor!==want){
-   list.innerHTML='<div class="ac-empty">2段組の配置を読んでいます…</div>';
+   list.innerHTML='<div class="ac-empty">段組の配置を読んでいます…</div>';
    WL.opSheet.prepare({equipment:acState.equipment,items:acState.items,opDefs:acState.opDefs,lotFields:acState.lotFields})
     .then(()=>{acState.stackFor=want;renderList()})
-    .catch(e=>{list.innerHTML=`<div class="ac-empty">2段組の配置を読めませんでした: ${esc(e&&e.message||String(e))}</div>`});
+    .catch(e=>{list.innerHTML=`<div class="ac-empty">段組の配置を読めませんでした: ${esc(e&&e.message||String(e))}</div>`});
    return;
   }
   list.innerHTML=WL.opSheet.listHtml({items,
@@ -553,9 +553,9 @@
   document.querySelectorAll('#acView [data-view]').forEach(b=>{
    const on=b.dataset.view===acState.view;b.classList.toggle('is-on',on);b.setAttribute('aria-checked',String(on));
   });
-  const w=$id('acColumnsWord');if(w)w.textContent=acState.view==='stack'?'2段組の配置':'表示列';
+  const w=$id('acColumnsWord');if(w)w.textContent=acState.view==='stack'?'段組の配置':'表示列';
   const btn=$id('acColumns');
-  if(btn)btn.title=acState.view==='stack'?'2段組で使うデータ・段・位置・幅を盤の上で決めます（操業データ表の紙と同じ配置）'
+  if(btn)btn.title=acState.view==='stack'?'段組で使うデータ・段・位置・幅を盤の上で決めます（操業データ表の紙と同じ配置）'
                                          :'この一覧に出す列・並び・幅・書式を決めます';
  }
  function openStackBoard(){

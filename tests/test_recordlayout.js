@@ -22,6 +22,7 @@ const TAG='RL'+process.pid;
 const EQ='テスト設備A';
 const TARGET='opsheet:'+EQ;
 const SHOT=process.env.WAVELOG_SHOT||'';
+async function shot(page,name){if(process.env.WAVELOG_SHOT)await page.screenshot({path:SHOT+'-'+name+'.png'})}
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const made=[];
 function localIso(y,m,d,hh,mm){return new Date(y,m-1,d,hh,mm,0).toISOString()}
@@ -41,7 +42,7 @@ async function mk(o){
 }
 const cleanupLayout=async()=>{
  try{await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],hidden:[],
-   widths:{},names:{},formats:{},rules:{},formulas:{},locks:[],sorts:{},aligns:{},places:{},user_id:'test'})}catch(_){}
+   widths:{},names:{},formats:{},rules:{},formulas:{},locks:[],sorts:{},aligns:{},places:{},user_id:'test'})}catch(_){/* 片付け: 消せなければ次の実行の始めがもう一度消す */}
 };
 const getLayout=()=>fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET)).then(r=>r.json());
 
@@ -55,7 +56,7 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
   await mk({id:TAG+'-2',lotNo:TAG+'L2',y:Y,m:M,d:D,hh:10,opData:{[OP1]:'251',[OP2]:'81'}});
 
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
-  await page.evaluate(()=>{try{localStorage.removeItem('OpSheetPrintPrefV1');localStorage.removeItem('ActualsViewPrefV1')}catch(e){}});
+  await page.evaluate(()=>{try{localStorage.removeItem('OpSheetPrintPrefV1');localStorage.removeItem('ActualsViewPrefV1')}catch(e){/* 保存が使えない端末では前の控えも無い */}});
   await page.reload({waitUntil:'domcontentloaded'});
   await W.booted(page);
 
@@ -148,39 +149,39 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
   rec('紙でも検査番号はロット番号の真下（同じ位置・同じ幅）',paper.lot&&paper.insp&&paper.lot.col===paper.insp.col&&paper.lot.span===5&&paper.insp.span===5,
       JSON.stringify({lot:paper.lot,insp:paper.insp}));
   rec('紙の説明は段数と置いた位置の数を字で言う',new RegExp(`^${paper.lines}段構成`).test(paper.note)&&/置いた位置 4項目/.test(paper.note)&&!/盤に入らない/.test(paper.note),paper.note.slice(0,80));
-  if(SHOT)await page.screenshot({path:SHOT+'-paper.png'});
+  await shot(page,'paper');
 
   /* ---- 6) 盤: 開く・動かす・数で直す・保存 ---- */
   await page.click('#osPvBoardOpen');
-  await page.waitForSelector('#osPvBoard .rl-chip',{timeout:10000});
-  const b0=await page.evaluate(()=>({chips:document.querySelectorAll('#osPvBoard .rl-chip').length,
-   pal:document.querySelectorAll('#osPvBoard .rl-pal-item').length}));
+  await page.waitForSelector('#osPvBoard .rcl-chip',{timeout:10000});
+  const b0=await page.evaluate(()=>({chips:document.querySelectorAll('#osPvBoard .rcl-chip').length,
+   pal:document.querySelectorAll('#osPvBoard .rcl-pal-item').length}));
   rec('盤が開き、項目の札と使うデータの一覧が出る',b0.chips>=4&&b0.pal>=b0.chips,JSON.stringify(b0));
-  const lane=await page.evaluate(()=>{const bd=document.querySelector('#osPvBoard .rl-board'),btn=document.querySelector('#osPvBoard [data-rl="lane"]');
-   const L=()=>Number(getComputedStyle(bd).getPropertyValue('--rl-lines'));const before=L();
+  const lane=await page.evaluate(()=>{const bd=document.querySelector('#osPvBoard .rcl-board'),btn=document.querySelector('#osPvBoard [data-rl="lane"]');
+   const L=()=>Number(getComputedStyle(bd).getPropertyValue('--rcl-lines'));const before=L();
    if(btn&&!btn.disabled)btn.click();
-   return {before,after:L(),names:document.querySelectorAll('#osPvBoard .rl-lanes span').length,disabled:!!(btn&&btn.disabled)};});
+   return {before,after:L(),names:document.querySelectorAll('#osPvBoard .rcl-lanes span').length,disabled:!!(btn&&btn.disabled)};});
   rec('「段を足す」で段が1つ増え、上限（4段）では押せない',lane.before>=4?lane.after===lane.before:(lane.after===lane.before+1&&lane.names===lane.after),JSON.stringify(lane));
-  if(SHOT)await page.screenshot({path:SHOT+'-board.png'});
+  await shot(page,'board');
   /* 掴んで動かす: OP1 の札を下段の12マス目あたりへ */
   const box=await page.evaluate(k=>{
-   const bd=document.querySelector('#osPvBoard .rl-board'),c=bd.querySelector(`.rl-chip[data-k="${CSS.escape(k)}"]`);
+   const bd=document.querySelector('#osPvBoard .rcl-board'),c=bd.querySelector(`.rcl-chip[data-k="${CSS.escape(k)}"]`);
    const r=bd.getBoundingClientRect(),q=c.getBoundingClientRect();
    /* 段の数は項目の数で変わる（既定2段・最大4段）——2段目の真ん中の高さを段の数から出す */
-   const L=Number(getComputedStyle(bd).getPropertyValue('--rl-lines'))||2;
+   const L=Number(getComputedStyle(bd).getPropertyValue('--rcl-lines'))||2;
    return {bx:r.left,by:r.top,bw:r.width,bh:r.height,L,cx:q.left+q.width/3,cy:q.top+q.height/2};
   },OP1);
   await page.mouse.move(box.cx,box.cy);await page.mouse.down();
   await page.mouse.move(box.bx+box.bw*0.5,box.by+box.bh*1.5/box.L,{steps:8});
   await page.mouse.up();
-  const moved=await page.evaluate(k=>{const c=document.querySelector(`#osPvBoard .rl-chip[data-k="${CSS.escape(k)}"]`);
+  const moved=await page.evaluate(k=>{const c=document.querySelector(`#osPvBoard .rcl-chip[data-k="${CSS.escape(k)}"]`);
    return c?c.style.gridRow:''},OP1);
-  const note=()=>page.evaluate(()=>(document.querySelector('#osPvBoard .rl-note')||{}).textContent||'');
+  const note=()=>page.evaluate(()=>(document.querySelector('#osPvBoard .rcl-note')||{}).textContent||'');
   rec('札を掴んで下段へ動かせる',/^2/.test(moved),moved+' / '+(await note()).slice(0,120));
   /* 数の欄で幅を変える（選んだ項目＝いま動かした札） */
-  await page.fill('#osPvBoard .rl-insp [data-num="span"]','6');
-  await page.press('#osPvBoard .rl-insp [data-num="span"]','Tab');
-  const wide=await page.evaluate(k=>{const c=document.querySelector(`#osPvBoard .rl-chip[data-k="${CSS.escape(k)}"]`);
+  await page.fill('#osPvBoard .rcl-insp [data-num="span"]','6');
+  await page.press('#osPvBoard .rcl-insp [data-num="span"]','Tab');
+  const wide=await page.evaluate(k=>{const c=document.querySelector(`#osPvBoard .rcl-chip[data-k="${CSS.escape(k)}"]`);
    return c?c.style.gridColumn:''},OP1);
   rec('選んだ項目の幅を数の欄で直せる',/span 6/.test(wide),wide);
   await page.click('#osPvBoard [data-rl="save"]');
@@ -191,30 +192,30 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
 
   /* ---- 5) 一覧の2段組 ---- */
   await page.click('#acView [data-view="stack"]');
-  await page.waitForSelector('#acList .rl-rec:not(.rl-head)',{timeout:10000});
+  await page.waitForSelector('#acList .rcl-rec:not(.rcl-head)',{timeout:10000});
   const list=await page.evaluate(k=>{
-   const head=document.querySelector('#acList .rl-head');
-   const pos=word=>{const el=[...head.querySelectorAll('.rl-c')].find(x=>x.textContent.trim()===word);
+   const head=document.querySelector('#acList .rcl-head');
+   const pos=word=>{const el=[...head.querySelectorAll('.rcl-c')].find(x=>x.textContent.trim()===word);
      return el?{col:el.style.gridColumn,row:el.style.gridRow}:null};
-   const recs=document.querySelectorAll('#acList .rl-rec:not(.rl-head)');
+   const recs=document.querySelectorAll('#acList .rcl-rec:not(.rcl-head)');
    return {recs:recs.length,lot:pos('ロット番号'),insp:pos('検査番号'),op:pos(k),
            word:(document.getElementById('acColumnsWord')||{}).textContent||'',
-           picks:document.querySelectorAll('#acList .rl-rec [data-pick]').length};
+           picks:document.querySelectorAll('#acList .rcl-rec [data-pick]').length};
   },OP1);
-  rec('一覧を2段組にすると1件が1つの塊で並ぶ（選ぶ印も残る）',list.recs===2&&list.picks===2,JSON.stringify(list));
+  rec('一覧を段組にすると1件が1つの塊で並ぶ（選ぶ印も残る）',list.recs===2&&list.picks===2,JSON.stringify(list));
   rec('一覧でも検査番号はロット番号の真下（紙と同じ縦線）',list.lot&&list.insp&&list.lot.col===list.insp.col&&list.lot.row==='1'&&list.insp.row==='2',
       JSON.stringify({lot:list.lot,insp:list.insp}));
   rec('盤で動かした項目は一覧でも同じ段・位置',list.op&&list.op.row==='2'&&/span 6/.test(list.op.col),JSON.stringify(list.op));
-  rec('2段組のときは「表示列」が「2段組の配置」になる（1行の表示列を変えても2段組は変わらない）',list.word==='2段組の配置',list.word);
-  if(SHOT)await page.screenshot({path:SHOT+'-list.png'});
+  rec('段組のときは「表示列」が「段組の配置」になる（1行の表示列を変えても段組は変わらない）',list.word==='段組の配置',list.word);
+  await shot(page,'list');
   await page.click('#acView [data-view="line"]');
   await page.waitForSelector('#acList .ac-row.head',{timeout:10000});
-  rec('1行へ戻せる',await page.evaluate(()=>!!document.querySelector('#acList .ac-row.head')&&!document.querySelector('#acList .rl-rec')));
+  rec('1行へ戻せる',await page.evaluate(()=>!!document.querySelector('#acList .ac-row.head')&&!document.querySelector('#acList .rcl-rec')));
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }finally{
   await cleanupLayout();
-  try{await page.evaluate(()=>{try{localStorage.removeItem('ActualsViewPrefV1')}catch(e){}})}catch(_){}
+  try{await page.evaluate(()=>{try{localStorage.removeItem('ActualsViewPrefV1')}catch(e){/* 保存が使えない端末では消す物も無い */}})}catch(_){/* 片付け: 画面が閉じていれば控えも無い */}
   await post('/api/access-mode',{mode:'edit'});
-  try{await post('/api/measurement/backup/delete',{ids:made})}catch(_){}
+  try{await post('/api/measurement/backup/delete',{ids:made})}catch(_){/* 片付け: 消せなければ名前（TAG）で見分けられる */}
  }
 },{viewport:{width:1600,height:1000}});

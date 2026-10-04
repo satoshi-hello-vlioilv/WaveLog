@@ -216,7 +216,7 @@
   const out=[`${p.lines}段構成です（${Array.from({length:p.lines},(_,i)=>`${WL.recordLayout.lineName(i+1,p.lines)} ${by(i+1)}項目`).join(' / ')}）。`
    +(placed?`置いた位置 ${placed}項目${p.cells.length>placed?`・自動 ${p.cells.length-placed}項目`:''}。`:'位置は幅から自動で決めています。')];
   if(p.overflow.length)out.push(`<b class="os-pv-bad">盤に入らない ${p.overflow.length}項目は紙に出ません</b>（${p.overflow.map(k=>esc(labelOf(k))).join('・')}）。`);
-  out.push('「⑤ 2段組の配置」で段・位置・幅を決められます。');
+  out.push('「⑤ 段組の配置」で使うデータ・段・位置・幅を決められます。');
   return out.join('');
  }
  /* 1行で出すか、段組で出すか。**`auto`は「置いた位置が無く、1行で紙に入るなら1行」**
@@ -395,9 +395,9 @@
         <button type="button" data-unit="shift" title="日＋直ごとに1枚（既定）">直ごと（日＋直）</button>
         <button type="button" data-unit="date" title="日ごとに1枚">日ごと</button></div></section>
       <section><h3>② 1件の行数</h3><div class="os-pv-seg" id="osPvRows">
-        <button type="button" data-rows="auto" title="入るなら1行、入らなければ2行に折り返します">自動</button>
+        <button type="button" data-rows="auto" title="入るなら1行、入らなければ段組（置いた位置があれば段組）">自動</button>
         <button type="button" data-rows="1" title="必ず1行。入りきらないときは列を細くして詰めます">1行</button>
-        <button type="button" data-rows="2" title="必ず2行1データ。列が多いときはこちら">2行</button></div>
+        <button type="button" data-rows="2" title="1件を段に分けて出します（既定は2段・項目が多ければ最大4段）。位置は⑤で決められます">段組</button></div>
        <p class="os-pv-note" id="osPvRowsNote"></p></section>
       <section><h3>③ 用紙</h3>
        <!-- 大きさと向きは別の欄(§9.252)。掛け合わせて並べると用紙を1つ
@@ -417,7 +417,7 @@
        <button type="button" class="os-pv-btn" id="osPvColumns">列の見え方（名前・書式・読み替え）…</button>
       </section>
       <!-- 段組の配置（§9.553）。使うデータを選び、段・位置・幅を盤の上で決める。決めた盤は紙と一覧が読む。 -->
-      <section><h3>⑤ 2段組の配置</h3>
+      <section><h3>⑤ 段組の配置</h3>
        <button type="button" class="os-pv-btn os-pv-btn--wide" id="osPvBoardOpen">配置の盤を開く（使うデータ・段・位置・幅）</button></section>
       <section class="os-pv-sum" id="osPvSum"></section>
      </aside>
@@ -430,13 +430,18 @@
       <div class="os-pv-board" id="osPvBoard" hidden></div>
       <div class="os-pv-look" id="osPvLook" hidden>
        <span>できあがり</span>
-       <div class="os-pv-seg" id="osPvLookSeg"><button type="button" data-look="paper" class="is-on">紙</button><button type="button" data-look="list">一覧（2段組）</button></div>
+       <div class="os-pv-seg" id="osPvLookSeg"><button type="button" data-look="paper" class="is-on">紙</button><button type="button" data-look="list">一覧（段組）</button></div>
       </div>
       <div class="os-pv-scroll" id="osPvScroll"><div class="os-pv-scale" id="osPvScale"></div></div>
       <div class="os-pv-listview" id="osPvList" hidden></div>
      </div>
     </div></div>`;
   document.body.appendChild(el);
+  wirePreview(el);
+  return el;
+ }
+ /* プレビューの操作を配線する（作るのは1回だけ・`ensurePreview()`が呼ぶ）。 */
+ function wirePreview(el){
   $id('osPvClose').onclick=closePreview;
   $id('osPvPrint').onclick=doPrint;
   $id('osPvColumns').onclick=openColumnPanel;
@@ -461,7 +466,6 @@
     ?WL.modal.escCloses(e):(e.key==='Escape'&&!e.isComposing&&e.keyCode!==229);
    if(esc)closePreview();
   });
-  return el;
  }
  function afterPref(){savePref();paintOptions();renderPreview()}
  function paintOptions(){
@@ -584,7 +588,7 @@
     try{
      await WL.columnLayout.patch(t,{order:allColumnKeys(),hidden:d.hidden,places:d.places});
      WL.columnLayout.discard(t);
-     showToast&&showToast('2段組の配置を保存しました','この設備の紙と、測定実績の一覧（2段組）に同じ配置で出ます。',3200);
+     showToast&&showToast('段組の配置を保存しました','この設備の紙と、測定実績の一覧（段組）に同じ配置で出ます。',3200);
      closeBoard(false);
     }catch(e){showToast&&showToast('配置を保存できませんでした',e&&e.message||String(e),6000)}
    },
@@ -620,7 +624,7 @@
    key:'opsheet',eyebrow:'操業データ表',
    title:()=>`載せる列の設定（操業データ表：${eq||'共通'}）`,
    lead:'紙に載せる列と、並び・幅・表示名・書式・読み替えを決めます。'
-       +'<b>2段組のときの段・位置・幅</b>は、プレビューの「⑤ 2段組の配置」の盤で決めます（§9.553）。',
+       +'<b>段組のときの段・位置・幅</b>は、プレビューの「⑤ 段組の配置」の盤で決めます（§9.553）。',
    target:()=>targetOf(eq),
    savedToast:'操業データ表の列を保存しました',
    savedNote:'この設備の紙に同じ形で出ます',
@@ -689,12 +693,12 @@
    return {cls:o.rowCls?o.rowCls(x):'',attrs:o.rowAttrs?o.rowAttrs(x):'',lead:o.lead?o.lead(x,i):String(i+1),tail:o.tail?o.tail(x):'',
     cell:k=>{
      const raw=WL.cellFormat.rawOf(target(),view,k),c=columnOf(k);
-     return {html:esc(cellText(k,raw,view)),cls:(c&&c.num)?'rl-num':'',title:raw==null?'':String(raw)};
+     return {html:esc(cellText(k,raw,view)),cls:(c&&c.num)?'rcl-num':'',title:raw==null?'':String(raw)};
     }};
   });
   return WL.recordLayout.gridHtml({plan:p,head:k=>esc(labelOf(k)),title:k=>labelOf(k),
    leadHead:o.leadHead||'#',tailHead:o.tailHead||'',rows})
-   +(p.overflow.length?`<p class="rl-over">盤に入らない ${p.overflow.length}項目は出していません（${p.overflow.map(k=>esc(labelOf(k))).join('・')}）。</p>`:'');
+   +(p.overflow.length?`<p class="rcl-over">盤に入らない ${p.overflow.length}項目は出していません（${p.overflow.map(k=>esc(labelOf(k))).join('・')}）。</p>`:'');
  }
  window.addEventListener('resize',()=>{
   const box=$id('osPreview');
