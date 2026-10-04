@@ -141,6 +141,8 @@ JS_FILES=[
  'bladeset/standard-board.js', # 刃組: 刃組基準値の盤（2ペイン・節ごとの図＋欄）
  'bladeset/blade-3d.js',
  'bladeset/blade-view.js',
+ # §9.553: 段組の配置（段×24マスの盤・答え・画面の2段組）。紙（opsheet-print）と一覧（actuals-view）が読む。
+ 'report/record-layout.js',
  'report/actuals-view.js',
  'report/opsheet-print.js',
  'core/log-view.js',

@@ -174,7 +174,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
 # §9.248 ⑥: 見せる範囲を「実施した設備」で絞る（データ一覧・実績データ）
-G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope']
+G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope', 'test_recordlayout']
 # 刃組（§9.377）。**部材マスタ・ガイダンス・設備停止の連携**は1つの仕事なので、
 # どれを触っても3本まとめて回す（計算はサーバー不要の1本、画面は1本）。
 G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_holdpick', 'test_bladesets', 'test_ringboard', 'test_bladeboard', 'test_screenprint', 'test_stopeq', 'test_partboards']
@@ -307,6 +307,7 @@ RULES = [
     # 実績データリストは列の設定パネル・帳票・アクセスモードへつながる。
     ('static/js/report/actuals-view.js', g('実績', 'モーダル', '列', 'test_recperm', 'test_nav')),
     ('static/js/report/opsheet-print.js', g('実績', 'モーダル', '列')),
+    ('static/js/report/record-layout.js', g('実績', '列')),
     ('backend/actuals.py', g('実績', 'test_workdate', 'test_modeguard')),
     ('static/js/measure/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
     ('static/js/master/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',

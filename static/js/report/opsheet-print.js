@@ -24,8 +24,9 @@
 
    **どの列を出すかは列レイアウトマスタ`opsheet:<設備>`**（§9.165・§9.174）。
    新しいマスタを作らない——並び・幅・表示名・書式・読み替え・計算式が
-   そのまま効く。**2行構成のときにどちらの段へ置くか**も同じ`formats`の
-   `pattern`へ`段:2`の印で入れる（§9.205。文字列を直に入れない）。
+   そのまま効く。**2段組のときの段・位置・幅**は同じマスタの`places`（配置の盤・
+   `WL.recordLayout`・§9.553）。以前の`段:2`の印（書式のパターン・§9.205）は、
+   位置を置いていないときの手がかりとしてだけ読む。
    ============================================================ */
 (function(){
  'use strict';
@@ -197,39 +198,34 @@
   return pages;
  }
 
- /* ---------- 段の割り付け（1行構成 / 2行1データ構成） ----------
-    **`auto`は「入るなら1行」**（利用者の指示「1行で収まるものは通常の1行
-    構成」）。入らないときだけ2段に割る。手で決めた段（`段:1`/`段:2`）は
-    自動より優先する（後から調整できることが要件）。 */
- function planLines(keys,opt){
-  const forced1=keys.filter(k=>lineOf(k)===1),forced2=keys.filter(k=>lineOf(k)===2);
-  const free=keys.filter(k=>!lineOf(k));
-  const usable=paperUsableMm(opt.paper).w-FRAME_MM;
-  const mm=k=>Math.max(MIN_COL_MM,widthPxOf(k)*MM_PER_PX);
-  if(opt.rows==='1')return [keys,[]];
-  if(opt.rows==='2'||forced2.length){
-   const line1=[...forced1],line2=[...forced2];
-   let acc=line1.reduce((s,k)=>s+mm(k),0);
-   free.forEach(k=>{
-    const w=mm(k);
-    if(line1.length&&acc+w>usable){line2.push(k);return}
-    line1.push(k);acc+=w;
-   });
-   /* **上段は空にしない**（トラックが作れない）。全部が2段目へ行くような
-      指定でも、先頭の1列だけは上段へ残す。 */
-   if(!line1.length&&line2.length)line1.push(line2.shift());
-   return [line1,line2];
-  }
-  /* auto: 全部を1段に置いて収まるならそのまま。 */
-  const total=keys.reduce((s,k)=>s+mm(k),0);
-  if(total<=usable)return [keys,[]];
-  const line1=[],line2=[];let acc=0;
-  keys.forEach(k=>{
-   const w=mm(k);
-   if(line1.length&&acc+w>usable){line2.push(k);return}
-   line1.push(k);acc+=w;
-  });
-  return [line1,line2];
+ /* ---------- 段組の答え（§9.553） ----------
+    **答えは`WL.recordLayout.plan()`の1本**（紙と一覧が同じ答えを読む）。ここが渡すのは
+    この紙の材料だけ: 出す列・置いた位置（列レイアウトマスタの`places`）・ふだんの幅・
+    紙の刷れる幅（px換算）・古い「段:N」の印。 */
+ function usablePx(paper){return paperUsableMm(paper).w/MM_PER_PX}
+ function stackPlan(keys,opt){
+  return WL.recordLayout.plan(keys,{placeOf:k=>WL.columnLayout.place(target(),k),
+   naturalPx:widthPxOf,usablePx:usablePx(opt.paper),lineHint:lineOf});
+ }
+ /* 1件の行数の説明（いま何段で・どこから決まったか・入らない項目）。**画面の字は答えから作る**。 */
+ function stackNote(opt){
+  const p=opt.plan;
+  if(!p)return `1行構成です（${opt.keys.length}列）。`;
+  const by=n=>p.cells.filter(c=>c.line===n).length;
+  const placed=p.cells.filter(c=>!c.auto).length;
+  const out=[`${p.lines}段構成です（${Array.from({length:p.lines},(_,i)=>`${WL.recordLayout.lineName(i+1,p.lines)} ${by(i+1)}項目`).join(' / ')}）。`
+   +(placed?`置いた位置 ${placed}項目${p.cells.length>placed?`・自動 ${p.cells.length-placed}項目`:''}。`:'位置は幅から自動で決めています。')];
+  if(p.overflow.length)out.push(`<b class="os-pv-bad">盤に入らない ${p.overflow.length}項目は紙に出ません</b>（${p.overflow.map(k=>esc(labelOf(k))).join('・')}）。`);
+  out.push('「⑤ 段組の配置」で使うデータ・段・位置・幅を決められます。');
+  return out.join('');
+ }
+ /* 1行で出すか、段組で出すか。**`auto`は「置いた位置が無く、1行で紙に入るなら1行」**
+    （利用者の指示「1行で収まるものは通常の1行構成」・§9.241 ②）。置いた位置があれば段組。 */
+ function usesStack(keys,opt){
+  if(opt.rows==='1')return false;
+  if(opt.rows==='2')return true;
+  if(keys.some(k=>WL.columnLayout.place(target(),k)))return true;
+  return keys.reduce((s,k)=>s+Math.max(MIN_COL_MM,widthPxOf(k)*MM_PER_PX),0)>paperUsableMm(opt.paper).w-FRAME_MM;
  }
 
  /* ---------- 幅をmmで配る（§9.236 ③「自然体」） ----------
@@ -251,87 +247,47 @@
   if(total<=budget)return {mm:natural.map(v=>Math.round(v*100)/100),fit:1,over:0};
   return {mm:shareMm(natural,budget),fit:Math.max(MIN_FIT,budget/total),over:total-budget};
  }
-/* ---------- 2段のトラックを1組に束ねる ----------
-    `table-layout:fixed` は **colgroupを1本しか見ない**ので、上段と下段に
-    別々の幅を与えることはできない。かといって「下段は上段のトラックへ
-    colspanで割り付ける」だけでは、**下段の列数が上段より多いときに置けない**
-    （実測: 上段13列に対して下段44列）。
-
-    そこで**両段の切れ目の和集合**をトラックにする。上段の境目と下段の境目を
-    どちらも通る目盛りを作れば、どちらの段も自分の幅どおりに`colspan`で
-    置ける（トラックは最大 n1+n2-1 本）。**両段の合計は必ずそろえる**
-    ——そろえないと表の右端が段ごとにずれる。 */
- const CUT_EPS=0.15;   /* これより近い切れ目は同じものとして扱う（丸めの粒） */
- function mergeTracks(w1,w2){
-  const cuts=[0];
-  const add=v=>{
-   for(let i=0;i<cuts.length;i++)if(Math.abs(cuts[i]-v)<=CUT_EPS)return cuts[i];
-   cuts.push(v);return v;
-  };
-  const walk=list=>{let a=0;return list.map(v=>{a+=v;return add(Math.round(a*100)/100)})};
-  const end1=walk(w1),end2=walk(w2);
-  cuts.sort((a,b)=>a-b);
-  const tracks=[];
-  for(let i=1;i<cuts.length;i++)tracks.push(Math.round((cuts[i]-cuts[i-1])*100)/100);
-  const spansOf=ends=>{
-   const out=[];let at=0;
-   ends.forEach(e=>{
-    let n=0;
-    while(at<tracks.length&&cuts[at+1]<=e+CUT_EPS){at++;n++}
-    out.push(Math.max(1,n));
-   });
-   return out;
-  };
-  return {tracks,span1:spansOf(end1),span2:spansOf(end2)};
- }
- /* 1枚ぶんのトラックと段ごとの`colspan`。**幅の決め方は`withMm`の1本**
-    （§9.236 ③。収まればそのまま、溢れたときだけ縮める）。 */
- function layoutLines(line1,line2,usableMm){
-  const w1=withMm(line1,usableMm);
-  if(!(line2||[]).length)
-   return {tracks:w1.mm,span1:line1.map(()=>1),span2:[],fit:w1.fit,over:w1.over,over2:0};
-  const w2=withMm(line2,usableMm);
-  const t1=w1.mm.reduce((s,v)=>s+v,0),t2=w2.mm.reduce((s,v)=>s+v,0);
-  const total=Math.max(t1,t2);
-  /* **狭いほうを広げてそろえる**（縮めない）——右端をそろえるためで、
-     列の中身に対しては余るだけなので読みにくくならない。 */
-  const s1=t1>0?w1.mm.map(v=>Math.round(v*total/t1*100)/100):w1.mm;
-  const s2=t2>0?w2.mm.map(v=>Math.round(v*total/t2*100)/100):w2.mm;
-  const m=mergeTracks(s1,s2);
-  return {...m,fit:Math.min(w1.fit,w2.fit),over:w1.over,over2:w2.over};
- }
-
  /* ---------- 紙1枚のHTML ---------- */
- function pageHtml(page,opt,no,total){
-  const line1=opt.line1,line2=opt.line2||[];
+ /* 紙の表の組み立て。**段組は横`UNITS`本の同じ幅のトラック**（盤の1マス＝紙の刷れる幅の1/UNITS）に
+    `colspan`で置き、空いたマスは空のセル（詰めない＝盤で見たとおり）。1行構成は今までどおり
+    ふだんの幅をmmへ配る（収まればそのまま・溢れたときだけ縮める・§9.236 ③）。 */
+ function tableParts(opt){
   const usable=paperUsableMm(opt.paper);
-  const L=layoutLines(line1,line2,usable.w);
-  const tableMm=L.tracks.reduce((s,v)=>s+v,0);
-  const head1=line1.map((k,i)=>`<th colspan="${L.span1[i]||1}">${esc(labelOf(k))}</th>`).join('');
-  const head2=line2.length
-   ?`<tr class="os-head-2">`+line2.map((k,i)=>`<th colspan="${L.span2[i]||1}">${esc(labelOf(k))}</th>`).join('')+`</tr>`
-   :'';
-  const cellHtml=(k,view,span)=>{
+  if(opt.plan){
+   const U=WL.recordLayout.UNITS;
+   const unit=Math.floor((usable.w-FRAME_MM)/U*100)/100;
+   const lines=Array.from({length:opt.plan.lines},(_,i)=>WL.recordLayout.segments(opt.plan,i+1));
+   return {tracks:Array(U).fill(unit),fit:1,lines};
+  }
+  const keys=opt.keys,w=withMm(keys,usable.w);
+  return {tracks:w.mm,fit:w.fit,lines:[keys.map((k,i)=>({k,col:i,span:1}))]};
+ }
+ function pageHtml(page,opt,no,total){
+  const T=tableParts(opt);
+  const tableMm=T.tracks.reduce((s,v)=>s+v,0);
+  const head=T.lines.map((segs,i)=>`<tr class="os-head-${i+1}${i?' os-head-sub':''}">`
+   +segs.map(g=>g.k==null?`<th class="os-gap" colspan="${g.span}"></th>`
+     :`<th colspan="${g.span}">${esc(labelOf(g.k))}</th>`).join('')+`</tr>`).join('');
+  const cellHtml=(g,view)=>{
+   if(g.k==null)return `<td class="os-gap" colspan="${g.span}"></td>`;
    /* 値は作り方の式を通す（§9.489・`rawOf()`の1本。以前は計算列のセルが空だった）。 */
-   const raw=WL.cellFormat.rawOf(target(),view,k),c=columnOf(k);
-   return `<td class="os-c${(c&&c.num)?' os-num':''}" colspan="${span||1}">`
-    +esc(cellText(k,raw,view))+`</td>`;
+   const raw=WL.cellFormat.rawOf(target(),view,g.k),c=columnOf(g.k);
+   return `<td class="os-c${(c&&c.num)?' os-num':''}" colspan="${g.span}">`
+    +esc(cellText(g.k,raw,view))+`</td>`;
   };
   const body=(page.rows||[]).map((x,i)=>{
    const view=rowView(x,(page.startNo||1)+i-1);
-   const r1=`<tr data-row="${i}" class="os-row-1">`
-    +line1.map((k,j)=>cellHtml(k,view,L.span1[j])).join('')+`</tr>`;
-   if(!line2.length)return r1;
-   const r2=`<tr data-row="${i}" class="os-row-2">`
-    +line2.map((k,j)=>cellHtml(k,view,L.span2[j])).join('')+`</tr>`;
-   return r1+r2;
+   /* 1件の最後の段に`os-rec-end`（件と件のあいだの太い線）。段の数は3・4もある（§9.553）。 */
+   const last=T.lines.length>1?T.lines.length-1:-1;
+   return T.lines.map((segs,j)=>`<tr data-row="${i}" class="os-row-${j+1}${j===last?' os-rec-end':''}">`
+    +segs.map(g=>cellHtml(g,view)).join('')+`</tr>`).join('');
   }).join('');
   const dayLabel=page.day||'（日付なし）';
   const basisLabel=opt.basis==='cal'?'太陽暦':'現場歴';
   return `<section class="os-page" data-paper="${esc(opt.paper)}"`
    +(opt.borders===false?' data-borders="off"':'')
    +(opt.dense?' data-dense="on"':'')
-   +` style="--os-fit:${L.fit}">`
+   +` style="--os-fit:${T.fit}">`
    +`<header class="os-head">`
    +`<b class="os-title">操業データ表</b>`
    +`<span class="os-eq">${esc(opt.equipment||'すべての設備')}</span>`
@@ -341,8 +297,8 @@
    +((page.parts||1)>1?` <i>この${opt.unit==='shift'?'直':'日'}は全${page.total||0}件</i>`:'')
    +`</span></header>`
    +`<div class="os-table-wrap"><table class="os-table" style="width:${tableMm}mm">`
-   +`<colgroup>${L.tracks.map(v=>`<col style="width:${v}mm">`).join('')}</colgroup>`
-   +`<thead><tr>${head1}</tr>${head2}</thead><tbody>${body}</tbody>`
+   +`<colgroup>${T.tracks.map(v=>`<col style="width:${v}mm">`).join('')}</colgroup>`
+   +`<thead>${head}</thead><tbody>${body}</tbody>`
    +`</table></div>`
    +`<footer class="os-foot">`
    +`<span>${esc(opt.equipment||'すべての設備')} ／ ${esc(dayLabel)}`
@@ -424,7 +380,7 @@
     **組み立ては上の1本**（`buildPages`/`splitToSheets`/`pageHtml`）を通す
     ——プレビュー専用の組み立てを作らない（見たものと刷るものが違ったら
     意味が無い）。 */
- const pv={items:[],opt:null,sheets:[],busy:false,again:false,basis:'work',from:'',to:''};
+ const pv={items:[],opt:null,sheets:[],busy:false,again:false,basis:'work',from:'',to:'',onClose:null};
  function ensurePreview(){
   let el=$id('osPreview');if(el)return el;
   el=document.createElement('div');el.className='os-pv';el.id='osPreview';el.hidden=true;
@@ -439,9 +395,9 @@
         <button type="button" data-unit="shift" title="日＋直ごとに1枚（既定）">直ごと（日＋直）</button>
         <button type="button" data-unit="date" title="日ごとに1枚">日ごと</button></div></section>
       <section><h3>② 1件の行数</h3><div class="os-pv-seg" id="osPvRows">
-        <button type="button" data-rows="auto" title="入るなら1行、入らなければ2行に折り返します">自動</button>
+        <button type="button" data-rows="auto" title="入るなら1行、入らなければ段組（置いた位置があれば段組）">自動</button>
         <button type="button" data-rows="1" title="必ず1行。入りきらないときは列を細くして詰めます">1行</button>
-        <button type="button" data-rows="2" title="必ず2行1データ。列が多いときはこちら">2行</button></div>
+        <button type="button" data-rows="2" title="1件を段に分けて出します（既定は2段・項目が多ければ最大4段）。位置は⑤で決められます">段組</button></div>
        <p class="os-pv-note" id="osPvRowsNote"></p></section>
       <section><h3>③ 用紙</h3>
        <!-- 大きさと向きは別の欄(§9.252)。掛け合わせて並べると用紙を1つ
@@ -458,8 +414,11 @@
       <section><h3>④ 見せ方</h3>
        <label class="os-pv-check"><input type="checkbox" id="osPvBorders">枠線を出す</label>
        <label class="os-pv-check"><input type="checkbox" id="osPvDense">高密度（文字と余白を詰める）</label>
-       <button type="button" class="os-pv-btn" id="osPvColumns">載せる列を選ぶ…</button>
+       <button type="button" class="os-pv-btn" id="osPvColumns">列の見え方（名前・書式・読み替え）…</button>
       </section>
+      <!-- 段組の配置（§9.553）。使うデータを選び、段・位置・幅を盤の上で決める。決めた盤は紙と一覧が読む。 -->
+      <section><h3>⑤ 段組の配置</h3>
+       <button type="button" class="os-pv-btn os-pv-btn--wide" id="osPvBoardOpen">配置の盤を開く（使うデータ・段・位置・幅）</button></section>
       <section class="os-pv-sum" id="osPvSum"></section>
      </aside>
      <div class="os-pv-main">
@@ -468,13 +427,26 @@
        <span class="os-pv-grow"></span>
        <button type="button" class="os-pv-btn os-pv-btn--primary" id="osPvPrint">この内容で印刷</button>
       </div>
+      <div class="os-pv-board" id="osPvBoard" hidden></div>
+      <div class="os-pv-look" id="osPvLook" hidden>
+       <span>できあがり</span>
+       <div class="os-pv-seg" id="osPvLookSeg"><button type="button" data-look="paper" class="is-on">紙</button><button type="button" data-look="list">一覧（段組）</button></div>
+      </div>
       <div class="os-pv-scroll" id="osPvScroll"><div class="os-pv-scale" id="osPvScale"></div></div>
+      <div class="os-pv-listview" id="osPvList" hidden></div>
      </div>
     </div></div>`;
   document.body.appendChild(el);
+  wirePreview(el);
+  return el;
+ }
+ /* プレビューの操作を配線する（作るのは1回だけ・`ensurePreview()`が呼ぶ）。 */
+ function wirePreview(el){
   $id('osPvClose').onclick=closePreview;
   $id('osPvPrint').onclick=doPrint;
   $id('osPvColumns').onclick=openColumnPanel;
+  $id('osPvBoardOpen').onclick=()=>openBoard();
+  el.querySelectorAll('#osPvLookSeg [data-look]').forEach(b=>b.onclick=()=>setLook(b.dataset.look));
   /* **設定はclickで受ける**（§9.90。`change`は`click`の後に飛ぶので、
      押した結果で作り直す作りだと反映されない）。 */
   el.querySelectorAll('#osPvUnit [data-unit]').forEach(b=>b.onclick=()=>{pref.unit=b.dataset.unit;afterPref()});
@@ -494,7 +466,6 @@
     ?WL.modal.escCloses(e):(e.key==='Escape'&&!e.isComposing&&e.keyCode!==229);
    if(esc)closePreview();
   });
-  return el;
  }
  function afterPref(){savePref();paintOptions();renderPreview()}
  function paintOptions(){
@@ -520,8 +491,8 @@
   const keys=visibleColumnKeys();
   const opt={paper:pref.paper,unit:pref.unit,rows:pref.rows,borders:pref.borders!==false,
              dense:pref.dense!==false,basis:pv.basis,equipment:activeEquipment,keys};
-  const [l1,l2]=planLines(keys,opt);
-  opt.line1=l1;opt.line2=l2;
+  /* 段組のときだけ答えを持つ（1行構成は`keys`の並びのまま）。 */
+  opt.plan=usesStack(keys,opt)?stackPlan(keys,opt):null;
   return opt;
  }
  function renderPreview(){
@@ -537,21 +508,20 @@
    const cnt=$id('osPvCount');
    if(cnt)cnt.textContent=`${pv.items.length}件 / ${pv.sheets.length}枚`;
    const note=$id('osPvRowsNote');
-   if(note)note.textContent=opt.line2.length
-    ?`2行構成です（上段 ${opt.line1.length}列 / 下段 ${opt.line2.length}列）。列ごとの段は「載せる列を選ぶ」の書式のパターンへ「段:1」「段:2」と書いて決められます。`
-    :`1行構成です（${opt.line1.length}列）。`;
+   if(note)note.innerHTML=stackNote(opt);
    const sum=$id('osPvSum');
    if(sum){
-    const w=layoutLines(opt.line1,opt.line2,paperUsableMm(opt.paper).w);
+    const w=tableParts(opt);
     sum.innerHTML=`<h3>いまの紙</h3><dl>`
      +`<div><dt>設備</dt><dd>${esc(activeEquipment||'すべての設備')}</dd></div>`
      +`<div><dt>期間</dt><dd>${esc(pv.from||'—')} 〜 ${esc(pv.to||'—')}</dd></div>`
      +`<div><dt>日付の数え方</dt><dd>${pv.basis==='cal'?'太陽暦':'現場歴'}</dd></div>`
      +`<div><dt>載せる列</dt><dd>${opt.keys.length}列</dd></div>`
-     +`<div><dt>幅</dt><dd>${(w.over>0||w.over2>0)?`紙に入らないので ${Math.round(w.fit*100)}% に縮めています`:'画面で決めた幅をそのまま使っています'}</dd></div>`
-     +`<div><dt>トラック</dt><dd>${w.tracks.length}本（上下の段の切れ目をそろえた目盛り）</dd></div>`
+     +(opt.plan?`<div><dt>幅</dt><dd>配置の盤の${WL.recordLayout.UNITS}マス＝紙の刷れる幅（1マス 約${w.tracks[0]}mm）</dd></div>`
+       :`<div><dt>幅</dt><dd>${w.fit<1?`紙に入らないので ${Math.round(w.fit*100)}% に縮めています`:'画面で決めた幅をそのまま使っています'}</dd></div>`)
      +`</dl>`;
    }
+   if(board.on&&board.look==='list'){const ls=$id('osPvList');if(ls)ls.innerHTML=listHtml({items:(pv.items||[]).slice(0,30)})}
    fitPreview();
   }finally{
    pv.busy=false;
@@ -581,7 +551,69 @@
   printPages(pv.sheets,pv.opt,`操業データ表_${activeEquipment||'全設備'}`);
  }
  function closePreview(){
+  if(board.on)closeBoard(true);
   const el=$id('osPreview');if(el)el.hidden=true;
+  if(typeof pv.onClose==='function'){const f=pv.onClose;pv.onClose=null;f()}
+ }
+
+ /* ---------- 配置の盤（§9.553・案4） ----------
+    盤は**このプレビューの上半分**に開く（窓の中から窓を開かない・§9.368）。下半分は紙の見本で、
+    盤を触るたびに描き直す（「できあがり」は紙と一覧（2段組）を切り替えて見られる）。
+    盤の中身は下書き（`columnLayout.stage`）——保存を押すまで保存済みは変わらない。 */
+ const board={on:false,ctl:null,look:'paper'};
+ const GROUP_OF={lot:'ロットの情報',op:'操業データ'};
+ function groupOf(k){
+  const c=columnOf(k);
+  if(!c)return '計算した列';
+  return GROUP_OF[c.origin]||'基本情報';
+ }
+ function openBoard(){
+  const host=$id('osPvBoard');if(!host)return;
+  board.on=true;host.hidden=false;$id('osPvLook').hidden=false;
+  $id('osPreview').classList.add('is-board');
+  const t=target();
+  board.ctl=WL.recordLayout.board(host,{
+   target:t,
+   keys:()=>allColumnKeys(),
+   initialHidden:()=>{const l=WL.columnLayout.get(t)||{};const seed=initialHidden(allColumnKeys(),l);return seed||l.hidden||[]},
+   labelOf,groupOf,naturalPx:widthPxOf,usablePx:()=>usablePx(pref.paper),lineHint:lineOf,
+   mmPerUnit:()=>(paperUsableMm(pref.paper).w-FRAME_MM)/WL.recordLayout.UNITS,
+   onDraft:d=>{
+    /* 段組の配置を決めている間は**段組で見せる**（1行のままだと盤を触っても紙が変わらない）。 */
+    if(pref.rows==='1'){pref.rows='2';savePref();paintOptions()}
+    WL.columnLayout.stage(t,{...WL.columnLayout.get(t),order:allColumnKeys(),hidden:d.hidden,places:d.places});
+    renderPreview();
+   },
+   onSave:async d=>{
+    try{
+     await WL.columnLayout.patch(t,{order:allColumnKeys(),hidden:d.hidden,places:d.places});
+     WL.columnLayout.discard(t);
+     showToast&&showToast('段組の配置を保存しました','この設備の紙と、測定実績の一覧（段組）に同じ配置で出ます。',3200);
+     closeBoard(false);
+    }catch(e){showToast&&showToast('配置を保存できませんでした',e&&e.message||String(e),6000)}
+   },
+   onClose:()=>closeBoard(true),
+  });
+  renderPreview();
+ }
+ function closeBoard(discard){
+  const host=$id('osPvBoard');
+  if(discard)WL.columnLayout.discard(target());
+  board.on=false;board.ctl=null;
+  if(host){host.hidden=true;host.innerHTML=''}
+  const look=$id('osPvLook');if(look)look.hidden=true;
+  setLook('paper');
+  $id('osPreview')?.classList.remove('is-board');
+  renderPreview();
+ }
+ function setLook(v){
+  board.look=v==='list'?'list':'paper';
+  document.querySelectorAll('#osPvLookSeg [data-look]').forEach(b=>b.classList.toggle('is-on',b.dataset.look===board.look));
+  const sc=$id('osPvScroll'),ls=$id('osPvList');
+  if(sc)sc.hidden=board.look==='list';
+  if(ls)ls.hidden=board.look!=='list';
+  if(board.look==='list'&&ls)ls.innerHTML=listHtml({items:(pv.items||[]).slice(0,30)});
+  else fitPreview();
  }
  function openColumnPanel(){
   if(!WL.listColumns||typeof WL.listColumns.open!=='function'){
@@ -592,7 +624,7 @@
    key:'opsheet',eyebrow:'操業データ表',
    title:()=>`載せる列の設定（操業データ表：${eq||'共通'}）`,
    lead:'紙に載せる列と、並び・幅・表示名・書式・読み替えを決めます。'
-       +'<b>2行構成のときにどちらの段へ置くか</b>は、書式の「パターン」へ <b>段:1</b> / <b>段:2</b> と書きます（空欄なら幅から自動で決めます）。',
+       +'<b>段組のときの段・位置・幅</b>は、プレビューの「⑤ 段組の配置」の盤で決めます（§9.553）。',
    target:()=>targetOf(eq),
    savedToast:'操業データ表の列を保存しました',
    savedNote:'この設備の紙に同じ形で出ます',
@@ -618,29 +650,55 @@
   });
  }
 
- /* ---------- 入口 ---------- */
- async function open(o){
+ /* ---------- 入口 ----------
+    `prepare()`＝この紙の材料（設備・ロットの情報の項目・操業データの項目）を揃えて、配置設定を読む。
+    **紙を開かずに使う道**（測定実績の一覧の2段組・§9.553）も同じ材料と同じ答えを読む。 */
+ async function prepare(o){
   const opt=o||{};
   activeEquipment=String(opt.equipment||'').trim();
-  pv.items=(opt.items||[]).slice();
-  pv.basis=opt.basis==='cal'?'cal':'work';
-  pv.from=opt.from||'';pv.to=opt.to||'';
   lotFields=opt.lotFields||[];
   /* 操業データの列は**項目マスタの並び**。マスタに無い鍵（項目名を変えた
      後の古い記録）も落とさず後ろへ足す——落とすと記録があるのに紙に出せない。 */
   const seen=new Set(),keys=[];
   (opt.opDefs||[]).forEach(d=>{const n=String((d&&d.name)||'').trim();
     if(n&&!seen.has(n)){seen.add(n);keys.push(n)}});
-  pv.items.forEach(x=>Object.keys(x.opData||{}).forEach(n=>{
+  (opt.items||[]).forEach(x=>Object.keys(x.opData||{}).forEach(n=>{
     if(n&&!seen.has(n)){seen.add(n);keys.push(n)}}));
   opKeys=keys;
-  const el=ensurePreview();
   /* 配置設定は**描く前に読む**（読めなくても既定の並びで紙は出る）。 */
   await Promise.all([WL.columnLayout.load(targetOf(activeEquipment)).catch(WL.quiet('列の設定を取れない（既定の並びで出す）')),
                      (WL.displayRules&&WL.displayRules.load)?WL.displayRules.load().catch(WL.quiet('表示ルールを取れない（読み替え無しで出す）')):Promise.resolve()]);
+ }
+ async function open(o){
+  const opt=o||{};
+  pv.items=(opt.items||[]).slice();
+  pv.basis=opt.basis==='cal'?'cal':'work';
+  pv.from=opt.from||'';pv.to=opt.to||'';
+  pv.onClose=typeof opt.onClose==='function'?opt.onClose:null;
+  const el=ensurePreview();
+  await prepare(opt);
   el.hidden=false;
   paintOptions();
   renderPreview();
+  if(opt.board)openBoard();
+ }
+ /* ---------- 画面の2段組の一覧（§9.553） ----------
+    紙と**同じ答え**（`stackPlan`）を`WL.recordLayout.gridHtml()`で描く。**段組は必ず使う**
+    （一覧で2段組を選んだ人に1行を返さない）。先頭と末尾（選ぶ印・操作）は呼ぶ側が渡す。 */
+ function listHtml(o){
+  const keys=visibleColumnKeys();
+  const p=stackPlan(keys,{paper:pref.paper});
+  const rows=(o.items||[]).map((x,i)=>{
+   const view=rowView(x,i);
+   return {cls:o.rowCls?o.rowCls(x):'',attrs:o.rowAttrs?o.rowAttrs(x):'',lead:o.lead?o.lead(x,i):String(i+1),tail:o.tail?o.tail(x):'',
+    cell:k=>{
+     const raw=WL.cellFormat.rawOf(target(),view,k),c=columnOf(k);
+     return {html:esc(cellText(k,raw,view)),cls:(c&&c.num)?'rcl-num':'',title:raw==null?'':String(raw)};
+    }};
+  });
+  return WL.recordLayout.gridHtml({plan:p,head:k=>esc(labelOf(k)),title:k=>labelOf(k),
+   leadHead:o.leadHead||'#',tailHead:o.tailHead||'',rows})
+   +(p.overflow.length?`<p class="rcl-over">盤に入らない ${p.overflow.length}項目は出していません（${p.overflow.map(k=>esc(labelOf(k))).join('・')}）。</p>`:'');
  }
  window.addEventListener('resize',()=>{
   const box=$id('osPreview');
@@ -652,7 +710,7 @@
              /* 刷るときの`@page`(§9.252)。**名前ではなく実寸mm**で頼んで
                 いることを網が直に見られるようにしておく。 */
              pageRule:pageRuleFor,
-             planLines,withMm,layoutLines,mergeTracks,
+             withMm,stackPlan,usesStack,prepare,listHtml,openBoard,
              columnKeys:allColumnKeys,visibleColumnKeys,targetOf,lineOf,
              pref:()=>({...pref}),sheets:()=>pv.sheets.slice(),
              render:renderPreview};

@@ -1,4 +1,4 @@
-# 帳票と紙（93件）
+# 帳票と紙（96件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 段組の答えは`WL.recordLayout.plan()`の1箇所（1件＝段×横24マス・既定2段・最大4段）。操業データ表の紙と測定実績の一覧の段組が同じ答えを読む | `test_recordlayout.js`・`test_opsheet.js` | [§9.553](../../docs/decisions/9.553.md) |
+| 配置は列レイアウトマスタの`places`。書くのは配置の盤だけ（全置換の保存は送らない＝`OWNED_ELSEWHERE`）。盤の寸法はサーバーの`PLACE_*`と同じ | `test_recordlayout.js` | [§9.553](../../docs/decisions/9.553.md) |
+| 盤に入らない・重なった項目は名指す（黙って落とさない）。押し出しで**新しく**あふれるときだけ断る。最初の1手で今の見た目を固める | `test_recordlayout.js` | [§9.553](../../docs/decisions/9.553.md) |
 | 画面をそのまま刷るのは`printScreen()`（器を画面の大きさに止め、比を保って1枚へ・WebGLは絵へ）。段取りは`runPrint()`の1箇所 | `test_screenprint.js` | [§9.525](../../docs/decisions/9.525.md) |
 | 紙は画面で開いている子ロットを出す。載せるかどうかを決めるのは`buildPages`の1箇所 | `test_scprint.js` | [§9.357](../../docs/decisions/9.357.md) |
 | 丈別データの外観・巻ズレは**中身のある列だけ**出す。列幅は出す列だけで100%に配り直す | `test_rpblocks.js` | [§9.393](../../docs/decisions/9.393.md) |

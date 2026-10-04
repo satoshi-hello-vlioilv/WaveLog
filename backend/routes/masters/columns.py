@@ -154,7 +154,7 @@ def column_layout_master_get():
 @api_guard('列レイアウト保存失敗')
 def column_layout_master_save():
  x=body({'aligns': any_, 'clear': any_, 'formats': any_, 'formulas': any_, 'hidden': any_, 
-          'locks': any_, 'names': any_, 'order': any_, 'rules': any_, 'sorts': any_, 
+          'locks': any_, 'names': any_, 'order': any_, 'places': any_, 'rules': any_, 'sorts': any_, 
           'target': any_, 'widths': any_});uid=request_user_id(x)
  target=x.text('target')
  if not target:return jsonify(error='対象(target)を指定してください。'),400
@@ -163,13 +163,14 @@ def column_layout_master_save():
  locks=x.get('locks')          # 幅を固定する列(§9.119)
  sorts=x.get('sorts')          # 列ごとの並べ替えの決まり(§9.187)
  aligns=x.get('aligns')        # 値と見出しの揃え(§9.239 ④)
+ places=x.get('places')        # 段組の配置(§9.553)。段・何マス目から・何マスぶん
  # **送られてきた項目だけを書く**(§9.212 ②、利用者の指示「修正した内容が
  # 戻されたりしないために」)。以前は常に全置換で、渡し忘れた設定が黙って
  # 消えていた(計算式・並べ替え・幅固定で実際に3回起きた)。判断の材料は
  # 「JSONにそのキーがあるか」の1点——**空の値と省略は別のこと**で、
  # `hidden:[]`は「隠す列は無い」、`hidden`が無いのは「触っていない」。
  fields={k for k in ('order','widths','hidden','names','formats','rules',
-                     'formulas','locks','sorts','aligns') if k in x}
+                     'formulas','locks','sorts','aligns','places') if k in x}
  # `clear:true`は**この対象の設定を全部消す**。差分更新にしたぶん、
  # 「まっさらに戻す」は9個のキーを空で並べる必要が出てしまうので、
  # **意図を1語で言える口**を用意する(書き漏らすと消し残る＝前の設定が
@@ -199,6 +200,7 @@ def column_layout_master_save():
                       locks=locks if isinstance(locks,list) else [],
                       sorts=sorts if isinstance(sorts,dict) else {},
                       aligns=aligns if isinstance(aligns,dict) else {},
+                      places=places if isinstance(places,dict) else {},
                       fields=fields)
  return jsonify(ok=True,target=target,columns=n,updated_by=uid,
                 scope=('personal' if owner else 'common'),

@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（63件）
+# 見た目（CSS・寸法・色）（64件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 新しい部品のクラスの頭は**足す前に全CSS・全JSで引く**（`.lf-key`・`.rl-board`で既存の部品と衝突した） | `test_csslint.py` | [§9.553](../../docs/decisions/9.553.md) |
 | 狭い窓の決まり（`max-width`）は`@media screen and`で画面にだけ（刷るときは紙の幅が窓の幅になる） | `test_screenprint.js` | [§9.525](../../docs/decisions/9.525.md) |
 | ヘッダーの状態の札は「名前 値」の1行。字は隣の操作と同じ`--fs`、名前は細く薄く（`--ink-3`） | `test_headbar.js` | [§9.508](../../docs/decisions/9.508.md) |
 | 画面名は縮ませない（譲るのは出どころの1行）。1180px以下は札の名前を畳む（名前は`title`が持つ） | `test_headbar.js` | [§9.508](../../docs/decisions/9.508.md) |

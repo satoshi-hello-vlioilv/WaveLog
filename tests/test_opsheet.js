@@ -10,15 +10,15 @@
    ここで固定するのは次の点。
     1. **既定はA4横＋直単位（日＋直）**
     2. 日＋直ごとに1枚に分かれ、日単位へ切り替えると1枚にまとまる
-    3. 1件が1行のときと2行のときがあり、**2行のときも同じ`data-row`**
+    3. 1件が1行のときと段組（既定2段・項目が多ければ4段まで・§9.553）のときがあり、**段組でも同じ`data-row`**
        （§9.235 ③。割ると測ったときの行数と刷り上がりが食い違う）
-    4. **2行構成でも表が紙からはみ出さない**——上下の段の切れ目をそろえた
-       トラックに`colspan`で置き、**両段のcolspanの合計がトラック数と一致**する
+    4. **段組でも表が紙からはみ出さない**——段組は24本のトラック（配置の盤の1マス）に
+       `colspan`で置き、**どの段もcolspanの合計がトラック数と一致**する（くわしくは`test_recordlayout`）
     5. 用紙を変えると紙の実寸が変わる（A3横）
     6. **枠線OFFは太さで見る**（§9.237 ①。`border:0`でも色は`currentColor`を
        返すので、色で見ると素通りする）
     7. **後から調整できる**——列レイアウトマスタ`opsheet:<設備>`で列を隠すと
-       紙から消え、書式のパターンへ`段:2`と書くとその列が下段へ移る
+       紙から消え、書式のパターンへ`段:2`と書くとその列が下の段へ移る（古い印は手がかりとして読む）
     8. 操業データの値が紙に出る
 
    **材料は自分で注ぎ込むこと**——検証用フィクスチャの実績は同じ日・同じ直に
@@ -116,7 +116,10 @@ run('test_opsheet: 操業データ表（§9.241 ②、利用者の指示）', as
     罫線:td?bw(td):null,
     本文:p?p.querySelector('tbody').textContent:'',
     見出し語:p?[...p.querySelectorAll('thead tr:first-child th')].map(t=>t.textContent.trim()):[],
-    下段見出し:p?[...p.querySelectorAll('thead .os-head-2 th')].map(t=>t.textContent.trim()):[],
+    /* 2段目より下の見出し（段の数は項目の数で2〜4段・§9.553） */
+    下段見出し:p?[...p.querySelectorAll('thead .os-head-sub th')].map(t=>t.textContent.trim()).filter(Boolean):[],
+    下段見出しセル:p?p.querySelectorAll('thead tr.os-head-2 th').length:0,
+    段数:p?p.querySelectorAll('thead tr').length:0,
    };
   });
 
@@ -145,14 +148,14 @@ run('test_opsheet: 操業データ表（§9.241 ②、利用者の指示）', as
   await page.click('#osPvRows [data-rows="2"]');
   await page.waitForFunction(()=>!!document.querySelector('#osPreview tbody tr.os-row-2'),null,{timeout:10000});
   const two=await snap();
-  rec('2行構成では1件＝2行',two.行数===4&&two.下段セル>0,
-      JSON.stringify({行:two.行数,下段:two.下段セル}));
-  rec('2行は同じdata-rowでひとつの塊（紙を切っても割れない）',
-      two.dataRow==='0,0,1,1',two.dataRow);
+  rec('段組では1件＝段の数の行（2段以上）',two.段数>=2&&two.行数===2*two.段数&&two.下段セル>0,
+      JSON.stringify({行:two.行数,段:two.段数,下段:two.下段セル}));
+  rec('段は同じdata-rowでひとつの塊（紙を切っても割れない）',
+      two.dataRow===[0,1].map(i=>Array(two.段数).fill(i).join(',')).join(','),two.dataRow);
   rec('2行構成でも紙からはみ出さない',two.表幅<=two.紙の内寸+1,
       JSON.stringify({表:two.表幅,紙:two.紙の内寸}));
-  rec('2行構成では見出しも2段になる',two.下段見出し.length===two.下段セル,
-      JSON.stringify({見出し:two.下段見出し.length,セル:two.下段セル}));
+  rec('段組では見出しも同じ段・同じ切れ目になる',two.下段見出しセル===two.下段セル,
+      JSON.stringify({見出し:two.下段見出しセル,セル:two.下段セル}));
 
   /* ---- 用紙・枠線 ----
      用紙は**大きさと向きを別々に**選ぶ（§9.252、利用者の指示「実績データ表も
@@ -252,10 +255,10 @@ run('test_opsheet: 操業データ表（§9.241 ②、利用者の指示）', as
   await page.waitForFunction(k=>{
    const p=document.querySelector('#osPreview .os-page');
    if(!p)return false;
-   return [...p.querySelectorAll('.os-head-2 th')].some(t=>t.textContent.trim()===k);
+   return [...p.querySelectorAll('.os-head-sub th')].some(t=>t.textContent.trim()===k);
   },OP2,{timeout:10000}).catch(()=>{});
   const staged=await snap();
-  rec('「段:2」と書いた列は下段へ移る',
+  rec('「段:2」と書いた列は下の段へ移る（古い印は手がかりとして読む・§9.553）',
       staged.下段見出し.includes(OP2)&&!staged.見出し語.includes(OP2),
       JSON.stringify({下段:staged.下段見出し.slice(0,6),上段:staged.見出し語.slice(0,6)}));
 
