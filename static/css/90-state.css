@@ -331,7 +331,7 @@ body.nav-collapsed .layout>aside .brand{
 body.nav-collapsed .layout>aside .brand h2,
 body.nav-collapsed .layout>aside .brand small,
 body.nav-collapsed .nav-group-label,
-body.nav-collapsed .nav-item span,
+body.nav-collapsed .nav-item span{display:none}
 body.nav-collapsed .nav-collapse-toggle{margin-left:0}
 /* アイコンを中央へ。件数バッジはアイコンの右上へ小さく重ねる。 */
 body.nav-collapsed .nav-item{justify-content:center;padding-left:0;padding-right:0;position:relative}

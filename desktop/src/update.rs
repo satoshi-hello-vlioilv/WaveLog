@@ -44,7 +44,7 @@ pub enum Outcome {
     Failed(String),
 }
 
-/// 置き場。`config/local.json` の `update_dir`（この PC だけの上書き）→ `config/update.json`（共有の設定の控え）→ 既定。
+/// 置き場。`config/local.json` の `update_dir`（この PC だけの上書き）→ `config/update.json`（共有の設定か、入れた元の控え）→ 既定。
 /// 順は Python の `app_update.update_dir()` と同じ。`%VAR%` は展開する。
 pub fn update_dir(app_root: &Path) -> PathBuf {
     let conf = app_root.join("config");
@@ -117,13 +117,17 @@ fn within<T: Send + 'static>(wait: Duration, f: impl FnOnce() -> T + Send + 'sta
 }
 
 /// 配る版を読む。`Ok(None)`＝決めていない、`Err`＝届かない・読めない。
+/// 「無い」は**置き場のフォルダが在るときだけ**「決めていない」と読む——届かない UNC（WinError 53）も「無い」と答えるので、
+/// フォルダごと見えないなら「置き場が見つかりません」と言う（前は「配る版が決まっていません」と取り違えていた・§9.561）。
 pub fn release_version(dir: &Path, wait: Duration) -> Result<Option<String>, String> {
     let file = dir.join("release.json");
     let shown = file.display().to_string();
-    match within(wait, move || std::fs::read(&file)) {
+    let (folder, folder_shown) = (dir.to_path_buf(), dir.display().to_string());
+    match within(wait, move || std::fs::read(&file).map_err(|e| (e.kind() == std::io::ErrorKind::NotFound && !folder.is_dir(), e))) {
         None => Err(format!("{} 秒待っても置き場に届きません（{shown}）", wait.as_secs())),
-        Some(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Some(Err(e)) => Err(format!("配る版を読めません（{shown}）: {e}")),
+        Some(Err((true, e))) => Err(format!("置き場が見つかりません（{folder_shown}）: {e}")),
+        Some(Err((_, e))) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Some(Err((_, e))) => Err(format!("配る版を読めません（{shown}）: {e}")),
         Some(Ok(b)) => {
             let v: Value = serde_json::from_slice(b.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&b))
                 .map_err(|e| format!("配る版の形が違います（{shown}）: {e}"))?;
@@ -214,30 +218,49 @@ fn exe_stamp(app_root: &Path) -> Option<String> {
     sha256_of(&app_root.join("program").join(crate::launch::EXE)).ok()
 }
 
-/// 配る版を読み、違えばそろえる（起動画面の中・Python を起こす前に1回）。
-pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Outcome {
+/// 配る版と手元の版を比べた答え（入れ替える前・§9.561）。読むだけなので、Python を起こすのと同時に進めてよい。
+#[derive(Debug, PartialEq)]
+pub enum Peek {
+    /// 配る版と同じ
+    Same(String),
+    /// 確かめなかった理由（届かない・配る版が無い・開発の作業ツリー）
+    Skip(String),
+    /// 配る版の字が正しくない
+    Bad(String),
+    /// 違う（そろえる）
+    Differs { have: String, want: String, dir: PathBuf },
+}
+
+/// 配る版を読んで手元と比べる（入れ替えない）。届かなければ `REACH` で打ち切る。
+pub fn peek(app_root: &Path) -> Peek {
     if app_root.join(".git").exists() && std::env::var_os("WAVELOG_UPDATE_FORCE").is_none() {
-        return Outcome::Skipped("開発の作業ツリーなので更新しません".into());
+        return Peek::Skip("開発の作業ツリーなので更新しません".into());
     }
     let dir = update_dir(app_root);
     let want = match release_version(&dir, REACH) {
         Ok(Some(v)) => v,
-        Ok(None) => return Outcome::Skipped("配る版が決まっていません".into()),
-        Err(e) => return Outcome::Skipped(e),
+        Ok(None) => return Peek::Skip("配る版が決まっていません".into()),
+        Err(e) => return Peek::Skip(e),
     };
     if !safe_version(&want) {
-        return Outcome::Failed(format!("配る版の字が正しくありません: {want:?}"));
+        return Peek::Bad(format!("配る版の字が正しくありません: {want:?}"));
     }
     let have = local_version(app_root).unwrap_or_default();
     if have == want {
-        return Outcome::UpToDate(have);
+        Peek::Same(have)
+    } else {
+        Peek::Differs { have, want, dir }
     }
+}
+
+/// 配る版へそろえる（`peek()`が Differs と答えたとき・**Python が止まっているときに**呼ぶ）。
+pub fn apply(app_root: &Path, dir: &Path, have: &str, want: &str, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Outcome {
     progress(&format!("{have} → {want} にそろえています"));
     let work = app_root.join(WORK);
     let stage_dir = work.join(format!("{want}.stage"));
-    let old = work.join(format!("{}.old", if safe_version(&have) { have.as_str() } else { "unknown" }));
+    let old = work.join(format!("{}.old", if safe_version(have) { have } else { "unknown" }));
     let before = exe_stamp(app_root);
-    let payload = match stage(&dir.join("versions").join(&want), &stage_dir, progress) {
+    let payload = match stage(&dir.join("versions").join(want), &stage_dir, progress) {
         Ok(p) => p,
         Err(e) => {
             let _ = std::fs::remove_dir_all(&stage_dir);
@@ -257,13 +280,33 @@ pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&s
         }
     }
     log(&format!("UPDATE {have} → {want}（{}）", dir.display()));
-    Outcome::Applied { from: have, to: want, exe_changed: exe_stamp(app_root) != before }
+    Outcome::Applied { from: have.to_string(), to: want.to_string(), exe_changed: exe_stamp(app_root) != before }
+}
+
+/// 配る版を読み、違えばそろえる（`peek()`→`apply()`を続けて・初回のインストールと網が使う）。
+pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Outcome {
+    match peek(app_root) {
+        Peek::Same(v) => Outcome::UpToDate(v),
+        Peek::Skip(why) => Outcome::Skipped(why),
+        Peek::Bad(why) => Outcome::Failed(why),
+        Peek::Differs { have, want, dir } => apply(app_root, &dir, &have, &want, log, progress),
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn missing_folder_is_not_an_undecided_release() {
+        let d = tmp("rv");
+        assert_eq!(release_version(&d, REACH), Ok(None), "置き場は在り配る版が無い＝決めていない");
+        let gone = d.join("nowhere");
+        let e = release_version(&gone, REACH).unwrap_err();
+        assert!(e.contains("置き場が見つかりません"), "置き場ごと無い・届かない UNC は「決めていない」と取り違えない: {e}");
+        fs::remove_dir_all(&d).ok();
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("wl-update-{name}-{}", std::process::id()));

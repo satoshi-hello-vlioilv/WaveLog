@@ -142,13 +142,14 @@
 /* ---------- 3a. サイドバー: ブランド ---------- */
 .layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 .layout>aside .brand h2{margin:0;font-size:var(--fs-title);letter-spacing:.01em}
-.layout>aside .brand small{display:inline-flex;margin-top:0;color:#8fb3ba}
+.layout>aside .brand small{display:inline-flex;margin-top:0;color:#8fb3ba;font-size:var(--fs-sm)}
 /* ---------- 3c. サイドバー: ナビグループ共通 ----------
    3グループ（測定データ／表示切替／管理）に分け、グループ名の
    小見出しでチャンク化（認知負荷の低減）。色は teal 系の
    単色相ベース＋警告色(amber)のみに絞り、意味の一貫性を保つ。 */
 .nav-group{display:grid;gap:var(--space-1);margin:0 0 14px}
-.nav-group-label{padding:0 8px 2px;font-size:var(--fs-badge);font-weight:800;letter-spacing:.08em;color:#6f9298}
+/* 読ませる字は 12px 以上（§9.560）。見出しは行き先（--fs）より1段小さく、太さと色で階層を言う */
+.nav-group-label{padding:0 8px 2px;font-size:var(--fs-sm);font-weight:800;letter-spacing:.04em;color:#6f9298}
 .nav-group-admin{margin-top:auto;margin-bottom:0;padding-top:12px;border-top:1px solid #2c4750}
 /* ナビ項目は高さ・文字サイズともにトークンへ揃える(ARCHITECTURE.md「コントロールサイズの統一」)。以前は高さ指定が
    無く、paddingとテキストの行高だけで決まっていたため、ヘッダーのボタン類や
@@ -176,7 +177,7 @@
 .nav-restart-note:hover{border-style:solid;background:#4a3418;color:#fff}
 .nav-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nav-item:hover{background:#22434d;border-color:#2c4750;color:#fff}
-.nav-item b{flex:none;display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:var(--radius-md);background:#2c4750;color:#cfe6ea;font-size:var(--fs-micro)}
+.nav-item b{flex:none;display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:var(--radius-md);background:#2c4750;color:#cfe6ea;font-size:var(--fs-sm)}
 /* 測定データ（自分の記録を開く＝一覧ダイアログを開く操作） */
 /* `.nav-item--primary`は廃した（§9.288 ⑦、利用者の指示「左のメインメニューで
    『データ一覧』だけ常に色が変わっているので、選択時ではないときは選択中と
@@ -526,7 +527,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    **状態の字は共通設定の面とも共有する**ので、定義はこの1箇所だけに書く。 */
 .lnk{display:flex;flex-direction:column;gap:var(--space-1)}
 /* 状態は**色だけで言わない**（§CLAUDE 3）——字が分類名そのもの。 */
-.lnk-state{margin:0;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.lnk-state{margin:0;font-size:var(--fs-sm);font-weight:700;color:var(--muted)}
 .lnk-state.is-done{color:var(--teal-dark)}
 .lnk-state.is-todo{color:var(--ink-3)}
 .lnk-state.is-bad{color:var(--danger)}

@@ -33,7 +33,7 @@
 .hd-table-badge:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
 .hd-table-badge:disabled{opacity:.7;cursor:default}
 .hd-table-badge[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
-.hd-table-key{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
+.hd-table-key{color:var(--ink-soft);font-weight:700}
 .hd-table-badge>i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-micro)}
 /* 切り替えの浮きメニュー（body直下・`position:fixed`・§9.201）。
    **1列のラジオ**——表は同時に1つしか開けない。 */

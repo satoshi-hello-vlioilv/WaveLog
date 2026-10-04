@@ -238,6 +238,33 @@ try:
 finally:
     app_update._shared_value = orig_shared
 rec('覚えることが無ければ控えを作らない（窓は既定を読む）', not w0 and not none.exists())
+
+# 共有の入口から入れた PC（§9.559）は、窓が「どこから来たか」を控えに書く（印 from=install）。共有の設定が空でも
+# Python はこれを消さない——消すと次の起動で既定の置き場を見に行き、配る版へそろわない（CI の4回目で見つけた・§9.561）
+origin = Path(tempfile.mkdtemp()) / 'config' / 'update.json'
+origin.parent.mkdir(parents=True)
+origin.write_text(json.dumps({'update_dir': r'D:\share\WaveLog', 'from': 'install'}), encoding='utf-8')
+orig_mirror = app_update.mirror_path
+try:
+    app_update._shared_value = lambda: ''
+    app_update.load_local_config = lambda: {}
+    app_update.mirror_path = lambda: origin
+    k1 = app_update.remember(origin)
+    kept = json.loads(origin.read_text(encoding='utf-8'))
+    c1 = app_update.dir_choice()
+    app_update._shared_value = lambda: r'\\srv\Apps2\WaveLog'
+    k2 = app_update.remember(origin)
+    c2 = app_update.dir_choice()
+    over = json.loads(origin.read_text(encoding='utf-8'))
+finally:
+    app_update._shared_value, app_update.load_local_config, app_update.mirror_path = orig_shared, orig_local, orig_mirror
+rec('入れた元の置き場は、共有の設定が空でも消さない（Python も窓と同じ置き場を答える）',
+    not k1 and kept.get('from') == 'install' and c1 == (Path(r'D:\share\WaveLog'), 'install'), str([k1, kept, c1]))
+rec('共有の設定が決まれば、そちらが勝つ（入れた元の控えを上書きする）',
+    k2 and c2[1] == 'shared' and over == {'update_dir': r'\\srv\Apps2\WaveLog'}, str([k2, c2, over]))
+INS = (ROOT / 'desktop' / 'src' / 'install.rs').read_text(encoding='utf-8')
+rec('窓は入れた元の置き場に印（from=install）を付けて控える',
+    f'"{app_update.ORIGIN_KEY}": "{app_update.ORIGIN_INSTALL}"' in INS if hasattr(app_update, 'ORIGIN_KEY') else False)
 stray = [str(d) for base in (ROOT, ROOT / 'tests') for d in base.iterdir() if d.name.startswith('\\\\')]
 rec('この網を回しても、UNC の字のフォルダが作業フォルダに生まれない', not stray, str(stray))
 
@@ -276,6 +303,16 @@ rec('入口と渡す設定の名前・鍵は窓（install.rs）と同じ字',
     f'pub const ENTRY: &str = "{app_update.ENTRY_EXE}";' in INS and f'pub const SEED: &str = "{app_update.SEED}";' in INS
     and 'pub const SEED_KEYS: [&str; 2] = [%s];' % ', '.join('"%s"' % k for k in app_update.SEED_KEYS) in INS)
 rec('Start.vbs は版に入れない（§9.559で外した）', 'Start.vbs' not in app_update.PAYLOAD)
+# ---- 10) 版の確かめと Python の起動を同時に進める（§9.561、利用者の承認） ----
+MAIN = (ROOT / 'desktop' / 'src' / 'main.rs').read_text(encoding='utf-8')
+UPD = (ROOT / 'desktop' / 'src' / 'update.rs').read_text(encoding='utf-8')
+i_peek, i_get = MAIN.find('peek_in_background(&root)'), MAIN.find('let started = sup.get();')
+rec('版の確かめを裏で始めてから Python を起こす（起動＝長いほう）', 0 < i_peek < i_get, f'{i_peek} < {i_get}')
+body = MAIN[MAIN.find('fn settle_update('):]
+rec('違えば写しを手放してから Python を止め、入れ替え、起こし直す',
+    0 < body.find('drop(started);') < body.find('sup.stop();') < body.find('update::apply(') < body.find('Some(sup.get())'))
+rec('更新は「読むだけ」と「入れ替える」に分かれ、続けて呼ぶ口も残る',
+    'pub fn peek(' in UPD and 'pub fn apply(' in UPD and 'pub fn check_and_apply(' in UPD)
 
 ok = sum(1 for _, x in R if x)
 print(f'\n== {ok}/{len(R)} PASS ==')
