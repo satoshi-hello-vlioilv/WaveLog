@@ -575,8 +575,8 @@
  }
  .wl-progress[hidden]{display:none}
  .wl-progress-head{display:flex;align-items:baseline;gap:var(--gap-inline)}
- .wl-progress-title{font-size:var(--fs-base-sm);font-weight:700}
- .wl-progress-pct{margin-left:auto;font-size:var(--fs-sm);font-weight:700;
+ .wl-progress-title{font-size:var(--fs-base-sm);font-weight:var(--fw-strong)}
+ .wl-progress-pct{margin-left:auto;font-size:var(--fs-sm);font-weight:var(--fw-ui);
                   color:var(--teal-dark);font-variant-numeric:tabular-nums}
  .wl-progress-bar{height:6px;border-radius:var(--radius-pill);overflow:hidden;background:#fff}
  .wl-progress-bar i{

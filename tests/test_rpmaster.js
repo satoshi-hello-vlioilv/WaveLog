@@ -48,12 +48,13 @@ const restore=async()=>{
    塊を選ぶと、この節が確かめたい「盤で組めるのに紙はコードのまま」という
    道を一度も通らない。**紙に出ている塊であること**も要る（§9.248 ②）。 */
 const CODE_BLOCK='丈別データ';
+const WT=require('./lib/wait.js');
 const openReport=async page=>{
  await page.evaluate(()=>{if(typeof exitReportView==='function')exitReportView()});
  await seedRecord();
  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
  await page.waitForSelector('.record-list-row',{timeout:25000});
- await page.click('.record-list-row .report');
+ await WT.openRecordReport(page);
  await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
  await settle(page);
 };

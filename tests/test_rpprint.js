@@ -68,7 +68,7 @@ run('test_rpprint: 帳票は**プレビューどおりに刷る**（§9.242 ⑦�
   await seedRecord();
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
-  await page.click('.record-list-row .report');
+  await W.openRecordReport(page);
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
   await settle(page);
 
@@ -942,13 +942,7 @@ run('test_rpprint: 帳票は**プレビューどおりに刷る**（§9.242 ⑦�
   const openSplit=async()=>{
    await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
-   const hit=await page.evaluate(()=>{
-    const r=[...document.querySelectorAll('.record-list-row')]
-      .find(x=>/RPSPLIT-1/.test(x.textContent||''));
-    if(!r)return false;
-    const b=r.querySelector('.report');if(!b)return false;
-    b.click();return true;
-   });
+   const hit=await W.openRecordReport(page,{has:'RPSPLIT-1'});
    if(!hit)return false;
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
    await settle(page);
@@ -988,12 +982,7 @@ run('test_rpprint: 帳票は**プレビューどおりに刷る**（§9.242 ⑦�
 
   /* **本丸②**——分割の無いロットの紙は今までどおり（勝手に増やさない）。 */
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
-  await page.waitForSelector('.record-list-row',{timeout:25000});
-  const soloOk=await page.evaluate(()=>{
-   const r=[...document.querySelectorAll('.record-list-row')]
-     .find(x=>!/RPSPLIT-1/.test(x.textContent||'')&&x.querySelector('.report'));
-   if(!r)return false;r.querySelector('.report').click();return true;
-  });
+  const soloOk=await W.openRecordReport(page,{not:'RPSPLIT-1'});
   if(soloOk){
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
    await settle(page);

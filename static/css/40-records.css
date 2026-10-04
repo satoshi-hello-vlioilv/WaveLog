@@ -13,7 +13,7 @@
    絞り込み(.record-searchbar)はヘッダーの#headerViewBarへ移る。 */
 .record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:#fff}
 .record-searchbar label{display:grid;gap:var(--space-1)}
-.record-searchbar label>span{font-size:var(--fs-sm);font-weight:500;color:var(--ink-3)}
+.record-searchbar label>span{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-3)}
 /* 検索欄は一覧と同じ部品（§9.507）。上の`label{display:grid}`（名前を上に積む形）を当てない。 */
 .record-searchbar label.lt-search{display:inline-flex;flex:0 1 var(--w-2xl)}  /* 案内の字（22字）が切れない規格幅（§CLAUDE 画面基準 11） */
 /* 右端の群＝**見せ方**（並び・表示列）。仕掛一覧の帯と同じ並び（§9.505・§9.507）。 */
@@ -22,10 +22,10 @@
 /* 編集中/完了はそれぞれ独立にON/OFFできるトグル(排他選択ではない)なので、
    セグメントコントロールではなくピル状のチェックボタンで表現する。 */
 .record-status-filter{display:flex;gap:var(--gap-inline)}
-.status-filter-btn{border:1.5px solid #c7d4d8;background:#fff;color:var(--muted);font-weight:800;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.status-filter-btn{border:1.5px solid #c7d4d8;background:#fff;color:var(--muted);font-weight:var(--fw-strong);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
 .status-filter-btn:hover{border-color:#9fb4ba}
 .status-filter-btn[data-status-filter="done"].active{border-color:var(--success);background:var(--success)}
-.record-search-result{align-self:center;text-align:right;color:#526970;font-weight:700;white-space:nowrap}
+.record-search-result{align-self:center;text-align:right;color:#526970;font-weight:var(--fw-strong);white-space:nowrap}
 /* ---------- データ一覧は仕掛一覧(#grid)と同じ表の規格で組む（§9.161） ----------
    利用者の指摘「文字サイズのバランスが悪く統一感がない。ボタンUIは大きい、
    ボタン内の文字も大きい、データ内の文字は小さい。文字の見切れも目立つ。
@@ -82,7 +82,7 @@
    `:hover`にも追随する）。行そのものへ`width:max-content`を与える手もあるが、
    `fr`のトラックが最大幅で解けてしまい、**溢れていないときの列幅まで
    変わる**ので採らない。 */
-.record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;color:#28464e;font-weight:700}
+.record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;color:#28464e;font-weight:var(--fw-strong)}
 /* 見出しの左右余白は値のセルより詰める（削る順は 余白 → 省略記号）。 */
 .record-list-head>*{height:var(--row-h);display:flex;align-items:center;
   padding:var(--row-pad-y) var(--row-pad-x-head);border-right:1px solid var(--line-mid);
@@ -99,11 +99,11 @@
 .record-list-cell>*{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .record-list-cell.primary{padding-inline:var(--space-1)}
 .record-list-cell.primary .grid-lot-link{width:100%;min-height:0}
-.record-list-cell.primary{font-weight:800;color:var(--ink)}
+.record-list-cell.primary{font-weight:var(--fw-strong);color:var(--ink)}
 /* **補助の列は色だけで下げる。** 大きさを変えると、同じ距離で同時に読む
    ものが違う大きさになり、表全体が「揃っていない」と感じられる（§9.90）。 */
 .record-list-cell.secondary{color:#526970}
-.record-duration{font-weight:800;color:#075e67}
+.record-duration{font-weight:var(--fw-strong);color:#075e67}
 /* 続きから再開/帳票/削除の3ボタンは役割で色分けしつつ、サイズ・文字サイズ・
    角丸は完全に統一する(特定のボタンだけ大きくしない)。均等幅(flex:1)に
    して列内でタップしやすい大きさを揃える。
@@ -129,9 +129,9 @@
   border-top:1px solid var(--line);background:var(--surface);box-shadow:0 -4px 12px #17384214}
 .rec-actbar-hint{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
 .rec-actbar-what{flex:1;min-width:0;display:flex;align-items:baseline;gap:var(--space-3);white-space:nowrap;overflow:hidden}
-.rec-actbar-what b{font-size:var(--fs-title);font-weight:800;color:var(--ink)}
+.rec-actbar-what b{font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink)}
 .rec-actbar-what small{font-size:var(--fs-sm);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}
-.rec-actbar button{flex:none;font-weight:700;white-space:nowrap;border:1px solid var(--line);
+.rec-actbar button{flex:none;font-weight:var(--fw-strong);white-space:nowrap;border:1px solid var(--line);
   background:var(--surface);color:var(--ink-2);cursor:pointer}
 .rec-actbar .resume{min-width:var(--w-sm);background:var(--teal);color:#fff;border-color:var(--teal)}
 .rec-actbar .resume:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
@@ -148,7 +148,7 @@
   --menu-max-h:none;--menu-overflow:visible;
   --menu-shadow:0 10px 28px #0b2b3320;--menu-item-pad:var(--space-2);
   display:flex;flex-direction:column;gap:var(--space-1)}
-.rec-row-menu .rrm-head{font-size:var(--fs-micro);font-weight:800;color:var(--muted);
+.rec-row-menu .rrm-head{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted);
   padding:var(--space-1) var(--space-2) 0}
 /* 項目は「字＋その下に理由」の縦積み（`.wl-menu button`は`display:block`）。 */
 .rec-row-menu .rrm-item{display:flex;flex-direction:column;align-items:flex-start;
@@ -158,7 +158,7 @@
    全項目を危険色にしていた——いまは削除の1件しか無いので露見していないが、
    2項目目を足した瞬間に**無関係な項目が赤く光る**。 */
 .rec-row-menu .rrm-item.is-danger:hover:not(:disabled){background:var(--danger-bg)}
-.rec-row-menu .rrm-why{font-size:var(--fs-micro);font-weight:500;color:var(--muted);
+.rec-row-menu .rrm-why{font-size:var(--fs-micro);font-weight:var(--fw-body);color:var(--muted);
   white-space:normal;line-height:1.45}
 .record-toolbar{display:flex;justify-content:space-between;align-items:center;padding:var(--pad-card);background:#eef8f9;border-bottom:1px solid var(--line)}
 .record-toolbar button{background:var(--teal);color:#fff}
@@ -172,11 +172,11 @@
    **見えているものが全部ではない**という注意を促すため。 */
 .record-mode-notice{margin:var(--space-4) var(--space-5) 0;padding:var(--pad-card);border:1px solid var(--warn-border);border-left:4px solid var(--warn-fg);border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-fg)}
 .record-mode-notice .rmn-head{display:flex;align-items:center;gap:var(--gap-inline);font-size:var(--fs)}
-.record-mode-notice .rmn-mode{padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);background:var(--warn-fg);color:#fff;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+.record-mode-notice .rmn-mode{padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);background:var(--warn-fg);color:#fff;font-size:var(--fs-micro);font-weight:var(--fw-ui);white-space:nowrap}
 .record-mode-notice .rmn-body{margin:var(--space-2) 0 0;font-size:var(--fs-sm);line-height:1.7}
 .record-mode-notice .rmn-actions{margin-top:var(--space-3);display:flex;align-items:center;gap:var(--gap-inline)}
 .record-mode-notice .rmn-actions:empty{display:none}
-.record-mode-switch{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700}
+.record-mode-switch{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:var(--fw-strong)}
 .record-mode-denied{margin:0;font-size:var(--fs-sm);line-height:1.6}
 /* 見出しは中央でよいが、理由は2〜3行の説明文になる。中央揃えのまま伸ばすと
    行頭が揃わず読みにくいので、幅を決めて左揃えにする。 */
@@ -208,7 +208,7 @@
 .settings-dialog header button{border:0;background:transparent;color:#fff;font-size:var(--fs-lg)}
 .settings-body{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--space-5)}
 .settings-body>p{margin:0 0 18px;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#526970;line-height:1.7}
-.settings-body label{display:grid;gap:var(--gap-inline);font-weight:700}
+.settings-body label{display:grid;gap:var(--gap-inline);font-weight:var(--fw-strong)}
 /* ---------- 使用設備の設定（§9.257 ②、利用者の指示） ----------
    「アプリ使用設備の設定のモーダルが使いづらいのでわかりやすく使いやすく
     再構築してください。」
@@ -229,14 +229,14 @@
   margin:0;font-size:var(--fs);line-height:var(--lh);color:var(--ink)}
 .eqset-no{display:inline-flex;align-items:center;justify-content:center;
   min-width:1.6em;height:1.6em;border-radius:var(--radius-sm);
-  background:var(--teal);color:var(--surface);font-size:var(--fs-sm);font-weight:800}
+  background:var(--teal);color:var(--surface);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* **いまの値はここだけに出す**（§CLAUDE 画面基準 8）。直す前は選択欄・
    助けの行・状態の帯の3箇所に同じ設備名が出ていた。 */
 .eqset-now{margin-left:auto;padding:2px var(--space-2);border-radius:var(--radius-sm);
-  background:var(--surface-3);color:var(--ink-2);font-size:var(--fs-sm);font-weight:800}
+  background:var(--surface-3);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .eqset-now.is-none{background:var(--warn-bg);color:var(--warn-fg)}
 .eqset-now.is-pick{background:var(--teal);color:var(--surface)}
-.eqset-now.is-instant{background:transparent;color:var(--muted);font-weight:400}
+.eqset-now.is-instant{background:transparent;color:var(--muted);font-weight:var(--fw-body)}
 .eqset-lead{margin:0;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.7}
 .eqset-lead b{color:var(--ink-2)}
 /* ---------- 選んでも1pxも動かない（§9.227 ②） ----------
@@ -249,10 +249,10 @@
 .eqset-new.is-on{visibility:visible}
 /* **器は中身の長さから決める**（基準11）。設備名は`LS4`のような短い文字列
    なので、器いっぱいに伸ばさない。 */
-.eqset-field{display:grid;gap:var(--gap-tight);font-weight:700;
+.eqset-field{display:grid;gap:var(--gap-tight);font-weight:var(--fw-ui);
   font-size:var(--fs-sm);color:var(--ink-2)}
 .eqset-field>select,.eqset-field>input{width:100%;max-width:var(--w-lg);
-  height:var(--ctl-h);background:var(--surface);font-size:var(--fs);font-weight:400}
+  height:var(--ctl-h);background:var(--surface);font-size:var(--fs);font-weight:var(--fw-body)}
 /* 助けの行は**次にすること**を1つだけ言う。読み取り専用の文なので
    入力欄風の枠は付けない（基準10）。
    **2行ぶんの場所を先に取る**（§9.227 ②）——文言は場面で1行にも2行にも
@@ -271,23 +271,23 @@
 .eqset-path{word-break:break-all}
 /* 足の一言。**なぜここに居るか**と保存の結果を出す（§CLAUDE 6）。 */
 .eqset-foot{margin-right:auto;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.5}
-.eqset-foot.is-warn{color:var(--warn-fg);font-weight:700}
-.eqset-foot.is-ok{color:var(--teal-dark);font-weight:700}
+.eqset-foot.is-warn{color:var(--warn-fg);font-weight:var(--fw-strong)}
+.eqset-foot.is-ok{color:var(--teal-dark);font-weight:var(--fw-strong)}
 /* 決めるボタンは**本文の外**（§9.255 ④／§9.222 ⑤）。本文だけがスクロール
    するので、中身が増えてもボタンに手が届く。 */
 .eqset>.settings-actions{flex:0 0 auto;margin:0;padding:var(--pad-dialog);
   border-top:1px solid var(--line-soft);background:var(--surface-2);align-items:center}
 .settings-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:20px;flex-wrap:wrap}
-.settings-actions #saveAppSettings{min-width:var(--w-md);height:var(--ctl-h-lg);background:var(--teal);color:var(--surface);border-color:var(--teal);font-weight:800}
+.settings-actions #saveAppSettings{min-width:var(--w-md);height:var(--ctl-h-lg);background:var(--teal);color:var(--surface);border-color:var(--teal);font-weight:var(--fw-strong)}
 .settings-actions #saveAppSettings:disabled{background:var(--surface-3);color:var(--muted);border-color:var(--line);cursor:not-allowed}
-.settings-actions .danger{min-width:120px;height:42px;background:#c62828;color:#fff;border-color:#c62828;font-weight:800}
+.settings-actions .danger{min-width:120px;height:42px;background:#c62828;color:#fff;border-color:#c62828;font-weight:var(--fw-strong)}
 .settings-actions .danger:hover{background:#a31f1f}
 /* ---------- データ削除の確認モーダル(何も入力がないデータ以外はここでしっかり警告する) ---------- */
 .delete-confirm-summary{display:flex;flex-direction:column;gap:var(--gap-hair);margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2)}
 .delete-confirm-row{display:flex;justify-content:space-between;gap:var(--space-3);padding:3px 0;font-size:var(--fs-base-sm);color:var(--ink-2)}
-.delete-confirm-row span{color:var(--muted);font-weight:700}
+.delete-confirm-row span{color:var(--muted);font-weight:var(--fw-strong)}
 .delete-confirm-row b{color:#17272d}
-.delete-confirm-warning{margin:0;padding:var(--pad-card);border-left:4px solid #c62828;background:#fdecec;color:#7a1f1f;line-height:1.7;font-weight:700}
+.delete-confirm-warning{margin:0;padding:var(--pad-card);border-left:4px solid #c62828;background:#fdecec;color:#7a1f1f;line-height:1.7;font-weight:var(--fw-strong)}
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
 .confirm-modal-message{margin:0;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:var(--ink-2);line-height:1.7;white-space:pre-line}
@@ -295,7 +295,7 @@
    「ラベル＋欄」と「添え書き」の2つだけ。入力欄は器いっぱいに伸ばす
    ——名前は何文字入るか分からず、途中で見切れると読み直せない。 */
 .confirm-modal-field{display:flex;flex-direction:column;gap:var(--gap-hair);margin-top:var(--space-2)}
-.confirm-modal-field>span{font-weight:700;font-size:var(--fs-base-sm);color:var(--ink-2)}
+.confirm-modal-field>span{font-weight:var(--fw-strong);font-size:var(--fs-base-sm);color:var(--ink-2)}
 .confirm-modal-field>input{width:100%}
 .confirm-modal-hint{display:block;margin-top:var(--gap-hair);color:var(--muted);font-size:var(--fs-micro);line-height:1.6}
 /* 確認の中の「何が起きるか」の箇条書き（§9.301 ②）。**先に文章、次に箇条書き**
@@ -310,7 +310,7 @@
 /* 申し送り（コメント）の入力(§9.189)。**ここだけ入力欄を置く**ので、
    確認ダイアログの本文と同じ余白でそろえる。 */
 .sc-comment-field{display:grid;gap:var(--gap-hair);margin:var(--space-2) 0 0}
-.sc-comment-field span{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.sc-comment-field span{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
 .sc-comment-field textarea{width:100%;padding:var(--pad-row);border:1px solid var(--line);
   border-radius:var(--radius-sm);font-size:var(--fs);line-height:var(--lh);resize:vertical}
 /* 入れた設備停止を直す窓(§9.220 2①)。**ラベル列は固定幅**（§9のUI基準9
@@ -318,7 +318,7 @@
 .sc-stop-edit{display:grid;gap:var(--space-2);margin:var(--space-2) 0 0}
 .sc-stop-edit-row{display:grid;grid-template-columns:var(--w-xs) minmax(0,1fr);
   gap:var(--gap-inline);align-items:center}
-.sc-stop-edit-row>span{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.sc-stop-edit-row>span{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
 .sc-stop-edit-row>input{width:100%;min-width:0;padding:var(--pad-row);
   border:1px solid var(--line);border-radius:var(--radius-sm);
   font-size:var(--fs);line-height:var(--lh)}
@@ -328,8 +328,8 @@
 /* 設備削除確認(docs/SCHEDULE_MODE_DESIGN.md §5.0.1)の関連スケジュールデータ内訳。 */
 .eq-ref-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:var(--fs-base-sm)}
 .eq-ref-table td{padding:5px 8px;border-bottom:1px solid var(--line)}
-.eq-ref-table td:last-child{text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
-.eq-ref-table tr.eq-ref-warn td{color:var(--danger);font-weight:800}
+.eq-ref-table td:last-child{text-align:right;font-weight:var(--fw-strong);font-variant-numeric:tabular-nums}
+.eq-ref-table tr.eq-ref-warn td{color:var(--danger);font-weight:var(--fw-strong)}
 /* 初期画面の設備設定バナー（設定済みは非表示） */
 .equipment-setup-banner{
   display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:var(--space-3);
@@ -337,11 +337,11 @@
   border:1px solid var(--warn-border);border-left:6px solid var(--warn);border-radius:var(--radius-md);background:var(--warn-bg);
 }
 .equipment-setup-banner.configured{display:none}
-.equipment-setup-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:var(--radius-round);background:var(--warn);color:var(--nav);font-weight:900}
+.equipment-setup-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:var(--radius-round);background:var(--warn);color:var(--nav);font-weight:var(--fw-strong)}
 .equipment-setup-copy{display:grid;gap:var(--gap-tight)}
 .equipment-setup-copy b{font-size:var(--fs-title)}
 .equipment-setup-copy span{color:#526970}
-.equipment-setup-banner>button{min-width:160px;border-color:var(--teal);background:var(--teal);color:#fff;font-weight:800}
+.equipment-setup-banner>button{min-width:160px;border-color:var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 /* ---------- 13. 保存オーバーレイ / トースト ----------
    待機モーダルは「見て飽きない・状況が伝わる」ことを目的に、
    (a) 二重リングのスピナー、(b) 実際に目視できる2ステップのドット表示、
@@ -353,7 +353,7 @@
 @keyframes waiting-card-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
 .waiting-overlay>div{display:grid;grid-template-columns:40px minmax(260px,1fr);column-gap:14px;align-items:center;text-align:left}
 .waiting-overlay b,.waiting-overlay small,.waiting-progress,.waiting-steps{grid-column:2}
-.save-overlay b{display:block;font-size:var(--fs-title);font-weight:800;color:var(--nav);margin-bottom:4px}
+.save-overlay b{display:block;font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--nav);margin-bottom:4px}
 .save-overlay small{color:#587078}
 /* 保存オーバーレイのローダー。**見せ方は`89-loaders.css`が持つ**（§9.421）
    ——ここは器の席（グリッドのどこに置くか）だけを決める。輪と点の作りは
@@ -365,7 +365,7 @@
    視覚のみで進捗を把握できるようにする。 */
 .waiting-steps{display:flex;align-items:center;gap:0;margin-top:10px}
 .waiting-steps[hidden]{display:none}
-.waiting-step{display:grid;place-items:center;width:20px;height:20px;border-radius:var(--radius-round);background:var(--bg);border:2px solid var(--line);color:#8199a0;font-size:var(--fs-badge);font-weight:800;flex:none;transition:background .25s,border-color .25s,color .25s}
+.waiting-step{display:grid;place-items:center;width:20px;height:20px;border-radius:var(--radius-round);background:var(--bg);border:2px solid var(--line);color:#8199a0;font-size:var(--fs-badge);font-weight:var(--fw-ui);flex:none;transition:background .25s,border-color .25s,color .25s}
 .waiting-step i{display:block;width:6px;height:6px;border-radius:var(--radius-round);background:currentColor}
 .waiting-step::before{content:attr(data-step);display:none}
 .waiting-step.active{border-color:var(--teal);background:var(--teal);color:#fff;box-shadow:0 0 0 4px #087c8926}
@@ -492,7 +492,7 @@
   background:#ffffffee;
   color:#243a42;
   font-size:var(--fs-micro);
-  font-weight:800;
+  font-weight:var(--fw-ui);
   white-space:nowrap;
   font-variant-numeric:tabular-nums;
 }
@@ -518,7 +518,7 @@
   border:1px solid #8fc9c2;
   color:#075e67;
   font-size:var(--fs-micro);
-  font-weight:800;
+  font-weight:var(--fw-ui);
   white-space:nowrap;
   font-variant-numeric:tabular-nums;
 }
@@ -552,8 +552,8 @@
   border:1px solid var(--line-mid);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);cursor:pointer;
   white-space:nowrap}
-.record-scope-btn>b{font-weight:700;max-width:12em;overflow:hidden;text-overflow:ellipsis}
-.record-scope-btn>i{font-style:normal;font-weight:500;color:var(--ink-3)}
+.record-scope-btn>b{font-weight:var(--fw-strong);max-width:12em;overflow:hidden;text-overflow:ellipsis}
+.record-scope-btn>i{font-style:normal;font-weight:var(--fw-body);color:var(--ink-3)}
 .record-scope-btn:hover:not(:disabled){border-color:var(--teal)}
 .record-scope-btn:disabled{opacity:.55;cursor:default}
 

@@ -342,7 +342,7 @@ page=pg;
      user_id:'tests'});
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
-  await page.click('.record-list-row .report');
+  await W.openRecordReport(page);
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
   await idle();
   await page.click('#reportArrange');

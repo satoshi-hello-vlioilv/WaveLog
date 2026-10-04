@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（65件）
+# 見た目（CSS・寸法・色）（66件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 字の太さは`--fw-body`／`--fw-ui`／`--fw-strong`（400／600／700）だけ。12px 以下の札は 600・`<b>`は 700 に止める | `test_csslint.py`・`test_smalltext.js` | [§9.562](../../docs/decisions/9.562.md) |
 | 読ませる字は`--fs-sm`（12px）以上。10〜11px・9.5pxは図の中の字と記号だけ。新しい部品は12px未満を読ませる字に使わない | `test_smalltext.js` | [§9.560](../../docs/decisions/9.560.md) |
 | 新しい部品のクラスの頭は**足す前に全CSS・全JSで引く**（`.lf-key`・`.rl-board`で既存の部品と衝突した） | `test_csslint.py` | [§9.553](../../docs/decisions/9.553.md) |
 | 狭い窓の決まり（`max-width`）は`@media screen and`で画面にだけ（刷るときは紙の幅が窓の幅になる） | `test_screenprint.js` | [§9.525](../../docs/decisions/9.525.md) |

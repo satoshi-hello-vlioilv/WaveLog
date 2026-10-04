@@ -323,6 +323,12 @@
   --fs-lg:calc(20px * var(--ui-scale));       /* 測定画面見出し等のヒーロー級テキスト */
   --fs-xl:calc(22px * var(--ui-scale));       /* 指示値・ドーナツ中央など、数値そのものを見せる表示 */
   --lh:1.35;
+  /* 字の太さは3段（§9.562）。Windows の日本語の字体（Yu Gothic UI）が描き分けられるのは 300/400/600/700 だけで、
+     500 は 400 と同じに、800・900 は日本語が Bold・英数字（Segoe UI）が Black になり1つの札の中で揃わない。
+     12px 以下の札・見出しは 600（小さな字を太くすると画が潰れ、隣の値と張り合う）。 */
+  --fw-body:400;    /* 本文・説明 */
+  --fw-ui:600;      /* 操作（ボタン・タブ・行き先）と 12px 以下の札・見出し */
+  --fw-strong:700;  /* 見出し・値・強調 */
 
   /* コントロールの高さスケール(ARCHITECTURE.md「コントロールサイズの統一」新設)。タイプスケールと同じ考え方で、
      ボタン・入力欄・バッジ・ナビ項目の高さをここへ集約する。以前は同じ
@@ -458,6 +464,9 @@ body{
   color:#17272d;
 }
 button,select,input,textarea{font:inherit}
+/* <b>・<strong> の既定は「親より1段太く（bolder）」——600・700 の親の中では 900 になり、英数字だけ Black に
+   なって日本語（Bold）と揃わなかった（§9.562）。太さの3段（--fw-*）のいちばん上に止める。 */
+b,strong{font-weight:var(--fw-strong)}
 button,select,input{
   padding:7px;
   border:1px solid var(--line);

@@ -71,7 +71,7 @@
 .boot-head>.boot-logo,.boot-head>.boot-title,.boot-head>.boot-ver{position:relative; z-index:2}
 .boot-logo{width:40px; height:40px; flex:0 0 auto; display:block}
 .boot-title{min-width:0; flex:1 1 auto}
-.boot-title h1{margin:0; font-size:var(--fs-title); font-weight:700; letter-spacing:.01em}
+.boot-title h1{margin:0; font-size:var(--fs-title); font-weight:var(--fw-strong); letter-spacing:.01em}
 .boot-title p{margin:2px 0 0; font-size:var(--fs-micro); letter-spacing:.16em; color:var(--teal-soft)}
 .boot-ver{
  flex:0 0 auto; white-space:nowrap;
@@ -152,7 +152,7 @@
  display:flex; align-items:baseline; gap:var(--gap-inline); margin:var(--space-2) 0 0;
  font-size:var(--fs-sm); color:var(--ink-3); font-variant-numeric:tabular-nums;
 }
-.boot-pct{font-size:var(--fs-lg); font-weight:700; color:var(--teal-dark); line-height:1}
+.boot-pct{font-size:var(--fs-lg); font-weight:var(--fw-strong); color:var(--teal-dark); line-height:1}
 .boot-elapsed{margin-left:auto}
 
 }
@@ -185,7 +185,7 @@ html.app-booting.boot-cold body>*:not(#appBoot){content-visibility:hidden}
 html.app-booting{background:color-mix(in srgb, var(--nav) 70%, black)}
 
 /* 実行中の段階。**帯の中で大きくなる**のが「いまここ」の合図。 */
-.boot-steps li.is-current{font-size:var(--fs-xl); font-weight:700; color:white}
+.boot-steps li.is-current{font-size:var(--fs-xl); font-weight:var(--fw-strong); color:white}
 /* 済んだ段階。通り過ぎた側をわずかに濃くして、来ていない側と見分ける。 */
 .boot-steps li.is-done{color:color-mix(in srgb, white 62%, transparent)}
 

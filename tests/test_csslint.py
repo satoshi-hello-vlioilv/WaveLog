@@ -365,6 +365,21 @@ _probe = [s for s, d in _on_rules('.zz-x.is-on{background:var(--teal);border-col
           if d in _BUNDLED]
 rec('見張りは同じ形を注ぎ込むと数える（束ねた型と同じ3行）', _probe == ['.zz-x.is-on'], str(_probe))
 
+
+# ---- 字の太さは3段のトークンから（§9.562） ----
+# Windows の日本語の字体（Yu Gothic UI）が描き分けられるのは 400/600/700 だけ。500 は 400 と同じに、800・900 は
+# 英数字（Segoe UI）だけ Black になる。太さは --fw-body／--fw-ui／--fw-strong の3つから選ぶ。
+def _weight_literals(code):
+    code = re.sub(r'/\*[\s\S]*?\*/', '', code)
+    return [m.group(0) for m in re.finditer(r'(?<![-\w])font-weight\s*:\s*([^;}]+)', code)
+            if not re.match(r'\s*(var\(--fw-(body|ui|strong)\)|inherit|normal)\s*$', m.group(1))]
+_wl = [f'{_n}: {x}' for _n in CSS_ORDER for x in _weight_literals((CSS_DIR / _n).read_text(encoding='utf-8'))]
+rec('字の太さは3段のトークン（--fw-body／--fw-ui／--fw-strong）から選ぶ（§9.562）', not _wl, '; '.join(_wl[:6]))
+rec('太さの見張りは同じ形を注ぎ込むと数える', _weight_literals('.x{font-weight:800}.y{font-weight:var(--fw-ui)}') == ['font-weight:800'])
+_base = (CSS_DIR / '00-base.css').read_text(encoding='utf-8')
+rec('太さのトークンは 400／600／700 の3つ・<b> は 700 に止める（既定の bolder は 900 になる）',
+    all(t in _base for t in ('--fw-body:400', '--fw-ui:600', '--fw-strong:700', 'b,strong{font-weight:var(--fw-strong)}')))
+
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')

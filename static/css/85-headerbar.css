@@ -98,7 +98,7 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar label{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--fs-sm);color:var(--muted)}
 .hd-viewbar select,.hd-viewbar input{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink-2);font-size:var(--fs-sm)}
 .hd-viewbar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-sm);border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;
-  color:var(--ink-2);font-weight:700;cursor:pointer}
+  color:var(--ink-2);font-weight:var(--fw-ui);cursor:pointer}
 .hd-viewbar button:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 .hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle,.hd-viewbar .sc-board-window,.hd-viewbar .ac-presets,.hd-viewbar .lg-steps{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
 .hd-viewbar .db-viewtabs button{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
@@ -111,7 +111,7 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar :is(.sc-mode-toggle-btn,.sc-board-window-btn,.ac-chip){height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
 /* ログ・診断の段（報告する／ログを見る／点検と整理・§9.510）も同じ部品。 */
 .hd-viewbar .lg-step{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
-.hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:var(--radius-pill);background:var(--pale);border:1px solid var(--card-border);color:var(--nav);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
+.hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:var(--radius-pill);background:var(--pale);border:1px solid var(--card-border);color:var(--nav);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
 .hd-viewbar .sc-lock-badge{padding:var(--pad-chip);border-radius:var(--radius-pill);font-size:var(--fs-micro)}
 /* 編集権の在席表示（§9.211 ②）。ヘッダーへ相乗りしたときも、
    **文字は読める大きさのまま**にする（状態を色だけで伝えないため）。 */
@@ -120,13 +120,13 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
   font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;
 }
 /* 件数は帯の字と同じ大きさ（§9.507。前は11px）。仕掛一覧の「全 N件」と同じ顔。 */
-.hd-viewbar .record-search-result{font-size:var(--fs-sm);font-weight:400;color:var(--ink-3);white-space:nowrap;
+.hd-viewbar .record-search-result{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-3);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 .hd-viewbar .sc-refresh,.hd-viewbar .rp-btn-secondary{border-color:var(--teal);color:#0c5d67}
 /* 実績カレンダー: 月送り・今月と、指標/対象ステータスの2択(.db-seg)。 */
 .hd-viewbar .cal-nav,.hd-viewbar .cal-toolbar-right{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
 .hd-viewbar .cal-toolbar-right{margin-left:auto}
-.hd-viewbar .cal-month-label{font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);white-space:nowrap;min-width:8em;text-align:center}
+.hd-viewbar .cal-month-label{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink);white-space:nowrap;min-width:8em;text-align:center}
 /* ‹ › は文字ではなく記号なので、本文用の--fs-smだと潰れて読めない。
    アイコンのみのボタンは他画面の.rp-btn-iconと同じ--fs-titleで揃える
    (文字サイズの統一を見る回帰テストもこの一群は別扱いにしている)。 */
@@ -141,8 +141,8 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar .ac-chip:hover:not(.is-on){background:#fff;border-color:var(--teal);color:#0c5d67}
 /* マスタ管理: 更新者IDだけを残す(説明はヘッダーの副題、閉じるは左メニュー)。 */
 .hd-viewbar .mm-head-user{display:inline-flex;align-items:center;gap:var(--space-2);margin:0;
-  color:var(--muted);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
-.hd-viewbar .mm-head-user input{min-width:calc(180px * var(--ui-scale));font-weight:700}
+  color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
+.hd-viewbar .mm-head-user input{min-width:calc(180px * var(--ui-scale));font-weight:var(--fw-strong)}
 /* パネル側に残った見出しバーの枠は、中身をヘッダーへ移したぶん詰める。 */
 .sc-panel .sc-head:empty,.db-panel .rp-head-actions:empty,
 .cal-panel .cal-toolbar:empty,.mm-panel .mm-head:empty{display:none}

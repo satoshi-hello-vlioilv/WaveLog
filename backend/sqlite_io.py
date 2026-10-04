@@ -100,6 +100,19 @@ def _sqlite_ro_uri(path):
  if posix.startswith('//'):
   return 'file://'+quote(posix)+'?mode=ro'
  return target.as_uri()+'?mode=ro'
+class _ClosingConnection(sqlite3.Connection):
+ """`with connect(...) as c:` を抜けたら**確定してから閉じる**接続（§9.563）。
+
+ 素の`sqlite3.Connection.__exit__`はコミット／ロールバックだけで閉じない。参照の輪を作るので
+ GC が回るまでハンドルが残り、Windows ではそのファイルを置き換えも削除もできなかった（§9.270・§9.108）。
+ 107 か所の`with connect(...)`を書き換えず、接続を作る**この1か所**で塞ぐ。"""
+ def __exit__(self,*exc):
+  try:
+   return super().__exit__(*exc)
+  finally:
+   self.close()
+
+
 def connect(path,readonly=False,engine=None):
  """SQLiteへ接続する。engine引数は呼び出し側の互換のため残しているが
     'sqlite'以外は受け付けない。"""
@@ -112,7 +125,8 @@ def connect(path,readonly=False,engine=None):
   # 失敗する」ことがあり(WinError 59 等)、確認のつもりの1行が唯一の失敗
   # 原因になっていた。まず開き、失敗したときだけ理由を切り分ける。
   try:
-   c=sqlite3.connect(_sqlite_ro_uri(path),uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
+   c=sqlite3.connect(_sqlite_ro_uri(path),uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES,
+                     factory=_ClosingConnection)
   except sqlite3.Error as e:
    found=path_exists_safe(path)
    if found is False:
@@ -125,7 +139,7 @@ def connect(path,readonly=False,engine=None):
       "ファイルはありますが開けませんでした。読み取り権限と、他プロセスによる排他を確認してください。")) from e
  else:
   path.parent.mkdir(parents=True,exist_ok=True)
-  c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
+  c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES,factory=_ClosingConnection)
  # Now()/Nz()/CStr()/Val()はAccess方言のSQL関数。masters.pyのSQLが今もこの
  # 方言で書かれているため、SQLite側へユーザー定義関数として登録して吸収する。
  # **接続をSQLiteへ統一した後も残す**(消すと全マスタSQLの書き換えが要る)。

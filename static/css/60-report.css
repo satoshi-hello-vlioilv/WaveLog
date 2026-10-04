@@ -11,7 +11,7 @@
 .rp-back-btn:hover{background:rgba(255,255,255,.24)}
 .rp-back-btn svg{flex:none}
 .rp-bar-title{
-  font-weight:800;font-size:var(--fs);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-weight:var(--fw-strong);font-size:var(--fs);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 /* 子ロットの統計を先回りして知らせる札（§9.248 ②）。**出るのは「出せるのに
    出していない」ときだけ**なので、常設の飾りにはならない。押すと出る、と
@@ -20,14 +20,14 @@
   min-height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:1px solid rgba(255,255,255,.45);border-radius:var(--radius-pill);
   background:rgba(255,255,255,.14);color:#fff;
-  font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
-.rp-split-hint>b{font-weight:800;text-decoration:underline}
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
+.rp-split-hint>b{font-weight:var(--fw-strong);text-decoration:underline}
 .rp-split-hint:hover{background:rgba(255,255,255,.26)}
 .rp-bar-actions{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
 .rp-zoom-seg{display:flex;gap:2px;background:rgba(255,255,255,.14);border-radius:var(--radius-sm);padding:2px}
 .rp-zoom-seg button{
   padding:5px 9px;border:0;border-radius:var(--radius-xs);background:transparent;color:#dbeaed;
-  font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;
 }
 .rp-zoom-seg button:hover{background:rgba(255,255,255,.12)}
 .rp-zoom-seg button.active{background:#fff;color:#0d4650}
@@ -40,7 +40,7 @@
 .rp-zoom-seg button:first-child{border-start-start-radius:calc(var(--radius-sm) - 2px);border-end-start-radius:calc(var(--radius-sm) - 2px)}
 .rp-zoom-seg button:last-child{border-start-end-radius:calc(var(--radius-sm) - 2px);border-end-end-radius:calc(var(--radius-sm) - 2px)}
 .rp-zoom-readout{
-  min-width:40px;text-align:center;font-size:var(--fs-sm);font-weight:800;color:#cfe3e6;
+  min-width:40px;text-align:center;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:#cfe3e6;
   font-variant-numeric:tabular-nums;cursor:help;
 }
 /* 操作ボタンはアイコン化。何のボタンかはtitle(ツールチップ)で示す。 */
@@ -81,7 +81,7 @@
 .rp-lot-main b{font-size:var(--fs-base-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rp-lot-sub{color:var(--muted);font-size:var(--fs-micro);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rp-lot-date{color:#8a9aa0;font-size:var(--fs-badge);font-variant-numeric:tabular-nums}
-.rp-status-badge{flex:0 0 auto;padding:2px 7px;border-radius:var(--radius-md);background:var(--bg);color:#526970;font-weight:800;font-size:var(--fs-badge);white-space:nowrap}
+.rp-status-badge{flex:0 0 auto;padding:2px 7px;border-radius:var(--radius-md);background:var(--bg);color:#526970;font-weight:var(--fw-ui);font-size:var(--fs-badge);white-space:nowrap}
 .rp-status-badge.done{background:var(--success-bg);color:var(--success)}
 .rp-status-badge.ng{background:var(--danger-bg);color:var(--danger)}
 /* 表示設定は左パネルの最下段へ。操作バーを1層のまま薄く保つため。 */
@@ -89,9 +89,9 @@
   flex:none;border-top:1px solid var(--line);padding:7px 8px;background:var(--surface-3);
   display:flex;align-items:center;gap:6px;
 }
-.rp-nav-foot .rp-foot-label{font-size:var(--fs-micro);font-weight:800;color:var(--ink-2);flex:none}
+.rp-nav-foot .rp-foot-label{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2);flex:none}
 .rp-foot-btn{flex:1;min-width:0;border:1px solid #9fb9b2;
-  background:#fff;color:#2c5049;font-weight:700;cursor:pointer;
+  background:#fff;color:#2c5049;cursor:pointer;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rp-foot-btn.active{background:#eafafa;border-color:var(--teal);color:#075e67}
 .rp-foot-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff}
@@ -104,7 +104,7 @@
 .rp-display-foot .rp-foot-label{grid-row:1/3}
 .rp-bulk-foot{background:var(--bg)}
 .rp-foot-selectall{
-  display:flex;align-items:center;gap:5px;flex:none;font-size:var(--fs-micro);font-weight:700;color:#2c5049;
+  display:flex;align-items:center;gap:5px;flex:none;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:#2c5049;
   cursor:pointer;user-select:none;
 }
 .rp-foot-selectall input{margin:0;cursor:pointer}
@@ -173,7 +173,7 @@
    8mmの余白の内側にしか無いので、どの紙でも文字を覆わない。 */
 .rp-page .rp-sheet-no{font-size:8px;position:absolute;left:1mm;z-index:4;
   top:calc(var(--k) * (var(--rp-sheet-h) + var(--rp-gap)) + 3.5mm);
-  writing-mode:vertical-rl;font-weight:800;letter-spacing:.1em;
+  writing-mode:vertical-rl;font-weight:var(--fw-strong);letter-spacing:.1em;
   color:#8497a0;white-space:nowrap}
 /* **ずらす・切るはCSSが持つ**（`tests/test_csslint.py`）。JSが渡すのは
    計算した数だけ（`--rp-shift`／`--rp-clip-*`）。 */
@@ -194,7 +194,7 @@
 .rp-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md)}
 .rp-empty button{margin-top:var(--space-3)}
 .rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-3);padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid var(--ink)}
-.rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
+.rp-report-head small{color:var(--teal);font-weight:var(--fw-strong);letter-spacing:.1em}
 .rp-report-head h2{margin:2px 0 0;font-size:16px;color:var(--ink)}
 /* 帳票の頭は「どこで・いつ・どのロットか」（§9.161、利用者の指示）。
    **3つとも同じ大きさで左から横に並べる**——どれも1枚を特定する鍵で、
@@ -203,8 +203,8 @@
    用紙の割り付けはpx固定（`.rp-page`配下の例外。§CLAUDE.md）。 */
 .rp-report-head-id{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;min-width:0}
 .rp-head-fact{display:inline-flex;align-items:baseline;gap:4px;margin:0;white-space:nowrap}
-.rp-head-fact small{color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.06em}
-.rp-head-fact b{color:var(--ink);font-size:16px;font-weight:800;line-height:1.15}
+.rp-head-fact small{color:var(--muted);font-size:8px;font-weight:var(--fw-strong);letter-spacing:.06em}
+.rp-head-fact b{color:var(--ink);font-size:16px;font-weight:var(--fw-strong);line-height:1.15}
 .rp-head-fact i{color:#7a8b90;font-size:8px;font-style:normal}
 .rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;color:var(--muted);font-size:9px}
 /* ---- 塊（ブロック）の並び（§9.169） ----
@@ -257,21 +257,21 @@
 .rp-blocks.is-arranging .rp-block.is-cramped::after{
   content:'入りきりません';position:absolute;right:2px;bottom:1px;z-index:5;
   padding:0 3px;border-radius:var(--radius-xs);background:var(--danger);color:#fff;
-  font-weight:800;pointer-events:none;font-size:var(--fs-micro)}
+  font-weight:var(--fw-ui);pointer-events:none;font-size:var(--fs-micro)}
 /* 落ちる場所を**実物大で**見せる（§9.217）。線1本では「どこへ何マスぶん
    入るのか」が読めない。グリッドの子として挿すので、置いたらどうなるかが
    そのまま見える。 */
 .rp-ghost{display:flex;flex-direction:column;align-items:center;justify-content:center;
   text-align:center;pointer-events:none;gap:1px}
 .rp-ghost{min-height:24px;border:2px dashed var(--teal);border-radius:3px}
-.rp-ghost{background:rgba(8,124,137,.09);color:#087c89;font-size:9px;font-weight:800}
+.rp-ghost{background:rgba(8,124,137,.09);color:#087c89;font-size:9px;font-weight:var(--fw-strong)}
 /* **置けないマスは赤で断る**（§9.221 ⑨）。落としてから断られるのでは、
    掴んだ手間が無駄になる（§4／§9.116と同じ約束）。 */
 .rp-ghost.is-blocked{border-color:var(--danger);background:rgba(176,42,42,.10);color:var(--danger)}
-.rp-ghost-why{font-size:8px;font-weight:700}
+.rp-ghost-why{font-size:8px;font-weight:var(--fw-strong)}
 /* 大きさは**数字でも言う**（§9.218 ⑥）。枠だけでは「1マス多いのか少ない
    のか」が読めない。 */
-.rp-ghost small{font-size:8px;font-weight:700;opacity:.85}
+.rp-ghost small{font-size:8px;font-weight:var(--fw-strong);opacity:.85}
 .rp-blocks.is-dropping .rp-block{outline-color:var(--teal)}
 /* 組み換え中だけの見せ方。**紙には1つも出ない**（操作帯はarranging時しか
    組み立てない）ので、ここは画面のためだけの装飾。 */
@@ -312,14 +312,14 @@
 .rp-free{position:absolute;display:block;border:1px dashed #8fb4bd;border-radius:var(--radius-xs);
   background-color:#eaf2f4;
   background-image:repeating-linear-gradient(135deg,rgba(8,124,137,.10) 0 3px,transparent 3px 8px)}
-.rp-free[data-rp-free]::after{content:attr(data-rp-free);position:absolute;left:3px;top:1px;color:#46707a;font-size:8px;font-weight:800;font-style:normal}
+.rp-free[data-rp-free]::after{content:attr(data-rp-free);position:absolute;left:3px;top:1px;color:#46707a;font-size:8px;font-weight:var(--fw-strong);font-style:normal}
 /* **重なっているマスは赤い網**（§9.223 ③）。塊の縁（`is-overlap`）は「どの
    塊が」を、この網は「どこが」を言う——2つで初めて直せる。空きより上に
    描くので、重なりが空きに隠れることはない。 */
 .rp-overlap-cell{position:absolute;display:block;border:1px solid var(--danger);border-radius:var(--radius-xs);
   background-color:rgba(199,58,58,.12);
   background-image:repeating-linear-gradient(135deg,rgba(199,58,58,.30) 0 3px,transparent 3px 7px)}
-.rp-overlap-cell[data-rp-free]::after{content:attr(data-rp-free);position:absolute;left:3px;top:1px;color:#fff;background:var(--danger);border-radius:var(--radius-xs);padding:0 3px;font-size:8px;font-weight:800;font-style:normal}
+.rp-overlap-cell[data-rp-free]::after{content:attr(data-rp-free);position:absolute;left:3px;top:1px;color:#fff;background:var(--danger);border-radius:var(--radius-xs);padding:0 3px;font-size:8px;font-weight:var(--fw-strong);font-style:normal}
 /* 大きさを変える取っ手（§9.218 ⑥）。**縁そのものを掴ませる**——別の場所に
    ボタンを置くと、どの塊のどの向きなのかを覚えることになる。 */
 /* **取っ手は塊の内側に収める。** 縁から外へ出すと、隣に塊が置かれた
@@ -348,9 +348,9 @@
 .rp-blocks.is-arranging .rp-block:hover>.rp-size-grip,
 .rp-blocks.is-arranging .rp-block:focus-within>.rp-size-grip{background:rgba(8,124,137,.18)}
 .rp-blocks.is-arranging .rp-size-grip:hover{background:var(--teal)}
-.rp-size-tip{position:fixed;z-index:var(--z-drag);pointer-events:none;padding:2px 6px;border-radius:var(--radius-xs);background:#0f2027;color:#fff;font-size:10px;font-weight:800}
+.rp-size-tip{position:fixed;z-index:var(--z-drag);pointer-events:none;padding:2px 6px;border-radius:var(--radius-xs);background:#0f2027;color:#fff;font-size:10px;font-weight:var(--fw-strong)}
 /* 「いまの大きさ」は操作帯にも出す（掴む前に読める）。 */
-.rp-block-dim{font-style:normal;font-size:9px;font-weight:700;color:var(--ink-3);padding:0 3px;border-radius:3px;background:#fff}
+.rp-block-dim{font-style:normal;font-size:9px;font-weight:var(--fw-strong);color:var(--ink-3);padding:0 3px;border-radius:3px;background:#fff}
 .rp-block.rp-drop-before::before,.rp-block.rp-drop-after::before{
   content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal);z-index:3}
 .rp-block.rp-drop-before::before{left:-2px}
@@ -371,43 +371,43 @@
    「紙のとおりに見る」だけが一回り大きく、押し間違いの的になっていた）。
    説明は「?」で開く——常設だと2行の文が帯の半分を占めていた。 */
 .rp-bar-group{display:inline-flex;align-items:center;gap:var(--gap-tight);min-width:0}
-.rp-bar-label{font-style:normal;font-size:var(--fs-micro);font-weight:800;
+.rp-bar-label{font-style:normal;font-size:var(--fs-micro);font-weight:var(--fw-ui);
   color:var(--ink-3);letter-spacing:.04em}
 /* どの設備の配置を編集しているか（§9.239 ③）。**器は中身の長さから決める**
    （§CLAUDE 11）——設備名の長さはマスタ由来なので、`--w-*`の規格へ丸める。
    帯は`flex-wrap:wrap`なので、1つ足したぶんで2行にならないよう幅を抑える。 */
 .rp-eq-pick{height:var(--ctl-h-xs);max-width:var(--w-lg);min-width:0;
-  padding:0 var(--space-1);font-size:var(--fs-sm);font-weight:700}
+  padding:0 var(--space-1);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .rp-bar-eq.is-warn .rp-bar-label{color:var(--warn-fg)}
 .rp-seg{display:inline-flex;align-items:center;gap:2px;
   padding:2px;border:1px solid var(--line);border-radius:var(--radius-sm);
   background:var(--surface)}
 .rp-seg button{height:var(--ctl-h-xs);min-width:2.2em;padding:0 var(--space-1);
-  font-size:var(--fs-sm);font-weight:800;line-height:1;
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);line-height:1;
   border:0;border-radius:var(--radius-xs);background:transparent;color:var(--ink-2);cursor:pointer}
 .rp-seg button:hover{background:var(--surface-3)}
 .rp-seg-x{padding:0 2px;font-size:var(--fs-micro);color:var(--muted)}
 .rp-bar-btn{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line-mid);border-radius:var(--radius-xs);
   background:var(--surface);color:var(--ink-2);
-  font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap}
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
 .rp-bar-btn:hover{border-color:var(--teal);color:var(--nav)}
-.rp-bar-help{min-width:var(--ctl-h-xs);padding:0;font-weight:800}
+.rp-bar-help{min-width:var(--ctl-h-xs);padding:0;font-weight:var(--fw-strong)}
 /* 状態は**色だけで伝えない**（§3）。分類名と件数を必ず文字で出す。 */
 .rp-bar-state{display:inline-flex;align-items:center;gap:var(--gap-tight);
   flex-wrap:wrap;min-width:0}
-.rp-chip{font-size:var(--fs-micro);font-weight:800;line-height:1;
+.rp-chip{font-size:var(--fs-micro);font-weight:var(--fw-ui);line-height:1;
   padding:3px var(--space-2);border-radius:var(--radius-pill);
   background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line-soft)}
 .rp-chip.is-ok{color:var(--success);border-color:#bfe0cf;background:#f1fbf5}
 .rp-chip.is-bad{color:var(--danger);border-color:#e6bcbc;background:var(--danger-bg)}
 .rp-arrange-note[hidden]{display:none}
 /* 直前の操作の一言。**常設の案内を消さずに継ぎ足す**（§9.221 ⑨の追補）。 */
-.rp-arrange-tip{margin-left:var(--space-2);color:var(--ink);font-weight:800}
+.rp-arrange-tip{margin-left:var(--space-2);color:var(--ink);font-weight:var(--fw-strong)}
 .rp-arrange-note.is-bad>.rp-arrange-tip{color:var(--danger)}
 /* A4の収まり（§9.174）。**収まっているかは色だけで伝えない**
    ——何mm超過して何枚になるかを文字で出す。 */
-.rp-page-fit{font-size:var(--fs-sm);font-weight:700}
+.rp-page-fit{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .rp-page-fit.is-ok{color:var(--success)}
 .rp-page-fit.is-over{color:var(--danger)}
 /* 重なっている塊（§9.222 ②）。**縁と文字の両方**で言う。
@@ -426,7 +426,7 @@
 .rp-block-preview{overflow:auto;padding:var(--pad-card);background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:10px}
 .rp-block-form{overflow:auto;display:flex;flex-direction:column;gap:var(--gap-inline)}
 .rp-form-row{display:grid;grid-template-columns:5em minmax(0,1fr);gap:var(--gap-inline);align-items:start}
-.rp-form-label{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.rp-form-label{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
 .rp-form-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight)}
 .rp-form-ctl button{height:var(--ctl-h-xs);padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);cursor:pointer}
 .rp-form-ctl input{height:var(--ctl-h-xs);width:6em;padding:0 var(--space-1);border:1px solid var(--line);border-radius:var(--radius-xs);font-size:var(--fs-sm)}
@@ -448,17 +448,17 @@
 /* 「いま組み換え中」は短い札1枚（帯の色と`#reportArrange`の点灯が既に
    言っているので、文を長くしない・§CLAUDE 8）。 */
 .rp-arrange-tag{flex:none;padding:2px var(--space-2);border-radius:var(--radius-pill);
-  background:var(--teal);color:#fff;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+  background:var(--teal);color:#fff;font-size:var(--fs-micro);font-weight:var(--fw-ui);white-space:nowrap}
 /* 決める2つは右端。**塊の中は折り返さない**（§9.199）。 */
 .rp-arrange-act{margin-left:auto;display:inline-flex;align-items:center;gap:var(--gap-tight);flex:none}
 /* 自動保存の状態（§9.303 ③）。**黙って保存しない**（§3）——保存ボタンを
    無くしたぶん、いまどうなっているかはここが文字で言う。失敗は色ではなく
    文字が変わる（`保存できませんでした`）ので、色は補助。 */
-.rp-arrange-auto{color:var(--muted);font-size:var(--fs-badge);font-weight:700;white-space:nowrap}
+.rp-arrange-auto{color:var(--muted);font-size:var(--fs-badge);font-weight:var(--fw-ui);white-space:nowrap}
 .rp-arrange-auto.is-bad{color:var(--danger)}
-.rp-bar-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
+.rp-bar-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 .rp-bar-btn--primary:hover{background:#0a95a4;border-color:#0a95a4;color:#fff}
-.rp-bar-more{min-width:var(--ctl-h-xs);padding:0 var(--space-1);font-weight:800}
+.rp-bar-more{min-width:var(--ctl-h-xs);padding:0 var(--space-1);font-weight:var(--fw-strong)}
 /* 「⋯」で開く面。**帯の子のまま浮かせる**（§9.255 ①）——body直下へ出すと
    「帯の中に在るか」を見る網が空振りする。fixedなので器のoverflowに切られない。 */
 .rp-bar-menu{position:fixed;z-index:var(--z-popover);min-width:12em;padding:var(--space-1);
@@ -467,7 +467,7 @@
 .rp-bar-menu[hidden]{display:none}
 .rp-bar-menu-item{display:block;width:100%;height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:0;border-radius:var(--radius-xs);background:none;color:var(--ink-2);
-  font-size:var(--fs-sm);font-weight:700;text-align:left;cursor:pointer;white-space:nowrap}
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);text-align:left;cursor:pointer;white-space:nowrap}
 .rp-bar-menu-item:hover{background:var(--surface-2);color:var(--nav)}
 .rp-bar-menu-item.is-danger{color:var(--danger)}
 .rp-bar-menu-item.is-danger:hover{background:var(--danger-bg);color:var(--danger)}
@@ -477,15 +477,15 @@
   min-height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:1px solid var(--warn-border);border-radius:var(--radius-pill);
   background:var(--warn-bg);color:var(--warn-fg);
-  font-size:var(--fs-micro);font-weight:700;white-space:nowrap;cursor:help}
-.rp-sample-chip>b{font-weight:800}
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);white-space:nowrap;cursor:help}
+.rp-sample-chip>b{font-weight:var(--fw-strong)}
 .rp-sample-chip>.rp-sample-eq{color:var(--ink-2)}
 /* **取り違えを防ぐ事実は見える場所に**（§9.255 ①の追補）。詰めてよいのは
    言い回しだけで、「保存されません」は`title`へ落とさない。 */
-.rp-sample-chip>.rp-sample-safe{color:var(--warn-fg);font-weight:700}
+.rp-sample-chip>.rp-sample-safe{color:var(--warn-fg);font-weight:var(--fw-strong)}
 .rp-sample-chip>button{height:calc(var(--ctl-h-xs) - 6px);padding:0 var(--space-2);
   border:1px solid var(--warn-border);border-radius:var(--radius-pill);
-  background:#fff;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:800;cursor:pointer}
+  background:#fff;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer}
 .rp-sample-chip>button:hover{background:var(--warn-fg);border-color:var(--warn-fg);color:#fff}
 /* ---------- 出していない塊の置き場は左サイドバー（§9.276 ①） ----------
    **紙の外**——紙の中へ入れると刷り上がりに混ざる（§9.217）。
@@ -503,14 +503,14 @@
 .rp-palette.is-target{background:rgba(8,124,137,.10);outline:2px dashed var(--teal);outline-offset:-2px}
 .rp-palette-head{display:flex;align-items:center;justify-content:space-between;
   gap:var(--gap-tight);flex:none}
-.rp-palette-head>b{font-size:var(--fs-tiny);font-weight:800;color:var(--nav);white-space:nowrap}
+.rp-palette-head>b{font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--nav);white-space:nowrap}
 .rp-palette-head i{font-style:normal;margin-left:2px;padding:0 var(--space-1);
   border-radius:var(--radius-pill);background:var(--nav);color:#fff;font-size:var(--fs-micro)}
 /* 使い方は押したときだけ（§9.276 ①）。**消さない**——札の形からは
    「押すだけでも出せる」ことが読めない（§9.234 ①）。 */
 .rp-palette-help{flex:none;width:1.5em;height:1.5em;padding:0;
   border:1px solid var(--line-mid);border-radius:var(--radius-pill);
-  background:#fff;color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;
+  background:#fff;color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);
   line-height:1;cursor:pointer}
 .rp-palette-help:hover,.rp-palette-help[aria-expanded="true"]{
   border-color:var(--nav);color:var(--nav)}
@@ -534,9 +534,9 @@
   padding:2px var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
   border-radius:var(--radius-xs);background:#fff;color:var(--ink-2);text-align:left}
 .rp-palette-item.is-dragging{opacity:.45}
-.rp-palette-name{font-size:var(--fs-tiny);font-weight:800;
+.rp-palette-name{font-size:var(--fs-tiny);font-weight:var(--fw-ui);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.rp-palette-size{flex:none;font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+.rp-palette-size{flex:none;font-size:var(--fs-micro);color:var(--muted);font-weight:var(--fw-ui)}
 .rp-arrange-bar b{font-size:var(--fs-sm)}
 /* 帯の中身は**塊ごとに折り返す**（塊の中は折り返さない・§9.199）。 */
 .rp-arrange-info{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;
@@ -670,7 +670,7 @@
    詰められる高さの半分は行送りだった（実測: 余白だけだと11.6→11.0px、
    行送りも入れて9.5px）。**文字サイズには掛けない**（§9.303 ①）。 */
 .rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:calc(var(--space-1) * var(--rp-dense-x,1) * var(--rp-pack,1));padding:calc(1px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));border-bottom:1px solid var(--bg);font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
-.rp-field-label{color:var(--muted);font-size:8px;font-weight:700;white-space:nowrap}
+.rp-field-label{color:var(--muted);font-size:8px;font-weight:var(--fw-strong);white-space:nowrap}
 /* ラベルを**値の上**へ置く（§9.292 ⑤、利用者の指示「上下にラベルと内容が
    組み合わさるパターンでレイアウトできるように」）。1列にして縦へ積むだけ
    ——**ラベルの折り返しは許す**（横並びのときは`nowrap`で幅を食わせない
@@ -682,7 +682,7 @@
    測定条件など項目数の多いセクションで値の文字が見切れていた不具合が
    あった。省略せず折り返して全文を表示するようにする(行が必要な分だけ
    高くなる)。 */
-.rp-field-value{color:#17272d;font-weight:700;overflow-wrap:break-word;white-space:normal}
+.rp-field-value{color:#17272d;font-weight:var(--fw-strong);overflow-wrap:break-word;white-space:normal}
 /* ---------- 詰める順序（§9.303 ①、利用者の指示） ----------
    「列内の全体余白の調整→個別に余力のあるもの余白調整→改行による文字表示
      エリア確保(高さ方向への逃げ)→文字サイズ調整による表示用量アップ」
@@ -727,8 +727,8 @@
 .rp-dim-table thead th{background:var(--bg);color:var(--ink)}
 .rp-dim-table tbody th{background:var(--surface-2);text-align:left}
 /* 品質等級: ラベル(th)と値(td)を交互に並べた4ペア構成（コンパクト化） */
-.rp-grade-table th{background:var(--surface-2);color:var(--muted);font-weight:700;text-align:left;white-space:nowrap}
-.rp-grade-table td{font-weight:800;color:var(--ink)}
+.rp-grade-table th{background:var(--surface-2);color:var(--muted);font-weight:var(--fw-strong);text-align:left;white-space:nowrap}
+.rp-grade-table td{font-weight:var(--fw-strong);color:var(--ink)}
 /* 品質情報・板幅測定データなど、ゾーン(グリッド)に属さず全幅で単独配置する
    セクション同士の縦間隔。ゾーンの外に出た分、明示的に余白を持たせる。 */
 #reportContent>.rp-section{margin-bottom:calc(3px * var(--rp-dense-y,1) * var(--rp-pack,1))}
@@ -790,7 +790,7 @@
 .rp-product-table td.rp-product-cell .product-judge{min-width:0;margin-right:calc(3px * var(--rp-dense-x,1) * var(--rp-pack,1));padding:0 calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));border-radius:2px;font-size:7px}
 .rp-pb{display:inline-block;margin-right:calc(4px * var(--rp-dense-x,1) * var(--rp-pack,1));white-space:nowrap}
 /* ラベルは**色で下げる。大きさは変えない**（同じ表の中は同じ文字サイズ）。 */
-.rp-pb>i{margin-right:calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));color:var(--muted);font-style:normal;font-weight:700}
+.rp-pb>i{margin-right:calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));color:var(--muted);font-style:normal;font-weight:var(--fw-strong)}
 /* ---------- 異常位置判定 ／ ピッチ判定 ----------
    モーダルで**保存された場合だけ**帳票へ載せる参考情報(オペレータの
    シミュレーション結果であり、測定値ではない)。板幅の実測表は条番号で
@@ -809,20 +809,20 @@
 .rp-defect-body{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;align-items:start;margin-top:2px}
 .rp-defect-figure{display:flex;flex-direction:column;min-width:0}
 .rp-defect-row{display:flex;align-items:center;gap:3px;min-width:0}
-.rp-defect-end{flex:0 0 auto;width:7mm;align-self:stretch;display:flex;align-items:center;justify-content:center;border:1px solid var(--line-soft);border-radius:3px;background:var(--surface-2);color:var(--muted);font-size:8px;font-weight:800}
+.rp-defect-end{flex:0 0 auto;width:7mm;align-self:stretch;display:flex;align-items:center;justify-content:center;border:1px solid var(--line-soft);border-radius:3px;background:var(--surface-2);color:var(--muted);font-size:8px;font-weight:var(--fw-strong)}
 .rp-defect-measure{flex:1;min-width:0;display:flex;flex-direction:column}
 .rp-defect-flags{position:relative;height:13px;min-width:0}
 .rp-defect-strip{position:relative;height:15mm;min-width:0;border:1px solid var(--line-strong);border-radius:3px;background:var(--bg);overflow:hidden}
 .rp-defect-ruler{position:relative;height:13px;min-width:0}
 .rp-defect-lane{position:absolute;top:0;bottom:0;background-color:var(--defect-lane-bg,#8a9a97);border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
-.rp-defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;font-size:8px;font-weight:800}
+.rp-defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;font-size:8px;font-weight:var(--fw-strong)}
 .rp-defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,#dde5e7,#dde5e7 3px,var(--bg) 3px,var(--bg) 6px)}
 .rp-defect-scrap span{display:none}
 .rp-defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc}
 .rp-defect-mark{position:absolute;top:0;bottom:0;min-width:2px;box-sizing:border-box;border-left:1px solid var(--danger);border-right:1px solid var(--danger)}
 .rp-defect-mark::before{content:"";position:absolute;inset:0;background:var(--danger);opacity:.32}
 .rp-defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap}
-.rp-defect-flag b{padding:0 3px;border-radius:6px;background:var(--danger);color:#fff;font-size:8px;font-weight:800}
+.rp-defect-flag b{padding:0 3px;border-radius:6px;background:var(--danger);color:#fff;font-size:8px;font-weight:var(--fw-strong)}
 .rp-defect-flag i{width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:3px solid var(--danger)}
 .rp-defect-flag.at-start{align-items:flex-start;transform:translateX(-4px)}
 .rp-defect-flag.at-end{align-items:flex-end;transform:translateX(calc(-100% + 4px))}
@@ -831,14 +831,14 @@
 .rp-defect-tick-label.at-start{transform:translateX(0)}
 .rp-defect-tick-label.at-end{transform:translateX(-100%)}
 .rp-defect-legend{display:flex;flex-wrap:wrap;gap:1px 8px;margin-top:1px}
-.rp-defect-legend span{display:inline-flex;align-items:center;gap:3px;color:var(--muted);font-size:8px;font-weight:700}
+.rp-defect-legend span{display:inline-flex;align-items:center;gap:3px;color:var(--muted);font-size:8px;font-weight:var(--fw-strong)}
 .rp-defect-legend i{width:6px;height:6px;border-radius:1px;background:var(--defect-lane-bg,#8a9a97)}
 .rp-defect-legend b{color:#17272d}
 /* 欄は**下へ横に流す**（§9.319-C）。4列で7行ぶんが2段に収まり、図へ全幅を渡せる。 */
 .rp-defect-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-content:start;gap:0 6px;min-width:0}
 .rp-defect-fact{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:.5px 2px;border-bottom:1px solid var(--bg);font-size:8.5px}
-.rp-defect-fact span{color:var(--muted);font-size:8px;font-weight:700;white-space:nowrap}
-.rp-defect-fact b{color:#17272d;font-weight:800;text-align:right;overflow-wrap:break-word;white-space:normal}
+.rp-defect-fact span{color:var(--muted);font-size:8px;font-weight:var(--fw-strong);white-space:nowrap}
+.rp-defect-fact b{color:#17272d;font-weight:var(--fw-strong);text-align:right;overflow-wrap:break-word;white-space:normal}
 /* **折り返す値は左づめ**（§9.305 ②-1、利用者の報告「『内容』のコメント欄の
    折り返し方が変で2行目が右寄せになっている」）。数は右づめのままにする——
    欄が縦にそろって読みやすい（CLAUDE 画面基準 9）。**欄の名前で書き分けない**
@@ -859,7 +859,7 @@
    ので、塊を分けた時点で構造としては解けている。 */
 .rp-defect-roll .rp-defect-facts{margin-top:1px}
 .rp-defect-roll-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding:1px 3px;border-radius:3px;background:#eef5f6;font-size:8.5px}
-.rp-defect-roll-answer>b{color:#17272d;font-weight:800}
+.rp-defect-roll-answer>b{color:#17272d;font-weight:var(--fw-strong)}
 .rp-defect-roll-answer>span{color:var(--muted)}
 .rp-defect-roll-answer.is-empty{background:#f6f2ea}
 .rp-defect-roll-answer.is-empty>b{color:#8a6d3b}
@@ -919,22 +919,22 @@
    数字を2度出さないぶん（基準・製品座標）と合わせて場所を作る。 */
 .rp-defect-spots{display:grid;font-size:8.5px;grid-template-columns:min-content minmax(0,1fr);
  gap:4px;padding:.5px 2px;border-bottom:1px solid var(--bg)}
-.rp-defect-spots-label{color:var(--muted);font-size:8px;font-weight:700;white-space:nowrap}
+.rp-defect-spots-label{color:var(--muted);font-size:8px;font-weight:var(--fw-strong);white-space:nowrap}
 .rp-defect-spots-list{display:flex;flex-wrap:wrap;gap:0 8px;min-width:0}
-.rp-defect-spot{display:inline-flex;align-items:baseline;gap:3px;color:#17272d;font-weight:800;
+.rp-defect-spot{display:inline-flex;align-items:baseline;gap:3px;color:#17272d;font-weight:var(--fw-strong);
  white-space:nowrap}
 /* **何条目かは赤太字**（§9.323 ⑤、利用者の指示）——現場が紙から拾うのは
    この数字。中の`<b>`（条番号そのもの）はさらに太くして、範囲や複数条の
    ときも数字が先に目に入るようにする。**製品に掛かっていないときは
    赤くしない**（赤は「該当した」の意味なので、屑側に落ちた箇所まで赤いと
    色が語らなくなる）。 */
-.rp-defect-spot-lane{color:var(--rp-hit);font-weight:800}
-.rp-defect-spot-lane b{font-weight:900}
-.rp-defect-spot-lane.is-none{color:var(--muted);font-weight:700}
-.rp-defect-spot-at{color:var(--muted);font-weight:700}
+.rp-defect-spot-lane{color:var(--rp-hit);font-weight:var(--fw-ui)}
+.rp-defect-spot-lane b{font-weight:var(--fw-strong)}
+.rp-defect-spot-lane.is-none{color:var(--muted);font-weight:var(--fw-ui)}
+.rp-defect-spot-at{color:var(--muted);font-weight:var(--fw-strong)}
 /* 何か所目かは**小さな番号**で（図の旗と対応が読める）。色だけで伝えない（§3）。 */
 .rp-defect-spot>i{display:inline-block;font-size:7.5px;border-radius:2px;min-width:8px;
- padding:0 2px;background:#dfe9ec;color:#40575e;font-style:normal;font-weight:800;text-align:center}
+ padding:0 2px;background:#dfe9ec;color:#40575e;font-style:normal;font-weight:var(--fw-strong);text-align:center}
 .rp-defect-facts.is-compact{gap:0 4px}
 .rp-defect-facts.is-compact .rp-defect-fact{padding:0 2px}
 
@@ -959,11 +959,11 @@
    ロール名・接触面は現場が決める文字なので、固定割りにして折り返させる。 */
 .rp-defect-roll-table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:1px;font-size:8px}
 .rp-defect-roll-table th,.rp-defect-roll-table td{padding:.5px 2px;border-bottom:1px solid var(--bg);text-align:left;overflow-wrap:anywhere}
-.rp-defect-roll-table th{color:var(--muted);font-weight:700;white-space:nowrap}
+.rp-defect-roll-table th{color:var(--muted);font-weight:var(--fw-strong);white-space:nowrap}
 .rp-defect-roll-table col.w-face{width:18%}.rp-defect-roll-table col.w-dia{width:20%}
 .rp-defect-roll-table col.w-kind{width:20%}.rp-defect-roll-table col.w-dev{width:14%}
 .rp-defect-roll-table td.num,.rp-defect-roll-table th.num{text-align:right}
-.rp-defect-roll-table tr.is-direct td{color:#17272d;font-weight:800}
+.rp-defect-roll-table tr.is-direct td{color:#17272d;font-weight:var(--fw-strong)}
 .rp-defect-roll-more{margin:1px 0 0;color:var(--muted);font-size:7.5px}
 .rp-defect-roll-foot{margin:1px 0 0;color:#8a9a97;font-size:7.5px}
 @media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:220px}}
@@ -984,7 +984,7 @@
    ボタンのまま出ていた(実績カレンダーの「‹ › 今月」やダッシュボードの
    「この条件で集計」)。ヘッダーの.hd-btnと同じ寸法トークンへ揃える。 */
 .rp-btn-primary,.rp-btn-secondary{border:1px solid var(--line);
- font-weight:700;cursor:pointer;
+ font-weight:var(--fw-strong);cursor:pointer;
  display:inline-flex;align-items:center;justify-content:center;gap:6px;
  transition:background .12s,border-color .12s,color .12s}
 .rp-btn-secondary{background:#fff;color:var(--ink-2)}
@@ -1000,9 +1000,9 @@
 .db-layout{flex:1;min-height:0;display:grid;grid-template-columns:calc(260px * var(--ui-scale)) minmax(0,1fr);overflow:hidden}
 .db-controls{display:flex;flex-direction:column;gap:var(--gap-section);padding:var(--space-4);background:#e7eff1;border-right:1px solid var(--line);overflow-y:auto}
 .db-presets{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
-.db-presets button{padding:6px 10px;border:1px solid #9fb9b2;border-radius:var(--radius-lg);background:#fff;color:#2c5049;font-weight:700;font-size:var(--fs-sm);cursor:pointer}
+.db-presets button{padding:6px 10px;border:1px solid #9fb9b2;border-radius:var(--radius-lg);background:#fff;color:#2c5049;font-weight:var(--fw-ui);font-size:var(--fs-sm);cursor:pointer}
 .db-ctl-group{display:flex;flex-direction:column;gap:var(--gap-inline)}
-.db-ctl-label{font-size:var(--fs-micro);font-weight:800;color:#526970;letter-spacing:.02em}
+.db-ctl-label{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:#526970;letter-spacing:.02em}
 .db-ctl-group select{height:var(--ctl-h);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .db-seg{display:flex;flex-wrap:wrap;gap:var(--space-1)}
 .db-seg button{padding:5px 9px;border:1px solid var(--line-mid);border-radius:var(--radius-lg);background:#fff;color:var(--ink-2);font-size:var(--fs-micro);cursor:pointer}
@@ -1014,7 +1014,7 @@
 .db-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:var(--space-4);gap:var(--gap-section);overflow-y:auto}
 .db-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap-section)}
 .db-card{display:flex;flex-direction:column;gap:var(--space-1);padding:var(--pad-card);background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius-md)}
-.db-card-label{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+.db-card-label{font-size:var(--fs-micro);color:var(--muted);font-weight:var(--fw-ui)}
 .db-card-value{font-size:var(--fs-lg);color:var(--ink);font-variant-numeric:tabular-nums}
 .db-chart-wrap{background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius-md);padding:10px;min-height:360px;display:flex}
 .db-chart{flex:1;min-width:0;min-height:340px}
@@ -1029,10 +1029,10 @@
 .db-axis{stroke:#8299a0;stroke-width:1}
 .db-gridline{stroke:var(--surface-3);stroke-width:1}
 .db-label{font-size:var(--fs-micro);fill:var(--ink-2)}
-.db-value{font-size:var(--fs-micro);fill:#075e67;font-weight:800}
-.db-chart-title{font-size:var(--fs-title);font-weight:800;fill:var(--ink)}
-.db-chart-subtitle{font-size:var(--fs-micro);font-weight:700;fill:var(--muted)}
-.db-axis-title{font-size:var(--fs-micro);font-weight:800;fill:#40606a}
+.db-value{font-size:var(--fs-micro);fill:#075e67;font-weight:var(--fw-ui)}
+.db-chart-title{font-size:var(--fs-title);font-weight:var(--fw-strong);fill:var(--ink)}
+.db-chart-subtitle{font-size:var(--fs-micro);font-weight:var(--fw-ui);fill:var(--muted)}
+.db-axis-title{font-size:var(--fs-micro);font-weight:var(--fw-ui);fill:#40606a}
 .db-svg-legend-label{font-size:var(--fs-micro);fill:var(--ink-2)}
 @media(max-width:1000px){.db-layout{grid-template-columns:1fr}.db-controls{max-height:280px}.db-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* ---------- 稼働状況ビュー(§9.64) ----------
@@ -1040,13 +1040,13 @@
    「いま何が動いていて、何が残っていて、遅れていないか」が分かる状態を作る。 */
 .db-viewtabs{display:flex;gap:0;background:#0f2a32;border:1px solid #2c4750;border-radius:var(--radius-sm);padding:2px}
 .db-viewtabs button{height:calc(var(--ctl-h) - 8px);padding:0 var(--ctl-pad-x);border:0;border-radius:var(--radius-sm);
- background:transparent;color:#a8d6dc;font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+ background:transparent;color:#a8d6dc;font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;
  transition:background .12s,color .12s}
 .db-viewtabs button:hover{color:#fff;background:var(--ink)}
 .db-status-view{flex:1;min-height:0;display:flex;flex-direction:column;gap:var(--space-3);
  padding:var(--space-4);overflow-y:auto}
 .db-card-note{font-size:var(--fs-micro);color:var(--ink-soft)}
-.db-card-value small{font-size:var(--fs-sm);font-weight:700;margin-left:2px;color:var(--muted)}
+.db-card-value small{font-size:var(--fs-sm);font-weight:var(--fw-ui);margin-left:2px;color:var(--muted)}
 .db-status-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:var(--space-3);
  align-items:start}
 .db-status-card{background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius-md);overflow:hidden;min-width:0}
@@ -1072,7 +1072,7 @@
 .rp-stat-table td{text-align:right;font-variant-numeric:tabular-nums}
 .rp-stat-table th{text-align:center}
 .rp-stat-table tbody th{text-align:left;white-space:nowrap}
-.rp-stat-table tbody th small{margin-left:.4em;font-weight:400;color:#666}
+.rp-stat-table tbody th small{margin-left:.4em;font-weight:var(--fw-body);color:#666}
 .rp-stat-table .rp-stat-na{color:#999;text-align:center}
 
 /* マトリクス配置（§9.245）。**列数はここでは持たない**（§9.289）——
@@ -1097,7 +1097,7 @@
    ここでは面を置くだけでよい。 */
 .rp-field-head{grid-template-columns:minmax(0,1fr);
   background:var(--surface-2);border-bottom:1px solid var(--line-mid)}
-.rp-field-headtext{color:var(--ink-2);font-weight:800;font-size:8px;
+.rp-field-headtext{color:var(--ink-2);font-weight:var(--fw-strong);font-size:8px;
   overflow-wrap:break-word;white-space:normal}
 /* ラベルを出さないマス（共通の軸で並べたとき）。**ラベル列ごと落とす**
    ——空の箱を残すと`min-content`の列がそのぶん残り、値が右へずれる。 */
@@ -1115,7 +1115,7 @@
   min-width:1.6em;min-height:1.6em;padding:0 var(--space-1);
   border:1px solid var(--line-mid);border-radius:var(--radius-xs);
   background:var(--card-bg);color:var(--ink-3);
-  font-size:var(--fs-micro);font-weight:800;line-height:1;cursor:pointer;
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);line-height:1;cursor:pointer;
   opacity:.55;
 }
 .rp-block:hover>.rp-block-paper,.rp-block-paper:focus-visible{opacity:1;color:var(--nav);border-color:var(--nav)}
@@ -1125,7 +1125,7 @@
   min-height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:1px solid var(--nav);border-radius:var(--radius-sm);
   background:var(--card-bg);color:var(--nav);
-  font-size:var(--fs-badge);font-weight:700;cursor:pointer}
+  font-size:var(--fs-badge);font-weight:var(--fw-ui);cursor:pointer}
 .rp-to-master:hover{background:var(--pale)}
 /* 子ロットを横に並べる（§9.277、利用者の指示「縦に積むが標準で横に積むか」）。
    **繰り返しが1回のときは器を作らない**（`rpFieldsSection`）ので、ここは

@@ -16,7 +16,7 @@ CLAUDE.md の「画面を作るときの基準」（15項目）と、それをWa
 | --- | --- | --- |
 | どの画面でも（基準をWaveLogの寸法へ落としたもの） | [ui-principles.md](ui-principles.md) | 8節 |
 | `program/`・配る入口・`#appBoot`・更新・在席 | [boot.md](boot.md) | 69 |
-| 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 76 |
+| 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 77 |
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](api.md) | 20 |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](master-server.md) | 33 |
 | マスタ管理の画面・盤・編集モーダル | [master-ui.md](master-ui.md) | 30 |
@@ -26,9 +26,9 @@ CLAUDE.md の「画面を作るときの基準」（15項目）と、それをWa
 | 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 98 |
 | `print-core.js`・帳票ブロック・用紙と余白 | [report.md](report.md) | 96 |
 | `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 48 |
-| 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 65 |
+| 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 66 |
 | テストを書く・回す・後片付け | [testing.md](testing.md) | 60 |
 | どの束にも入らないもの | [misc.md](misc.md) | 19 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **1127件**（`ui-principles.md` は節で数える）。
+規則は合わせて **1129件**（`ui-principles.md` は節で数える）。

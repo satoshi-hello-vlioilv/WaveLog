@@ -61,7 +61,7 @@
 .rne-panel{border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--pad-card);margin:1em 0;background:var(--pale)}
 .rne-head{display:flex;align-items:center;gap:var(--gap-section);flex-wrap:wrap;margin-bottom:.5em}
 .rne-head h4{margin:0;font-size:var(--fs)}
-.rne-state{padding:.15em .7em;border-radius:var(--radius-pill);font-size:var(--fs-sm);font-weight:700;border:1px solid var(--line)}
+.rne-state{padding:.15em .7em;border-radius:var(--radius-pill);font-size:var(--fs-sm);font-weight:var(--fw-ui);border:1px solid var(--line)}
 .rne-jobs{display:grid;gap:var(--gap-tight);margin:.5em 0 0;font-size:var(--fs-sm)}
 .rne-job{display:flex;gap:var(--gap-section);align-items:baseline}
 .rne-job b{min-width:9em}
@@ -77,7 +77,7 @@
  display:inline-flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h-sm);
  padding:0 var(--ctl-pad-x-sm);max-width:var(--w-md);
  border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:var(--ink-2);
- font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
  cursor:pointer;user-select:none;
 }
 .shift-eq-tag>i{font-style:normal;font-size:var(--fs-sm);color:var(--muted);flex:none}
@@ -95,7 +95,7 @@
  padding:0 var(--space-1);border-radius:var(--radius-pill);border:1px solid transparent;
  /* 印なので値のセルから1段下げる(--tbl-fs-mark)。以前は --fs-badge(10px)で、
     同じ行の値(14px)から3段離れていた(§9.90)。 */
- font-size:var(--tbl-fs-mark);font-weight:800;line-height:1.2;
+ font-size:var(--tbl-fs-mark);font-weight:var(--fw-ui);line-height:1.2;
 }
 /* 作業できない行は薄く。並べ替えや削除はできるので消しはしない。 */
 .sc-row-line.sc-row-not-workable .sc-row-title,
@@ -127,7 +127,7 @@
 .rne-progress-jobs{display:flex;flex-wrap:wrap;gap:var(--gap-inline);
                    font-size:var(--fs-sm);color:#40606a}
 .rne-job{display:inline-flex;align-items:center;gap:var(--gap-tight)}
-.rne-job.is-running{color:var(--teal-dark);font-weight:700}
+.rne-job.is-running{color:var(--teal-dark);font-weight:var(--fw-strong)}
 .rne-job.is-ok{color:var(--success)}
 .rne-job.is-ng{color:var(--danger)}
 }
@@ -158,12 +158,12 @@
 .pc-node b{font-size:var(--fs);color:var(--ink)}
 .pc-node-sub{font-size:var(--fs-sm);color:var(--ink-3)}
 .pc-node-val{
-  margin-top:2px;font-size:var(--fs-sm);color:var(--nav);font-weight:700;
+  margin-top:2px;font-size:var(--fs-sm);color:var(--nav);font-weight:var(--fw-ui);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .pc-arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--ink-3)}
 .pc-arrow i{display:block;width:100%;min-width:2.2em;border-top:2px solid var(--line-strong)}
-.pc-arrow em{font-style:normal;font-size:var(--fs-sm);font-weight:700}
+.pc-arrow em{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .pc-goto{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm)}
 
 /* ---- 章のレール ---- */
@@ -175,13 +175,13 @@
 .pc-rail button{
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line);border-radius:var(--radius-pill);
-  background:#fff;color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer;
+  background:#fff;color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;
 }
 .pc-rail button:hover{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .pc-rail-restart{
   margin-left:auto;padding:var(--pad-chip);border-radius:var(--radius-pill);
   background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);
-  font-size:var(--fs-sm);font-weight:800;white-space:nowrap;
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;
 }
 .pc-rail-restart[hidden]{display:none}
 /* 札が1つも出ていないときは帯ごと伏せる（§9.556 B8。中身の無い灰色の帯が図とタブのあいだに残っていた） */
@@ -195,7 +195,7 @@
   display:flex;flex-direction:column;gap:1px;min-width:var(--w-md);
   padding:var(--pad-chip);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);
 }
-.pc-who small{font-size:var(--fs-sm);color:var(--ink-3);font-weight:700}
+.pc-who small{font-size:var(--fs-sm);color:var(--ink-3);font-weight:var(--fw-ui)}
 .pc-who b{font-size:var(--fs);color:var(--ink)}
 .pc-who i{font-style:normal;font-size:var(--fs-sm);color:var(--muted)}
 
@@ -211,7 +211,7 @@
 .pc-look-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
 .pc-look-head b{font-size:var(--fs-sm);color:var(--ink)}
 /* いまの値は**状態の字**（色だけで言わない・§CLAUDE 3）。 */
-.pc-look-now{font-size:var(--fs-sm);font-weight:700;color:var(--muted)}
+.pc-look-now{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted)}
 .pc-look-act{display:flex;flex-wrap:wrap;gap:var(--gap-inline);align-items:center}
 /* 行き先の一言は**ボタンの左**（何のための行き先かを押す前に読める）。 */
 .pc-look-lead{flex:1 1 var(--w-2xl);min-width:var(--w-xl);
@@ -232,8 +232,8 @@
 /* 族の見出しは**何が仲間か**を言う。名前と一言は同じ行（縦を食わない）。 */
 .pc-ld-group h6{margin:var(--space-2) 0 0;display:flex;flex-wrap:wrap;
   align-items:baseline;gap:var(--gap-inline);
-  font-size:var(--fs-sm);font-weight:800;color:var(--ink-2);letter-spacing:.04em}
-.pc-ld-group h6 small{font-size:inherit;font-weight:600;color:var(--ink-soft);letter-spacing:0}
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);letter-spacing:.04em}
+.pc-ld-group h6 small{font-size:inherit;font-weight:var(--fw-ui);color:var(--ink-soft);letter-spacing:0}
 /* 札は**中身の長さから決めた固定幅**（いちばん長い名前が1行で入る幅）。
    `1fr`で伸ばすと族ごとに幅が変わり、列がそろわない（§CLAUDE 11）。
    余りは空白のまま残す（列を増やして詰めない・§CLAUDE 13）。 */
@@ -248,7 +248,7 @@
 /* 見本の席は**高さを固定**する（種類ごとに中身の高さが違うので、揃えないと
    名前の行がガタつく）。色は本文と同じ濃さ——見本だけ浮かせない。 */
 .pc-ld-fig{display:grid;place-items:center;width:100%;height:52px;color:var(--teal-dark)}
-.pc-ld-card b{font-size:var(--fs-sm);font-weight:700;color:var(--ink);line-height:1.4}
+.pc-ld-card b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);line-height:1.4}
 .pc-ld-card small{font-size:var(--fs-sm);color:var(--ink-soft);
   word-break:break-all;line-height:1.3}
 /* 使用中は**枠の色と字の両方**で言う（色だけで言わない・§CLAUDE 3）。
@@ -258,7 +258,7 @@
 .pc-ld-on{position:absolute;top:var(--space-1);right:var(--space-1);
   display:none;padding:0 var(--space-1);border-radius:var(--radius-xs);
   background:var(--teal);color:var(--card-bg);
-  font-size:var(--fs-sm);font-style:normal;font-weight:800;line-height:1.6}
+  font-size:var(--fs-sm);font-style:normal;font-weight:var(--fw-ui);line-height:1.6}
 .pc-ld-card.is-current .pc-ld-on{display:block}
 /* ---- 起動アイコンの盤は「表示」へ移した（§9.445） ----
    共通設定に残るのは**いまの状態と行き先**だけなので、器は見え方の行き先と
@@ -284,8 +284,8 @@
 .pc-share-what{font-size:var(--fs-sm);color:var(--ink);display:flex;
   flex-direction:column;gap:0;min-width:0}
 .pc-share-what small{font-family:var(--font-mono,monospace);font-size:var(--fs-sm);
-  color:var(--muted);font-weight:400;overflow:hidden;text-overflow:ellipsis}
-.pc-share-kind{font-size:var(--fs-sm);color:var(--ink-2);font-weight:700}
+  color:var(--muted);font-weight:var(--fw-body);overflow:hidden;text-overflow:ellipsis}
+.pc-share-kind{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
 .pc-share-path{min-width:0;font-size:var(--fs-sm);color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pc-share-where{font-size:var(--fs-sm);color:var(--ink-3);
@@ -310,9 +310,9 @@
 .pc-store-group+.pc-store-group{margin-top:var(--space-2);
   padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
 .pc-store-group-head{display:flex;flex-direction:column;gap:0;margin:0;
-  font-size:var(--fs-sm);color:var(--ink);font-weight:800}
+  font-size:var(--fs-sm);color:var(--ink);font-weight:var(--fw-ui)}
 .pc-store-group-head small{font-size:var(--fs-sm);color:var(--ink-3);
-  font-weight:400;line-height:1.5}
+  font-weight:var(--fw-body);line-height:1.5}
 .pc-store-row{display:grid;gap:2px var(--gap-inline);
   grid-template-columns:minmax(0,1fr);
   padding:var(--space-1) var(--space-2);border-radius:var(--radius-xs);
@@ -327,14 +327,14 @@
    **折り返さない**（§9.90）——「測定データ（この端末）」が2行になると、
    その行だけ背が高くなって群の中がそろわない。幅は実際の題から決める。 */
 .pc-store-label{flex:0 0 var(--w-lg);min-width:0;font-size:var(--fs-sm);
-  color:var(--ink);font-weight:800;
+  color:var(--ink);font-weight:var(--fw-ui);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pc-store-kind{font-size:var(--fs-sm);color:var(--ink-2);font-weight:700}
-.pc-store-exists{font-size:var(--fs-sm);font-weight:700}
+.pc-store-kind{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
+.pc-store-exists{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .pc-store-exists.is-ok{color:var(--ok-fg,var(--ink-2))}
 .pc-store-exists.is-missing{color:var(--warn-fg)}
 .pc-store-exists.is-unknown,.pc-store-exists.is-unset{color:var(--muted)}
-.pc-store-tag{font-size:var(--fs-sm);color:var(--ink-3);font-weight:700;
+.pc-store-tag{font-size:var(--fs-sm);color:var(--ink-3);font-weight:var(--fw-ui);
   padding:0 var(--space-1);border:1px solid var(--line-soft);
   border-radius:var(--radius-xs)}
 .pc-store-tag.is-retired{color:var(--muted)}
@@ -361,9 +361,9 @@
 .pc-store-note{font-size:var(--fs-sm);color:var(--ink-3);line-height:1.5}
 /* 保存したのにまだ効いていない、は**打つ手のある状態**なので目立たせる。 */
 .pc-store-note.is-pending{color:var(--warn-fg)}
-.pc-store-pending{color:var(--warn-fg);font-weight:700}
+.pc-store-pending{color:var(--warn-fg);font-weight:var(--fw-strong)}
 /* 「無いので作る」は打つ手なので、他の行より1段強く出す。 */
-.pc-store-foot .pc-make{color:var(--warn-fg);font-weight:700}
+.pc-store-foot .pc-make{color:var(--warn-fg);font-weight:var(--fw-strong)}
 .pc-store-extra{display:flex;flex-direction:column;gap:var(--gap-inline);
   padding:var(--space-2);border-radius:var(--radius-xs);
   background:var(--surface-2);border:1px solid var(--line-soft)}
@@ -376,16 +376,16 @@
 /* ---- 章の中の小見出し（節が長い共有の置き場だけ） ---- */
 .pc-sub{display:flex;flex-direction:column;gap:var(--gap-inline);
   padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
-.pc-sub-head{font-size:var(--fs-sm);color:var(--ink-2);font-weight:800}
+.pc-sub-head{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
 
 /* ---- 欄のすぐ下の状態 ---- */
 .pc-state{
   display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);
   font-size:var(--fs-sm);color:var(--ink-3);
 }
-.pc-state i{font-style:normal;margin-right:.4em;color:var(--muted);font-weight:700}
+.pc-state i{font-style:normal;margin-right:.4em;color:var(--muted);font-weight:var(--fw-strong)}
 .pc-state-now,.pc-state-saved{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.pc-state-now{color:var(--ink-2);font-weight:700}
+.pc-state-now{color:var(--ink-2);font-weight:var(--fw-strong)}
 .pc-state.is-pending-restart{color:var(--warn-fg)}
 
 /* ---------- アプリの更新（§9.555・master-update.js） ----------
@@ -399,7 +399,7 @@
 .au-from{color:var(--ink-3)}
 .au-where{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
 .au-where code{color:var(--ink-2)}
-.au-ok{margin-left:var(--space-2);color:var(--teal-dark);font-weight:700}
+.au-ok{margin-left:var(--space-2);color:var(--teal-dark);font-weight:var(--fw-strong)}
 .au-bad{padding:var(--space-3);border:1px solid var(--danger-border);border-radius:var(--radius-md);
  background:var(--danger-bg);color:var(--danger);font-size:var(--fs-sm);line-height:1.7}
 .au-flow{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:var(--space-2);align-items:stretch}
@@ -419,7 +419,7 @@
 .au-new code{color:var(--ink);word-break:break-all}
 .au-new small{color:var(--ink-3);font-size:var(--fs-sm)}
 .au-new .mm-btn-ghost{margin-left:var(--space-2)}
-.au-warn{font-style:normal;color:var(--warn-fg);font-weight:700}
+.au-warn{font-style:normal;color:var(--warn-fg);font-weight:var(--fw-strong)}
 .au-put small{color:var(--ink-3);font-size:var(--fs-sm)}
 /* 置いている間（§9.556）: ボタンの行を進み具合の帯（共通の`.wl-progress`）に替える。帯はこの段の中の枠1つ */
 .au-put.is-busy{display:grid;align-items:stretch;gap:var(--space-2)}
@@ -427,11 +427,11 @@
 .au-pick{cursor:pointer}
 .au-empty{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
 .au-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
-.au-table th{text-align:left;font-weight:700;color:var(--ink-3);border-bottom:1px solid var(--line);padding:var(--space-1) var(--space-2)}
+.au-table th{text-align:left;font-weight:var(--fw-strong);color:var(--ink-3);border-bottom:1px solid var(--line);padding:var(--space-1) var(--space-2)}
 .au-table td{border-bottom:1px solid var(--line-soft);padding:var(--space-1) var(--space-2);vertical-align:middle}
 .au-table tr.is-live td{background:var(--teal-soft)}
 .au-table td small{color:var(--ink-3)}
 .au-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .au-tag{font-style:normal;font-size:var(--fs-sm);color:var(--ink-3)}
-.au-tag.is-live{color:var(--teal-dark);font-weight:800}
+.au-tag.is-live{color:var(--teal-dark);font-weight:var(--fw-strong)}
 }

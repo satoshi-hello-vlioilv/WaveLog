@@ -51,9 +51,9 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    詳細度で競り合わなくても部品側の面・枠線に必ず勝つ。 */
 .validation-required{background:var(--required-bg);border-color:var(--required);box-shadow:inset 4px 0 0 var(--required)}
 .validation-valid{background:var(--valid-bg);border-color:#aebdc2;box-shadow:none}
-.validation-ng{background:var(--invalid-bg);border-color:var(--invalid);box-shadow:inset 4px 0 0 var(--invalid);color:#7a0000;font-weight:700}
+.validation-ng{background:var(--invalid-bg);border-color:var(--invalid);box-shadow:inset 4px 0 0 var(--invalid);color:#7a0000;font-weight:var(--fw-strong)}
 .work-time-item.validation-valid{background:#eefaf6;border-color:#62aa96;box-shadow:none}
-.validation-message{padding:var(--pad-card);margin:6px 0;border:1px solid var(--required);background:var(--required-bg);color:var(--warn-fg);font-weight:700;border-radius:var(--radius-sm)}
+.validation-message{padding:var(--pad-card);margin:6px 0;border:1px solid var(--required);background:var(--required-bg);color:var(--warn-fg);font-weight:var(--fw-strong);border-radius:var(--radius-sm)}
 /* 検査員・作業人数・内径・スプール・板厚測定器・板幅測定器: 選択必須ではないが、
    「-」のまま未選択の間は目立たせ、何か選んだら白背景に戻す（確認漏れ防止の
    視覚的な合図。activeRequiredControlsの必須判定とは独立） *//* 面を淡くした分、左端のアクセントバーで「まだ選んでいない」を示す(.validation-requiredと同じ言語)。 */
@@ -104,7 +104,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 /* 入力位置(クリックしたセル)の条。セルの強調(outline:#f39a18)と同じ色にして、
    どのセルがどの点かを一目で結び付けられるようにする。 */
 .work-time-item.validation-ng input{background:var(--invalid-bg);border-color:var(--invalid)}
-#workTimeHint.is-invalid{font-weight:700}
+#workTimeHint.is-invalid{font-weight:var(--fw-strong)}
 .mm-tag-box.is-disabled{opacity:.5;background:var(--bg);cursor:not-allowed;pointer-events:none}
 .mm-apply-badge.is-restart{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
 .mm-apply-badge.is-live{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
@@ -131,10 +131,10 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    「可」と言い切ると、動かした瞬間にサーバーへ弾かれて食い違うため、
    設定が要ることを色でも示す。 */
 .field-reorder-badge.is-warn{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
-.sc-field-reorder-note.is-warn{color:var(--danger);font-weight:700}
+.sc-field-reorder-note.is-warn{color:var(--danger);font-weight:var(--fw-strong)}
 /* ドラッグ中は落とせる場所だと分かるように枠ごと光らせる */
 .mm-path.is-dragover{outline:2px dashed var(--teal);outline-offset:3px;background:var(--pale)}
-.pathpick-row.is-dir{font-weight:600}
+.pathpick-row.is-dir{font-weight:var(--fw-ui)}
 .pathpick-status.is-warn{color:var(--danger)}
 .rne-state.is-on{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .rne-state.is-off{background:#fff;color:var(--muted)}
@@ -142,7 +142,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .rne-job.is-ng{color:var(--danger)}
 /* 入のタグ(§9.197)。面を塗って**文字を白**にする——枠の色だけだと、
    タグが並んだときにどれが入なのかを1つずつ見比べることになる。 */
-.shift-eq-tag.is-on{border-color:var(--teal-dark);background:var(--teal);color:#fff;font-weight:700}
+.shift-eq-tag.is-on{border-color:var(--teal-dark);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 .shift-eq-tag.is-on:hover{border-color:var(--teal-dark);background:var(--teal-dark);color:#fff}
 .sc-row-workable.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .sc-row-workable.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
@@ -228,7 +228,7 @@ body.sc-mode.sc-wide #scHead{display:none}
  height:var(--ctl-h-xs);padding:0 var(--space-2);
  border:1px solid var(--teal);border-radius:var(--radius-pill);
  background:var(--pale);color:var(--computed-fg);
- font-size:var(--fs-micro);font-weight:800;cursor:pointer}
+ font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer}
 .sc-wide-exit:hover{background:var(--teal);color:#fff}
 /* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
    各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
@@ -315,11 +315,11 @@ body.qa-mode #printCurrentView{display:none}
   pointer-events:none;   /* 下の行き先を押せなくしない */
 }
 .nav-tip[hidden]{display:none}
-.nav-tip b{font-size:var(--fs);font-weight:800;line-height:var(--lh);white-space:nowrap}
+.nav-tip b{font-size:var(--fs);font-weight:var(--fw-strong);line-height:var(--lh);white-space:nowrap}
 .nav-tip small{font-size:var(--fs-sm);color:#b9d6d9;line-height:1.5}
 /* 件数は名前に混ぜない（行き先の名前として読めなくなる）。 */
 .nav-tip-badge{
-  align-self:flex-start;font-size:var(--fs-tiny);font-weight:800;
+  align-self:flex-start;font-size:var(--fs-tiny);font-weight:var(--fw-ui);
   padding:0 var(--space-1);border-radius:var(--radius-pill);
   background:color-mix(in srgb,var(--teal) 45%,transparent);color:#fff;
 }

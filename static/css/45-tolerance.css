@@ -27,7 +27,7 @@
 .tc-head{position:relative;flex:0 0 auto;height:var(--tc-head);border-bottom:1px solid var(--line-mid);background:var(--surface-2)}
 .tc-tick{
   position:absolute;top:50%;transform:translate(-50%,-50%);
-  padding:0 2px;color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;white-space:nowrap;
+  padding:0 2px;color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);white-space:nowrap;
 }
 .tc-low{left:var(--nl-low)}
 .tc-high{left:var(--nl-high)}
@@ -138,18 +138,18 @@
 /* 打ち込む欄だけが余りを受ける。 */
 .filter-adhoc-row>input.filter-adhoc-value{flex:1 1 var(--w-md);min-width:var(--w-sm)}
 .filter-adhoc-row>button{flex:0 0 auto;white-space:nowrap}
-#filterAdhocKeep{background:#fff;color:var(--teal-dark);border-color:var(--teal);font-weight:700}
+#filterAdhocKeep{background:#fff;color:var(--teal-dark);border-color:var(--teal);font-weight:var(--fw-strong)}
 #filterAdhocKeep:hover:not(:disabled){background:var(--pale)}
 /* 効いていることは**必ず文字で**(§3)。色だけにしない。
    **縮んでよいのはここだけ**(§9.229 ⑤)——入らなければ省略記号にし、
    全文は`title`から読める。 */
 .filter-adhoc-state{flex:1 1 0;min-width:0;font-size:var(--lt-fs);color:var(--ink-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.filter-adhoc-state.is-on{color:var(--teal-dark);font-weight:800}
-.filter-adhoc-state.is-warn{color:var(--danger);font-weight:800}
+.filter-adhoc-state.is-on{color:var(--teal-dark);font-weight:var(--fw-strong)}
+.filter-adhoc-state.is-warn{color:var(--danger);font-weight:var(--fw-strong)}
 /* 入口。畳んでいても効いていれば名乗る(§9.175)ので、そのときは面を付ける。 */
 .filter-adhoc-toggle{max-width:var(--w-xl);overflow:hidden;text-overflow:ellipsis}
-.filter-adhoc-toggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:700}
+.filter-adhoc-toggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:var(--fw-strong)}
 /* 狭い窓では選択欄も縮ませて1行を守る（切り落とさない）。 */
 @media(max-width:1400px){
   .filter-adhoc-col{flex:0 1 auto;max-width:var(--w-sm)}
@@ -169,7 +169,7 @@
    近さで分ける（枠で囲まない・§CLAUDE 画面基準 10）。 */
 .filter-search-row-actions{flex:0 0 auto;display:flex;gap:var(--gap-inline);align-items:center;margin-left:auto}
 .filter-search-row-actions button{white-space:nowrap}
-.filter-search-row-actions #saveFilterPreset{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700}
+.filter-search-row-actions #saveFilterPreset{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:var(--fw-strong)}
 /* ---------- プリセット中心の1行（§9.287、利用者の指示） ----------
    「プリセットフィルタは1つのボタンでポップオーバーメニューで切り替え」
    「バッジとして追加されるボタンに表示されているフィルタの条件式は…
@@ -184,27 +184,27 @@
 .fb-preset-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-tight);
   padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line-strong);
-  background:var(--surface);color:var(--ink);font-weight:700;white-space:nowrap}
+  background:var(--surface);color:var(--ink);font-weight:var(--fw-strong);white-space:nowrap}
 .fb-preset-btn:hover{border-color:var(--teal)}
 .fb-preset-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
 /* 当たっているときは面で示す。**選んだだけで条件が欠けているときは別の顔**
    （§3。「選んでいる」と「効いている」は違うことなので、同じ絵にしない）。 */
 .fb-preset-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .fb-preset-btn.is-partial{border-color:var(--warn-border);background:var(--warn-bg);color:var(--ink)}
-.fb-preset-btn b{max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800}
-.fb-preset-btn em{font-style:normal;color:var(--warn-border);font-weight:700}
+.fb-preset-btn b{max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:var(--fw-strong)}
+.fb-preset-btn em{font-style:normal;color:var(--warn-border);font-weight:var(--fw-strong)}
 .fb-preset-btn em[hidden]{display:none}
 /* 切り替えの浮きメニュー（body直下・position:fixed。§9.201）。
    **1列のラジオ**——「足す」ではなく「切り替える」ので、押せるのは1つ。 */
 .fb-preset-menu{min-width:var(--w-2xl);max-width:min(92vw,760px);max-height:70vh;overflow:auto}
-.fb-preset-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
+.fb-preset-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:var(--fw-strong)}
 .fb-preset-head small{display:block}
 .fb-preset-sec{margin:var(--space-2) 0 var(--space-1);color:var(--ink-3);
-  font-weight:800;letter-spacing:.04em}
+  font-weight:var(--fw-strong);letter-spacing:.04em}
 .fb-preset-menu .fb-preset-pick{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 var(--gap-inline);
   width:100%;height:auto;padding:var(--space-1) var(--space-2);border:0;
   border-radius:var(--radius-sm);background:transparent;color:var(--ink);
-  font-weight:800;text-align:left}
+  font-weight:var(--fw-strong);text-align:left}
 .fb-preset-menu .fb-preset-pick:hover{background:var(--surface-2)}
 .fb-preset-menu .fb-preset-pick.is-current{background:var(--pale)}
 /* 選んでいる印は丸ぽち。**形が意味を持つ部品**なので丸のまま（§9.227 ①）。 */
@@ -218,7 +218,7 @@
 .fb-preset-empty{margin:var(--space-2);color:var(--ink-3)}
 .fb-preset-foot{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
 .fb-preset-menu .fb-preset-foot button{width:100%;height:var(--ctl-h-sm);border:1px solid var(--teal);
-  border-radius:var(--radius-sm);background:var(--surface);color:var(--teal-dark);font-weight:700}
+  border-radius:var(--radius-sm);background:var(--surface);color:var(--teal-dark);font-weight:var(--fw-strong)}
 .fb-preset-foot small{display:block;margin-top:var(--space-1);font-size:var(--fs-sm);color:var(--ink-3)}
 /* **詳細度を数えること**（§9.206）——器の`.access-mode-menu button`は
    (0,1,1)で`display:flex;flex-direction:column;align-items:flex-start;
@@ -231,7 +231,7 @@
 .fb-cond-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-tight);
   padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line-strong);
-  background:var(--surface);color:var(--ink);font-weight:700;white-space:nowrap}
+  background:var(--surface);color:var(--ink);font-weight:var(--fw-strong);white-space:nowrap}
 .fb-cond-btn:hover{border-color:var(--teal)}
 .fb-cond-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .fb-cond-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
@@ -239,7 +239,7 @@
 /* 数は札（ピル）で**名前と分けて**言う（§9.505）。0のときは薄く、効いているときは面の色。 */
 .fb-cond-n{display:inline-grid;place-items:center;min-width:1.6em;height:1.5em;padding:0 .4em;
   border-radius:var(--radius-pill);background:var(--surface-3);color:var(--ink-3);
-  font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  font-weight:var(--fw-strong);font-variant-numeric:tabular-nums;line-height:1}
 .fb-cond-btn.is-on .fb-cond-n{background:var(--teal);color:var(--surface)}
 /* 一覧から開く面は**字1種**（§9.505）。見出し＝800・項目＝700・説明＝400で薄く——差は大きさでなく
    太さと濃さ（§9.476 の作法）。面の値は面のブロックで宣言し直す（§9.449）。**項目の高さは動かさない**
@@ -249,9 +249,9 @@
 :is(.fb-preset-menu,.fb-cond-menu,.hd-table-menu,.reload-menu){--menu-fs:var(--fs-sm)}
 :is(.fb-preset-menu,.fb-cond-menu,.hd-table-menu,.reload-menu) :is(p,.fb-cond-list,.fb-cond-row,.fb-preset-foot,.fb-preset-empty,.reload-menu-note){font-size:var(--menu-fs)}
 :is(.fb-preset-menu,.fb-cond-menu,.hd-table-menu,.reload-menu) :is(button,p) small,
-.fb-preset-menu .fb-preset-sub{font-size:var(--fs-sm);font-weight:400;color:var(--ink-3)}
+.fb-preset-menu .fb-preset-sub{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-3)}
 .fb-cond-menu{min-width:var(--w-2xl);max-width:min(92vw,720px);max-height:70vh;overflow:auto}
-.fb-cond-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
+.fb-cond-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:var(--fw-strong)}
 .fb-cond-head small{display:block}
 .fb-cond-row{display:flex;align-items:center;gap:var(--gap-inline);
   padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm)}
@@ -259,11 +259,11 @@
 .fb-cond-row.is-locked{background:var(--warn-bg)}
 .fb-cond-badge{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);
   border:1px solid var(--line-mid);background:var(--surface);
-  color:var(--ink-3);font-weight:800;white-space:nowrap}
+  color:var(--ink-3);font-weight:var(--fw-strong);white-space:nowrap}
 .fb-cond-badge.is-lock{border-color:var(--warn-border);color:var(--ink-2)}
 /* **条件式はここで全部読める**（切らない。折り返す）。 */
 .fb-cond-text{flex:1 1 auto;min-width:0;color:var(--ink);overflow-wrap:anywhere}
-.fb-cond-text b{color:var(--teal-dark);font-weight:800}
+.fb-cond-text b{color:var(--teal-dark);font-weight:var(--fw-strong)}
 .fb-cond-text em{font-style:normal;color:var(--ink-2)}
 .fb-cond-var{text-decoration:none;color:var(--muted);margin-left:var(--space-1)}
 .fb-cond-menu .fb-cond-save,.fb-cond-menu .fb-cond-x{flex:0 0 auto;display:grid;place-items:center;
@@ -289,12 +289,12 @@
 .filter-suggest{position:fixed;z-index:var(--z-popover);max-height:340px;overflow:auto;background:#fff;border:1px solid #9fc3c8;border-radius:var(--radius-md);box-shadow:0 16px 42px #0b2b3322;padding:var(--space-2)}
 .filter-suggest[hidden]{display:none}
 .filter-suggest-group+.filter-suggest-group{margin-top:4px;border-top:1px dashed #dbe7ea;padding-top:4px}
-.filter-suggest-head{display:flex;align-items:center;gap:var(--gap-inline);padding:4px 6px 3px;color:#526970;font-size:var(--fs-micro);font-weight:800}
+.filter-suggest-head{display:flex;align-items:center;gap:var(--gap-inline);padding:4px 6px 3px;color:#526970;font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .filter-suggest-head .fs-icon{display:grid;place-items:center;width:16px;height:16px;border-radius:var(--radius-round);background:#e4f3f4;color:#075e67;font-size:var(--fs-badge)}
 .filter-suggest-items{display:flex;flex-wrap:wrap;gap:var(--gap-tight);padding:2px 4px 4px}
 .suggest-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);max-width:100%;min-height:var(--ctl-h-xs);border-radius:var(--radius-lg);border:1px solid #bcd6d9;background:var(--surface-2);color:var(--ink);cursor:pointer}.suggest-chip:hover{background:var(--teal);border-color:var(--teal);color:#fff}
 .suggest-chip:hover b,.suggest-chip.active b,.suggest-chip:hover small,.suggest-chip.active small{color:#eafafa}
-.suggest-chip>span{font-weight:800;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.suggest-chip>span{font-weight:var(--fw-strong);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .suggest-chip b{font-size:var(--fs-micro);color:#075e67;white-space:nowrap}
 .suggest-chip em{font-style:normal;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .suggest-chip small{color:var(--ink-soft);font-size:var(--fs-tiny);white-space:nowrap}
@@ -314,7 +314,7 @@
 .filter-body-head>b{color:var(--ink);font-size:var(--lt-fs)}
 .fb-close{flex:0 0 auto;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);white-space:nowrap;
  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
- color:var(--ink-3);font-weight:700;cursor:pointer}
+ color:var(--ink-3);font-weight:var(--fw-strong);cursor:pointer}
 .fb-close:hover{border-color:var(--teal);color:var(--ink)}
 .filter-adhoc-row>.fb-close{margin-left:auto}
 .fb-slot{display:contents}
@@ -344,7 +344,7 @@
   height:var(--lt-h);font-size:var(--lt-fs);border-radius:var(--radius-sm);white-space:nowrap;
   padding-block:0;padding-inline:var(--lt-px)}
 /* 名前（「プリセット」「条件」「元データ」）は**薄く細く**、値は濃く太く。 */
-:is(.fb-preset-key,.fb-cond-key,.lf-key){color:var(--ink-3);font-weight:500}
+:is(.fb-preset-key,.fb-cond-key,.lf-key){color:var(--ink-3);font-weight:var(--fw-body)}
 /* 一覧を検索（§9.505。ヘッダーから移した）。押す物と同じ高さ・枠の1種。**一覧の検索欄はこの1つの部品**
    （仕掛・品質・データ一覧・測定実績・§9.507）——帯の外でも置き場の既定（30px・12px）で立つ。 */
 .lt-search{flex:0 1 var(--w-lg);min-width:var(--w-sm);display:inline-flex;align-items:center;gap:var(--gap-tight);
@@ -356,7 +356,7 @@
 label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;
   font-size:inherit;box-shadow:none}
 /* 条件を検索して足す欄は「一覧を検索」と**同じ顔にしない**（§9.345）——頭に「＋条件」と名乗る。 */
-.filter-token-key{flex:0 0 auto;color:var(--teal-dark);font-weight:800;font-size:var(--lt-fs)}
+.filter-token-key{flex:0 0 auto;color:var(--teal-dark);font-weight:var(--fw-ui);font-size:var(--lt-fs)}
 /* 表示列（§9.505。帯へ直に出した）。印は画面をまたいで同じ（§9.476）。 */
 .lt-cols-btn{display:inline-flex;align-items:center;gap:var(--gap-tight)}
 .lt-cols-btn>i{color:var(--teal);font-style:normal}
@@ -365,19 +365,19 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
    どちらも表示サイズ(--ui-scale)に追随するのに、行だけ 16px/32px 固定だった
    ため「大」「特大」で中身が枠から溢れていた(VER1.87.0の母材パネルと同型)。
    ラベル行は中身なり、入力行はコントロールの高さそのものにする。 */
-.filter-builder label{display:grid;grid-template-rows:auto var(--ctl-h-sm);gap:var(--gap-hair);color:var(--ink-3);font-size:var(--lt-fs);font-weight:500;white-space:nowrap;min-width:0}
+.filter-builder label{display:grid;grid-template-rows:auto var(--ctl-h-sm);gap:var(--gap-hair);color:var(--ink-3);font-size:var(--lt-fs);font-weight:var(--fw-body);white-space:nowrap;min-width:0}
 .filter-builder select,.filter-builder input{height:var(--lt-h);width:100%;min-width:0;font-size:var(--lt-fs)}
 .filter-builder button{white-space:nowrap}
 /* 「適用」と「登録」を並べる。用途が違うので**別のボタン**にし、主導線
    (今すぐ効かせる=適用)を塗り、保存は枠線だけにして重みの差を付ける。 */
 .filter-builder-actions{display:flex;gap:var(--gap-inline);align-items:end}
-#registerGenericFilter{background:#fff;color:var(--teal-dark);border-color:var(--teal);font-weight:700}
+#registerGenericFilter{background:#fff;color:var(--teal-dark);border-color:var(--teal);font-weight:var(--fw-strong)}
 #registerGenericFilter:hover{background:var(--pale)}
 .filter-builder-note{margin:0;padding:0 2px;font-size:var(--lt-fs);color:var(--ink-3)}
-#addGenericFilter{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:800}
+#addGenericFilter{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:var(--fw-strong)}
 @media(max-width:1400px){.filter-builder{grid-template-columns:1fr 125px 1fr auto}}
 /* インライン・ローディング（バー右端に小さく表示。ブロックしない軽処理向け） */
-.filter-inline-loading{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-inline);padding:2px 9px;border-radius:var(--radius-md);background:#e9f6f8;border:1px solid #9fc3c8;color:#0a6570;font-size:var(--fs-micro);font-weight:700;white-space:nowrap}
+.filter-inline-loading{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-inline);padding:2px 9px;border-radius:var(--radius-md);background:#e9f6f8;border:1px solid #9fc3c8;color:#0a6570;font-size:var(--fs-micro);font-weight:var(--fw-ui);white-space:nowrap}
 .filter-inline-loading[hidden]{display:none}
 /* 登録フィルタ一覧モーダル */
 .filter-preset-dialog{width:min(1040px,95vw);height:min(700px,90vh);background:var(--surface-2);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 20px 60px #0005;display:flex;flex-direction:column}
@@ -401,8 +401,8 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .filter-preset-item .fp-pick input{margin:0;width:16px;height:16px;min-width:0}
 /* **名前は折り返す**（§9.287-E、利用者の報告「文字の見切れが無いように」）
    ——1行に押し込む理由が無く、切ると何の条件か読めなくなる。 */
-.filter-preset-item .fp-name{font-weight:800;color:var(--ink);min-width:0;overflow-wrap:anywhere}
-.filter-preset-item .fp-name small{display:block;margin-top:2px;color:var(--ink-soft);font-weight:700;font-size:var(--fs-tiny)}
+.filter-preset-item .fp-name{font-weight:var(--fw-strong);color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.filter-preset-item .fp-name small{display:block;margin-top:2px;color:var(--ink-soft);font-weight:var(--fw-ui);font-size:var(--fs-tiny)}
 /* 持ち主は**独立した列**にする(§9.172)。名前と同じマスへ入れると、
    長い条件名のほうが切れる（列は縦にそろえる）。 */
 .filter-preset-item .fp-own-cell{display:flex;align-items:center}
@@ -410,7 +410,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
    ことが分かるよう、ボタンの形にしてある(読み取り専用の印にしない)。 */
 .filter-preset-item .fp-own{flex:none;height:var(--ctl-h-xs);padding:0 var(--space-2);
  border:1px solid var(--line);border-radius:var(--radius-pill);
- background:var(--surface);color:var(--ink-3);font-size:var(--fs-micro);font-weight:700;cursor:pointer}
+ background:var(--surface);color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer}
 .filter-preset-item .fp-own.is-mine{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .filter-preset-item .fp-own:hover{border-color:var(--teal-dark);color:var(--nav)}
 .filter-preset-toolbar .fp-who{color:var(--nav)}
@@ -426,7 +426,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .fp-other-scene b{color:var(--ink)}
 .fp-other-copy{flex:none;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--surface);
-  color:var(--teal-dark);font-size:var(--fs-sm);font-weight:700}
+  color:var(--teal-dark);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .filter-preset-toolbar .fp-memo-clear{margin-left:var(--space-2);height:var(--ctl-h-xs);
  padding:0 var(--space-2);font-size:var(--fs-micro);border:1px solid var(--line);
  border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);cursor:pointer}
@@ -440,9 +440,9 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
    しまううえ、利用者は2つの言葉を覚えることになっていた。
    **付いていることが一目で分かる**ように、付いたら面で示す（文字も
    「固定」と書く——色だけで意味を伝えない）。 */
-.fp-always{display:flex;align-items:center;gap:var(--space-1);padding:var(--pad-row);border:1px solid #cddbde;border-radius:var(--radius-sm);background:var(--surface-2);font-size:var(--fs-micro);font-weight:700;color:#40606a;white-space:nowrap;cursor:pointer}
+.fp-always{display:flex;align-items:center;gap:var(--space-1);padding:var(--pad-row);border:1px solid #cddbde;border-radius:var(--radius-sm);background:var(--surface-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);color:#40606a;white-space:nowrap;cursor:pointer}
 .fp-always input{margin:0}
-.fp-always b{font-weight:800}
+.fp-always b{font-weight:var(--fw-strong)}
 .fp-always.is-on{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
 .fp-always:hover{border-color:#9fc3c8}
 .fp-cond{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);border-radius:var(--radius-md);border:1px solid #cddbde;background:var(--surface-2);font-size:var(--fs-micro);white-space:nowrap}
@@ -458,7 +458,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
   border-left:3px solid var(--teal);background:var(--surface-2);
   border-radius:var(--radius-xs)}
 .fp-sec:nth-of-type(n+2){border-left-color:var(--line-mid)}
-.fp-sec-name{color:var(--ink);font-weight:800;overflow-wrap:anywhere}
+.fp-sec-name{color:var(--ink);font-weight:var(--fw-strong);overflow-wrap:anywhere}
 .fp-sec-note{flex:1 1 auto;min-width:0;color:var(--ink-soft);font-size:var(--fs-tiny)}
 .fp-sec-acts{flex:0 0 auto;display:flex;gap:var(--gap-hair)}
 .fp-sec-acts button{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
@@ -473,7 +473,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .fp-bulk-hint{color:var(--ink-soft);font-size:var(--fs-sm)}
 .fp-bulk-hint b{color:var(--ink-2)}
 .fp-bulk-count{color:var(--nav);font-size:var(--fs-sm)}
-.fp-bulk-count b{font-size:var(--fs);font-weight:800}
+.fp-bulk-count b{font-size:var(--fs);font-weight:var(--fw-strong)}
 .fp-bulk-to{display:flex;align-items:center;gap:var(--gap-tight);
   color:var(--ink-2);font-size:var(--fs-sm)}
 .fp-bulk-to select{height:var(--ctl-h-sm);max-width:var(--w-xl);font-size:var(--fs-sm)}
@@ -494,14 +494,14 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .fp-combo-mark{
   display:inline-block;margin-right:var(--space-1);padding:0 var(--space-1);
   border-radius:var(--radius-xs);background:var(--teal);color:#fff;
-  font-size:var(--fs-micro);font-weight:800;vertical-align:middle;
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);vertical-align:middle;
 }
 .fp-mems{gap:var(--gap-hair)}
 .fp-mem{
   display:inline-flex;align-items:center;gap:var(--gap-hair);
   padding:0 var(--space-1) 0 var(--space-2);
   border:1px solid var(--line-mid);border-radius:var(--radius-pill);
-  background:var(--surface);color:var(--ink-2);font-size:var(--fs-tiny);font-weight:700;
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-tiny);font-weight:var(--fw-ui);
 }
 .fp-mem.is-missing{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
 .fp-mem-x{
@@ -513,10 +513,10 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 /* **使い回しが目に見えること**（§9.288 ②）——「この条件はどの組み合わせで
    使っているか」が読めないと、消したときに何が壊れるのか分からない（§3）。 */
 .filter-preset-item .fp-used{
-  display:block;margin-top:2px;color:var(--teal-dark);font-weight:700;
+  display:block;margin-top:2px;color:var(--teal-dark);font-weight:var(--fw-ui);
   font-size:var(--fs-tiny);overflow-wrap:anywhere;
 }
-.filter-preset-item .fp-used.is-none{color:var(--muted);font-weight:400}
+.filter-preset-item .fp-used.is-none{color:var(--muted);font-weight:var(--fw-body)}
 /* ---------- 登録フィルタの持ち出し・取り込み(§9.171) ----------
    モーダルを増やさず、登録フィルタの一覧の**上へ差し込む**。何が出て行く
    のか・何が入ってくるのかを、実物の一覧を見たまま確かめられるようにする。 */
@@ -554,7 +554,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .fp-io-pick{display:flex;align-items:center;gap:var(--gap-inline)}
 .fp-io-filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;
  height:var(--ctl-h-sm);padding:0 var(--space-3);border:1px solid var(--teal);border-radius:var(--radius-xs);
- background:var(--surface);color:var(--nav);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+ background:var(--surface);color:var(--nav);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
 .fp-io-filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .fp-io-filename{font-size:var(--fs-sm);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fp-io-opts{display:flex;flex-wrap:wrap;gap:var(--gap-section)}
@@ -567,12 +567,12 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .fp-io-status{flex:1 1 auto;font-size:var(--fs-sm);color:var(--ink-2)}
 .fp-io-foot button{height:var(--ctl-h-sm);padding:0 var(--space-3);border:1px solid var(--line);
  background:var(--surface);border-radius:var(--radius-xs);font-size:var(--fs-sm);cursor:pointer}
-.fp-io-foot .fp-io-run{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:700}
+.fp-io-foot .fp-io-run{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 .fp-io-foot .fp-io-run[disabled]{opacity:.45;cursor:not-allowed}
 /* モーダル内オーバーレイ・ローディング（読込/削除など待ちのある操作） */
 .panel-loading{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .panel-loading[hidden]{display:none}
-.panel-loading .pl-box{display:flex;align-items:center;gap:var(--gap-section);padding:var(--pad-dialog);border:1px solid #bcd9dd;border-radius:var(--radius-md);background:#fff;box-shadow:0 10px 30px #0b2b3322;color:#0a6570;font-weight:800}
+.panel-loading .pl-box{display:flex;align-items:center;gap:var(--gap-section);padding:var(--pad-dialog);border:1px solid #bcd9dd;border-radius:var(--radius-md);background:#fff;box-shadow:0 10px 30px #0b2b3322;color:#0a6570;font-weight:var(--fw-strong)}
 /* ============================================================
    Hotfix 2026-07-21: 指示値カード（ラテラルボー等 / ②）
    板厚・板幅以外の測定種で、指示値(例 2.0/2M)と評価単位を明示する。
@@ -582,13 +582,13 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
   display:flex;flex-direction:column;gap:var(--gap-tight);justify-content:center;
   padding:7px 9px;border:1px solid var(--card-border);border-radius:var(--radius-card);background:var(--card-bg);overflow:hidden;
 }
-.instruction-tol-card.no-data{min-height:0;border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg);font-weight:700}
+.instruction-tol-card.no-data{min-height:0;border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg);font-weight:var(--fw-strong)}
 .instruction-tol-head{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-inline);min-width:0}
 .instruction-tol-head .compact-tol-source{flex:0 0 auto}
-.instruction-tol-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2);font-size:var(--fs-micro);font-weight:700}
+.instruction-tol-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .instruction-tol-main{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
-.instruction-tol-value{font-size:var(--fs-xl);font-weight:900;color:var(--computed-fg);font-variant-numeric:tabular-nums;line-height:1.1}
-.instruction-tol-unit{padding:2px 8px;border-radius:var(--radius-md);background:var(--computed-bg);border:1px solid #9fc3c8;color:#0a6570;font-weight:800;font-size:var(--fs-micro);white-space:nowrap}
+.instruction-tol-value{font-size:var(--fs-xl);font-weight:var(--fw-strong);color:var(--computed-fg);font-variant-numeric:tabular-nums;line-height:1.1}
+.instruction-tol-unit{padding:2px 8px;border-radius:var(--radius-md);background:var(--computed-bg);border:1px solid #9fc3c8;color:#0a6570;font-weight:var(--fw-ui);font-size:var(--fs-micro);white-space:nowrap}
 .instruction-tol-raw{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* ============================================================
  2026-07-21: 作業時間の再編集UI / マスタ管理モーダル
@@ -610,7 +610,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
    ============================================================ */
 .nl-win .nl-body{display:flex;flex-direction:column;gap:var(--space-3)}
 .nl-win .nl-sec{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
-.nl-win .nl-sec-head{color:var(--ink-3);font-size:var(--fs);font-weight:800;letter-spacing:.04em}
+.nl-win .nl-sec-head{color:var(--ink-3);font-size:var(--fs);font-weight:var(--fw-strong);letter-spacing:.04em}
 /* 横軸は**選ぶ前に見える**（§9.200）。名前だけでは「実寸」と「公差比」の
    違いが分からないので、小さな図と1行の説明を必ず添える。 */
 .nl-win .nl-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(var(--w-md),1fr));gap:var(--gap-inline)}
@@ -622,7 +622,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 }
 .nl-win .nl-choice:hover{border-color:var(--teal);background:var(--pale)}
 .nl-win .nl-choice.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 0 0 1px var(--teal)}
-.nl-win .nl-choice>b{color:var(--ink);font-size:var(--fs);font-weight:800}
+.nl-win .nl-choice>b{color:var(--ink);font-size:var(--fs);font-weight:var(--fw-strong)}
 .nl-win .nl-choice>small{color:var(--ink-soft);font-size:var(--fs-sm);line-height:1.5;white-space:normal}
 .nl-win .nl-art{width:100%;height:var(--ctl-h-lg);border-radius:var(--radius-xs);background:var(--surface-2)}
 .nl-win .nl-art-band{fill:var(--teal);opacity:.55}
@@ -634,7 +634,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .nl-win .nl-span{
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line);border-radius:var(--radius-pill);
-  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);
   white-space:nowrap;cursor:pointer;font-variant-numeric:tabular-nums;
 }
 .nl-win .nl-span:hover{border-color:var(--teal);background:var(--pale)}
@@ -644,6 +644,6 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
   margin:0;padding:var(--pad-row);border-radius:var(--radius-sm);
   background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.5;
 }
-.nl-win .nl-state.is-warn{background:var(--warn-bg);color:var(--warn-fg);font-weight:700}
+.nl-win .nl-state.is-warn{background:var(--warn-bg);color:var(--warn-fg);font-weight:var(--fw-strong)}
 .work-time-panel{height:auto;min-height:0}
 }

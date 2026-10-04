@@ -36,7 +36,7 @@
 .mm-btn-primary,.mm-btn-danger,.split-apply-btn,.qa-v7 .qa-primary-large,
 .equipment-setup-banner>button,.defect-primary-btn{
   height:var(--ctl-h-lg);padding:0 calc(var(--ctl-pad-x) + 4px);
-  font-size:var(--fs);font-weight:800;border-radius:var(--radius-sm);
+  font-size:var(--fs);font-weight:var(--fw-strong);border-radius:var(--radius-sm);
 }
 /* --- 標準（ヘッダー・ダイアログ・パネルの操作） --- */
 .hd-actions .hd-btn,.equipment-header-button,.split-panel-open-btn,
@@ -56,7 +56,7 @@
 .split-ghost-btn,.qa-v7 .qa-seg button,.sc-stop-button,.sc-column-actions button,
 .split-recheck-btn,.rp-foot-btn{
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
-  font-size:var(--fs-sm);border-radius:var(--radius-sm);
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);border-radius:var(--radius-sm);
 }
 /* 停止理由の札は名前と見積の2段（70-schedule.css）なので、余白だけ上の表から
    外れる。**決める場所はここ**（§9.324 R6。以前は70-schedule.cssが後勝ちで
@@ -105,15 +105,16 @@
    実測すると「見出しっぽい要素」が8種類、「ラベル」が6種類、「補足」が5種類、
    「バッジ」が6種類のトークンに散っていた。**同じ役割なら同じ大きさ**にする。
 
-   | 役割             | トークン        | 重さ | 使うところ                     |
-   |------------------|-----------------|------|--------------------------------|
-   | パネル見出し     | --fs-title  15  | 800  | 画面の中の大きな区切りの表題   |
-   | カード見出し     | --fs-base-sm 13 | 800  | カード・アコーディオンの表題   |
-   | 要約・補足       | --fs-micro  11  | 700  | 見出しに添える説明・現在値     |
-   | 本文・入力値     | --fs        14  | 400  | 表の値・入力欄・標準ボタン     |
-   | ラベル・表ヘッダ | --fs-sm     12  | 700  | 項目名・th・タグ・補助ボタン   |
-   | チップ           | --fs-micro  11  | 800  | 条件・状態を単独で読ませる小片 |
-   | バッジ           | --fs-badge  10  | 800  | 件数・状態の最小表示           |
+   | 役割             | トークン        | 重さ          | 使うところ                     |
+   |------------------|-----------------|---------------|--------------------------------|
+   | パネル見出し     | --fs-title  15  | --fw-strong   | 画面の中の大きな区切りの表題   |
+   | カード見出し     | --fs-base-sm 13 | --fw-strong   | カード・アコーディオンの表題   |
+   | 要約・補足       | --fs-micro  11  | --fw-ui       | 見出しに添える説明・現在値     |
+   | 本文・入力値     | --fs        14  | --fw-body     | 表の値・入力欄・標準ボタン     |
+   | ラベル・表ヘッダ | --fs-sm     12  | --fw-ui       | 項目名・th・タグ・補助ボタン   |
+   | チップ           | --fs-micro  11  | --fw-ui       | 条件・状態を単独で読ませる小片 |
+   | バッジ           | --fs-badge  10  | --fw-ui       | 件数・状態の最小表示           |
+   太さは3段（400／600／700・§9.562）。12px 以下は強調も 600（600 と 700 の差は小さな字では潰れ、隣の値と張り合う）。
 
    下は**その役割にいる部品の一覧**。個別ルールには配色と並びだけを書く。 */
 /* **`.qa-v7 .qa-tab-title b`はここから外した**（§9.296 ②、利用者の指摘
@@ -122,7 +123,7 @@
    品質データ分析は**一覧の上に載る1枚のカード**で、格が違う。下の
    「準見出し」の役へ移した。 */
 .mm-head h2,.sc-panel-title{
-  font-size:var(--fs-title);font-weight:800;color:var(--ink);
+  font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink);
 }
 /* **データ一覧の見出し行はここに入れない**（§9.161）。表の見出しは
    「カードの小見出し」ではなく**表の一部**で、大きさは器が宣言する
@@ -131,25 +132,25 @@
 .qa-v7 .qa-tab-title b,
 .qa-v7 .qa-acc-title,.split-candidate-head b,.disclosure-title,.wtb-title,
 .split-tolerance-legend>b{
-  font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);
+  font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink);
 }
 /* 過去実績との比較の見出しだけ色が違う（50-master.css が後勝ちで上書きしていた
    §9.324 R6）。**色もここで決める**。 */
 .wtb-title{color:#1f5b52}
 .qa-v7 .qa-tab-title small,.qa-v7 .qa-acc-sum,.qa-v7 .qa-hint,
 .disclosure-sum,.mm-editor-head small{
-  font-size:var(--fs-micro);font-weight:700;
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);
 }
 /* 操作の案内は**チップではなく1文**なので「ラベル」の大きさで読ませる
    （§9.157）。11pxまで落とすと同じカードの中で3px違う文字が並び、
    利用者から「文字サイズがバラバラ」「小さすぎる」と指摘された箇所の
    1つだった。 */
-.split-visual-hint,.split-hint-text{font-size:var(--fs-sm);font-weight:700}
+.split-visual-hint,.split-hint-text{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* `.list-join-chip`・`.suggest-chip`の字は一覧の帯・候補の面が持つ（§9.505「1面1サイズ」）。 */
 .qa-v7 .qa-chip,.field-reorder-badge{
-  font-size:var(--fs-micro);font-weight:800;
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);
 }
-.list-join-chip,.suggest-chip{font-weight:800}
+.list-join-chip,.suggest-chip{font-weight:var(--fw-strong)}
 /* --- 器の内側余白（§9.72） ---
    ダイアログ・カード・チップの「中身の詰まり方」は3つだけ。
    実測では器の内側余白に112種類の組み合わせが使われており、同じ役割の

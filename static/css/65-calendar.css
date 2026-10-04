@@ -10,11 +10,11 @@
 @layer component {
 .db-status-table thead th{background:var(--bg);color:var(--ink);position:sticky;top:0;z-index:1;
  font-size:var(--fs-micro)}
-.db-status-table tbody th{text-align:left;color:var(--ink);font-weight:700}
+.db-status-table tbody th{text-align:left;color:var(--ink);font-weight:var(--fw-strong)}
 .db-status-table .db-lot{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
 .db-late{color:var(--warn-fg)}
 .db-state-badge{display:inline-block;padding:var(--pad-chip);border-radius:var(--radius-md);
- font-size:var(--fs-micro);font-weight:800;border:1px solid transparent}
+ font-size:var(--fs-micro);font-weight:var(--fw-ui);border:1px solid transparent}
 .db-state-badge.running{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .db-state-badge.idle{background:var(--bg);border-color:var(--line-soft);color:var(--ink-soft)}
 .db-state-badge.done{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
@@ -33,9 +33,9 @@
 #calSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap-section)}
 .cal-card-warn{border-color:#e5b3b3;background:#fff8f8}
 .cal-card-warn .db-card-label{color:#a34848}
-.cal-card-sub{display:block;font-size:var(--fs-micro);font-weight:600;color:var(--muted);margin-top:1px}
+.cal-card-sub{display:block;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted);margin-top:1px}
 .cal-weekday-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--gap-inline);padding:0 2px}
-.cal-weekday-row span{text-align:center;font-size:var(--fs-micro);font-weight:800;color:var(--muted);padding:2px 0}
+.cal-weekday-row span{text-align:center;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted);padding:2px 0}
 .cal-weekday-row span.sun{color:#c92c2c}
 .cal-weekday-row span.sat{color:#2563eb}
 .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(calc(74px * var(--ui-scale)),auto);gap:var(--gap-inline)}
@@ -43,11 +43,11 @@
 .cal-day-blank{background:transparent;border-color:transparent;cursor:default}
 .cal-day:not(.cal-day-blank):hover{border-color:#9fc3c8;box-shadow:0 1px 4px #102a3314}
 .cal-day.selected{border-color:var(--teal);box-shadow:0 0 0 2px #087c8940}
-.cal-day.today .cal-day-num{color:var(--teal);font-weight:900;text-decoration:underline;text-underline-offset:3px}
-.cal-day-num{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.cal-day.today .cal-day-num{color:var(--teal);font-weight:var(--fw-strong);text-decoration:underline;text-underline-offset:3px}
+.cal-day-num{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);font-variant-numeric:tabular-nums}
 .cal-day.sun .cal-day-num{color:#c92c2c}
 .cal-day.sat .cal-day-num{color:#2563eb}
-.cal-day-metric{font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.cal-day-metric{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink);font-variant-numeric:tabular-nums}
 .cal-day-metric.cal-day-negative{color:#c92c2c}
 .cal-day-sub{font-size:var(--fs-badge);color:var(--muted)}
 .cal-day.lvl-1{background:#e6f4f3}
@@ -68,15 +68,15 @@
 .cal-detail-empty{margin:auto;padding:var(--space-5);color:var(--muted);text-align:center;font-size:var(--fs-base-sm)}
 .cal-detail-head{position:sticky;top:0;display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);padding:var(--pad-card);background:var(--bg);border-bottom:1px solid var(--line);z-index:1}
 .cal-detail-head b{font-size:var(--fs);color:var(--ink)}
-.cal-detail-head span{font-size:var(--fs-micro);color:#526970;font-weight:700}
+.cal-detail-head span{font-size:var(--fs-micro);color:#526970;font-weight:var(--fw-ui)}
 .cal-lot-list{display:flex;flex-direction:column}
 .cal-lot-row{display:flex;flex-direction:column;gap:var(--space-1);padding:10px 16px;border-bottom:1px solid var(--bg)}
 .cal-lot-main{display:flex;align-items:center;gap:var(--space-2)}
 .cal-lot-no{font-size:var(--fs-base-sm);color:#087c89;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 .cal-lot-no:hover{color:var(--teal-dark)}
 .cal-lot-sub{display:flex;flex-wrap:wrap;gap:var(--gap-inline) var(--gap-section);font-size:var(--fs-micro);color:var(--muted)}
-.cal-lot-weight{font-size:var(--fs-sm);font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
-.cal-blank{color:#aab6b9;font-style:normal;font-weight:600}
+.cal-lot-weight{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);font-variant-numeric:tabular-nums}
+.cal-blank{color:#aab6b9;font-style:normal;font-weight:var(--fw-ui)}
 /* 幅分割情報パネル(.split-pane)は固定250pxのままだと、分割データの
    メッセージ・テーブル・屑幅行がまとまると入り切らず、常に内側の縦
    スクロールバーが出てしまっていた。内容に合わせて自然に伸び、外側の
@@ -95,9 +95,9 @@
 .sc-head-left,.sc-head-right{display:flex;align-items:center;flex-wrap:wrap}
 .sc-head-left{gap:var(--gap-section)}
 .sc-equipment-select{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
-.sc-equipment-fixed{font-size:var(--fs-base-sm);font-weight:700;color:var(--ink-2);background:#eafafa;border:1px solid var(--teal);border-radius:var(--radius-lg);padding:4px 10px}
-.sc-lock-badge{font-size:var(--fs-sm);font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-md);padding:var(--pad-chip)}
-.sc-field-reorder-note{font-size:var(--fs-micro);font-weight:700;color:var(--warn-fg)}
+.sc-equipment-fixed{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink-2);background:#eafafa;border:1px solid var(--teal);border-radius:var(--radius-lg);padding:4px 10px}
+.sc-lock-badge{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-md);padding:var(--pad-chip)}
+.sc-field-reorder-note{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--warn-fg)}
 .sc-refresh{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer}
 .sc-warnings{padding:6px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
 .sc-warning{font-size:var(--fs-sm);color:var(--warn-fg)}
@@ -113,16 +113,16 @@
 .sc-undecided small{font-size:var(--fs-sm);color:var(--ink-2)}
 .sc-undecided-fix{flex:none;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--warn-border);border-radius:var(--radius-sm);
-  background:var(--warn);color:var(--ink);font-size:var(--fs-sm);font-weight:700}
+  background:var(--warn);color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* 編集セッション(§9.11新設)。他端末が既にこの設備を編集中の間、追加・削除・
    並べ替えを止めていることをタイムライン閲覧の邪魔にならない帯で伝える。 */
-.sc-session-banner{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:7px 14px;font-size:var(--fs-sm);font-weight:700}
-.sc-session-banner button{background:#fff;font-weight:700;cursor:pointer;flex-shrink:0}
+.sc-session-banner{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:7px 14px;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+.sc-session-banner button{background:#fff;font-weight:var(--fw-strong);cursor:pointer;flex-shrink:0}
 /* 他端末が編集中と確定できた場合(操作を止める、§9.11)。 */
 .sc-session-banner-blocked{background:var(--warn-bg);border-bottom:1px solid var(--warn-border);color:var(--warn-fg)}
 .sc-session-banner-blocked button{border:1px solid var(--warn-border);color:var(--warn-fg)}
 /* 原因不明のエラー(fail-open、操作は続けられる)。危機感を煽らない中立色にする。 */
-.sc-session-banner-warn{background:var(--computed-bg);border-bottom:1px solid var(--line);color:var(--computed-fg);font-weight:600}
+.sc-session-banner-warn{background:var(--computed-bg);border-bottom:1px solid var(--line);color:var(--computed-fg);font-weight:var(--fw-ui)}
 .sc-session-banner-warn button{border:1px solid var(--line);color:var(--computed-fg)}
 /* 他端末が編集セッションを保持している間、この端末からの追加・削除・
    並べ替え・設備停止投入を止める(サーバー側require_session()の二重防御、

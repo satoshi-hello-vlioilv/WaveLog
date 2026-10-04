@@ -1,4 +1,4 @@
-# データの置き場と共有（76件）
+# データの置き場と共有（77件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -83,6 +83,7 @@
 | パス設定マスタ | — | [§9.192](../../docs/decisions/9.192.md) |
 | 共有上の読み取り専用DBは`db_mirror`が手元へ写し、画面は写しを読む | `test_dbmirror.py` | [決まり](../../docs/decisions/rules-misc.md) |
 | Windowsは開いているファイルを置き換えられない | `test_atomicio.py`・`test_dbmirror.py` | [§9.108](../../docs/decisions/9.108.md) |
-| `with connect(...) as c:` は接続を閉じない | `test_mastershare.py` | [§9.270](../../docs/decisions/9.270.md) |
+| `sqlite_io.connect()`の接続は`with`を抜けたら閉じる（`_ClosingConnection`）。直に開く所は`finally`で閉じる | `test_dblayer.py`・`test_mastershare.py` | [§9.270](../../docs/decisions/9.270.md)・[§9.563](../../docs/decisions/9.563.md) |
+| 1つの設定ファイル・1つの事実の書き手は1言語（Python と Rust の両方が書かない。読み手は何言語でもよい） | `test_appupdate.py` | [§9.563](../../docs/decisions/9.563.md) |
 | 作り直せるファイルの置き場は`paths.work_dir()`が決める | `test_localwork.py` | [§9.109](../../docs/decisions/9.109.md) |
 | 参照データを増やすときは`データソースマスタ`の1行 | `test_datasource.py` | [決まり](../../docs/decisions/rules-misc.md) |
