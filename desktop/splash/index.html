@@ -67,7 +67,8 @@
 <section class="card" aria-labelledby="title">
   <div class="head"><b id="title">測定伝送システムを起動しています</b><span id="lead">準備ができたら、この窓がそのままアプリに切り替わります。</span></div>
   <ol>
-    <li class="now" id="s-python"><span class="mark"></span><span><span class="t">Python を探す</span><span class="d">PATH で最初に見つかる Python（update.bat と同じ）</span></span><span class="when"></span></li>
+    <li class="now" id="s-update"><span class="mark"></span><span><span class="t">版をそろえる</span><span class="d">共有の置き場の「配る版」と同じか確かめます</span></span><span class="when"></span></li>
+    <li class="wait" id="s-python"><span class="mark"></span><span><span class="t">Python を探す</span><span class="d">PATH で最初に見つかる Python（update.bat と同じ）</span></span><span class="when"></span></li>
     <li class="wait" id="s-backend"><span class="mark"></span><span><span class="t">アプリの中身を起こす</span><span class="d">画面と共有DB（ポートは使いません）</span></span><span class="when"></span></li>
     <li class="wait" id="s-open"><span class="mark"></span><span><span class="t">画面を開く</span><span class="d"></span></span><span class="when"></span></li>
   </ol>
@@ -87,7 +88,7 @@
     [/No module named/i, "Python に必要な部品が入っていません。program フォルダの update.bat を1回実行してください。"],
     [/Python が見つかりません/, "Python を入れて PATH に通してから、開き直してください。分からなければ管理者に連絡してください。"],
     [/program フォルダ|sidecar\.py/, "exe を直接開かず、アプリのフォルダの Start.vbs（またはデスクトップの起動アイコン）から起動してください（exe だけではアプリの中身の場所が分かりません）。"],
-    [/版が食い違/, "アプリが更新されています。この窓を閉じて、Start.vbs から開き直してください。"],
+    [/版が食い違/, "アプリが更新されています。この窓を閉じて、デスクトップの起動アイコンから開き直してください。"],
     [/秒たっても準備できません/, "PC が混んでいるか、共有フォルダへの接続で止まっています。少し待ってから開き直してください。"],
   ];
   window.splash = {

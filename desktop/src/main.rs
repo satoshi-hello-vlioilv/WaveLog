@@ -18,6 +18,7 @@ mod lnk;
 mod locate;
 mod router;
 mod sidecar;
+mod update;
 
 use router::{error_reply, After, Native, Router};
 use serde_json::json;
@@ -253,12 +254,45 @@ fn cleanup_old_copies() {
     }
 }
 
+/// 共有の置き場の「配る版」にそろえる（`update.rs`）。exe も変わって新しい窓で開き直すなら true（この窓は終わる）。
+/// そろえられなくても起動は止めない（いまの版で開き、理由を起動画面と記録に残す）。
+fn bring_up_to_date(app: &AppHandle, program: &Path, splash: &Arc<Splash>) -> bool {
+    let Some(root) = program.parent() else { return false };
+    splash.step(app, "update", "now", "共有の置き場で、配る版を確かめています…");
+    let (a, s) = (app.clone(), splash.clone());
+    let progress = move |t: &str| s.step(&a, "update", "now", t);
+    match update::check_and_apply(root, &log, &progress) {
+        update::Outcome::UpToDate(v) => splash.step(app, "update", "ok", &format!("版 {v}（配る版と同じ）")),
+        update::Outcome::Skipped(why) => {
+            log(&format!("UPDATE 確かめませんでした: {why}"));
+            splash.step(app, "update", "ok", &format!("確かめませんでした（{why}）。いまの版で起動します"));
+        }
+        update::Outcome::Failed(why) => {
+            log(&format!("UPDATE そろえられませんでした: {why}"));
+            splash.step(app, "update", "warn", &format!("そろえられませんでした（{why}）。いまの版で起動します"));
+        }
+        update::Outcome::Applied { from, to, exe_changed } => {
+            splash.step(app, "update", "ok", &format!("{from} → {to} にそろえました"));
+            if exe_changed && launch::relaunch(program, &log) {
+                splash.step(app, "open", "now", "窓も新しくなったので、開き直しています…");
+                app.exit(0);
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// 中身（Python）を探して起こし、準備できたら主の窓を画面へ切り替える（裏の糸で。窓は先に出しておく）。
 fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>) {
     let program = match locate::program_dir() {
         Ok(p) => p,
         Err(e) => return splash.fail(&app, "アプリの中身が見つかりません", &e),
     };
+    // 配る版にそろえる（§9.555）。中身（Python）を起こす前に——動いている Python のファイルを入れ替えない
+    if bring_up_to_date(&app, &program, &splash) {
+        return;
+    }
     // 入口（ショートカットの行き先）をこの版にそろえる。中身（Python）がショートカットを付け替える前に置く（§9.554）
     launch::refresh_entry(&log);
     let py = match locate::python() {
@@ -307,6 +341,8 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some(lnk::ARG) {
         std::process::exit(lnk::run());
     }
+    // 更新で開き直したとき: 前の窓が終わるのを待つ（「1つだけ起動」が前の窓へ回さないように・§9.555）
+    launch::wait_for_previous(Duration::from_secs(15));
     // 入口: 共有の exe・入口から起こされたら、この PC の版ごとの写しへ渡して終わる（§9.554）。
     // 中身が見つからないときは渡さずに進み、起動画面が理由を出す（start() が同じ答えをもう一度引く）
     if let Ok(program) = locate::program_dir() {

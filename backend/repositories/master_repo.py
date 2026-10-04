@@ -1171,8 +1171,12 @@ def column_edit_check(level,owner,target=''):
 #   'presence:forget'     … 使わなくなった端末の接続の記録を消す（§9.513）
 #   'role:grant'          … 他の端末の権限区分を変える（対象の区分も見る）
 #   'choice:inline-add'   … 測定画面から選択肢マスタへ間接的に登録する
+#   'app:release'         … アプリの版を共有の置き場へ置く・配る版を決める（§9.555）
 def role_can(role,action,target_role=''):
  r=normalize_role(role)
+ if action=='app:release':
+  # 全PCの中身が入れ替わる操作。切断・記録の整理と同じ区分（開発者・メンテナンス者）だけに許す。
+  return r in (ROLE_DEVELOPER,ROLE_MAINTAINER)
  if action=='presence:view':
   # **設備作業者は見られない**（§9.322）——接続状況はマスタ管理の中の
   # 管理のタブで、「マスタ類は表示せず触れない」に含まれる。

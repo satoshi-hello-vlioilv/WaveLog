@@ -109,9 +109,51 @@ pub fn install(src: &Path, dst: &Path) -> Result<bool, String> {
     Ok(stripped)
 }
 
+/// 前の窓が終わるのを待たせる引数（更新で exe が変わり、新しい exe で開き直すとき・§9.555）。
+pub const AFTER_ARG: &str = "--after-pid";
+
 /// 起動のはじめ: 版ごとの写しへ渡すなら渡して true（呼ぶ側はすぐ終わる）。そのまま動くなら false。
 /// **渡せなかったら、そのまま動く**（窓が出ないより、共有から動くほうがまし）。理由は記録に残す。
 pub fn handoff(program: &Path, log: &dyn Fn(&str)) -> bool {
+    handoff_with(program, &[], log)
+}
+
+/// 更新で exe が変わったとき: 新しい版の写しへ渡し、**この窓が終わるのを待ってから**開いてもらう
+/// （先に開くと「1つだけ起動」の仕組みがこの窓を前に出して、新しい窓が閉じてしまう）。
+pub fn relaunch(program: &Path, log: &dyn Fn(&str)) -> bool {
+    handoff_with(program, &[AFTER_ARG.into(), std::process::id().to_string()], log)
+}
+
+/// `--after-pid <pid>` が付いていれば、その窓が終わるまで待つ（長くても `limit`）。
+pub fn wait_for_previous(limit: std::time::Duration) {
+    let args: Vec<String> = std::env::args().collect();
+    let Some(pid) = args.iter().position(|a| a == AFTER_ARG).and_then(|i| args.get(i + 1)).and_then(|p| p.parse::<u32>().ok()) else {
+        return;
+    };
+    wait_pid(pid, limit);
+}
+
+#[cfg(windows)]
+fn wait_pid(pid: u32, limit: std::time::Duration) {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE};
+    unsafe {
+        if let Ok(h) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) {
+            let _ = WaitForSingleObject(h, limit.as_millis() as u32);
+            let _ = CloseHandle(h);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn wait_pid(pid: u32, limit: std::time::Duration) {
+    let end = std::time::Instant::now() + limit;
+    while Path::new(&format!("/proc/{pid}")).exists() && std::time::Instant::now() < end {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+fn handoff_with(program: &Path, extra: &[String], log: &dyn Fn(&str)) -> bool {
     let Ok(me) = std::env::current_exe() else { return false };
     let src = program.join(EXE);
     let dst = match plan(&me, &src, &desktop_dir()) {
@@ -128,7 +170,7 @@ pub fn handoff(program: &Path, log: &dyn Fn(&str)) -> bool {
             }
         },
     };
-    match std::process::Command::new(&dst).arg(locate::PROGRAM_ARG).arg(program).spawn() {
+    match std::process::Command::new(&dst).arg(locate::PROGRAM_ARG).arg(program).args(extra).spawn() {
         Ok(_) => {
             log(&format!("LAUNCH 渡しました: {} → {}", me.display(), dst.display()));
             true

@@ -24,11 +24,13 @@ tauri-plugin-single-instance = "2.5"
 tauri-plugin-opener = "2.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 更新で写した物を確かめる（src/update.rs・§9.555）。Tauri が既に使っている版
+sha2 = "0.10"
 
 # ショートカット（.lnk）を Windows の部品（IShellLinkW）で直に作る・読む（src/lnk.rs・§9.552）。
 # 版は Tauri が使っているものに合わせる（同じ crate を2つ持たない）
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_System_Com", "Win32_UI_Shell", "Win32_Storage_FileSystem"] }
+windows = { version = "0.62", features = ["Win32_System_Com", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 
 [profile.release]
 opt-level = 3
