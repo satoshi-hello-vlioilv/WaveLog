@@ -122,26 +122,8 @@
 .filter-vars{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
 
 /* ---------- RNE抽出の進捗(§9.78) ----------
-   「RNEファイルから作成」は数十秒かかる。以前は動いているのかどうかを
-   画面から見る手段が無く、待っているだけの時間になっていた。ジョブ単位で
-   終わったものから数えて、進んだ割合をバーで見せる(backend/rne_scheduler.py
-   が実行中でも jobs[] を更新する)。作業は止めないので、画面は覆わない。 */
-.rne-progress{
- display:grid;gap:var(--gap-tight);
- padding:var(--pad-card);margin:0;
- background:var(--pale);border-bottom:1px solid var(--line);color:var(--nav);
-}
-.rne-progress[hidden]{display:none}
-.rne-progress-head{display:flex;align-items:baseline;gap:var(--gap-inline)}
-.rne-progress-head b{font-size:var(--fs-base-sm);font-weight:700}
-.rne-progress-pct{margin-left:auto;font-size:var(--fs-sm);font-weight:700;
-                  color:var(--teal-dark);font-variant-numeric:tabular-nums}
-.rne-progress-bar{height:6px;border-radius:var(--radius-pill);overflow:hidden;background:#fff}
-.rne-progress-bar i{
- display:block;height:100%;width:var(--rne-pct,0%);border-radius:var(--radius-pill);
- background:linear-gradient(90deg,var(--teal),var(--warn));
- transition:width .4s cubic-bezier(.25,.8,.3,1);
-}
+   帯そのもの（題・割合・棒）は共通の部品`.wl-progress`（89-loaders.css・§9.556）。
+   ここに残すのは RNE だけが持つジョブの並び。 */
 .rne-progress-jobs{display:flex;flex-wrap:wrap;gap:var(--gap-inline);
                    font-size:var(--fs-micro);color:#40606a}
 .rne-job{display:inline-flex;align-items:center;gap:var(--gap-tight)}
@@ -202,6 +184,8 @@
   font-size:var(--fs-micro);font-weight:800;white-space:nowrap;
 }
 .pc-rail-restart[hidden]{display:none}
+/* 札が1つも出ていないときは帯ごと伏せる（§9.556 B8。中身の無い灰色の帯が図とタブのあいだに残っていた） */
+.pc-rail:not(:has(>:not([hidden]))){display:none}
 /* 飛んだ先が一瞬だけ分かるようにする（どこへ来たのかを推測させない）。 */
 .mm-set-group.is-jumped{box-shadow:0 0 0 2px var(--teal)}
 
@@ -408,6 +392,11 @@
    流れ（① 版を置く → ② 配る版を選ぶ → ③ 各PCがそろう）は左から右——作業の順と同じ（§CLAUDE 14）。
    状態は色だけで言わない（段の字・札の字が言う）。 */
 .au{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+/* 置き場の欄（§9.557）。道は長いので欄は横いっぱい、添え書きは欄の下に1行 */
+.au-dir{display:grid;gap:var(--space-1);margin-bottom:var(--space-3)}
+.au-dir-field input{width:100%}
+.au-dir-note{color:var(--ink-3);font-size:var(--fs-sm)}
+.au-from{color:var(--ink-3)}
 .au-where{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
 .au-where code{color:var(--ink-2)}
 .au-ok{margin-left:var(--space-2);color:var(--teal-dark);font-weight:700}
@@ -418,13 +407,23 @@
  border-radius:var(--radius-md);background:var(--surface);min-width:0}
 .au-step>b{font-size:var(--fs-sm);color:var(--ink-2)}
 .au-step>span{font-size:var(--fs);color:var(--ink)}
-.au-step>small{font-size:var(--fs-badge);color:var(--ink-3)}
+.au-step>small{font-size:var(--fs-sm);color:var(--ink-3)}
 .au-step.is-set{border-color:var(--teal);background:var(--teal-soft)}
 .au-step.is-pending{border-color:var(--warn-border);background:var(--warn-bg)}
 .au-arrow{align-self:center;width:var(--space-5);height:2px;background:var(--line-mid);position:relative}
 .au-arrow::after{content:"";position:absolute;right:-1px;top:-4px;border:5px solid transparent;border-left-color:var(--line-mid);border-right:0}
 .au-put{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
-.au-put small{color:var(--ink-3);font-size:var(--fs-badge)}
+/* 新しい PC へ渡すもの（§9.559）: 名前の列は固定幅、値（アドレス）は横いっぱい */
+.au-new{margin:0;display:grid;grid-template-columns:7em minmax(0,1fr);gap:var(--space-2);align-items:baseline;font-size:var(--fs-sm)}
+.au-new>b{color:var(--ink-2)}
+.au-new code{color:var(--ink);word-break:break-all}
+.au-new small{color:var(--ink-3);font-size:var(--fs-sm)}
+.au-new .mm-btn-ghost{margin-left:var(--space-2)}
+.au-warn{font-style:normal;color:var(--warn-fg);font-weight:700}
+.au-put small{color:var(--ink-3);font-size:var(--fs-sm)}
+/* 置いている間（§9.556）: ボタンの行を進み具合の帯（共通の`.wl-progress`）に替える。帯はこの段の中の枠1つ */
+.au-put.is-busy{display:grid;align-items:stretch;gap:var(--space-2)}
+.au .wl-progress{border:1px solid var(--line);border-radius:var(--radius-md)}
 .au-pick{cursor:pointer}
 .au-empty{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
 .au-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
@@ -433,6 +432,6 @@
 .au-table tr.is-live td{background:var(--teal-soft)}
 .au-table td small{color:var(--ink-3)}
 .au-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.au-tag{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3)}
+.au-tag{font-style:normal;font-size:var(--fs-sm);color:var(--ink-3)}
 .au-tag.is-live{color:var(--teal-dark);font-weight:800}
 }

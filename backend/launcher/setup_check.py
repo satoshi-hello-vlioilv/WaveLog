@@ -1,8 +1,7 @@
 """setup_check.py: 起動前の確認と下ごしらえ(§9.225)。
 
-`update.bat`(導入時・更新後に1回。旧`setup.bat`・§9.405)と、刻印が食い違った
-ときのデスクトップ版の窓口（`program/sidecar.py`の`_prepare()`）が**同じここ**を通る。
-2つ持つと「update.batでは通るのに起動では失敗する」が作れる。
+刻印が食い違ったときのデスクトップ版の窓口（`program/sidecar.py`の`_prepare()`）がここを通る。
+（以前は`update.bat`も同じここを通っていた。§9.559 で update.bat を外し、確認は起動の1本になった。）
 
 ここでやること(どれも「環境が変わらない限り答えが変わらない」もの):
   1. ローカル領域のフォルダを作る
@@ -42,7 +41,7 @@ LEGACY_DB = (
 COMPILE_TARGETS = ('backend',)
 # 直接実行する3本と、その道具は`program/`（§9.404・§9.406・§9.548）。
 # リポジトリ直下に置くPythonは**1本も無い**。
-COMPILE_FILES = ('program/app.py', 'program/setup_app.py', 'program/sidecar.py',
+COMPILE_FILES = ('program/app.py', 'program/sidecar.py',
                  'program/_pycache_bootstrap.py', 'program/_approot.py')
 
 # 置き場・名前が変わったもの（§9.404・§9.405）。**現場は上書きコピーで更新する**
@@ -56,19 +55,14 @@ COMPILE_FILES = ('program/app.py', 'program/setup_app.py', 'program/sidecar.py',
 # 配置で消してしまわないため）。
 MOVED_AWAY = (
     ('app.py', 'program/app.py'),
-    ('setup_app.py', 'program/setup_app.py'),
     ('requirements.txt', 'program/requirements.txt'),
     ('requirements-dev.txt', 'program/requirements-dev.txt'),
-    ('setup.bat', 'update.bat'),
-    # §9.406。**`Start.vbs`は直下のまま**（毎日の入口なので動かさない）。
     ('_pycache_bootstrap.py', 'program/_pycache_bootstrap.py'),
-    ('update.bat', 'program/update.bat'),
 )
 
 # **外した物**（§9.548、利用者の指示「一本化を進めて」——ブラウザ版の起動の道を外した）。
-# 移した先が無いので`MOVED_AWAY`の「新しいほうが在るとき」は使えない。代わりの合図は
-# **毎日の入口（Start.vbs）がもう`start_app.py`を起こさない**こと——新しい Start.vbs が
-# 届いていれば、ここに並ぶ物を起こす者は居ない（届く途中の混ざった配置では1バイトも触らない）。
+# 移した先が無いので`MOVED_AWAY`の「新しいほうが在るとき」は使えない。合図は`_retired_ok()`
+# （§9.559 から「デスクトップ版の窓の中で動いている」。前は「新しい Start.vbs が届いている」だった）。
 RETIRED = (
     'program/start_app.py', 'program/start_app.bat', 'program/stop.bat',
     'program/process_manager.py', 'program/loading.html',
@@ -79,6 +73,11 @@ RETIRED = (
 # 端末の手元に残る、もう使わない物——ブラウザ版だけが使っていた物（待機画面の写し・進捗・起動中の印）と、
 # ショートカットの補助スクリプト（§9.552。いまは窓〈exe〉が直に作る）。
 RETIRED_LOCAL = ('loading.html', 'loading.next.html', 'boot_status.js', 'instance.json', 'make_shortcut.vbs')
+# **デスクトップ版へ移って要らなくなった入口**（§9.559、利用者の指示「デスクトップ版への移行も進んできているので、
+# vbsをはじめ、不要なファイルの整理もお願いします」）。毎日の入口は exe・起動前の確認は起動のたびに窓口が行うので、
+# `Start.vbs`（移行期間の入口）と`update.bat`／`setup_app.py`（手で押す確認）は誰も起こさない。前の置き場・前の名前の物も同じ。
+# 前に`Start.vbs`へ作ったショートカットは、窓の中で起動したときに入口へ付け替わる（`desktop_shortcut.migrate()`・§9.554）。
+RETIRED_DESKTOP = ('Start.vbs', 'program/update.bat', 'program/setup_app.py', 'update.bat', 'setup.bat', 'setup_app.py')
 
 
 def _no_window():
@@ -182,13 +181,11 @@ def _sweep_orphan_pycache(say=None):
 
 
 def _retired_ok():
-    """外した物を片付けてよいか（`RETIRED`の合図）。新しい Start.vbs が届いているときだけ真。"""
-    try:
-        vbs = (APP_ROOT / 'Start.vbs').read_bytes()
-    except Exception as _e:
-        quiet('Start.vbs を読めない（外した物は片付けない）',_e)
-        return False
-    return b'start_app.py' not in vbs
+    """外した物を片付けてよいか（`RETIRED`・`RETIRED_DESKTOP`の合図）。**デスクトップ版の窓の中で動いているとき**だけ真
+    ——その PC はもう exe から起動しているので、外した入口を起こす者は居ない（§9.559）。開発の作業ツリー（`.git`）は
+    触らない（更新の`update.rs`と同じ線引き）。"""
+    from .. import desktop_shell   # 遅延: 起動前の確認の読み込みを軽く保つ
+    return desktop_shell.running()['kind'] == 'desktop' and not (APP_ROOT / '.git').exists()
 
 
 def _unlink(path, label, say):
@@ -208,7 +205,8 @@ def sweep_shared_leftovers(say=None):
       ① 置き場・名前が変わった実行ファイル(`MOVED_AWAY`)——**新しいほうが
          在るときだけ**片付ける。古い`setup.bat`は押すと失敗するので、
          残すほうが害がある。
-      ② 外した物(`RETIRED`)——ブラウザ版の起動の道。新しい Start.vbs が届いているときだけ。
+      ② 外した物(`RETIRED`・`RETIRED_DESKTOP`)——ブラウザ版の起動の道と、Start.vbs・update.bat。
+         デスクトップ版の窓の中で動いているときだけ（§9.559）。
       ③ 端末の手元の、ブラウザ版だけが使っていた物(`RETIRED_LOCAL`)と、共有側に残った進捗ファイル。
 
     放っておくと共有フォルダーに意味の分からないファイルが残り続け、
@@ -231,7 +229,7 @@ def sweep_shared_leftovers(say=None):
         except Exception as _e:
             quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
     if _retired_ok():
-        for name in RETIRED:
+        for name in RETIRED + RETIRED_DESKTOP:
             _unlink(APP_ROOT / name, '外したファイルを片付けました', say)
     for d in {runtime_dir(), browser_dir()}:
         for name in RETIRED_LOCAL:

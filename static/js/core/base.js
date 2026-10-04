@@ -74,7 +74,7 @@ WL.quiet=(function(){
    「次に何をすればよいか」なので、状態コードから言い直す。
    生の本文は`err.body`へ残す（診断に要るのは開発時だけ）。 */
 /* 開き直し方は**この1箇所**（§9.548: 起動はデスクトップ版だけ・stop.bat は無い）。 */
-WL.RESTART_HOW='アプリを終了してから（窓を閉じる）、デスクトップの起動アイコンで開き直してください。';
+WL.RESTART_HOW='窓を×で閉じてから、デスクトップの起動アイコンで開き直してください。';
 const HTTP_HINT={
  404:'サーバーにこの機能がありません。アプリを更新したあと開き直していない可能性があります（'+WL.RESTART_HOW+'）',
  405:'この操作をサーバーが受け付けませんでした（この画面のモードでは使えない操作かもしれません）。',
@@ -2353,9 +2353,6 @@ async function sendHeartbeat(){
   const body=await res.json().catch(WL.quiet('応答を読めなくても生きている（版の知らせは前のまま）'));
   WL.versionNotice.apply(body&&body.version);
  }catch(e){
-  /* **自分で終了したときは「接続が切れました」を出さない**（§9.301 ②）
-     ——事故のように見せない（§3）。終了した画面は`#appQuitDone`が言う。 */
-  if(WL.quitting)return;
   heartbeatFailures++;
   if(heartbeatFailures>=HEARTBEAT_FAIL_LIMIT)setConnectionLost(true);
  }
@@ -2365,61 +2362,49 @@ WL.onReady(()=>{
  const btn=document.getElementById('connectionLostReload');
  if(btn)btn.onclick=()=>location.reload();
 });
-/* ---------- 安全な終了（§9.301 ②、利用者の指示「そういう意味で安全な
-   アプリの終了ボタンも欲しいです」） ----------
-   「安全」の中身は**片付け**で、
-   共有の目印を残したまま落ちると他の端末が期限（既定90秒）まで待たされる:
-    ・書込役の目印……その間、書き込みのたびに届かない相手を待つ（§9.301 ①）
-    ・編集セッション……その設備が読み取り専用のまま（§9.211 ②）
-    ・在席……接続状況に幽霊が残る（§9.272）
-   **片付けそのものはサーバーの`watchdog.teardown()`の1箇所**（§9.163）——
-   窓を閉じたときも（窓口の入力が閉じる）ここを通るので、手順を2つ持たない。
-   画面がするのは「押す前に何が起きるかを見せる」ことと「押したあとに
-   終わったと言う」ことだけ。
+/* ---------- 窓を閉じる前の確かめ（§9.556、利用者の指示「アプリ終了ボタンは必要なく、削除希望です。
+   ×ボタンから普通に閉じて終了したいです」） ----------
+   以前は左メニューの足元に「アプリを終了」（§9.301 ②）を置いていた。ブラウザ版はタブを閉じても
+   サーバーが残ったため、片付け（書込役・編集セッション・在席）を通して終える口が要った。
+   デスクトップ版は**×で窓を閉じれば窓口の入力が閉じ、同じ片付け（`watchdog._exit()`→`teardown()`）を
+   通って終わる**（§9.544）ので、口が2つ要らない。
 
-   **未保存の測定は画面しか知らない**（端末のブラウザの中にある・§9.202）
-   ので、確認の文はこちらが添える。 */
-WL.quitting=false;
-WL.quitApp=async function(){
- if(WL.quitting)return;
- let facts={isOwner:false,sessions:[]};
- try{facts=await api('/api/app/quit-check')}catch(e){WL.quiet.note('分からなくても閉じられる',e)}
- const lines=[];
- if(typeof measureDirty!=='undefined'&&measureDirty)
-  lines.push('<p class="confirm-modal-message"><b>保存されていない測定があります。</b>'
-   +'閉じるとこの画面の変更は失われます（保存済みのデータは残ります）。</p>');
- const what=[];
- if(facts.isOwner)what.push('このPCは<b>共有への書込役</b>です。役を降りてから閉じるので、他のPCはすぐ次の書込役を立てられます');
- if((facts.sessions||[]).length)what.push('編集中の設備（'+esc(facts.sessions.join('、'))+'）を手放します');
- what.push('接続状況からこのPCを消します');
- lines.push('<ul class="confirm-modal-list">'+what.map(x=>'<li>'+x+'</li>').join('')+'</ul>');
- const ok=await confirmModal({title:'このPCのWaveLogを終了しますか？',
-   eyebrow:'QUIT',confirmLabel:'終了する',cancelLabel:'やめる',danger:true,
-   bodyHtml:lines.join('')});
- if(!ok)return;
- WL.quitting=true;
- setConnectionLost(false);
- const box=document.getElementById('appQuitDone');
- const note=document.getElementById('appQuitWhat');
- try{
-  await api('/api/app/quit',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
- }catch(e){
-  /* **失敗したら終了したと言わない**（§3）。押しても何も起きない状態を
-     残さないよう、理由と次の手立て（窓を閉じても同じ片付けを通る）を出す。 */
-  WL.quitting=false;
-  showToast&&showToast('終了できませんでした',String(e&&e.message||e)+' / 窓を閉じても、同じ片付けをしてから終わります',6000);
-  return;
+   ×で失ってはいけないものだけ、閉じる前に確かめる。**何を失うかは持ち主の画面が名乗る**
+   （`WL.closeGuard.hold(key, ()=>理由の文 or '')`）——土台は画面の中身を知らない。
+   閉じるときに窓（Rust）が`ask()`を呼び、ここが理由を集める。無ければすぐ閉じ、あれば確認を出す。
+   答えは`/__desktop/close`へ返す（`asking`＝確認を出した／`close`＝閉じてよい／`stay`＝やめた）。
+   **返事が来なければ窓は自分で閉じる**（画面が固まっていても閉じられなくしない）。 */
+WL.closeGuard=(()=>{
+ const holds=new Map();
+ let asking=false;
+ function say(answer){
+  return fetch('/__desktop/close',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({answer})}).catch(WL.quiet('窓へ返事できない（窓は待ち切って自分で閉じる）'));
  }
- if(note)note.innerHTML='<ul class="confirm-modal-list">'+what.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
- /* 窓は中身（Python）が終わるのを待って閉じる（デスクトップ版の窓・§9.546）。閉じるまでの
-    あいだと、窓を持たない開発・網の入口では**終わったことと次の一手**を出す。 */
- if(box)box.hidden=false;
-};
-WL.onReady(()=>{
- const q=document.getElementById('appQuit');
- if(q)q.onclick=()=>WL.quitApp();
- else console.error('終了ボタン(#appQuit)が見つかりません');
-});
+ function reasons(){
+  const out=[];
+  holds.forEach((fn,key)=>{let r='';try{r=fn()||''}catch(e){WL.quiet.note('理由を読めない（数えない）:'+key,e)}if(r)out.push(r)});
+  return out;
+ }
+ async function ask(){
+  if(asking)return;
+  const rs=reasons();
+  if(!rs.length){say('close');return}
+  asking=true;say('asking');
+  try{
+   const ok=await confirmModal({title:'WaveLog を閉じますか？',eyebrow:'CLOSE',
+     confirmLabel:'閉じる',cancelLabel:'やめる',danger:true,
+     bodyHtml:'<ul class="confirm-modal-list">'+rs.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>'});
+   say(ok?'close':'stay');
+  }finally{asking=false}
+ }
+ /* 窓の中でだけ「閉じる前に聞いてよい」と窓へ名乗る（名乗らない画面は窓がそのまま閉じる）。 */
+ if(inDesktopShell())WL.onReady(()=>say('armed'));
+ return {hold(key,fn){holds.set(key,fn)},release(key){holds.delete(key)},reasons,ask};
+})();
+/* 未保存の測定は**画面しか知らない**（端末のブラウザの中にある・§9.202）。 */
+WL.closeGuard.hold('measure',()=>measureDirty
+ ?'保存されていない測定があります。閉じるとこの画面の変更は失われます（保存済みのデータは残ります）':'');
 
 /* 左ナビ(aside)の幅をドラッグでリサイズできるようにする。#navResizeHandle
    を<aside>の直後(<main>の前)へ挿入するだけで、.layoutのgrid-template-
@@ -2828,6 +2813,31 @@ WL.loader={
   return `<span class="wl-ld${cls?' '+cls:''}" data-ld="${kind}"`
    +`${fixed?' data-ld-fixed':''}${st} aria-hidden="true">${LOADER_DOTS}</span>`;
  },
+};
+/* 進み具合の帯（§9.78 → §9.556）。時間のかかる仕事が**動いていること**と**どこまで進んだか**を言う
+   部品の1つ（RNEファイルから作成・版を置く）。見た目は`.wl-progress`（89-loaders.css）。
+   `pct`が`null`の段（受け取る・確かめる）は割合を言わず、棒を往復させる（止まっていないと言う）。 */
+WL.progress={
+ html(o={}){
+  return `<section class="wl-progress${o.cls?' '+o.cls:''}" role="status" aria-live="polite">`
+   +`<div class="wl-progress-head"><b class="wl-progress-title">${esc(o.title||'')}</b>`
+   +`<span class="wl-progress-pct">0%</span></div>`
+   +`<div class="wl-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>`
+   +`<p class="wl-progress-meta">${esc(o.meta||'')}</p></section>`;
+ },
+ paint(root,o={}){
+  if(!root)return;
+  const q=s=>root.querySelector(s);
+  if(o.title!=null&&q('.wl-progress-title'))q('.wl-progress-title').textContent=o.title;
+  if(o.meta!=null&&q('.wl-progress-meta'))q('.wl-progress-meta').textContent=o.meta;
+  const known=o.pct!=null&&isFinite(o.pct);
+  const pct=known?Math.max(0,Math.min(100,Math.round(o.pct))):0;
+  root.classList.toggle('is-indef',!known);
+  const bar=q('.wl-progress-bar');
+  if(bar){bar.style.setProperty('--wl-pct',pct+'%');
+   if(known)bar.setAttribute('aria-valuenow',String(pct));else bar.removeAttribute('aria-valuenow')}
+  if(q('.wl-progress-pct'))q('.wl-progress-pct').textContent=pct+'%';
+ }
 };
 applyLoader(currentLoader());
 /* 「読み込みの見せ方を決める場所」への行き先（§9.436）。**base.js は

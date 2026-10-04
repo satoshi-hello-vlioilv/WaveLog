@@ -67,17 +67,9 @@
    更新者IDの入力で、これはヘッダーの操作列(#headerViewBar)へ移る。パネル内に
    置かれたまま(移設前の一瞬)でも崩れないよう素の行として組む。 */
 .mm-head{display:flex;align-items:center;gap:var(--space-3);padding:0}
-/* 絞り込み・再読込はヘッダーの操作列へ相乗りする(§9.100)。更新者IDは左、
-   操作は右寄せ。**高さは--ctl-h-sm・文字は--fs-sm**に揃える——操作列に
-   並ぶものは全画面で30px/1種類、というのが tests/test_theme.js の約束。 */
-.mm-head .mm-search{margin-left:auto}
-/* **ヘッダーの操作列へ移すと左右の余白が上書きされる**。85-headerbar.css の
-   `.hd-viewbar select,.hd-viewbar input{padding:0 var(--ctl-pad-x-xs)}` が
-   後から効くため、`.mm-search input` が持っていた「アイコンぶんの左余白
-   30px」が消え、虫めがねが文字に重なった(移してから実測で気づいた)。
-   アイコンの幅ぶんを開ける指定をここで取り戻す。 */
-.mm-head .mm-search input{height:var(--ctl-h-sm);font-size:var(--fs-sm);
- padding:0 var(--ctl-pad-x-sm) 0 calc(var(--ctl-pad-x-sm) + 1.5em)}
+/* 再読込はヘッダーの操作列へ相乗りする(§9.100)。**高さは--ctl-h-sm・文字は--fs-sm**に揃える——
+   操作列に並ぶものは全画面で30px/1種類、というのが tests/test_theme.js の約束。
+   絞り込み(`.mm-search`)は§9.556で外した。 */
 .mm-head .mm-btn-ghost{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
 .mm-head-user{display:flex;align-items:center;gap:var(--space-2);color:var(--muted);font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
 /* 左の一覧の幅は**いちばん長い呼び名から決める**（§9.250 ①、利用者の指摘
@@ -133,10 +125,6 @@
 .mm-toolbar-left{display:flex;align-items:baseline;gap:var(--gap-section);min-width:0}
 .mm-toolbar-left b{font-size:var(--fs-title);color:var(--ink);white-space:nowrap}
 .mm-count{color:#607981;font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
-.mm-search{position:relative;display:flex;align-items:center}
-.mm-search-icon{position:absolute;left:10px;font-size:var(--fs-base-sm);opacity:.6;pointer-events:none}
-.mm-search input{height:var(--ctl-h);width:300px;max-width:40vw;padding:6px 12px 6px 30px;border:1px solid var(--line);border-radius:var(--radius-pill);background:var(--surface-2)}
-.mm-search input:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926;background:#fff}
 .mm-btn-ghost{border:1px solid #9fb9b2;background:#fff;color:#2c5049;font-weight:700;cursor:pointer;white-space:nowrap}
 .mm-btn-ghost:hover{background:var(--bg);border-color:#6da6ad}
 .mm-btn-ghost.sm{}
@@ -202,6 +190,7 @@
 .mm-tag-suggest-item:hover,.mm-tag-suggest-item:focus-visible{outline:0;background:#eafafa;color:#0a6570}
 .mm-tag-suggest-empty{padding:7px 10px;color:#8a9aa0;font-size:var(--fs-sm)}
 .mm-form-tail{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.mm-form-tail[hidden]{display:none}
 .mm-btn-primary{border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .mm-btn-primary:hover{background:var(--teal-dark)}
 .mm-btn-primary.sm{}
@@ -603,7 +592,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-loading-box{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);border:1px solid #bcd9dd;border-radius:var(--radius-md);background:#fff;box-shadow:0 12px 34px #0b2b3333;color:#0a6570;font-weight:800}
 /* メニューのマスタ閲覧ボタンは非表示（マスタ管理へ集約） */
 #nav [data-db-key="MASTER"]{display:none}
-@media(max-width:900px){.mm-body{grid-template-columns:1fr}.mm-nav{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}.mm-search input{width:200px}}
+@media(max-width:900px){.mm-body{grid-template-columns:1fr}.mm-nav{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}}
 /* ============================================================
 2026-07-21 Quality analysis / print / listbox height update
 ============================================================ */
@@ -1076,7 +1065,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-head-user:hover>b{color:var(--nav);border-bottom-color:var(--nav)}
 /* **取れていないことは色だけで伝えない**（§CLAUDE 3）——文字はJSが書く。 */
 .mm-head-user.is-unknown>b{color:var(--danger);border-bottom-style:dashed}
-.mm-head .mm-search input{max-width:var(--w-lg);min-width:0}
 /* 印だけのボタン。**中身なりの正方形**にして、名前はaria-labelが持つ。 */
 .mm-head-icobtn{flex:none;padding-inline:var(--space-2);font-size:var(--fs)}
 

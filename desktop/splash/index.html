@@ -68,7 +68,7 @@
   <div class="head"><b id="title">測定伝送システムを起動しています</b><span id="lead">準備ができたら、この窓がそのままアプリに切り替わります。</span></div>
   <ol>
     <li class="now" id="s-update"><span class="mark"></span><span><span class="t">版をそろえる</span><span class="d">共有の置き場の「配る版」と同じか確かめます</span></span><span class="when"></span></li>
-    <li class="wait" id="s-python"><span class="mark"></span><span><span class="t">Python を探す</span><span class="d">PATH で最初に見つかる Python（update.bat と同じ）</span></span><span class="when"></span></li>
+    <li class="wait" id="s-python"><span class="mark"></span><span><span class="t">Python を探す</span><span class="d">PATH で最初に見つかる Python</span></span><span class="when"></span></li>
     <li class="wait" id="s-backend"><span class="mark"></span><span><span class="t">アプリの中身を起こす</span><span class="d">画面と共有DB（ポートは使いません）</span></span><span class="when"></span></li>
     <li class="wait" id="s-open"><span class="mark"></span><span><span class="t">画面を開く</span><span class="d"></span></span><span class="when"></span></li>
   </ol>
@@ -84,10 +84,11 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   /* よくある理由 → 次にすること（理由の文から見分ける。当てはまらなければ理由だけ出す） */
   const HINTS = [
-    [/No module named '?flask/i, "Python に Flask が入っていません。program フォルダの update.bat を1回実行してから、開き直してください。"],
-    [/No module named/i, "Python に必要な部品が入っていません。program フォルダの update.bat を1回実行してください。"],
+    [/No module named '?flask/i, "Python に Flask が入っていません。ネットにつながる状態で開き直すと自動で入れます。つながらない PC では、コマンドプロンプトで python -m pip install flask を実行してから開き直してください。"],
+    [/No module named/i, "Python に必要な部品が入っていません。ネットにつながる状態で開き直すと自動で入れます。直らなければ管理者に連絡してください。"],
     [/Python が見つかりません/, "Python を入れて PATH に通してから、開き直してください。分からなければ管理者に連絡してください。"],
-    [/program フォルダ|sidecar\.py/, "exe を直接開かず、アプリのフォルダの Start.vbs（またはデスクトップの起動アイコン）から起動してください（exe だけではアプリの中身の場所が分かりません）。"],
+    [/program フォルダ|sidecar\.py/, "デスクトップの起動アイコンか、配られた共有の入口（共有の置き場の WaveLog.exe）から起動してください（exe だけではアプリの中身の場所が分かりません）。"],
+    [/この PC へアプリを写せません|写す先を作れません/, "共有の置き場に届くか、この PC のユーザーのフォルダ（%USERPROFILE%\\WaveLog）に書けるかを確かめてから、もう一度入口を開いてください。"],
     [/版が食い違/, "アプリが更新されています。この窓を閉じて、デスクトップの起動アイコンから開き直してください。"],
     [/秒たっても準備できません/, "PC が混んでいるか、共有フォルダへの接続で止まっています。少し待ってから開き直してください。"],
   ];

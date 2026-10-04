@@ -20,7 +20,7 @@
  WL.mm.special=WL.mm.special||{};
  WL.mm.registerSpecial=(key,handlers)=>{WL.mm.special[key]=handlers};
  const MASTER_DEFS=WL.mm.MASTER_DEFS,MASTER_GROUPS=WL.mm.MASTER_GROUPS;
- let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,query:'',meta:{},loadGen:0};
+ let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,meta:{},loadGen:0};
  /* ---------- 専用タブを持たないマスタ（§9.249 ②） ----------
     タブの一覧は**固定のMASTER_DEFSと、サーバーが答える表から作った分**の
     2本立て。**どちらも同じ`def`の形**にしてあるので、一覧・編集モーダル・
@@ -203,7 +203,7 @@
    b.onclick=toggle;
    b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};
   });
-  nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;maintState.query='';const se=$('#masterMaintSearch');if(se)se.value='';syncNav();loadMaint(true)});
+  nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;syncNav();loadMaint(true)});
   syncNav();
  }
 
@@ -226,15 +226,15 @@
    <div class="mm-head" id="mmHead">
     <!-- 上部の操作は3つだけ（§9.266、利用者の指示「アイコンなども活用し…
          1行に収める」）。**アイコンだけにしない**——何の欄かはツールチップでは
-         読めない（§4）ので、更新者IDは印と短い名前、絞り込みは虫めがねと
-         短い誘い文句、再読込は印とaria-labelにする。
+         読めない（§4）ので、更新者IDは印と短い名前、再読込は印とaria-labelにする。
+         絞り込み（§9.266）は§9.556で外した（利用者の指示「最上部の絞り込みの検索バーも
+         あまり意味がないので基本的に削除」）。並べ替えと群の開閉は表の見出しが持つ。
          **この中にバッククォートを書かないこと**（§9.211 ③。テンプレート
          リテラルがそこで閉じ、以降がJSとして解釈されて画面が組み上がらない）。 -->
     <button type="button" id="masterUserId" class="mm-head-user"
      title="この端末のログインIDです。マスタを更新した人として記録します（書き換えられません）。押すと「接続状況」を開きます">
      <span class="mm-head-ico" aria-hidden="true">👤</span>
      <b id="masterUserName">—</b></button>
-    <div class="mm-search"><span class="mm-search-icon" aria-hidden="true">🔍</span><input id="masterMaintSearch" type="search" placeholder="絞り込み" autocomplete="off"></div>
     ${hintBadgeHtml()}
     <button id="reloadMasterMaint" type="button" class="mm-btn-ghost mm-head-icobtn"
      title="マスタを読み直します" aria-label="再読込"><span aria-hidden="true">↻</span></button>
@@ -242,7 +242,7 @@
    <div class="mm-body">
     <nav class="mm-nav" id="masterMaintNav" aria-label="マスタ種別"></nav>
     <section class="mm-main">
-     <!-- 見出しだけを残す。絞り込みと再読込は**操作**なのでヘッダーの
+     <!-- 見出しだけを残す。再読込は**操作**なのでヘッダーの
           操作列(#mmHead → #headerViewBar)が持つ(§9.100)。ここに残すと、
           この画面だけ操作の置き場が2段になる。 -->
      <div class="mm-toolbar">
@@ -283,7 +283,6 @@
   const hb=$('#mmHintBadge');
   if(hb)hb.onclick=()=>{if(mmHintMenu)closeHintMenu();else openHintMenu(hb)};
   $('#reloadMasterMaint').onclick=()=>loadMaint(true);
-  const search=$('#masterMaintSearch');if(search){search.oninput=()=>{maintState.query=search.value;renderMaintList()}}
   renderMaintNav();
   return panel;
  }
@@ -850,6 +849,8 @@
     t.classList.toggle('is-on',on);
    });
    panels.forEach((p,j)=>{if(p.hidden!==(j!==i))p.hidden=j!==i});
+   /* 段が替わったことを器へ知らせる（段ごとに出し分ける物——保存の帯など——は器の持ち主が受ける） */
+   form.dispatchEvent(new CustomEvent('mm-tab',{detail:{panel:panels[i]}}));
   };
   const paint=()=>panels.forEach((p,i)=>{
    const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);
@@ -2589,10 +2590,7 @@
   }).map(x=>x.it);
  }
  function filteredMaintItems(def){
-  const q=String(maintState.query||'').trim().normalize('NFKC').toLowerCase();
-  let items=maintState.items||[];
-  if(q)items=items.filter(it=>{const hay=[...def.cols.map(c=>it[c.k]),it.updated_by].map(v=>String(v??'').normalize('NFKC').toLowerCase()).join(' ');return hay.includes(q)});
-  return mmSortItems(def,items);
+  return mmSortItems(def,maintState.items||[]);
  }
  /* ---------- 束ねた見出しの開閉（§9.241 ①、利用者の指示「ロールマスタに
     ついて、設備名毎に折りたためるようにしてください」） ----------
@@ -2604,9 +2602,6 @@
     ・**覚えるのはこの端末**（読み方の好みなのでPCごとに違ってよい。§9.199の
       `childBadge`と同じ）。**触った群だけ**を覚え、触っていない群は既定
       （開く）に追随する——既定を変えないので、今までの見え方は変わらない。
-    ・**絞り込み中は畳まない**——畳んだ群の中に当たりがあると、見出しの件数
-      だけが出て行が1つも出ない（探しているのに出ない、が起きる）。
-      そのことは画面に書く（§CLAUDE 2）。
     ・**登録・更新した行の群は開く**（§CLAUDE「思い出させない」）——畳んだ
       設備へ足したとき、保存できたのに一覧に出ないのは「消えた」と読まれる。 */
  const MM_FOLD_KEY='MasterListFoldV1';
@@ -2667,19 +2662,18 @@
  }
  /* 一覧の上の「すべて開く／すべて畳む」。**群を持たないマスタでは帯ごと
     出さない**（押せるのに何も起きないボタンを置かない・§CLAUDE 4）。 */
- function renderMaintFoldTools(def,groups,searching){
+ function renderMaintFoldTools(def,groups){
   const box=$('#masterMaintFold');if(!box)return;
   if(!def.groupBy||!groups.length){box.hidden=true;box.innerHTML='';return}
   box.hidden=false;
   const open=groups.filter(g=>!g.folded).length;
   const allOpen=open===groups.length;
   box.innerHTML=`<b class="mm-fold-state">${groups.length}${esc(def.groupWord||'設備')}`
-    +` <span>${searching?'絞り込み中は全部開きます':`開 ${open} / 畳 ${groups.length-open}`}</span></b>`
+    +` <span>開 ${open} / 畳 ${groups.length-open}</span></b>`
    +`<button type="button" class="mm-btn-ghost sm" data-mm-fold="open"${allOpen?' disabled':''}`
    +` title="${allOpen?'すべて開いています':'畳んでいる'+esc(def.groupWord||'設備')+'をすべて開きます'}">すべて開く</button>`
-   +`<button type="button" class="mm-btn-ghost sm" data-mm-fold="close"${(searching||!open)?' disabled':''}`
-   +` title="${searching?'絞り込み中は畳みません（当たった行が出なくなるため）'
-      :(open?'見出しだけを残して行を畳みます':'すべて畳んでいます')}">すべて畳む</button>`;
+   +`<button type="button" class="mm-btn-ghost sm" data-mm-fold="close"${!open?' disabled':''}`
+   +` title="${open?'見出しだけを残して行を畳みます':'すべて畳んでいます'}">すべて畳む</button>`;
   box.querySelectorAll('[data-mm-fold]').forEach(b=>b.onclick=()=>{
    const close=b.dataset.mmFold==='close';
    groups.forEach(g=>mmSetFolded(def,g.label,close));
@@ -2699,7 +2693,7 @@
    const marks=[];
    if(sc)marks.push(`並び: ${esc(sc.label)} ${v.sort.dir==='desc'?'降順':'昇順'}`);
    if(wn)marks.push(`幅: ${wn}列`);
-   cnt.innerHTML=(maintState.query?`${items.length} / 有効 ${all.length}件`:`有効 ${all.length}件`)
+   cnt.innerHTML=`有効 ${all.length}件`
     +(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
       +`<button type="button" id="mmViewReset" title="この表の並びと列幅を既定へ戻します">✕</button></span>`:'');
    const rb=$('#mmViewReset');
@@ -2733,8 +2727,8 @@
   if(!items.length){
    /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、
       押せるのに何も起きない・§CLAUDE 4）。 */
-   renderMaintFoldTools(def,[],false);
-   list.insertAdjacentHTML('beforeend',`<div class="mm-empty">${all.length&&maintState.query?'絞り込み条件に一致するデータがありません。':'有効なデータがありません。上のフォームから追加してください。'}</div>`);return}
+   renderMaintFoldTools(def,[]);
+   list.insertAdjacentHTML('beforeend',`<div class="mm-empty">有効なデータがありません。上のフォームから追加してください。</div>`);return}
   const frag=document.createDocumentFragment();
   /* ---------- 親子で束ねる(§9.239 ⑥、利用者の指示) ----------
      「設備のカラムはマスタに親子関係を持たせ、設備単位でロールマスタを
@@ -2745,17 +2739,15 @@
   const gkey=def.groupBy||'';
   let lastGroup=null,foldedNow=false;
   /* 群ごとの件数と畳み。**出てくる順のまま**並べる（並べ替えるとサーバーが
-     返した順＝表示順の設定が効かなくなる）。**絞り込み中は畳まない**
-     （§9.241 ①）——当たった行が出ないと、探しているのに無いと読まれる。 */
-  const searching=!!String(maintState.query||'').trim();
+     返した順＝表示順の設定が効かなくなる）。 */
   const groups=[],gidx={};
   if(gkey)items.forEach(it=>{
    const g=maintGroupLabel(it[gkey]);
    if(gidx[g]===undefined){gidx[g]=groups.length;groups.push({label:g,count:0,folded:false})}
    groups[gidx[g]].count++;
   });
-  groups.forEach(g=>{g.folded=!searching&&mmIsFolded(def,g.label)});
-  renderMaintFoldTools(def,groups,searching);
+  groups.forEach(g=>{g.folded=mmIsFolded(def,g.label)});
+  renderMaintFoldTools(def,groups);
   items.forEach(it=>{
    if(gkey){
     const g=maintGroupLabel(it[gkey]);
@@ -2859,8 +2851,7 @@
    });
   });
  }
- function setMaintSearchVisible(show){
-  const search=document.querySelector('#masterMaintPanel .mm-search');if(search)search.style.display=show?'':'none';
+ function setMaintCountVisible(show){
   const cnt=$('#masterMaintCount');if(cnt)cnt.style.display=show?'':'none';
  }
  // マスタは共有DBを読む種類があり数秒かかることがある。無反応に見えて
@@ -2914,7 +2905,7 @@
      落とさない**（§CLAUDE「公開漏れは黙って素通しになる」）。 */
   if(def.special){
    const sp=WL.mm.special[def.special];
-   if(sp){setMaintSearchVisible(false);
+   if(sp){setMaintCountVisible(false);
     /* **描き終えたときに、まだそのタブが開いているか確かめる**（§9.331・§9.200）。
        専用の画面は取りに行ってから描くので、**取りに行っている最中に別のタブへ
        移ると、後から届いた前のタブの盤が今の画面を上書きする**——見出しだけ
@@ -2927,7 +2918,7 @@
     });}
    console.error('専用画面が登録されていません: '+def.special);
   }
-  setMaintSearchVisible(true);
+  setMaintCountVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   // 一覧に「作業可能設備」を文章で出すのは配列で持つequipment-multiだけ
   // (equipment-multi-textは保存値が文字列で、列側はformat:'equipmentTarget'が
@@ -2971,15 +2962,11 @@
   renderMaintNav();
   paintMaintUser();
   if(!maintDefVisible(currentDef()))maintState.defKey=firstVisibleDefKey();
-  maintState.editing=null;maintState.query='';
-  const se=$('#masterMaintSearch');if(se)se.value='';
+  maintState.editing=null;
   syncNav();panel.hidden=false;loadMaint(true);
   /* 専用タブを持たないマスタ（§9.249 ②）。**画面は待たせない**——届いたら
      ナビを描き直す。読めなくても他のタブは今までどおり使える。 */
   WL.mm.loadMasterTableCatalog().catch(WL.quiet('マスタ表の一覧を取れない（他のタブは今までどおり）'));
-  /* 更新者IDは打ち込む欄では無くなった（§9.276 ③）ので、最初のフォーカスは
-     絞り込みへ渡す（打てない物へ当てると、そこで手が止まる）。 */
-  requestAnimationFrame(()=>{const s=$('#masterMaintSearch');if(s)s.focus()});
  }
  window.openMasterMaint=openMasterMaint;
 

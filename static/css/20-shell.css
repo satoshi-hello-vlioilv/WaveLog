@@ -139,59 +139,10 @@
 .ver-behind[hidden]{display:none}
 .restart-needed b{font-size:var(--fs-sm)}
 .restart-needed small{color:var(--warn-fg);opacity:.9}
-/* ---------- 安全な終了（§9.301 ②、利用者の指示「安全なアプリの終了ボタンも
-   欲しいです」） ----------
-   **足元に置き、行き先の並びからは離す**（§CLAUDE 5「危ない操作を主要動線に
-   置かない」）。押す頻度は低いが重要度は高いので、消さずに弱く出す
-   ——普段は補助文字の色で、触れたときだけ危険の色になる（§3。色だけで
-   伝えないので、文字は「アプリを終了」と書いてある）。 */
-.nav-foot{margin-top:auto;padding-top:var(--space-3);border-top:1px solid #2c4750}
-/* 素の状態も**濃い地用のトークン**で書く（§9.409）。`--muted`は明るい地用で、
-   ナビの地（--nav）へ載せると 2.55:1＝本文の線（4.5:1）を下回っていた。
-   控えめに置くこと（§CLAUDE 5 危ない操作を主要動線に置かない）と、
-   読めないことは別。 */
-.nav-foot .nav-item--quit{color:var(--nav-ink-2)}
-/* 濃い地の上の「危ない操作」はトークンから選ぶ（§9.409）。以前は明るい地用の
-   `--danger-bg`（#fdeaea）に薄い赤の字（#ffd7d7）で、重ねると1.1:1＝読めない。 */
-.nav-foot .nav-item--quit:hover{background:var(--nav-danger-bg);color:var(--nav-danger-fg);
-  border-color:var(--nav-danger-border)}
-.nav-foot .nav-item--quit:hover .nav-icon{opacity:1}
-.nav-foot .nav-item--quit:focus-visible{background:var(--nav-danger-bg);color:var(--nav-danger-fg)}
-/* 終了したあとの覆い。**事故のように見せない**（§3）——自分で終了したので、
-   「接続が切れました」の帯は出さずにこちらを出す。 */
-.app-quit-done{
- position:fixed;inset:0;z-index:var(--z-alert);
- display:flex;align-items:center;justify-content:center;padding:var(--space-4);
- background:rgba(13,32,41,.86);
-}
-.app-quit-done[hidden]{display:none}
-.app-quit-done .aq-card{
- max-width:var(--w-2xl);width:100%;
- padding:var(--pad-dialog);border-radius:var(--radius-lg);
- background:var(--surface);color:var(--ink);box-shadow:0 20px 60px #0005;
-}
-.app-quit-done .aq-card>b{display:block;font-size:var(--fs-title);margin-bottom:var(--space-2)}
-.app-quit-done .aq-note{margin:0;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.7}
-.app-quit-done .aq-what{margin-top:var(--space-3);font-size:var(--fs-sm)}
 /* ---------- 3a. サイドバー: ブランド ---------- */
 .layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 .layout>aside .brand h2{margin:0;font-size:var(--fs-title);letter-spacing:.01em}
 .layout>aside .brand small{display:inline-flex;margin-top:0;color:#8fb3ba}
-/* ---------- 3b. サイドバー: 使用設備ステータスカード ----------
-   ナビ項目（操作＝ボタン）と混同しないよう、破線/実線の
-   カード形態で「現在の状態」を示す別レーンとして独立させる。 */
-.registered-equipment-badge{
-  display:flex;align-items:center;gap:var(--space-2);width:100%;
-  margin:0 0 16px;min-height:var(--ctl-h);padding:0 var(--ctl-pad-x-sm);
-  border:1px solid #2c4750;border-radius:var(--radius-sm);
-  background:#1f3d47;color:#cfe6ea;font-size:var(--fs-sm);font-weight:700;cursor:pointer;text-align:left;
-}
-.registered-equipment-badge .nav-icon{flex:none;opacity:.85}
-.registered-equipment-badge .equip-badge-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.registered-equipment-badge:hover{filter:brightness(1.15)}
-.registered-equipment-badge::after{content:"変更";flex:none;padding:var(--pad-chip);border-radius:var(--radius-sm);background:#2c4750;color:#cfe6ea;font-size:var(--fs-badge);font-weight:800}
-.registered-equipment-badge.unregistered{border-color:var(--warn-border);border-style:dashed;background:#4a3418;color:#ffd8a0}
-.registered-equipment-badge.unregistered::after{content:"要設定";background:var(--warn);color:#3a2400}
 /* ---------- 3c. サイドバー: ナビグループ共通 ----------
    3グループ（測定データ／表示切替／管理）に分け、グループ名の
    小見出しでチャンク化（認知負荷の低減）。色は teal 系の

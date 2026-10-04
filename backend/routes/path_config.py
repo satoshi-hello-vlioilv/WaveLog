@@ -134,7 +134,9 @@ _PATH_CONFIG_TEXT_FIELDS=('records_backup_export_path','schedule_share_path',
                           'rne_assets_dir','rne_conf_path','pc_name',
                           # デスクトップの起動アイコン(§9.433)。名前も絵も
                           # **決めたら残す**——押した瞬間だけの値にしない。
-                          'shortcut_name','shortcut_icon')
+                          'shortcut_name','shortcut_icon',
+                          # アプリの更新の置き場(§9.557)。空欄なら既定(app_update.DEFAULT_DIR)
+                          'update_dir')
 
 
 # ---- 置き場は`backend/storage_layout.py`が答える(§9.260→§9.267) ----------

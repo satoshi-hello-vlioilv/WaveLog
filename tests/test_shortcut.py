@@ -372,6 +372,34 @@ rec('ショートカットの絵はほかのプログラムからも見える置
 from backend.launcher import setup_check as _sc  # noqa: E402
 rec('使わなくなった補助スクリプトは端末の手元から片付ける（§9.552）', 'make_shortcut.vbs' in _sc.RETIRED_LOCAL)
 
+# ---- 起動アイコンが無ければ作るか聞く（§9.559、利用者の指示「アプリのショートカットがデスクトップになければ、
+#      許可を求めつくられる」）。答えは desktop_shortcut.offer() の1箇所 ----
+_rt = Path(_tf.mkdtemp()) / 'runtime'
+_keep = {k: getattr(desktop_shortcut, k) for k in ('runtime_dir',)}
+_keep_shell = _os.environ.get('WAVELOG_SHELL')
+try:
+    desktop_shortcut.runtime_dir = lambda: _rt
+    _os.environ['WAVELOG_SHELL'] = 'desktop'
+    base_st = {'supported': True, 'link': r'C:\Users\u\Desktop\測定伝送システム.lnk', 'exists': False}
+    rec('窓の中・作れる・アイコンが無い・断っていない → 聞く', desktop_shortcut.offer(dict(base_st)) is True)
+    rec('アイコンが在れば聞かない', desktop_shortcut.offer(dict(base_st, exists=True)) is False)
+    rec('作れない端末では聞かない（理由は「表示」が言う）', desktop_shortcut.offer(dict(base_st, supported=False)) is False)
+    _os.environ['WAVELOG_SHELL'] = ''
+    rec('窓の外（開発・網）では聞かない', desktop_shortcut.offer(dict(base_st)) is False)
+    _os.environ['WAVELOG_SHELL'] = 'desktop'
+    rec('断ると控える', desktop_shortcut.decline() is True and desktop_shortcut.declined() != '')
+    rec('断ったら次からは聞かない', desktop_shortcut.offer(dict(base_st)) is False)
+finally:
+    for k, v in _keep.items():
+        setattr(desktop_shortcut, k, v)
+    if _keep_shell is None:
+        _os.environ.pop('WAVELOG_SHELL', None)
+    else:
+        _os.environ['WAVELOG_SHELL'] = _keep_shell
+_ACC = (ROOT / 'backend' / 'access_mode.py').read_text(encoding='utf-8')
+rec('断る口もどのモードからでも通す（この端末の控えにしか触らない）',
+    "'core.app_shortcut_decline':{'edit','view','schedule'}" in _ACC)
+
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
 sys.exit(1 if ng else 0)

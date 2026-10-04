@@ -2236,6 +2236,32 @@
    loadShortcut();
   },
  });
+ /* 起動したあと、デスクトップに起動アイコンが無ければ作るか聞く（§9.559、利用者の指示「アプリのショートカットが
+    デスクトップになければ、許可を求めつくられる」）。聞くかどうかは**サーバーの1箇所**（`desktop_shortcut.offer()`）が
+    答える——窓の中・作れる端末・アイコンが無い・この PC で断っていない。断ったら次からは聞かない（「表示」から作れる）。 */
+ async function offerShortcut(){
+  if(!WL.base.inDesktopShell())return;
+  let info;
+  try{info=await api('/api/app/shortcut',{quiet:true})}
+  catch(e){WL.quiet.note('起動アイコンの状態を読めない（聞かずに続ける）',e);return}
+  if(!info||!info.offer)return;
+  const ok=await confirmModal({title:'デスクトップに起動アイコンを作りますか？',
+   message:`次からは、デスクトップの「${info.name||info.defaultName}」から開けます（この PC へ写したアプリが開きます。共有の置き場を通しません）。\n`
+     +`作る場所: ${info.link}\n\n作らない場合も、あとでヘッダーの「表示」から作れます。`,
+   confirmLabel:'作る',cancelLabel:'作らない'});
+  try{
+   if(!ok){
+    await api('/api/app/shortcut/decline',{method:'POST'});
+    showToast('起動アイコンは作りませんでした','作るときはヘッダーの「表示」から作れます',5000);
+    return;
+   }
+   const r=await api('/api/app/shortcut',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({name:'',icon:'',overwrite:false})});
+   shortcutState.info=r;shortcutState.loaded=true;
+   showToast('デスクトップに起動アイコンを作りました',r.link||'',5000);
+  }catch(e){showToast('起動アイコンを作れませんでした',String(e&&e.message||e),6000)}
+ }
+ WL.onReady(offerShortcut);
  /* 共通設定（この端末）に残すのは**いまの状態と行き先だけ**（§9.445。作法は
     §9.433「読み込みの見せ方」と同じ——設定の持ち主は1箇所で、面が2つ）。 */
  function pcShortcutHtml(){
@@ -2435,14 +2461,25 @@
    ])}
 
   </div>
-  <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">共通設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
+  <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">共通設定を保存</button><span class="mm-form-hint">保存すると、右上の 👤 のIDを更新者として記録します。</span></div>`;
+ }
+ function syncPcSaveBar(form,panel){
+  const bar=form.querySelector('.mm-set-sticky');
+  if(bar)bar.hidden=!(panel&&panel.querySelector('[data-pc-field]'));
+ }
+ function onPcTab(ev){syncPcSaveBar(ev.currentTarget,ev.detail&&ev.detail.panel)}
+ /* 保存の帯は**保存する欄がある段だけ**に出す（§9.556 B9）。欄の無い段で「共通設定を保存」を
+    押せると、何が保存されるのか推し量らせる（押しても何も変わらない）。 */
+ function wirePcSaveBar(form){
+  form.addEventListener('mm-tab',onPcTab);
+  syncPcSaveBar(form,[...form.querySelectorAll('.mm-tabpanel')].find(p=>!p.hidden));
  }
  /* 共通設定の配線（保存・段・図から章へ・直す場所・「表示」の行き先・起動アイコン）。 */
  function wirePathConfigForm(form){
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
   /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
      キーボード操作（←→）も見出しの一言もそのまま効く。 */
-  bindMaintTabs(form);
+  bindMaintTabs(form);wirePcSaveBar(form);
   /* 図から章へ飛ぶのは**段を切り替えること**（入口を2本作らない）。
      段になったので、スクロールではなく表示の切り替えで連れて行く。 */
   /* **委譲で受ける**（§9.265と同じ理由）——置き場の行は後から描かれるので、
@@ -2540,7 +2577,7 @@
   form.innerHTML=pcPageHtml({SEC_TERMINAL:pcSecTerminal(K,v),SEC_READ:pcSecRead(K),
    SEC_SCHEDULE:pcSecSchedule(K,v),SEC_RNE:pcSecRne(K),
    /* アプリの更新（§9.555）。中身と配線は`master-update.js`（WL.appUpdate）——この段は器を貸すだけ。 */
-   SEC_UPDATE:K.group('update','アプリの更新','各PCの次の起動で反映','is-restart',WL.appUpdate.sectionHtml())});
+   SEC_UPDATE:K.group('update','アプリの更新','各PCの次の起動で反映','is-restart',WL.appUpdate.sectionHtml(v))});
   wirePathConfigForm(form);
   WL.appUpdate.wire(form);
   WL.appUpdate.refresh();

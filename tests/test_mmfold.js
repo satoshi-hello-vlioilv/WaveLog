@@ -8,8 +8,8 @@
     2. **状態は色だけで伝えない**（§CLAUDE 3）——`aria-expanded`と
        「畳んでいます」の文字が出る
     3. **この端末に覚える**——画面を開き直しても畳んだまま
-    4. **絞り込み中は畳まない**（§9.241 ①）——畳んだ群の中に当たりがあると
-       件数だけ出て行が1つも出ない。検索中は行が出て、「すべて畳む」は押せない
+    4. 【§9.556で撤回】絞り込み中は畳まない——マスタ管理の絞り込みそのものを外した
+       （利用者の指示「最上部の絞り込みの検索バーもあまり意味がないので基本的に削除」）
     5. すべて開く／すべて畳む が効く
     6. **保存した行の群は開く**——畳んだ設備へ足したのに一覧へ出ないのは
        「消えた」と読まれる
@@ -123,22 +123,6 @@ run('test_mmfold: マスタ一覧の「束ねた見出しの開閉」(§9.241 �
   const gA2=s2.群.find(g=>g.名===EQ);
   rec('開き直しても畳んだまま（この端末に覚える）',
       !!gA2&&!gA2.開&&!s2.行文.includes(TAG+'A'),JSON.stringify(gA2));
-
-  /* ---- 3) 絞り込み中は畳まない ---- */
-  await page.fill('#masterMaintSearch',TAG+'A1');
-  await page.evaluate(()=>document.querySelector('#masterMaintSearch').dispatchEvent(new Event('input')));
-  await settle();
-  const s3=await snap();
-  rec('絞り込み中は畳んだ群の行も出る（探しているのに出ない、を作らない）',
-      s3.行文.includes(TAG+'A1')&&s3.群.every(g=>g.開),JSON.stringify({行:s3.行,群:s3.群}));
-  rec('絞り込み中は「すべて畳む」を押せない（理由つき）',
-      !!s3.帯&&s3.帯.すべて畳む押せる===false,JSON.stringify(s3.帯));
-  await page.fill('#masterMaintSearch','');
-  await page.evaluate(()=>document.querySelector('#masterMaintSearch').dispatchEvent(new Event('input')));
-  await settle();
-  const s4=await snap();
-  rec('絞り込みを消すと畳みが戻る（検索で覚えを書き換えない）',
-      !s4.群.find(g=>g.名===EQ).開,JSON.stringify(s4.群));
 
   /* ---- 4) すべて開く／すべて畳む ---- */
   await page.click('#masterMaintFold [data-mm-fold="open"]');await settle();

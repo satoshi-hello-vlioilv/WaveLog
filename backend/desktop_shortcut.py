@@ -37,7 +37,7 @@ from pathlib import Path
 
 from . import app_icon
 from . import desktop_shell
-from .paths import APP_ROOT, PROGRAM_DIR
+from .paths import APP_ROOT, PROGRAM_DIR, runtime_dir
 from .quiet import quiet
 
 # ショートカットの既定の名前。**画面で名乗っている名前**にそろえる
@@ -295,6 +295,7 @@ def status(name=None):
   out['mine']=_is_ours_target(out['linkTarget'])
   # 前の行き先（Start.vbs）のままか。窓の中で起動すると`migrate()`が付け替える（画面は字で言うだけ）。
   out['legacy']=_same_path(out['linkTarget'],legacy_target())
+ out['offer']=offer(out)
  return out
 
 
@@ -359,6 +360,43 @@ def create(name=None,icon=None,uid=None,overwrite=False):
  out['iconUsed']=spec
  out['iconSource']=source
  return out
+
+
+# 「作りますか」を断った控え（この PC・この人）。Python だけが読み書きするので`runtime_dir()`に置く。
+DECLINED_FILE='shortcut_declined.json'
+
+
+def declined():
+ """この PC で「作りますか」を断ったか（断った日時。断っていなければ空）。"""
+ try:
+  f=runtime_dir()/DECLINED_FILE
+  return str(json.loads(f.read_text(encoding='utf-8')).get('at') or '') if f.is_file() else ''
+ except Exception as _e:
+  quiet('断った控えを読めない（断っていないものとして聞く）',_e)
+  return ''
+
+
+def decline():
+ """「作らない」を控える（§9.559）。次からは聞かない——作るときはヘッダーの「表示」から。"""
+ try:
+  f=runtime_dir()/DECLINED_FILE
+  f.parent.mkdir(parents=True,exist_ok=True)
+  f.write_text(json.dumps({'at':time.strftime('%Y-%m-%d %H:%M')},ensure_ascii=False),encoding='utf-8')
+  return True
+ except Exception as _e:
+  quiet('断った控えを書けない（次の起動でもう一度聞く）',_e)
+  return False
+
+
+def offer(st=None):
+ """起動したあと、画面が「デスクトップに起動アイコンを作りますか」と聞くか（§9.559、利用者の指示「アプリの
+    ショートカットがデスクトップになければ、許可を求めつくられる」）。**答えるのはここだけ**——
+    窓の中で動いている・作れる端末・残した名前（無ければ既定の名前）のアイコンがデスクトップに無い・この PC で断っていない、
+    のすべてが真のとき。同じ名前の別の物が在るときは聞かない（上書きの確認は「表示」の側が持つ）。"""
+ st=st or status()
+ # 自己診断の窓（CI・`WAVELOG_SELFTEST`）は人が居ないので聞かない（窓が開いたまま答えを待たせない）
+ return bool(st.get('supported') and desktop_shell.running()['kind']=='desktop' and not os.environ.get('WAVELOG_SELFTEST')
+             and st.get('link') and not st.get('exists') and not declined())
 
 
 def migrate():

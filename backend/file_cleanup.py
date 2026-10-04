@@ -398,7 +398,7 @@ CATEGORIES = [
   'auto': False, 'scan': _scan_work},
  {'key': 'runtime', 'label': '起動の部品（書きかけ）', 'icon': '起',
   'note': '書いている途中で残ったファイル（.tmp）です。',
-  'why': '**自動では消しません。** 押したときと、update.bat で更新したときだけ消します（起動前確認の刻印・ショートカットの絵は残します）。',
+  'why': '**自動では消しません。** 押したときだけ消します（起動前確認の刻印・ショートカットの絵は残します）。',
   'auto': False, 'scan': _scan_runtime},
  {'key': 'pycache', 'label': 'Pythonのバイトコード', 'icon': '速',
   'note': '起動を速くするための中間ファイルです（手元の置き場と、ソースの隣の `__pycache__`）。消しても動きますが、次の起動が一度だけ遅くなります。',
@@ -500,23 +500,14 @@ def run(keys=None, dry_run=False, auto_only=False, log=True):
 def failed_note(got):
  """消せなかった物の1文（無ければ空）。**次に何が起きるかは種別の決まりどおりに言う**——定期の掃除で
  消すのは`auto`の種別だけなので、作業フォルダ・起動の部品・バイトコードを含むのに「次の掃除で消えます」とは
- 言わない（§9.497の追補3）。update.bat の画面と掃除の画面が同じ1文を使う。"""
+ 言わない（§9.497の追補3）。"""
  failed = int((got or {}).get('failed') or 0)
  if not failed:
   return ''
  auto = {c['key'] for c in CATEGORIES if c['auto']}
  manual = any(r.get('failed') and r.get('key') not in auto for r in (got or {}).get('results') or [])
- when = ('次の update.bat か、不要ファイルの掃除の「選んだものを掃除する」で消えます' if manual else '次の掃除で消えます')
+ when = ('不要ファイルの掃除の「選んだものを掃除する」で消えます' if manual else '次の掃除で消えます')
  return '%d件は使用中のため消せませんでした（%s）' % (failed, when)
-
-
-def run_for_update():
- """update.bat で更新したときの片付け（§9.497、利用者の指示「古いデータ(一時ファイルたち)を
- アップデートで一旦消して、作り直した方が良い」）。**全種別**——自動では消さないもの
- （バイトコード・使われていない作業フォルダ・起動の部品）も含める。どれも update.bat が
- 直後に作り直すか、使うときに作り直される。残す物の決まり（`keep`）は種別ごとのまま。
- **ここではログへ書かない**——update.bat の画面は結果だけ（§9.431）で、記録は呼ぶ側の`say`が持つ。"""
- return run(log=False)
 
 
 # ------------------------------------------------------------------

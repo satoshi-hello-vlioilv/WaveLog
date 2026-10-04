@@ -5,7 +5,7 @@
    「同じパネルが開く」「既定の見え方が変わっていない」「触った結果が
    一覧に出る」「保存して開き直しても残る」の4点。
 
-   **既定の15列と並びが今までと同じであること**が一番大事。候補は44列
+   **既定の14列と並びが今までと同じであること**が一番大事。候補は44列
    あるので、`initialHidden`が効いていないと保存した瞬間に見覚えの無い
    29列が並ぶ（§9.120で内容欄が踏んだのと同じ罠）。
 
@@ -22,11 +22,11 @@ const {seedRecord,clearRecords}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const TARGET='records:list';
-/* 今まで出ていた15列。**この並びを変えないこと**（設定していない端末の
-   見え方を変えないため）。 */
+/* 今まで出ていた列。**この並びを変えないこと**（設定していない端末の見え方を変えないため）。
+   「操作」の列は§9.558で外した（選んだ1件の操作は一覧の下の帯・利用者の選んだ案C）。 */
 const DEFAULT_HEAD=['状態','ロット番号','検査番号','製造材質','製造板厚','用途名','コース',
                     'オペレータ','検査員','作業人数','分割','作業開始時刻','更新日時',
-                    '実作業時間','操作'];
+                    '実作業時間'];
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
  try{await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
@@ -54,11 +54,11 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
 
   /* ---- 1) 既定の見え方が変わっていない ---- */
   const h0=await head(page);
-  rec('既定は今までの15列で並びも同じ',JSON.stringify(h0)===JSON.stringify(DEFAULT_HEAD),
+  rec('既定は今までの14列で並びも同じ（操作の列は§9.558で外した）',JSON.stringify(h0)===JSON.stringify(DEFAULT_HEAD),
       h0.join('／'));
   const cols0=await page.evaluate(()=>getComputedStyle(document.getElementById('recordList'))
     .getPropertyValue('--rec-cols').trim());
-  rec('列幅はJSが--rec-colsへ入れている',cols0.split(')').length-1>=15,
+  rec('列幅はJSが--rec-colsへ入れている',cols0.split(')').length-1>=14,
       cols0.slice(0,60)+'…');
 
   /* ---- 2) 「表示列」ボタンで**同じパネル**が開く ---- */
@@ -107,8 +107,8 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
    fx:!document.getElementById('lcAddCol')?.hidden,
   }));
   rec('仕掛一覧と同じパネル（#listColumnPanel）が開く',panel.id==='listColumnPanel',panel.title);
-  rec('候補が既定の15列より多い',panel.rows>DEFAULT_HEAD.length,panel.rows+'列');
-  rec('一度も保存していないうちは既定の15列だけがチェック済み',
+  rec('候補が既定の14列より多い',panel.rows>DEFAULT_HEAD.length,panel.rows+'列');
+  rec('一度も保存していないうちは既定の14列だけがチェック済み',
       panel.checked===DEFAULT_HEAD.length,panel.checked+' / '+panel.rows);
   rec('分類は「元データ」と「計算・操作」の2つ（結合は無いので出さない）',
       panel.origins.length===3&&panel.origins.join('').includes('元データ')
@@ -119,8 +119,8 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
   rec('「表示中の列」「非表示中の列」の札が別の軸として並ぶ',
       panel.states.length===2&&panel.states.join('').includes('表示中')
       &&panel.states.join('').includes('非表示中'),panel.states.join(' / '));
-  rec('札は件数を文字で出す（表示中＝既定の15列）',
-      /表示中\s*15$/.test(panel.states[0]||'')
+  rec('札は件数を文字で出す（表示中＝既定の14列）',
+      /表示中\s*14$/.test(panel.states[0]||'')
       &&/非表示中\s*\d+$/.test(panel.states[1]||''),panel.states.join(' / '));
   rec('計算式で列を作れる（仕掛一覧と同じ機能）',panel.fx===true);
 
@@ -167,7 +167,7 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
   await openList(page);
   const h4=await head(page);
   rec('保存した設定は再読込後も残る',h4.includes('使用設備'),h4.join('／'));
-  rec('保存しても既定の15列は消えていない',
+  rec('保存しても既定の14列は消えていない',
       DEFAULT_HEAD.every(x=>h4.includes(x)),
       DEFAULT_HEAD.filter(x=>!h4.includes(x)).join('／')||'欠けなし');
 
@@ -212,7 +212,7 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
    visible:WL.recordColumns.visible().length}));
   rec('取っ手を引くと幅が変わって保存される',wres.w>w0+40&&Number(wres.saved)>0,
       JSON.stringify({前:Math.round(w0),後:wres.w,保存:wres.saved}));
-  rec('幅を引いても列が増えない（既定の15列のまま）',wres.cols===DEFAULT_HEAD.length,
+  rec('幅を引いても列が増えない（既定の14列のまま）',wres.cols===DEFAULT_HEAD.length,
       `${wres.cols}列 / 見えている${wres.visible}`);
   /* 右クリックのメニューは仕掛一覧と**同じもの**。 */
   await page.click('.record-list-head [data-col="検査番号"]',{button:'right'});
@@ -290,11 +290,9 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const keep=list.scrollLeft;
    const heads=[...document.querySelectorAll('.record-list-head [data-col]')];
-   /* 画面に見えている見出しのうち、右端に近いものを掴む。
-      **操作列は選ばない**（§9.222 ①）——ボタンが切れない下限を持たせて
-      あるので、細くならないのが正しい（下限そのものは別の網で見る）。 */
+   /* 画面に見えている見出しのうち、右端に近いものを掴む（操作列は§9.558で無くなった）。 */
    const box=list.getBoundingClientRect();
-   const cand=heads.filter(h=>h.dataset.col!=='__actions__');
+   const cand=heads;
    const target=cand.filter(h=>{const r=h.getBoundingClientRect();
      return r.left>=box.left&&r.right<=box.right+1&&r.width>90}).pop()||cand[cand.length-1];
    const grip=target.querySelector('.col-resize');
@@ -316,8 +314,6 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
                 位置:list.scrollLeft,余白:WL.columnResize.spare(list)};
    return{列名:target.dataset.col,before,during,after};
   });
-  rec('掴んだのは操作列以外の列（操作列には下限がある）',
-      drag.列名&&drag.列名!=='__actions__',String(drag.列名));
   rec('右端が見えていても掴んだ列そのものが細くなる（§9.208 ⑦）',
       !drag.取っ手なし&&drag.during.列<=drag.before.列-40,
       JSON.stringify({列:drag.列名,前:drag.before&&drag.before.列,中:drag.during&&drag.during.列}));
@@ -339,43 +335,40 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
   rec('左へ戻ると便宜上の余白は消える',spare.余白===0,JSON.stringify(spare));
 
   /* ==================================================================
-     §9.222 ① 操作列は「ボタンが切れない幅」より下へは行かない
+     §9.558 選んだ1件の操作は下の帯（案C・利用者の選択）
      ------------------------------------------------------------------
-     セルは切れても`title`から読めるが、**切れたボタンは押す前に何のボタンか
-     分からない**（実機で「続きか…」「帳…」と3つとも省略記号になっていた）。
-     器に`em`の下限を持たせてあるので、手で狭めても3つのボタンは切れない。
-     **狭めたあとに実際に切れていないかを見ること**——幅の数字だけを見ると、
-     下限が効いていなくても「変わらなかった」で通る。
+     行の中の操作列（34×19px・12px のボタン・右端で切れていた）をやめ、行を押して選ぶ→下の帯に
+     選んだ1件の名前と「再開／開く・帳票・⋯ その他」を標準の大きさで出す。一覧は器の下端まで伸び、
+     横のスクロールバーは一覧の一番下（帯の真上）に出る（「測定実績」と同じ）。
      ================================================================== */
-  const floorTest=await page.evaluate(async()=>{
-   const head=document.querySelector('.record-list-head [data-col="__actions__"]');
-   if(!head)return{見出しなし:true};
-   const grip=head.querySelector('.col-resize');
-   if(!grip)return{取っ手なし:true};
-   const before=Math.round(head.getBoundingClientRect().width);
-   const gr=grip.getBoundingClientRect();
-   const x=gr.left+gr.width/2,y=gr.top+gr.height/2;
-   grip.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:x,clientY:y}));
-   document.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:x-140,clientY:y}));
-   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-   document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,clientX:x-140,clientY:y}));
-   await new Promise(r=>setTimeout(r,500));
-   /* **掴んだ見出しは保存後の描き直しで入れ替わる**ので、測るときは
-      **キーで引き直す**（掴んだときの参照は切り離されていて幅0を返す）。 */
-   const now=document.querySelector('.record-list-head [data-col="__actions__"]');
-   const cell=document.querySelector('.record-list-actions');
-   const btns=cell?[...cell.querySelectorAll('button')]:[];
-   return{before,after:now?Math.round(now.getBoundingClientRect().width):0,
-     ボタン幅の合計:Math.round(btns.reduce((a,b)=>a+b.getBoundingClientRect().width,0)),
-     切れたボタン:cell?btns.filter(b=>b.scrollWidth>b.clientWidth+1)
-       .map(b=>b.textContent.trim()):['セルなし']};
+  const bar0=await page.evaluate(()=>({操作列:document.querySelectorAll('[data-col="__actions__"],.record-list-actions').length,
+   帯:(document.getElementById('recordActionBar')||{}).innerText||'',
+   選択:document.querySelectorAll('.record-list-row.is-selected').length}));
+  rec('行の中の操作列は無い（§9.558）',bar0.操作列===0,JSON.stringify(bar0));
+  await page.evaluate(()=>{const r=document.querySelectorAll('.record-list-row')[0];if(r)r.querySelector('[data-col]:not([data-col="ロット番号"])').click()});
+  await W.until(page,()=>!!document.querySelector('#recordActionBar .resume'),null,{ms:3000,what:'帯に操作が出る'});
+  const bar1=await page.evaluate(()=>{
+   const L=document.getElementById('recordList'),bar=document.getElementById('recordActionBar');
+   const sel=document.querySelector('.record-list-row.is-selected');
+   const lot=sel&&sel.querySelector('[data-col="ロット番号"]')?.textContent.trim();
+   const btn=[...bar.querySelectorAll('button')].map(b=>{const r=b.getBoundingClientRect();return {t:b.textContent.trim(),h:Math.round(r.height),fs:parseFloat(getComputedStyle(b).fontSize)}});
+   return {選択:document.querySelectorAll('.record-list-row.is-selected').length,
+    名前:(bar.querySelector('.rec-actbar-what b')||{}).textContent,lot,btn,
+    一覧と帯の隙間:Math.round(bar.getBoundingClientRect().top-L.getBoundingClientRect().bottom),
+    行の高さ:Math.round(sel.getBoundingClientRect().height)};
   });
-  rec('操作列を狭めてもボタンが切れない（下限が効く）',
-      !floorTest.見出しなし&&!floorTest.取っ手なし
-      &&(floorTest.切れたボタン||[]).length===0
-      /* **「何も起きなかった」で通らないように**、ボタンが入る幅を
-         保っていることまで見る。 */
-      &&floorTest.after>=floorTest.ボタン幅の合計,JSON.stringify(floorTest));
+  rec('行を押すとその1件だけを選び、帯が同じロット番号を名乗る',bar1.選択===1&&!!bar1.lot&&bar1.名前===bar1.lot,JSON.stringify(bar1));
+  rec('帯のボタンは標準の大きさ（行の中の小さなボタンではない）',
+      bar1.btn.length===3&&bar1.btn.every(b=>b.h>=30&&b.fs>=13),JSON.stringify(bar1.btn));
+  rec('一覧は帯の真上まで伸びる（スクロールバーは一覧の一番下）',bar1.一覧と帯の隙間===0,String(bar1.一覧と帯の隙間));
+  /* ↓は2行要る（この網の材料は1件）。1件足して開き直し、押した行から↓で選び直す。 */
+  await seedRecord();await openList(page);
+  /* 本物のマウスで押す（焦点も行へ移る）。ロット番号は LotDsp を開くリンクなので避ける。列の並びはこの網の上の節で変わっている */
+  await page.locator('.record-list-row').first().locator('[data-col]:not([data-col="ロット番号"])').first().click();
+  await page.keyboard.press('ArrowDown');
+  const bar2=await page.evaluate(()=>{const s=[...document.querySelectorAll('.record-list-row')];
+   return {番号:s.findIndex(r=>r.classList.contains('is-selected')),件数:document.querySelectorAll('.record-list-row.is-selected').length}});
+  rec('↓で次の行を選び直せる',bar2.番号===1&&bar2.件数===1,JSON.stringify(bar2));
 
   await page.setViewportSize({width:1700,height:1000});
   await settle(page);
@@ -383,7 +376,7 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
   /* ==================================================================
      §9.216 ① 右クリックの「この列を隠す」が**最初の保存**でも既定を守る
      ------------------------------------------------------------------
-     データ一覧は「一度も保存していないうちは既定の15列」（§9.162）なので、
+     データ一覧は「一度も保存していないうちは既定の14列」（§9.162）なので、
      保存値の`hidden`は**空**——29列は既定として畳んでいるだけで、隠す指定は
      持っていない。右クリックのメニューは`hidden`を**上書きで渡す**ので、
      口が「いま隠している列」を答えないと、1回押しただけで**畳んでいた29列が
@@ -405,7 +398,7 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
   const seed=await page.evaluate(()=>({
    saved:(WL.columnLayout.saved('records:list').hidden||[]).length,
    order:(WL.columnLayout.saved('records:list').order||[]).length}));
-  rec('前提: まだ何も保存していない（既定の15列・保存値は空）',
+  rec('前提: まだ何も保存していない（既定の14列・保存値は空）',
       h5.length===DEFAULT_HEAD.length&&seed.saved===0&&seed.order===0,
       `${h5.length}列 / ${JSON.stringify(seed)}`);
   await page.click('.record-list-head [data-col="検査番号"]',{button:'right'});

@@ -573,8 +573,8 @@ RULES = [
     # あちらの網（test_setpage）と「表示」の網（test_uisize）の両方を回す。
     ('backend/desktop_shortcut.py', g('test_shortcut', 'test_setpage', 'test_uisize')),
     ('backend/app_icon.py', g('test_shortcut')),
-    ('backend/app_update.py', g('test_appupdate', 'test_setpage')),
-    ('static/js/master/master-update.js', g('test_appupdate', 'test_setpage')),
+    ('backend/app_update.py', g('test_appupdate', 'test_appupdateui', 'test_setpage')),
+    ('static/js/master/master-update.js', g('test_appupdate', 'test_appupdateui', 'test_setpage')),
     # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
     ('backend/watchdog.py', g('test_boot', 'test_presence',
                               'test_appquit', 'test_scowner', 'test_sidecar')),
@@ -592,16 +592,12 @@ RULES = [
     # --- 起動まわりの直接実行スクリプト --------------------------------
     # `program/`（§9.404）。受け皿の`program/`は**この下**に置く——`hit`は
     # 当たった規則を全部足すので、`program/app.py`は[ALL]のまま残る。
-    ('program/setup_app.py', g('起動')),
-    ('program/update.bat', g('起動')),
     # デスクトップ版の窓口（§9.544）。枠・答えの一致・閉じたときの片付け
     ('program/sidecar.py', g('起動')),
     ('program/requirements.txt', g('起動', 'test_noaccess')),
     # デスクトップ版の窓（§9.544・Rust）。窓口の枠と起動画面の色を見る網を回す
     # （Rust そのものは cargo test と CI の自己診断・.github/workflows/desktop.yml）。
     ('desktop/', g('test_sidecar', 'test_boot')),
-    # 毎日の入口。exe を手元へ写して起こすだけ（§9.546・§9.548）
-    ('Start.vbs', g('test_faststart', 'test_shortcut')),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

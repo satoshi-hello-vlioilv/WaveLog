@@ -185,6 +185,9 @@ PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedul
                        #   shortcut_name … デスクトップに出る字(空なら既定の名前)
                        #   shortcut_icon … 指定した絵のパス(空なら既定の絵)
                        'shortcut_name','shortcut_icon',
+                       # アプリの更新の置き場(§9.557)。共有の設定（全PCが同じ値を見る）。
+                       # Python は呼ぶたびに読み直し、窓は控え(config/update.json)を次の起動から読む。
+                       'update_dir',
                        # この端末の呼び名(§9.208 ⑧)。空なら OS から解決する。
                        # 権限マスタとの照合・監査列・編集セッションの持ち主表示が
                        # すべてこの1つの答えを見るので、**現場で名乗り直せる**

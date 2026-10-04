@@ -20,9 +20,12 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 /// 置き場の既定（利用者の指定・`backend/app_update.py` の `DEFAULT_DIR` と同じ字）。
-pub const DEFAULT_DIR: &str = r"\\nlmsrvngy03\工場内共有\検査データ\Records\アプリメンテナンス\WaveLog";
-/// `config/local.json` で置き場を変える鍵（Python と同じ）。
+pub const DEFAULT_DIR: &str = r"\\nlmsrvngy03\工場内共有\検査データ\Apps\WaveLog";
+/// 置き場を変える鍵（Python と同じ）。`config/local.json`（この PC だけ）と `config/update.json`（共有の設定の控え）が持つ。
 pub const CONFIG_KEY: &str = "update_dir";
+/// 共有の設定（パス設定マスタの `update_dir`・画面で変える）の控え。窓は Python を起こす前に置き場を知る必要があり、
+/// マスタ（SQLite）は読まないので、Python が `config/update.json` へ写しておく（`app_update.remember()`・§9.557）。
+pub const MIRROR: &str = "update.json";
 /// 共有に届くのを待つ長さ。届かない UNC は OS が数十秒待たせることがある（起動を待たせない）。
 pub const REACH: Duration = Duration::from_secs(3);
 /// 手元の作業場所（`<アプリ>\.update`）。
@@ -41,15 +44,22 @@ pub enum Outcome {
     Failed(String),
 }
 
-/// 置き場。`config/local.json` の `update_dir`（`%VAR%` を展開）→ 既定。
+/// 置き場。`config/local.json` の `update_dir`（この PC だけの上書き）→ `config/update.json`（共有の設定の控え）→ 既定。
+/// 順は Python の `app_update.update_dir()` と同じ。`%VAR%` は展開する。
 pub fn update_dir(app_root: &Path) -> PathBuf {
-    let given = std::fs::read(app_root.join("config").join("local.json"))
+    let conf = app_root.join("config");
+    let given = ["local.json", MIRROR].iter().map(|f| config_value(&conf.join(f))).find(|s| !s.is_empty()).unwrap_or_default();
+    PathBuf::from(if given.is_empty() { DEFAULT_DIR.to_string() } else { given })
+}
+
+/// JSON ファイルの `update_dir`（BOM は外す・無い／読めない／空なら空文字）。
+fn config_value(path: &Path) -> String {
+    std::fs::read(path)
         .ok()
         .and_then(|b| serde_json::from_slice::<Value>(b.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&b)).ok())
         .and_then(|v| v[CONFIG_KEY].as_str().map(str::to_owned))
         .map(|s| expand_vars(s.trim()))
-        .unwrap_or_default();
-    PathBuf::from(if given.is_empty() { DEFAULT_DIR.to_string() } else { given })
+        .unwrap_or_default()
 }
 
 /// `%NAME%` を環境変数で展開する（無ければそのまま残す・Python の expandvars と同じ扱い）。
@@ -251,7 +261,7 @@ pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&s
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::fs;
 
@@ -262,8 +272,8 @@ mod tests {
         d
     }
 
-    /// 版のフォルダと目録を作る（Python の build_manifest と同じ形）。
-    fn version(share: &Path, v: &str, body: &str) {
+    /// 版のフォルダと目録を作る（Python の `_manifest` と同じ形）。
+    pub(crate) fn version(share: &Path, v: &str, body: &str) {
         let root = share.join("versions").join(v);
         let files = [
             ("backend/changelog_data.py", format!("APP_VERSION='{v}'\n")),
@@ -301,9 +311,15 @@ mod tests {
         let t = tmp("read");
         app(&t, "2.441.0");
         assert_eq!(local_version(&t).as_deref(), Some("2.441.0"));
-        assert_eq!(update_dir(&t), PathBuf::from(DEFAULT_DIR), "local.json が無ければ既定（利用者の指定した共有）");
+        assert_eq!(update_dir(&t), PathBuf::from(DEFAULT_DIR), "どちらも無ければ既定（利用者の指定した共有）");
+        fs::create_dir_all(t.join("config")).unwrap();
+        fs::write(t.join("config").join(MIRROR), r#"{"update_dir":"/x/shared"}"#).unwrap();
+        assert_eq!(update_dir(&t), PathBuf::from("/x/shared"), "共有の設定の控え（Python が写す）");
         config(&t, Path::new("/x/share"));
-        assert_eq!(update_dir(&t), PathBuf::from("/x/share"));
+        assert_eq!(update_dir(&t), PathBuf::from("/x/share"), "この PC の local.json が控えより先");
+        fs::write(t.join("config").join(MIRROR), r#"{"update_dir":""}"#).unwrap();
+        fs::remove_file(t.join("config").join("local.json")).unwrap();
+        assert_eq!(update_dir(&t), PathBuf::from(DEFAULT_DIR), "控えが空なら既定");
         assert!(safe_version("2.442.0") && !safe_version("../x") && !safe_version(""));
         let _ = fs::remove_dir_all(&t);
     }

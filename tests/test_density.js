@@ -78,7 +78,7 @@ run('test_density: 一覧の密度と、右端に隠れがちな操作列、', a
   const prog=await page.evaluate(()=>{
    const box=document.getElementById('rneProgress');
    if(!box)return null;
-   const bar=document.getElementById('rneProgressBar');
+   const bar=box.querySelector('.wl-progress-bar');
    return {hidden:box.hidden,role:box.getAttribute('role'),
            hasBar:!!bar&&bar.getAttribute('role')==='progressbar',
            hasFill:!!bar?.querySelector('i'),
@@ -87,16 +87,16 @@ run('test_density: 一覧の密度と、右端に隠れがちな操作列、', a
   rec('RNE抽出の進捗バーが用意されている',
       !!prog&&prog.hasBar&&prog.hasFill&&prog.hasJobs,JSON.stringify(prog));
   rec('進捗バーは普段は出ていない',!!prog&&prog.hidden===true);
-  /* 割合はカスタムプロパティで渡す(見た目の指定はCSSに残す)。 */
+  /* 割合は共通の部品`WL.progress.paint()`で渡す（§9.556・見た目の指定はCSSに残す）。 */
   const bar=await page.evaluate(()=>{
    const box=document.getElementById('rneProgress');
-   const fill=document.querySelector('#rneProgressBar i');
+   const fill=box&&box.querySelector('.wl-progress-bar i');
    if(!fill||!box)return null;
    box.hidden=false;                       // 隠れたままでは寸法が測れない
-   fill.style.setProperty('--rne-pct','50%');
+   WL.progress.paint(box,{pct:50});
    const w=fill.getBoundingClientRect().width;
-   const track=document.getElementById('rneProgressBar').getBoundingClientRect().width;
-   fill.style.removeProperty('--rne-pct');
+   const track=box.querySelector('.wl-progress-bar').getBoundingClientRect().width;
+   WL.progress.paint(box,{pct:0});
    box.hidden=true;
    return {w:Math.round(w),track:Math.round(track)};
   });

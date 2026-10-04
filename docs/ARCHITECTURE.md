@@ -34,9 +34,9 @@
 
 ## ディレクトリ構成
 
-起動・停止に関わるファイル(`update.bat`/`setup_app.py`/`sidecar.py`/デスクトップ版の本体`WaveLog.exe`)と
-`app.py` は**`program/` へまとめる**(§9.404・§9.406・§9.548)。ルート直下に置くのは毎日の入口
-`Start.vbs` と、動かせない2つ(`.gitignore`/`eslint.config.mjs`)だけ。
+起動・停止に関わるファイル(`sidecar.py`/デスクトップ版の本体`WaveLog.exe`)と
+`app.py` は**`program/` へまとめる**(§9.404・§9.406・§9.548)。ルート直下に置くのは動かせない2つ
+(`.gitignore`/`eslint.config.mjs`)だけ(手で押す入口〈Start.vbs・update.bat〉は§9.559で外した)。
 importされるだけの起動部品（`backend/launcher/`）を含むそれ以外のバックエンド
 ロジックは `backend/` パッケージへ、ローカルDBファイルは `db/` フォルダへ
 まとめている(全体の一覧は `README.md` を参照)。
@@ -44,19 +44,17 @@ importされるだけの起動部品（`backend/launcher/`）を含むそれ以�
 ## 起動基盤
 
 利用者の起動は**デスクトップ版だけ**（§9.548、利用者の指示「一本化を進めて」）。
-Start.vbs → `program/WaveLog.exe`（手元へ写して起動）→ 窓が子として`program/sidecar.py`を起こし、
+起動アイコン → この PC の入口の exe（版ごとの写しへ渡す）→ 窓が子として`program/sidecar.py`を起こし、
 標準入出力で問い合わせる（ポートなし・§9.544〜§9.546）。ブラウザ版の起動の道（待機画面・二重起動の判定・
 タブが0件で終わる見張り・停止スクリプト）は§9.548で外した。HTTP の入口`program/app.py`は**開発と網**のため。
 
 | ファイル | 役割 |
 |---|---|
-| `Start.vbs` | 毎日の入口。`program/WaveLog.exe`を`%LOCALAPPDATA%\WaveLog\desktop\<大きさ-時刻>\`へ写して起動し、program の場所を渡す。起動できなければ理由と次の一手を出す。**直下に残す唯一の入口**(§9.406) |
+| 共有の置き場の`WaveLog.exe`（配る入口） | **新しい PC へ渡すアドレス**(§9.559)。「この版を配る」で置かれる。起こされたらこの PC の写しへ渡し、アプリが無ければ`%USERPROFILE%\WaveLog`へ配る版を写して起動する（`desktop/src/install.rs`）。共有のマスタの置き場は`install.json`から`config/local.json`へ写す |
 | `program/WaveLog.exe` | デスクトップ版の本体（`desktop/`から作る）。**main へは CI（`desktop.yml`の`publish`）が置く**。作った元の指紋は`program/WaveLog.build.json` |
 | `desktop/`（Rust・Tauri） | **デスクトップ版の窓**(§9.546)。窓・1つだけ起動・`/static/`の直配り・Python（`program/sidecar.py`）の監督と起こし直し・外のリンクは Edge。自前の仕組み`wavelog`（`config.DESKTOP_SCHEME`と同じ）。終わり方は Python の片付けの1箇所を通す。起動画面`desktop/splash`は`#appBoot`と同じ色。CI は`.github/workflows/desktop.yml`（Windows・本物の WebView2 の自己診断） |
 | `program/sidecar.py` | **デスクトップ版の窓口**(§9.544)。標準入出力の枠(JSON 1行＋生の本文)で問い合わせを受け、Flaskはそのまま WSGI で呼ぶ。標準出力は枠だけ(何より先に fd 1 を標準エラーへ)。刻印が食い違えば起動前の確認を通す。入力が閉じたら`watchdog._exit()`の同じ片付けを通って終わる |
-| `program/update.bat` | 起動前の確認(§9.225)。**アプリを新しくしたあとに1回**(導入時も1回)。`program/setup_app.py`を実行する。旧名`setup.bat`(§9.405) |
-| `program/setup_app.py` | `update.bat`の中身。確認の実処理は`backend/launcher/setup_check.py`にあり、窓口と共有する |
-| `backend/launcher/setup_check.py` | 起動前の確認一式(部品の導入・バイトコードの事前コンパイル・旧DB取り込み・外した物の片付け〈`RETIRED`〉)。**update.batと窓口が同じここを通る** |
+| `backend/launcher/setup_check.py` | 起動前の確認一式(部品の導入・バイトコードの事前コンパイル・旧DB取り込み・外した物の片付け〈`RETIRED`・`RETIRED_DESKTOP`〉)。窓口（`sidecar._prepare()`）が刻印が食い違ったときに通る |
 | `backend/launcher/ready.py` | 「この端末では確認が済んでいる」刻印(`%LOCALAPPDATA%\WaveLog\runtime\ready.json`)。**速さのための門であって正しさの門ではない**ので、食い違ったら止めずに確認し直す |
 | `backend/launcher/services.py` | 起動したあと裏で回す処理(共有DBの写し・共有スケジュールの見張り・書込役)の開始の1箇所。窓口と開発・網の入口が同じ`start()`を呼ぶ |
 | `backend/launcher/server.py` | **開発と網の HTTP の入口**（`python3 program/app.py`・127.0.0.1:5029）。利用者の起動の道ではない。止めるのは`/api/shutdown` |
@@ -72,8 +70,8 @@ Start.vbs → `program/WaveLog.exe`（手元へ写して起動）→ 窓が子�
 | `backend/desktop_shell.py` | いま動いている窓（exe）と配ってある exe（`program/WaveLog.build.json`）の答え。窓の版は exe を作ったコミットで、窓だけ古いかは`stale()`の1箇所（§9.552） |
 | `backend/desktop_shortcut.py`／`desktop/src/lnk.rs` | デスクトップの起動ショートカット。決めるのは Python、`.lnk`を作る・読むのは窓の副コマンド`WaveLog.exe --lnk`（Windows の部品を直に呼ぶ・§9.552） |
 
-`_pycache_bootstrap.py` は `program/setup_app.py`・`program/app.py`・`program/sidecar.py` の3つすべてで、
-`_approot`の**次に**importしている(直接実行され得るのはこの3本)。
+`_pycache_bootstrap.py` は `program/app.py`・`program/sidecar.py` の2つで、
+`_approot`の**次に**importしている(直接実行され得るのはこの2本。`setup_app.py`は§9.559で外した)。
 1箇所だけに書くと別経路で `.pyc` がアプリ側へ生成されてしまう。
 
 ### 起動は「サーバーが応答したら終わり」ではない（起動オーバーレイ）

@@ -139,7 +139,7 @@ def _log():
 
 
 def _prepare(writer, log):
-    """起動前の確認（§9.225）。刻印が合えば飛ばす。**update.bat と同じ`setup_check.run()`**
+    """起動前の確認（§9.225）。刻印が合えば飛ばす。確認は`setup_check.run()`の1箇所
     を通す（2つ持つと「片方では通るのに」が作れる）。していることは窓へ知らせる。"""
     from backend.launcher import ready, setup_check
     changes = ready.diff()

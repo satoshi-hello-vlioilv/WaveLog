@@ -1103,8 +1103,8 @@ function clPaintSub(){
  sub.classList.toggle('is-behind',!!n);
  sub.textContent=n
   ?`運用中の最新版は VER${n.latestVersion} です（この端末は VER${n.myVersion}）。`
-   +'新しい版のファイルが届いていれば、アプリを終了して update.bat を実行してから開き直してください。'
-   +'届いていなければ、配布の担当者へ伝えてください。'
+   +'窓を×で閉じて開き直すと、起動のときに配る版へそろいます。'
+   +'開き直しても古いままなら、配る版が決まっていないか、置き場に届いていません——配布の担当者へ伝えてください。'
   :clNow?`いま動いているのは VER${clNow} です。左の一覧から版へ跳べます。`
   :changelogLoaded?'左の一覧から版へ跳べます。':'読み込んでいます…';
 }
@@ -3189,12 +3189,7 @@ WL.rne=(()=>{
   const done=jobs.filter(j=>j&&j.running===false).length;
   const total=jobs.length||1;
   const pct=Math.min(100,Math.round(done/total*100));
-  const bar=el('rneProgressBar'),fill=bar?.querySelector('i');
-  if(fill)fill.style.setProperty('--rne-pct',pct+'%');
-  if(bar)bar.setAttribute('aria-valuenow',String(pct));
-  const p=el('rneProgressPct');if(p)p.textContent=pct+'%';
-  const t=el('rneProgressTitle');
-  if(t)t.textContent=note||`RNEファイルから作成しています（${done}/${jobs.length||'?'}）`;
+  WL.progress.paint(el('rneProgress'),{pct,title:note||`RNEファイルから作成しています（${done}/${jobs.length||'?'}）`});
   const box=el('rneProgressJobs');
   if(box)box.innerHTML=jobs.map(j=>{
    const cls=j.running?'is-running':(j.ok?'is-ok':'is-ng');

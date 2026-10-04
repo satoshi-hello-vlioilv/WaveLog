@@ -41,21 +41,26 @@ run('test_recdel: データ一覧の削除は「⋯」の中の2クリック（�
   await W.until(page,()=>document.querySelectorAll('.record-list-row').length>0,null,{ms:10000,what:'記録の一覧に行が出る'});
   await idle();
 
+  /* 操作は**選んだ1件の帯**（§9.558・利用者の選んだ案C）。行を押して選んでから帯の「⋯ その他」を押す。 */
+  const pick=async()=>{await page.evaluate(()=>{const r=document.querySelector('.record-list-row');if(r)r.click()});
+   await W.until(page,()=>!!document.querySelector('#recordActionBar .rec-more'),null,{ms:4000,what:'帯に操作が出る'})};
+  await pick();
   const shape=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.record-list-row')];
+   const bar=document.getElementById('recordActionBar');
    return {rows:rows.length,
-     danger:document.querySelectorAll('.record-list-actions .danger').length,
-     more:document.querySelectorAll('.record-list-actions .rec-more').length,
-     report:document.querySelectorAll('.record-list-actions .report').length};
+     danger:bar.querySelectorAll('.danger').length+document.querySelectorAll('.record-list-row .danger').length,
+     more:bar.querySelectorAll('.rec-more').length,
+     report:bar.querySelectorAll('.report').length};
   });
   rec('前提: データ一覧に行がある',shape.rows>0,JSON.stringify(shape));
-  rec('操作列にむき出しの削除ボタンが無い',shape.danger===0,JSON.stringify(shape));
-  rec('代わりに「⋯」が帳票の隣にある',shape.more===shape.report&&shape.more>0,JSON.stringify(shape));
+  rec('帯にも行にもむき出しの削除ボタンが無い',shape.danger===0,JSON.stringify(shape));
+  rec('代わりに「⋯ その他」が帳票の隣にある',shape.more===1&&shape.report===1,JSON.stringify(shape));
 
   /* ---- 2クリック目で初めて削除が出る ---- */
   const before=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
   rec('押す前は削除のメニューが出ていない',before===0,String(before));
-  await page.click('.record-list-row .rec-more');
+  await page.click('#recordActionBar .rec-more');
   await W.until(page,()=>document.querySelectorAll('.rec-row-menu').length>0,null,{ms:4000,what:'⋯のメニューが開く'});
   const menu=await page.evaluate(()=>{
    const m=document.querySelector('.rec-row-menu');
@@ -78,7 +83,8 @@ run('test_recdel: データ一覧の削除は「⋯」の中の2クリック（�
    if(!hit)return {none:true,行:rows.length,
      絞り込み:[...document.querySelectorAll('.status-filter-btn')].map(b=>b.dataset.statusFilter+':'+b.classList.contains('active'))};
    document.querySelector('.rec-row-menu')?.remove();
-   hit.querySelector('.rec-more')?.click();
+   hit.click();
+   document.querySelector('#recordActionBar .rec-more')?.click();
    const m=document.querySelector('.rec-row-menu');
    const it=m&&m.querySelector('.rrm-item');
    return {disabled:!!(it&&it.disabled),why:m?.querySelector('.rrm-why')?.textContent||''};
@@ -102,8 +108,9 @@ run('test_recdel: データ一覧の削除は「⋯」の中の2クリック（�
   await idle();
   await page.evaluate(()=>{document.querySelector('.rec-row-menu')?.remove()});
   const closeWays={};
+  await pick();
   const openMenu=async()=>{
-   await page.click('.record-list-row .rec-more');
+   await page.click('#recordActionBar .rec-more');
    /* 開いたあと、閉じる配線は次の巡回で張られる（WL.popMenu）。until の落ち着きがそれを待つ。 */
    await W.until(page,()=>document.querySelectorAll('.rec-row-menu').length>0,null,{ms:4000,what:'⋯のメニューが開く'});
    return page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
@@ -117,11 +124,11 @@ run('test_recdel: データ一覧の削除は「⋯」の中の2クリック（�
   await paint();
   closeWays.Escで閉じる=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
   await openMenu();
-  await page.click('.record-list-row .rec-more');     /* 同じボタンをもう一度 */
+  await page.click('#recordActionBar .rec-more');     /* 同じボタンをもう一度 */
   await paint();
   closeWays.自ボタンで閉じる=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
   closeWays.印が戻る=await page.evaluate(()=>
-    document.querySelector('.record-list-row .rec-more')?.getAttribute('aria-expanded'));
+    document.querySelector('#recordActionBar .rec-more')?.getAttribute('aria-expanded'));
   rec('⋯のメニューは外クリックで閉じる',
       closeWays.開いた===1&&closeWays.外クリックで閉じる===0,JSON.stringify(closeWays));
   rec('⋯のメニューはEscで閉じる',closeWays.Escで閉じる===0,JSON.stringify(closeWays));
@@ -129,16 +136,14 @@ run('test_recdel: データ一覧の削除は「⋯」の中の2クリック（�
       closeWays.自ボタンで閉じる===0,JSON.stringify(closeWays));
   rec('閉じたら⋯の印(aria-expanded)も戻る',closeWays.印が戻る==='false',String(closeWays.印が戻る));
 
-  /* ---- 操作ボタンが見切れない（§9.222 ①） ----
-     実機で「続きか…」「帳…」と3つとも省略記号になっていた。文字を短く
-     した（`再開`／`開く`／`帳票`）うえで、器に下限（`--rec-actions-min`）を
-     持たせてある。**3段の表示サイズすべてで見ること**——器がpx固定だと
-     特大でだけ切れる（それが実際の壊れ方だった）。 */
+  /* ---- 操作ボタンが見切れない（§9.222 ①→§9.558） ----
+     実機で「続きか…」「帳…」と3つとも省略記号になっていた。いまは選んだ1件の帯に標準の大きさで出す。
+     **3段の表示サイズすべてで見ること**——器がpx固定だと特大でだけ切れる（それが実際の壊れ方だった）。 */
   const cut=[];
   for(const size of ['sm','md','lg']){
    await page.evaluate(z=>{document.documentElement.dataset.uiSize=z},size);
    await paint();
-   const bad=await page.evaluate(()=>[...document.querySelectorAll('.record-list-actions button')]
+   const bad=await page.evaluate(()=>[...document.querySelectorAll('#recordActionBar button')]
      .filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim()+':'+b.clientWidth+'<'+b.scrollWidth));
    if(bad.length)cut.push(size+' '+bad.join('/'));
   }

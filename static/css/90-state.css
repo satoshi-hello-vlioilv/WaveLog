@@ -167,10 +167,8 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    閲覧用バックアップから描画するため「続きから再開」「削除」は意味を持たない
    (帳票表示のみ残す)。スケジュールモードも測定データへは閲覧モードと同じく
    書込不可のため同じ抑制を適用する。 */
-body.view-mode .record-list-actions .resume,
-body.view-mode .record-list-actions .danger,
-body.schedule-mode .record-list-actions .resume,
-body.schedule-mode .record-list-actions .danger{display:none}
+body.view-mode .rec-actbar .resume,
+body.schedule-mode .rec-actbar .resume{display:none}
 body.view-mode #recordSyncBar,
 body.schedule-mode #recordSyncBar{display:none}
 body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
@@ -334,7 +332,6 @@ body.nav-collapsed .layout>aside .brand h2,
 body.nav-collapsed .layout>aside .brand small,
 body.nav-collapsed .nav-group-label,
 body.nav-collapsed .nav-item span,
-body.nav-collapsed .equip-badge-text{display:none}
 body.nav-collapsed .nav-collapse-toggle{margin-left:0}
 /* アイコンを中央へ。件数バッジはアイコンの右上へ小さく重ねる。 */
 body.nav-collapsed .nav-item{justify-content:center;padding-left:0;padding-right:0;position:relative}
@@ -344,12 +341,6 @@ body.nav-collapsed .nav-item b{
  font-size:var(--fs-tiny);line-height:1.4;
 }
 body.nav-collapsed .nav-item .sync-warn-dot{position:absolute;top:3px;left:4px}
-/* 使用設備バッジはアイコンだけにする(変更はヘッダーの「使用設備」チップからも
-   できるので、細い帯にボタンを押し込まない)。 */
-body.nav-collapsed .registered-equipment-badge{justify-content:center;padding-left:0;padding-right:0;gap:0}
-body.nav-collapsed .registered-equipment-badge button,
-body.nav-collapsed .registered-equipment-badge a,
-body.nav-collapsed .registered-equipment-badge::after{display:none}
 /* 畳んでいる間は幅調整バーを無効化(掴んでも動かないので触らせない) */
 body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}
 /* ---- ヘッダー相乗り時の整理（重複する情報・使わない操作を出さない） ---- *//* 使用設備は画面ごとの操作列(スケジュールの設備選択)が持つので、ヘッダーの
