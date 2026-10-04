@@ -7,11 +7,12 @@ from flask import Blueprint, render_template, request, jsonify, Response
 import subprocess, time
 
 from ..config import APP_ID, PORT
-from .. import app_icon, desktop_shell, desktop_shortcut, terminal_store
+from .. import app_icon, app_update, desktop_shell, desktop_shortcut, terminal_store
 # 更新者IDは名乗るだけ・答えるのは1箇所（§9.276 ③）。**読み込み時に入れる**
 # ——関数の中の import を増やさない（§9.349）。輪は作らない（access_mode は
 # routes を知らない）。
-from ..access_mode import current_login_id
+from ..access_mode import current_login_id, current_permission_flags
+from ..repositories.master_repo import ROLE_DEFAULT, role_can
 from ..changelog_data import APP_VERSION, CHANGELOG, is_dev
 from ..paths import APP_ROOT as BASE
 from ..logging_setup import app_logger
@@ -105,6 +106,7 @@ JS_FILES=[
  'master/master-loadfactor.js', # マスタ管理: 換算係数の散布図・積み上げ・係数の図（§9.543）
  'master/master-equse.js',     # マスタ管理: 設備の使い分けの表と効き先の図（§9.542）
  'master/master-access.js',    # マスタ管理: アクセス権限の見張りのタブと行の「できること」（§9.538）
+ 'master/master-update.js',    # マスタ管理: 共通設定の段「アプリの更新」（版を置く・配る版を選ぶ・§9.555）
  'list/quality-analysis.js',
  # 紙まわりの共通核（§9.332）。用紙の表・@page・mm換算・下限つき比例配分・
  # 刷り出しの段取りを持つ。**紙を出す3本より先に読むこと。**
@@ -373,6 +375,47 @@ def app_shortcut_create():
                  linkTarget=out.get('linkTarget') or '',
                  link=out.get('link') or ''),400
  return jsonify(**out)
+
+# ========================================================================
+# アプリの更新（§9.555、利用者の指示「バージョンごとのデータをこの場所に保存し、
+# アップデートを行う機能を組み込みたい」）
+# ------------------------------------------------------------------------
+# **判定と置き方は`app_update.py`の1箇所**。画面はここの答えを出すだけ。版を置く・配る版を
+# 決めるのは開発者・メンテナンス者（`role_can('app:release')`）——全PCの中身が入れ替わる操作。
+# 各PCがそろえるのは窓（`desktop/src/update.rs`）の役目で、ここ（動いている Python）は入れ替えない。
+# ========================================================================
+def _release_role():
+ role=(current_permission_flags() or {}).get('role') or ROLE_DEFAULT
+ return role,role_can(role,'app:release')
+
+@bp.get('/api/app/update')
+@api_guard('更新の状態を読めません')
+def app_update_status():
+ role,can=_release_role()
+ return jsonify(**app_update.status(),role=role,canRelease=can)
+
+@bp.post('/api/app/update/publish')
+@api_guard('版を置けません')
+def app_update_publish():
+ """ZIP（本文そのまま）を検めて置き場へ置く。ファイル名は`?name=`（記録に残すだけ）。"""
+ role,can=_release_role()
+ if not can:
+  return jsonify(error=f'版を置けるのは開発者・メンテナンス者だけです（この端末は「{role}」）。'),403
+ data=request.get_data(cache=False)
+ if not data:
+  return jsonify(error='ZIP ファイルが届いていません。'),400
+ out=app_update.publish_zip(data,request.args.get('name',''),current_login_id())
+ return jsonify(**out),(200 if out.get('ok') else 400)
+
+@bp.post('/api/app/update/release')
+@api_guard('配る版を決められません')
+def app_update_release():
+ role,can=_release_role()
+ if not can:
+  return jsonify(error=f'配る版を決められるのは開発者・メンテナンス者だけです（この端末は「{role}」）。'),403
+ x=body({'version':str},strict=True)
+ out=app_update.set_release(x.text('version'),current_login_id())
+ return jsonify(**out),(200 if out.get('ok') else 400)
 
 @bp.get('/api/changelog')
 def changelog():

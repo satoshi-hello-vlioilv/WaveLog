@@ -2402,7 +2402,7 @@
  }
  /* ページの骨組み（図 → 章のレール → 章の段 → 保存）。章の中身は`S`が持つ。 */
  function pcPageHtml(S){
-  const {SEC_TERMINAL,SEC_READ,SEC_SCHEDULE,SEC_RNE}=S;
+  const {SEC_TERMINAL,SEC_READ,SEC_SCHEDULE,SEC_RNE,SEC_UPDATE}=S;
   return `<div class="mm-set-scroll pc-page">
    <!-- ① 図：この端末が何とつながっているか -->
    <div class="pc-map" id="pcMap" aria-label="この端末のつながり">
@@ -2431,6 +2431,7 @@
     {name:'どこから読むか',body:SEC_READ},
     {name:'置き場',body:SEC_SCHEDULE},
     {name:'RNE抽出',body:SEC_RNE},
+    {name:'アプリの更新',body:SEC_UPDATE},
    ])}
 
   </div>
@@ -2537,8 +2538,12 @@
   const K=pcFieldKit(v);
   form.className='mm-form mm-form-page';
   form.innerHTML=pcPageHtml({SEC_TERMINAL:pcSecTerminal(K,v),SEC_READ:pcSecRead(K),
-   SEC_SCHEDULE:pcSecSchedule(K,v),SEC_RNE:pcSecRne(K)});
+   SEC_SCHEDULE:pcSecSchedule(K,v),SEC_RNE:pcSecRne(K),
+   /* アプリの更新（§9.555）。中身と配線は`master-update.js`（WL.appUpdate）——この段は器を貸すだけ。 */
+   SEC_UPDATE:K.group('update','アプリの更新','各PCの次の起動で反映','is-restart',WL.appUpdate.sectionHtml())});
   wirePathConfigForm(form);
+  WL.appUpdate.wire(form);
+  WL.appUpdate.refresh();
   openPcPending(form);
   refreshRneStatus();
   refreshOwnerStatus();

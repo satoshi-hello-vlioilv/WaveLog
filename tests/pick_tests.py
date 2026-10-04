@@ -573,6 +573,8 @@ RULES = [
     # あちらの網（test_setpage）と「表示」の網（test_uisize）の両方を回す。
     ('backend/desktop_shortcut.py', g('test_shortcut', 'test_setpage', 'test_uisize')),
     ('backend/app_icon.py', g('test_shortcut')),
+    ('backend/app_update.py', g('test_appupdate', 'test_setpage')),
+    ('static/js/master/master-update.js', g('test_appupdate', 'test_setpage')),
     # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
     ('backend/watchdog.py', g('test_boot', 'test_presence',
                               'test_appquit', 'test_scowner', 'test_sidecar')),
