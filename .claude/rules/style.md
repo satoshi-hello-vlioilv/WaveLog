@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 字の灰色は`--ink`／`--ink-2`／`--muted`の3段だけ（白地 4.5:1 以上）。紙・濃い地・使えない状態は別の決まり | `test_csslint.py`・`test_smalltext.js` | [§9.564](../../docs/decisions/9.564.md) |
 | 字の太さは`--fw-body`／`--fw-ui`／`--fw-strong`（400／600／700）だけ。12px 以下の札は 600・`<b>`は 700 に止める | `test_csslint.py`・`test_smalltext.js` | [§9.562](../../docs/decisions/9.562.md) |
-| 読ませる字は`--fs-sm`（12px）以上。10〜11px・9.5pxは図の中の字と記号だけ。新しい部品は12px未満を読ませる字に使わない | `test_smalltext.js` | [§9.560](../../docs/decisions/9.560.md) |
+| 読ませる字は`--fs-sm`（12px）以上。10〜11px・9.5pxは図の中の字と記号だけ。新しい部品は12px未満を読ませる字に使わない | `test_smalltext.js` | [§9.560](../../docs/decisions/9.560.md)・[§9.565](../../docs/decisions/9.565.md) |
 | 新しい部品のクラスの頭は**足す前に全CSS・全JSで引く**（`.lf-key`・`.rl-board`で既存の部品と衝突した） | `test_csslint.py` | [§9.553](../../docs/decisions/9.553.md) |
 | 狭い窓の決まり（`max-width`）は`@media screen and`で画面にだけ（刷るときは紙の幅が窓の幅になる） | `test_screenprint.js` | [§9.525](../../docs/decisions/9.525.md) |
 | ヘッダーの状態の札は「名前 値」の1行。字は隣の操作と同じ`--fs`、名前は細く薄く（`--ink-3`） | `test_headbar.js` | [§9.508](../../docs/decisions/9.508.md) |

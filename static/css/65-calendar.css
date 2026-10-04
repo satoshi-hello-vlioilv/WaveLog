@@ -9,12 +9,12 @@
    ============================================================ */
 @layer component {
 .db-status-table thead th{background:var(--bg);color:var(--ink);position:sticky;top:0;z-index:1;
- font-size:var(--fs-micro)}
+ font-size:var(--fs-sm)}
 .db-status-table tbody th{text-align:left;color:var(--ink);font-weight:var(--fw-strong)}
 .db-status-table .db-lot{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
 .db-late{color:var(--warn-fg)}
 .db-state-badge{display:inline-block;padding:var(--pad-chip);border-radius:var(--radius-md);
- font-size:var(--fs-micro);font-weight:var(--fw-ui);border:1px solid transparent}
+ font-size:var(--fs-sm);font-weight:var(--fw-ui);border:1px solid transparent}
 .db-state-badge.running{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .db-state-badge.idle{background:var(--bg);border-color:var(--line-soft);color:var(--muted)}
 .db-state-badge.done{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
@@ -35,7 +35,7 @@
 .cal-card-warn .db-card-label{color:#a34848}
 .cal-card-sub{display:block;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted);margin-top:1px}
 .cal-weekday-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--gap-inline);padding:0 2px}
-.cal-weekday-row span{text-align:center;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted);padding:2px 0}
+.cal-weekday-row span{text-align:center;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted);padding:2px 0}
 .cal-weekday-row span.sun{color:#c92c2c}
 .cal-weekday-row span.sat{color:#2563eb}
 .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(calc(74px * var(--ui-scale)),auto);gap:var(--gap-inline)}
@@ -58,7 +58,7 @@
 .cal-day.lvl-3 .cal-day-metric,.cal-day.lvl-4 .cal-day-metric{color:#fff}
 .cal-day.lvl-3 .cal-day-sub,.cal-day.lvl-4 .cal-day-sub{color:#e3f6f4}
 .cal-day.lvl-4.today .cal-day-num{color:#fff;text-decoration-color:#fff}
-.cal-legend{display:flex;align-items:center;gap:var(--space-1);justify-content:flex-end;font-size:var(--fs-micro);color:var(--muted);padding:var(--pad-chip)}
+.cal-legend{display:flex;align-items:center;gap:var(--space-1);justify-content:flex-end;font-size:var(--fs-sm);color:var(--muted);padding:var(--pad-chip)}
 .cal-legend-swatch{width:calc(14px * var(--ui-scale));height:calc(14px * var(--ui-scale));border-radius:var(--radius-xs);border:1px solid var(--surface-3);background:#fff}
 .cal-legend-swatch.lvl-1{background:#e6f4f3}
 .cal-legend-swatch.lvl-2{background:#b9e2dd}

@@ -468,6 +468,8 @@ button,select,input,textarea{font:inherit;color:var(--ink)}  /* 既定の黒（#
 /* <b>・<strong> の既定は「親より1段太く（bolder）」——600・700 の親の中では 900 になり、英数字だけ Black に
    なって日本語（Bold）と揃わなかった（§9.562）。太さの3段（--fw-*）のいちばん上に止める。 */
 b,strong{font-weight:var(--fw-strong)}
+/* <small> の既定は「親より1段小さく」——12px の中では 10px になり、読ませる字の下限（--fs-sm）を割っていた（§9.565）。 */
+small{font-size:var(--fs-sm)}
 button,select,input{
   padding:7px;
   border:1px solid var(--line);

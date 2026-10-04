@@ -904,9 +904,11 @@ body.bs-mode .bs-shell{display:flex}
 .bk-mark{display:inline-flex}
 .bk-tx{display:flex;flex-direction:column;min-width:0;line-height:1.3}
 .bk-tx b{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bk-tx small{font-size:var(--fs-micro);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 一覧の2行目（何に効くか）は**切らずに折り返す**（§9.565。12px にしたら「刃の重なりと屑条（開いたときの初…」と切れた。
+   何に効くかが読めない説明は置く意味が無い）。札を並べる行（.bb-row）は下の規則で1行のまま。 */
+.bk-tx small{font-size:var(--fs-sm);color:var(--muted)}
 .bk-tags{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-.bk-tag{font-style:normal;font-size:var(--fs-micro);font-weight:var(--fw-ui);padding:0 var(--space-1);border-radius:var(--radius-xs);
+.bk-tag{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui);padding:0 var(--space-1);border-radius:var(--radius-xs);
  border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
 .bk-tag.is-teal{border-color:var(--teal);color:var(--teal-dark)}
 .bk-tag.is-warn{border-color:var(--warn-fg);color:var(--warn-fg);background:var(--warn-bg)}
@@ -927,7 +929,7 @@ body.bs-mode .bs-shell{display:flex}
 /* 欄の段: ラベルは上・値は下（1段に横並び）。読み取り専用の値は枠を付けない（§CLAUDE 10）。 */
 .bk-fields{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4)}
 .bk-field{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
-.bk-field>s{text-decoration:none;color:var(--muted);font-weight:var(--fw-ui);font-size:var(--fs-micro)}
+.bk-field>s{text-decoration:none;color:var(--muted);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
 .bk-field>span{display:inline-flex;align-items:center;gap:var(--space-1);min-height:var(--ctl-h-sm)}
 .bk-field u{text-decoration:none;color:var(--muted)}
 .bk-field input[type=number]{width:6.5em}
@@ -989,7 +991,7 @@ body.bs-mode .bs-shell{display:flex}
 .bb-card.is-off{opacity:.6}
 .bb-card-h{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap;justify-content:center}
 .bb-card-h .bb-tile{width:1.6em;height:1.6em;font-size:var(--fs-sm)}
-.bb-card small{color:var(--muted);font-size:var(--fs-micro)}
+.bb-card small{color:var(--muted);font-size:var(--fs-sm)}
 .bb-over{color:var(--warn-fg);font-weight:var(--fw-strong)}
 .bb-donut{display:block}
 .bb-ring{fill:none;stroke:var(--surface-2);stroke-width:9}
@@ -1029,7 +1031,7 @@ body.bs-mode .bs-shell{display:flex}
 .rb-name s{text-decoration:none;color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
 .rb-name input{height:var(--ctl-h);font-size:var(--fs-lg);font-weight:var(--fw-strong);width:12em;box-sizing:border-box}
 .rb-pick input[type=color]{width:3em;padding:0 2px;cursor:pointer}
-.rb-pick code{font-size:var(--fs-micro);color:var(--muted)}
+.rb-pick code{font-size:var(--fs-sm);color:var(--muted)}
 .rb-chip{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--space-2);
  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card-bg);font:inherit;font-size:var(--fs-sm);
  color:var(--ink);cursor:pointer}
@@ -1067,7 +1069,7 @@ body.bs-mode .bs-shell{display:flex}
 .rt-cn{display:flex;align-items:center;gap:var(--space-1)}
 .rt-cn .rt-x{margin-left:auto}
 .rt-cn .rt-grip{margin-right:0}
-.rt-col small{display:block;font-size:var(--fs-micro);color:var(--muted);font-weight:var(--fw-body)}
+.rt-col small{display:block;font-size:var(--fs-sm);color:var(--muted);font-weight:var(--fw-body)}
 .rt-col[data-g="answer"] small{color:var(--teal-dark)}
 .rt-table .rt-no{width:3.5em;text-align:center;color:var(--muted);font-weight:var(--fw-body)}
 .rt-x{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
@@ -1106,7 +1108,7 @@ body.bs-mode .bs-shell{display:flex}
 .rt-any{color:var(--ink-2);font-weight:var(--fw-strong)}
 .rt-read{margin:0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
 .rt-read s{text-decoration:none;display:inline-block;margin-right:var(--space-2);padding:0 var(--space-1);
- border-radius:var(--radius-xs);background:var(--surface-2);color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
+ border-radius:var(--radius-xs);background:var(--surface-2);color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* 当たり得ない条件（§9.534）。橙＝直せる注意（赤は取り消せない操作だけ・§9.338）。字で「当たらない」と言う。 */
 .rt-state.is-warn{color:var(--warn-fg);font-weight:var(--fw-strong)}
 .rt-cell.is-dead input,.rt-cell.is-deadpart input{border-color:var(--warn-border);background:var(--warn-bg)}
@@ -1171,10 +1173,10 @@ body.bs-mode .bs-shell{display:flex}
 .rt-mleg i{display:inline-block;width:1em;height:1em;border-radius:var(--radius-xs);margin-right:4px;vertical-align:-2px}
 .rt-mleg .rt-mleg-h{color:var(--muted)}
 .rt-eff h4{margin:0 0 var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
-.rt-eff h4 small{margin-left:var(--space-2);font-weight:var(--fw-body);color:var(--muted);font-size:var(--fs-micro)}
+.rt-eff h4 small{margin-left:var(--space-2);font-weight:var(--fw-body);color:var(--muted);font-size:var(--fs-sm)}
 .rt-eff-r{display:grid;grid-template-columns:7em minmax(0,1fr) 3em 6.5em;gap:var(--space-2);align-items:center;margin-bottom:4px;font-size:var(--fs-sm)}
 .rt-eff-r b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rt-eff-r em{font-style:normal;color:var(--teal-dark);font-weight:var(--fw-ui);font-size:var(--fs-micro);text-align:center}
+.rt-eff-r em{font-style:normal;color:var(--teal-dark);font-weight:var(--fw-ui);font-size:var(--fs-sm);text-align:center}
 .rt-bar{height:12px;border-radius:var(--radius-xs);background:var(--surface-2);overflow:hidden}
 .rt-bar i{display:block;height:100%;background:var(--teal)}
 .rt-shadow{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm)}
@@ -1329,9 +1331,9 @@ body.bs-mode .bs-shell{display:flex}
 .sb-c input::placeholder{color:var(--muted);opacity:1}
 .sb-row.is-set .sb-c :is(input,select){border-color:var(--teal);font-weight:var(--fw-strong)}
 .sb-s{display:inline-flex;align-items:center;gap:var(--space-1)}
-.sb-def{color:var(--muted);font-size:var(--fs-micro)}
+.sb-def{color:var(--muted);font-size:var(--fs-sm)}
 .sb-undo{font-size:var(--fs-sm)}
-.sb-h{grid-column:2/-1;font-size:var(--fs-micro);color:var(--muted);line-height:1.5;
+.sb-h{grid-column:2/-1;font-size:var(--fs-sm);color:var(--muted);line-height:1.5;
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sb-row:is(:focus-within,:hover) .sb-h{white-space:normal}
 .sb-h b{color:var(--ink-2)}

@@ -1198,10 +1198,10 @@
    24時間バーで「どの時間帯が埋まっているか」を色で示す。 */
 .shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:start}
 .shift-list{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0}
-.shift-list-head{font-size:var(--fs-badge);font-weight:var(--fw-ui);letter-spacing:.06em;color:var(--muted);padding:0 4px 2px}
+.shift-list-head{font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.06em;color:var(--muted);padding:0 4px 2px}
 .shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer;text-align:left;min-width:0;width:100%}
 .shift-list-item b{font-size:var(--fs-base-sm);color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.shift-list-item small{font-size:var(--fs-micro);color:var(--muted)}
+.shift-list-item small{font-size:var(--fs-sm);color:var(--muted)}
 .shift-list-item:hover{border-color:var(--teal);background:var(--surface-2)}
 .shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
 /* **器は中身の長さから決める**(CLAUDE.md §11)。以前は`flex:1 1 240px`＋
@@ -1268,7 +1268,7 @@
 .shift-seg-time input{flex:0 1 auto;min-width:0}
 .shift-seg-start,.shift-seg-end{height:var(--ctl-h-sm);font-variant-numeric:tabular-nums}
 .shift-seg-sep{color:var(--muted);font-size:var(--fs-sm)}
-.shift-seg-next{font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-sm);padding:1px 6px;text-align:center}
+.shift-seg-next{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-sm);padding:1px 6px;text-align:center}
 .shift-seg-next.is-empty{background:transparent;border-color:transparent}
 /* 日付の数え方(§9.195)。**日を跨ぐ区分にだけ出す**——跨がない区分では
    当てる時間帯が無いので、欄ごと置かず「—」にする(§4)。 */
