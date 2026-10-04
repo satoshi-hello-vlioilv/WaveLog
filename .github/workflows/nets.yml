@@ -33,7 +33,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r program/requirements.txt -r program/requirements-dev.txt
-          npm install -g eslint
+          # typescript は 6 系に止める: 7 は Go で書き直され、検査器の JS の API（require）を持たない（§9.566）
+          npm install -g eslint typescript@6
       - name: 回す
         run: tests/run_all.sh --pure
 

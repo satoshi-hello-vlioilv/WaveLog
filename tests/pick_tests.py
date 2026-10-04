@@ -50,6 +50,8 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_tabledef',
           # §9.326: 標準の静的解析（pyflakes／eslint）。どの .py/.js を触っても数秒で回る
           'test_pyflakes', 'test_eslint', 'test_routesplit', 'test_quietlint',
+          # §9.566: 画面のJSの型の検査（JS を触ったら必ず・約20秒）
+          'test_tscheck',
           # §9.522 REVIEW 3-22: 長い関数の本数・超過行数が増えていないか（数秒）
           'test_funclen',
           # §9.329 REVIEW 3-2: db_access の層と、読み込みの副作用（1秒未満）
@@ -632,6 +634,9 @@ RULES = [
     # §9.326: lint の設定と上限は網そのもの
     ('eslint.config.mjs', ['test_eslint']),
     ('tests/fixtures/eslint_baseline.json', ['test_eslint']),
+    ('tests/lib/js_types.js', ['test_tscheck']),
+    ('tests/lib/api_contract.py', ['test_tscheck']),
+    ('tests/fixtures/tscheck_baseline.json', ['test_tscheck']),
     ('tests/fixtures/color_baseline.json', ['test_csslint']),
     ('tests/fixtures/import_baseline.json', ['test_importlint']),
     ('tests/fixtures/funclen_baseline.json', ['test_funclen']),
