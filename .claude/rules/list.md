@@ -1,4 +1,4 @@
-# 一覧と列（154件）
+# 一覧と列（156件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -24,6 +24,8 @@
 | 「一覧を検索」は帯の先頭（ヘッダーに置かない——一覧の無い画面に出て、打っても何も起きなかった） | `test_filter.js` | [§9.505](../../docs/decisions/9.505.md) |
 | 一覧の検索欄は**4つとも`.lt-search`の1つ**（仕掛・品質・データ一覧・測定実績）。欄の中の ✕ で消す（「検索解除」のボタンを並べない） | `test_reccols.js`・`test_actuals.js`・`test_listbar.js` | [§9.507](../../docs/decisions/9.507.md) |
 | 件数は「全 N件」、絞ったら「n件 / 全 N件」（データ一覧は`recordCountText()`の1箇所）。「件」は行の数だけ | `test_reccols.js` | [§9.507](../../docs/decisions/9.507.md) |
+| データ一覧は操作の列を持たない。行を押して1件選び、操作は下の帯（`renderRecordActionBar()`の1箇所）が出す | `test_reccols.js`・`test_recdel.js` | [§9.558](../../docs/decisions/9.558.md) |
+| データ一覧の器は残りの高さを全部使う（`flex:1`）。横のスクロールバーは器の一番下＝帯の真上（測定実績と同じ） | `test_reccols.js` | [§9.558](../../docs/decisions/9.558.md) |
 | 1つだけ選ぶ切り替え（段・24／48時間・期間の札・ダッシュボード）は**帯の切り替えの部品**の1つ（85-headerbar.css）。寸法を役割の表と2箇所で持たない | `test_csslint.py`・`test_scale.js` | [§9.507](../../docs/decisions/9.507.md) |
 | 【§9.505で改めた】表示列は**帯に直に**（`#listColumnBtn`・印つき）。パネルの名前は「表の見せ方」で、行は字も欄も1つの大きさ | `test_listbar.js` | [§9.476](../../docs/decisions/9.476.md) |
 | 表示列の入口はどの画面でも`fa-table-columns`の印。パネルの規則は`.lt-view-panel`で名乗る | `test_listbar.js` | [§9.476](../../docs/decisions/9.476.md) |

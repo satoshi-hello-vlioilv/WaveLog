@@ -167,10 +167,8 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    閲覧用バックアップから描画するため「続きから再開」「削除」は意味を持たない
    (帳票表示のみ残す)。スケジュールモードも測定データへは閲覧モードと同じく
    書込不可のため同じ抑制を適用する。 */
-body.view-mode .record-list-actions .resume,
-body.view-mode .record-list-actions .danger,
-body.schedule-mode .record-list-actions .resume,
-body.schedule-mode .record-list-actions .danger{display:none}
+body.view-mode .rec-actbar .resume,
+body.schedule-mode .rec-actbar .resume{display:none}
 body.view-mode #recordSyncBar,
 body.schedule-mode #recordSyncBar{display:none}
 body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}

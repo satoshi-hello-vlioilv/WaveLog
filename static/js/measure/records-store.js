@@ -808,7 +808,9 @@ $('#closeModal').onclick=closeMeasureModal;$('.shade').onclick=closeMeasureModal
    一覧の描画はここが1箇所で持ち続け、**理由の文言は開いた側(access-mode.js)
    から受け取る**——モードの判定・権限の有無はあちらが持っているため。 */
 let recordListState={statuses:{editing:true,done:false},items:[],query:'',sort:'updated-desc',
- notice:'',emptyHtml:'',sourceNote:''};
+ notice:'',emptyHtml:'',sourceNote:'',
+ /* 選んだ1件（§9.558）。操作は下の帯がこの1件に対して出す */
+ selected:null};
 /* ---------- 実施した設備で見せる範囲を絞る（§9.248 ⑥、利用者の指示） ----------
    「データ一覧や実績データ、作業スケジュール表については、実施した設備ごとに
     見せる範囲を変えたいです。設備設定を変えても他の設備の情報が表示されて
@@ -1178,7 +1180,6 @@ function recordSplitLabel(x){return Array.isArray(x.settings?.splitGroups)&&x.se
    なので、設定を保存していない端末の見え方は1つも変わらない。
    ============================================================ */
 const RECORD_LIST_TARGET='records:list';
-const RECORD_COL_ACTIONS='__actions__';
 /* 日付時刻は**その端末の時計の値**を`yyyy-MM-dd HH:mm:ss`にしてから渡す。
    保存値はISO（末尾Z＝協定世界時）なので、生のまま書式へ渡すと時差のぶん
    ずれた時刻が出る。ここで地方時へ寄せておけば、書式・読み替えのどちらも
@@ -1294,24 +1295,16 @@ const RECORD_COL_BY_KEY=new Map(RECORD_COLUMNS.map(c=>[c.k,c]));
 /* 値を持たない列。仕掛一覧の`#`・ボタン列と同じ扱い。 */
 const RECORD_VIRTUAL={
  '#':{label:'#（行番号）',head:'#',note:'絞り込んだあとの並びで数えた番号です。'},
- [RECORD_COL_ACTIONS]:{label:'操作',note:'開く・帳票・「⋯」（削除はこの中）のボタン。消すと、この一覧からは削除できなくなります（開くのは行のダブルクリックでできます）。'},
 };
-/* **操作列だけは下限を持つ**（§9.222 ①）。データのセルは切れても`title`から
-   読めるが、**切れたボタンは押す前に何のボタンか分からない**——実機では
-   「続きか…」「帳…」と3つとも省略記号になっていた。文字を短く
-   （`再開`／`開く`／`帳票`／`⋯`）したうえで、幅を手で狭めてもここより下は
-   受け付けない（列幅が40〜900へ丸められるのと同じ考え方）。 */
-/* **pxで書かないこと**——表示サイズ(sm/md/lg)で文字だけが1.1倍になり、
-   特大でだけ切れる（§9.127）。`--rec-actions-min`は`#recordList`の文字
-   サイズを基準にした`em`（40-records.css）なので、3段とも同じ余り方をする。
-   実測の自然幅は sm147 / md156 / lg168px、下限は 161 / 175 / 193px。 */
-const RECORD_ACTIONS_MIN='var(--rec-actions-min)';
-const RECORD_VIRTUAL_TRACK={'#':'minmax(44px,0)',
-  [RECORD_COL_ACTIONS]:'minmax('+RECORD_ACTIONS_MIN+',0)'};
-/* 既定の並びと、既定で出す列。**今までの15列がそのまま既定**。 */
-const RECORD_DEFAULT_ORDER=['#',...RECORD_COLUMNS.map(c=>c.k),RECORD_COL_ACTIONS];
-const RECORD_DEFAULT_VISIBLE=new Set([...RECORD_COLUMNS.filter(c=>c.def).map(c=>c.k),
-                                      RECORD_COL_ACTIONS]);
+/* 操作の列は持たない（§9.558、利用者の指示「変更内容はCが良いです。1つずつしか選ばない工程でもあり、
+   選ぶ→操作したい内容が表示という流れで特に迷うことはないので」）。行を押して選び、選んだ1件の操作は
+   一覧の下の帯（`#recordActionBar`・`renderRecordActionBar()`）が大きく出す——行の高さはそのまま、
+   列が器より広くなるのは表示列を増やしたときだけになる。保存済みの並びに残る`__actions__`は
+   候補に無いので読み飛ばす（`recordAllColumnKeys()`の`known`）。 */
+const RECORD_VIRTUAL_TRACK={'#':'minmax(44px,0)'};
+/* 既定の並びと、既定で出す列。**今までの15列から操作の列を除いた14列**（§9.558）。 */
+const RECORD_DEFAULT_ORDER=['#',...RECORD_COLUMNS.map(c=>c.k)];
+const RECORD_DEFAULT_VISIBLE=new Set(RECORD_COLUMNS.filter(c=>c.def).map(c=>c.k));
 
 /* 候補の全列。**同じ名前を2つ並べない**（§9.113）ので、ここで1回だけ落とす。 */
 function recordAllColumnKeys(){
@@ -1368,14 +1361,7 @@ function recordColumnLabel(k){
 }
 /* CSSグリッドのトラック。引いている最中だけ、掴んだ列を実寸へ差し替える。 */
 function recordTracksCss(keys,liveKey,liveWidth){
- return keys.map(k=>(k===liveKey?recordTrackFloor(k,liveWidth+'px'):recordColumnTrack(k))).join(' ');
-}
-/* 操作列は`minmax(下限, 指定)`にする。**素の`Npx`へ戻さないこと**——
-   保存済みの幅（利用者が見出しを引いた結果）はそのまま効くので、下限を
-   持たせないと切れたボタンが復活する。 */
-function recordTrackFloor(k,track){
- if(k!==RECORD_COL_ACTIONS)return track;
- return 'minmax('+RECORD_ACTIONS_MIN+','+track+')';
+ return keys.map(k=>(k===liveKey?liveWidth+'px':recordColumnTrack(k))).join(' ');
 }
 /* 右クリックメニューに出す呼び名。見出しは狭いので`#`のような短い字を
    使うが、メニューでは「#（行番号）」のように何の列かが分かる側を出す。 */
@@ -1386,7 +1372,7 @@ function recordColumnFullLabel(k){
 }
 function recordColumnTrack(k){
  const w=WL.columnLayout.width(RECORD_LIST_TARGET,k);
- if(w)return recordTrackFloor(k,w+'px');
+ if(w)return w+'px';
  const c=RECORD_COL_BY_KEY.get(k);
  return (c&&c.track)||RECORD_VIRTUAL_TRACK[k]||'minmax(96px,.7fr)';
 }
@@ -1487,8 +1473,6 @@ function renderRecordListRows(){
       ロット番号の3つだけ付いておらず、列を鍵にする仕組み（一時的な色・
       揃え）がその3列だけ効かなかった——見出しは塗られるのに本文が
       塗られない、という気づきにくい食い違いになる。 */
-   if(k===RECORD_COL_ACTIONS)
-    return `<div class="record-list-actions" data-col="${esc(k)}"><button class="resume" type="button" title="${isDone?'このロットの内容を測定画面で開きます':'測定画面を開いて続きから再開します'}（行のダブルクリックでも開けます）">${isDone?'開く':'再開'}</button><button class="report" type="button" title="このロットの帳票プレビューを開きます">帳票</button><button class="rec-more" type="button" aria-haspopup="menu" aria-expanded="false" title="その他の操作（削除はこの中）">⋯</button></div>`;
    const c=RECORD_COL_BY_KEY.get(k);
    const fx=calc.get(k);
    const raw=fx?fx.run(view):(k==='#'?view['#']:(c?c.get(x):''));
@@ -1507,26 +1491,69 @@ function renderRecordListRows(){
    const inner=(c&&c.tag==='time')?`<time>${esc(shown)}</time>`:esc(shown);
    return `<div class="${cls}" data-col="${esc(k)}" title="${esc(shown)}">${inner}</div>`;
   }).join('');
-  /* **操作の列は消せる**ので、ボタンが在るときだけ配線する（§9.105と同じ
-     約束で、消しても行のダブルクリック・Enterでは開ける）。 */
-  const resumeBtn=row.querySelector('.resume');
-  if(resumeBtn)resumeBtn.onclick=e=>{e.stopPropagation();resume()};
-  const reportBtn=row.querySelector('.report');
-  if(reportBtn)reportBtn.onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};
   const recLotBtn=row.querySelector('.grid-lot-link');
   if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();WL.base.openLotDsp(x.basic?.lotNo,x.basic?.castingNo,WL.lotDspTab.get())};
-  // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
-  row.ondblclick=e=>{if(!e.target.closest('.rec-more')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
-  row.setAttribute('role','button');
+  /* 押すと選ぶ（1件だけ）。選んだ1件の操作は下の帯が出す（§9.558）。焦点が来ても選ぶ（↑↓で動かせる）。 */
+  row.dataset.recId=x.id;
+  row.setAttribute('role','row');
+  row.setAttribute('aria-selected',String(recordListState.selected===x.id));
+  if(recordListState.selected===x.id)row.classList.add('is-selected');
+  row.onclick=e=>{if(e.target.closest('.grid-lot-link'))return;selectRecordRow(x.id);if(document.activeElement!==row)row.focus({preventScroll:true})};
+  row.onfocus=()=>{if(recordListState.selected!==x.id)selectRecordRow(x.id)};
+  // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は下の帯の「再開/開く」から明示的に行う)。
+  row.ondblclick=e=>{if(!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
   row.setAttribute('aria-label',(isDone?'内容を開く':'続きから再開')+' '+(x.basic?.lotNo||x.id));  /* 読み上げは長い呼び名のまま（画面の文字数の制約が無い） */
-  row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();resume()}};
-  const moreBtn=row.querySelector('.rec-more');
-  if(moreBtn)moreBtn.onclick=e=>{e.stopPropagation();openRecordRowMenu(moreBtn,x)};
+  row.onkeydown=e=>onRecordRowKey(e,row,resume);
   list.append(row);
  });
+ if(recordListState.selected&&!items.some(x=>x.id===recordListState.selected))recordListState.selected=null;
+ renderRecordActionBar();
  const result=$('#recordSearchResult');
  if(result)result.textContent=recordCountText(items.length,recordListState.items.length);
  renderRecordScopeBtn();
+}
+/* ---------- 選んだ1件と、その操作の帯（§9.558、利用者の指示「変更内容はCが良いです。1つずつしか選ばない
+   工程でもあり、選ぶ→操作したい内容が表示という流れで特に迷うことはないので」） ----------
+   行の中の小さなボタン（34×19px・12px）をやめ、行を押して選ぶ→下の帯に**選んだ1件の名前と操作**を
+   標準の大きさ（`--ctl-h`）で出す。行の高さは変えない。帯の高さは選ぶ前後で変えない（場所を動かさない）。 */
+const RECORD_BAR_META=['状態','使用設備','更新日時'];
+function selectRecordRow(id){
+ recordListState.selected=id;
+ document.querySelectorAll('#recordList .record-list-row').forEach(r=>{
+  const on=r.dataset.recId===id;r.classList.toggle('is-selected',on);r.setAttribute('aria-selected',String(on));
+ });
+ renderRecordActionBar();
+}
+/* ↑↓で選び直す（焦点が移ると選ぶ）・Enterで再開。 */
+function onRecordRowKey(e,row,resume){
+ if(e.key==='Enter'){e.preventDefault();resume();return}
+ if(e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;
+ e.preventDefault();
+ const next=e.key==='ArrowDown'?row.nextElementSibling:row.previousElementSibling;
+ if(next&&next.classList.contains('record-list-row'))next.focus();
+}
+function renderRecordActionBar(){
+ const bar=$('#recordActionBar');if(!bar)return;
+ const x=recordListState.items.find(r=>r.id===recordListState.selected);
+ bar.classList.toggle('is-on',!!x);
+ if(!x){
+  bar.innerHTML='<p class="rec-actbar-hint">行を押して選ぶと、ここにその測定の操作（再開・帳票・その他）が出ます。'
+   +'↑↓で選び直せます。ダブルクリックで帳票を開きます。</p>';
+  return;
+ }
+ const isDone=x.status==='完了';
+ /* 字は一覧の行と同じ書き方（`recordCellText()`の1箇所）——同じ値を2つの書式で出さない */
+ const view=recordRowView(x,0);
+ const meta=RECORD_BAR_META.map(k=>{const c=RECORD_COL_BY_KEY.get(k);return c?String(recordCellText(k,c.get(x),view).text??'').trim():''})
+  .filter(v=>v&&v!=='-');
+ bar.innerHTML=`<div class="rec-actbar-what"><b>${esc(x.basic?.lotNo||x.id)}</b><small>${esc(meta.join('・'))}</small></div>`
+  +`<button type="button" class="resume" title="${isDone?'このロットの内容を測定画面で開きます':'測定画面を開いて続きから再開します'}（Enter でも開けます）">${isDone?'開く':'再開する'}</button>`
+  +'<button type="button" class="report" title="このロットの帳票プレビューを開きます（行のダブルクリックでも開けます）">帳票</button>'
+  +'<button type="button" class="rec-more" aria-haspopup="menu" aria-expanded="false" title="その他の操作（削除はこの中）">⋯ その他</button>';
+ bar.querySelector('.resume').onclick=resumeRecordFromList(x);
+ bar.querySelector('.report').onclick=()=>{if(typeof openReportForRecord==='function')openReportForRecord(x.id)};
+ const more=bar.querySelector('.rec-more');
+ more.onclick=()=>openRecordRowMenu(more,x);
 }
 /* 件数の書き方は仕掛一覧と同じ（§9.507）——絞っていなければ「全 N件」、絞っていれば「n件 / 全 N件」。
    「0 / 0件を表示」は分数の読み方を強いていた。 */

@@ -40,7 +40,7 @@
 }
 /* --- 標準（ヘッダー・ダイアログ・パネルの操作） --- */
 .hd-actions .hd-btn,.equipment-header-button,.split-panel-open-btn,
-.status-filter-btn,.record-list-actions button,.work-time-actions button,
+.status-filter-btn,.rec-actbar button,.work-time-actions button,
 .mm-nav button,.mm-btn-ghost,.rp-btn-primary,.rp-btn-secondary,
 .defect-actions button,.qa-v7 .qa-primary,.qa-v7 .qa-secondary,
 .connection-lost-bar button,.split-update-actions button{
@@ -72,7 +72,6 @@
    ボタンだけが行より背高になって行を押し広げるのを防ぐ。 */
 .measurement-action-button,.plan-action-button,.plan-select-add,.plan-select-clear,
 .grid-lot-link,.lot-dsp-link,.sc-row-btn,.sc-board-sort-btn,
-.record-list-actions button,
 .sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
   height:var(--row-ctl-h);padding:0 var(--ctl-pad-x-xs);
   font-size:var(--tbl-fs);border-radius:var(--radius-sm);
@@ -101,7 +100,6 @@
    見切れる**(実機で「文字が見切れている」と報告された。表示サイズを
    変えても2pxのまま残るので大きくしても直らない)。 */
 .lot-dsp-link{line-height:calc(var(--row-ctl-h) - 2px)}
-.record-list-actions button{padding:0 var(--space-1)}
 .sc-row-btn{padding:0 var(--space-1)}
 /* --- 文字の役割（見出し・要約・バッジ）（§9.71） ---
    実測すると「見出しっぽい要素」が8種類、「ラベル」が6種類、「補足」が5種類、

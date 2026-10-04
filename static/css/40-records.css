@@ -41,7 +41,7 @@
      ・**見出しは折り返さない**（足りなければ余白を削り、次に省略記号）
    カスタムプロパティは**定義した場所で解決される**ので、`#grid`と同じく
    ここでも行の3つを定義し直す（`:root`のままでは器の余白が効かない）。 */
-#recordList{padding:0;overflow:auto;background:var(--bg);
+#recordList{flex:1;min-height:0;padding:0;overflow:auto;background:var(--bg);
   font-size:var(--tbl-fs);
   --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
   --row-inner-h:calc(var(--row-h) - var(--row-pad-y) * 2 - 1px);
@@ -109,26 +109,6 @@
    して列内でタップしやすい大きさを揃える。
    **高さは`--row-ctl-h`**（10-roles.cssの表内ボタンの規則）。行の高さを
    押し広げない。 */
-/* **操作列の下限**（§9.222 ①）。3つのボタンが切れずに並ぶ幅を器が保証する
-   ——切れたセルは`title`から読めるが、**切れたボタンは押す前に何のボタんか
-   分からない**（実機で「続きか…」「帳…」と3つとも省略記号になっていた）。
-   `em`なので表示サイズの3段に追随する（pxだと特大でだけ切れる・§9.127）。
-   `#recordList`の文字は`--tbl-fs`。実測の自然幅は sm147 / md156 / lg168pxで、
-   下限は 161 / 175 / 193px——**少し余らせてある**のは、実機（Windows）の
-   日本語フォントがここより広いことがあるため。 */
-#recordList{--rec-actions-min:12.5em}
-.record-list-actions{display:flex;align-items:center;gap:var(--gap-inline);
-  height:var(--row-h);padding:var(--row-pad-y) var(--row-pad-x)}
-/* **均等幅(flex:1)にしない**（§9.161）。「続きから再開」と「帳票」を同じ幅に
-   すると、長いほうが器に入らず**「続き…」と切れる**（実測57px／要96px）。
-   幅は中身から決め、列はその合計で取る（§9.130）。 */
-/* **器と中身の文字サイズを食い違わせない**（§9.206／§9.222 ①）。高さは
-   `--row-ctl-h`＝「`--fs-sm`×`--lh`＋余白」で作った値なのに、中の文字が
-   `--fs`（14px）だと**必ず2px溢れる**（実測: 器17.4/18.9/20.8pxに対して
-   行の高さ17.4/18.9/20.8px＋罫線2px）。`test_fit.js`の巡回にデータ一覧を
-   入れて初めて見つかった（CLAUDE.md §9.127）。 */
-.record-list-actions button{flex:0 1 auto;font-size:var(--fs-sm);line-height:1;
-  font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 行の中の印は**表の印の大きさ**（§9.90の`--tbl-fs-mark`）。10px・9.5pxの
    3種類が同じ行に並んでいたため、状態の文字が読み取りづらく、しかも
    「編集中」が器から溢れて省略記号になっていた。 */
@@ -141,24 +121,27 @@
 .record-list-cell .record-remote-badge{font-size:var(--tbl-fs-mark);margin-left:0;
   display:inline-flex;align-items:center;height:var(--row-ctl-h);
   line-height:1;padding:0 var(--space-2)}
-.record-list-actions .resume{background:var(--teal);color:#fff;border-color:var(--teal)}
-.record-list-actions .resume:disabled{opacity:.45;cursor:not-allowed}
-.record-list-actions .report{color:#075e67;background:#eafafa;border:1px solid #8fc9c2}
-.record-list-actions .report:hover{background:var(--teal);border-color:var(--teal);color:#fff}
-.record-list-actions .danger{color:#9d2020;background:#fff7f7;border-color:#dab0b0}
-/* ---------- 「⋯」とその中の削除(§9.221 ⑤) ----------
-   帳票の隣に取り消せない操作を置かない。`⋯`は**中身の分からない印**なので、
-   幅は文字1つぶんに絞り、何が入っているかは`title`と開いた先の文で言う。 */
-/* **`em`に`--ui-scale`を掛けないこと**——`em`は既に`--fs*`＝
-   `calc(14px * var(--ui-scale))`を経由してスケール済みなので、二重に
-   掛かって表示サイズを変えるたびに`⋯`だけ他の行内ボタンと違う比率で
-   伸縮する（実測: lgで2.42em相当、smで2.02em相当）。幅は`--w-*`の
-   いちばん狭い段（`--w-xs`）で揃える。 */
-.record-list-actions .rec-more{flex:0 0 auto;min-width:var(--w-xs);
-  color:var(--ink-2);background:var(--surface-2);border-color:var(--line);
-  letter-spacing:.08em}
-.record-list-actions .rec-more:hover{background:var(--surface-3);color:var(--ink)}
-.record-list-actions .rec-more[aria-expanded="true"]{background:var(--teal);color:#fff;border-color:var(--teal)}
+/* ---------- 選んだ1件の操作の帯（§9.558） ----------
+   行の中のボタンをやめ、選んだ1件の名前と操作を一覧の下に**標準の大きさ**（10-roles.cssの「標準」）で出す。
+   帯の高さは選ぶ前後で変えない（場所を動かさない・§9.397）。危ない操作（削除）は「⋯ その他」の中（§9.221 ⑤）。 */
+.rec-actbar{flex:none;display:flex;align-items:center;gap:var(--space-3);
+  min-height:calc(var(--ctl-h) + var(--space-2) * 2 + 1px);padding:var(--space-2) var(--space-4);
+  border-top:1px solid var(--line);background:var(--surface);box-shadow:0 -4px 12px #17384214}
+.rec-actbar-hint{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
+.rec-actbar-what{flex:1;min-width:0;display:flex;align-items:baseline;gap:var(--space-3);white-space:nowrap;overflow:hidden}
+.rec-actbar-what b{font-size:var(--fs-title);font-weight:800;color:var(--ink)}
+.rec-actbar-what small{font-size:var(--fs-sm);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}
+.rec-actbar button{flex:none;font-weight:700;white-space:nowrap;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink-2);cursor:pointer}
+.rec-actbar .resume{min-width:var(--w-sm);background:var(--teal);color:#fff;border-color:var(--teal)}
+.rec-actbar .resume:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+.rec-actbar .report{color:#075e67;background:#eafafa;border-color:#8fc9c2}
+.rec-actbar .report:hover{background:var(--teal);border-color:var(--teal);color:#fff}
+.rec-actbar .rec-more:hover{background:var(--surface-3);color:var(--ink)}
+.rec-actbar .rec-more[aria-expanded="true"]{background:var(--teal);color:#fff;border-color:var(--teal)}
+/* 選んだ行（1件）。色だけで言わない——帯が同じロット番号を名乗る（§CLAUDE 3）。 */
+.record-list-row.is-selected{background:#d8f1f2;box-shadow:inset 4px 0 0 var(--teal)}
+.record-list-row.is-selected:hover{background:#cdeced}
 /* 器は`.wl-menu`。この面の値をここで宣言し直す（§9.449）。 */
 .rec-row-menu{
   --menu-w:calc(240px * var(--ui-scale));--menu-w-max:calc(340px * var(--ui-scale));
