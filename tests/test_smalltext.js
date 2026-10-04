@@ -30,6 +30,8 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
    if(!tx||G.test(tx))continue;
    const el=t.parentElement;if(!el||seen.has(el))continue;seen.add(el);
    if(el.closest('svg,canvas,.rp-page,.df-page,.rp-report,.df-print-area,script,style,template,noscript,[hidden],[aria-hidden="true"]'))continue;
+   /* HTML で描いた図の目盛り（数直線の番号・時刻の目盛り）は図の中の字（§9.565） */
+   if(el.closest('.op-ruler-cell,.shift-bar-scale'))continue;
    const r=el.getBoundingClientRect();
    if(r.width<1||r.height<1||r.bottom<0||r.right<0||r.top>innerHeight||r.left>innerWidth)continue;
    const s=getComputedStyle(el);
@@ -76,6 +78,14 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
   await page.evaluate(()=>{const b=[...document.querySelectorAll('#masterMaintForm [role=tab],#masterMaintForm button')].find(x=>x.textContent.trim().startsWith('アプリの更新'));b&&b.click()});
   await page.waitForSelector('#appUpdate .au-where,#appUpdate .au-bad',{timeout:15000}).catch(()=>{/* 届かない置き場でも数える */});
  });
+
+ /* 段2（§9.565）: マスタ管理のほかのタブ・ダッシュボード・カレンダー */
+ for(const k of ['opItem','opChoice','choiceLink','recordLayout','reportLayout','reportBlock','roll','bladesetStandard','bladesetBlade',
+   'bladesetSpacer','bladesetRing','bladesetFinger','bladesetPick','bladesetHold','stopReason','stopMinutes','shiftMaster','loadFactor',
+   'accessPermission','presence','measStorage','importBackup','dataSource','queryJoin','cleanup'])
+  await visit('マスタ管理・'+k,()=>page.click(`#masterMaintNav [data-master="${k}"]`));
+ await visit('ダッシュボード',()=>page.click('#openDashboard'));
+ await visit('カレンダー',()=>page.click('#openCalendar'));
  const by={};found.forEach(f=>{(by[f.screen]=by[f.screen]||[]).push(f)});
  const cut=await page.evaluate(()=>window.__wlCut||[]);
  const oddW=await page.evaluate(()=>window.__wlOddW||[]);

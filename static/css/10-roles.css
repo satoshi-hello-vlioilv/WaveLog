@@ -139,7 +139,7 @@
 .wtb-title{color:#1f5b52}
 .qa-v7 .qa-tab-title small,.qa-v7 .qa-acc-sum,.qa-v7 .qa-hint,
 .disclosure-sum,.mm-editor-head small{
-  font-size:var(--fs-micro);font-weight:var(--fw-ui);
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);
 }
 /* 操作の案内は**チップではなく1文**なので「ラベル」の大きさで読ませる
    （§9.157）。11pxまで落とすと同じカードの中で3px違う文字が並び、
