@@ -460,7 +460,7 @@
  content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal)}
 .sc-row-title-head.col-drop-before::before{left:-1px}
 .sc-row-title-head.col-drop-after::before{right:-1px}
-.sc-row-head{padding:2px var(--space-2) 3px;position:sticky;top:0;z-index:1;background:var(--surface-2);font-size:var(--fs-micro);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
+.sc-row-head{padding:2px var(--space-2) 3px;position:sticky;top:0;z-index:1;background:var(--surface-2);font-size:var(--fs-sm);font-weight:800;color:#8a9aa0;border-bottom:1px solid var(--line)}
 /* 列を選んでいるときだけ出す案内。**探させない**——Ctrl/Shiftを知らないと
    使えない操作は、無いのと同じ。 */
 .sc-col-pick-hint{display:block;padding:2px var(--space-2);

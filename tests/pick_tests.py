@@ -220,7 +220,7 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
              'test_recvalues', 'test_reclayout',
              # §9.317: 参照データ（品質など）が読めなくても測定は始められる
              'test_ctxfail']
-G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
+G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density', 'test_smalltext',
                'test_uiux', 'test_headbar', 'test_uisize', 'test_bootui',
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache',
