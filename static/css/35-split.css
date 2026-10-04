@@ -27,13 +27,13 @@
    そろえる（カードの題と同じ大きさにすると、どちらが器か分からなくなる）。 */
 .split-layout h3{
   margin:0 0 var(--space-1);
-  color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em;
+  color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em;
   display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);
 }
-.split-candidates-stats{font-size:var(--fs-sm);font-weight:600;color:var(--muted)}
+.split-candidates-stats{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted)}
 .split-candidates-stats b{color:var(--teal);font-size:var(--fs-base-sm)}
 .split-hint-text{margin:8px 0 0;color:#79898d}
-.split-row-loading{padding:var(--space-4);color:#526970;font-weight:700}
+.split-row-loading{padding:var(--space-4);color:#526970;font-weight:var(--fw-strong)}
 .split-candidates-empty,.split-result-empty{padding:var(--space-4);text-align:center;color:var(--muted);font-size:var(--fs-base-sm);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md)}
 /* 子ロット候補カード。凡例として割当条数・確認済み数・幅・公差を表示し、
    クリックすると視覚図内の該当する条を一時的に光らせる(位置特定用)。 */
@@ -45,16 +45,16 @@
 .split-candidate-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--gap-tight)}
 .split-candidate-head{display:flex;align-items:center;gap:var(--space-2)}
 .split-candidate-head b{color:#1b3438}
-.split-candidate-head em{font-style:normal;font-size:var(--fs-sm);font-weight:700;color:var(--muted);background:var(--bg);border-radius:var(--radius-pill);padding:1px 8px}
+.split-candidate-head em{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted);background:var(--bg);border-radius:var(--radius-pill);padding:1px 8px}
 .split-candidate.active .split-candidate-head em{color:var(--teal-dark);background:#d3f0ee}
 .split-candidate-meta{font-size:var(--fs-sm);color:#79898d}
 /* 条割結果プレビュー(#splitResult)。左端に視覚図/候補カードと同じ色の
    アクセントを付け、対応関係を示す。 */
 .split-result{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--gap-inline)}
 .split-result-row{display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:var(--gap-section);padding:9px 12px;background:#fff;border:1px solid #dbe4e6;border-left-width:5px;border-left-style:solid;border-radius:var(--radius-sm);font-size:var(--fs-base-sm)}
-.split-result-index{color:#9aabab;font-weight:800;font-size:var(--fs-sm)}
-.split-result-lot{font-weight:800;color:#1b3438}
-.split-result-count{color:var(--ink-2);font-weight:700}
+.split-result-index{color:#9aabab;font-weight:var(--fw-ui);font-size:var(--fs-sm)}
+.split-result-lot{font-weight:var(--fw-strong);color:#1b3438}
+.split-result-count{color:var(--ink-2);font-weight:var(--fw-strong)}
 .split-result-width{color:var(--muted);font-size:var(--fs-sm);justify-self:end}
 .split-result-tol{display:none}
 .split-apply-btn{margin-top:10px;color:#fff;background:var(--teal);border:0;cursor:pointer;transition:filter .12s}
@@ -102,7 +102,7 @@
   flex:0 0 auto;display:flex;align-items:center;justify-content:center;
   width:2.2em;padding:0 var(--space-1);
   background:transparent;color:var(--ink-3);
-  font-size:var(--fs-sm);font-weight:800;letter-spacing:.06em;
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.06em;
 }
 .split-visual-end.os{border-right:2px solid var(--line-mid)}
 .split-visual-end.ds{border-left:2px solid var(--line-mid)}
@@ -122,7 +122,7 @@
 .split-visual-scrap[hidden]{display:none}
 .split-visual-scrap.os{margin-right:3px}
 .split-visual-scrap.ds{margin-left:3px}
-.split-visual-scrap-label{display:flex;flex-direction:column;align-items:center;line-height:1.25;font-size:var(--fs-badge);font-weight:800;white-space:nowrap;padding:0 3px}
+.split-visual-scrap-label{display:flex;flex-direction:column;align-items:center;line-height:1.25;font-size:var(--fs-badge);font-weight:var(--fw-ui);white-space:nowrap;padding:0 3px}
 /* 段は「屑＋数字」→「数字だけ」→「出さない」。**消す段は`display:none`**
    ——`visibility:hidden`だと箱は残るので、`overflow:hidden`で見えなくは
    なっても**文字の矩形はOS/DSの文字へ被ったまま**（実測: 6pxの帯に40pxの
@@ -133,7 +133,7 @@
 .split-visual-scrap-label.is-short{padding:0}
 .split-visual-scrap-label.is-short>i{display:none}
 .split-visual-scrap-label.is-gone{display:none}
-.split-visual-scrap-label b{font-size:var(--fs-micro);font-weight:800}
+.split-visual-scrap-label b{font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 /* センターライン・目盛り(ルーラー)。屑を左右均等に振り分ける設計のため、
    条ストリップの中央=母材全幅の中央が数式上必ず一致する。目盛りは
    元幅(実績)が判明している場合のみ、中心線から±1000/1250/1500mmの
@@ -141,7 +141,7 @@
 .split-visual-ruler{position:absolute;inset:0;pointer-events:none;z-index:2}
 .split-visual-centerline{position:absolute;top:-5px;bottom:-5px;left:50%;border-left:1.5px dashed #64797f;opacity:.75}
 .split-visual-tick{position:absolute;top:0;bottom:0;border-left:1px dashed #a9bcc1;opacity:.6}
-.split-visual-tick-label{position:absolute;top:-15px;left:0;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:700;color:#748a90;white-space:nowrap}
+.split-visual-tick-label{position:absolute;top:-15px;left:0;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:#748a90;white-space:nowrap}
 /* 端に近い目盛りの数字は**内側へ寄せる**（§9.221 ⑥③）。真上に置くと器の外へ
    半分はみ出し、そこにあるOS／DSの文字と重なってどちらも読めなくなる。 */
 .split-visual-tick.is-edge-left>.split-visual-tick-label{transform:translateX(0)}
@@ -174,7 +174,7 @@
   flex:0 0 auto;max-width:100%;
   padding:0 var(--space-1);border-radius:var(--radius-xs);
   background:var(--danger);color:#fff;
-  font-size:var(--fs-micro);font-weight:800;line-height:1.4;
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);line-height:1.4;
   text-shadow:none;cursor:pointer;white-space:nowrap;overflow:hidden;
 }
 .svb-defect:hover{filter:brightness(1.1)}
@@ -212,14 +212,14 @@
    あわせて帯の中の文字を10/11/12/14pxの4種から2種へそろえる（§9.90）。 */
 .measure-shell .split-ghost-btn,
 .measure-shell .split-defect-chip{font-size:var(--fs-sm)}
-.split-defect-chip>b{font-size:var(--fs-sm);font-weight:800}
+.split-defect-chip>b{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .split-defect-chip>small{color:var(--ink-3);font-size:var(--fs-micro)}
 .split-defect-chip.is-hit{border-color:var(--danger);background:var(--danger-bg);
   color:var(--danger)}
 .split-defect-chip.is-hit>small{color:var(--danger)}
 .split-defect-chip.is-stale{border-style:dashed}
-.split-visual-block-label{display:flex;flex-direction:column;align-items:center;line-height:1.25;font-size:var(--fs-sm);font-weight:800;white-space:nowrap;padding:0 var(--space-1)}
-.split-visual-block-label small{font-size:var(--fs-badge);font-weight:700;opacity:.85}
+.split-visual-block-label{display:flex;flex-direction:column;align-items:center;line-height:1.25;font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;padding:0 var(--space-1)}
+.split-visual-block-label small{font-size:var(--fs-badge);font-weight:var(--fw-ui);opacity:.85}
 /* ラベルの段は`fitStripLabels()`が**幅ごとにまとめて**決める（§9.210 ④）。
    同じ幅の条は必ず同じ段になる——出たり出なかったりが図の中で混ざると、
    何か違いがあるのかと読み手が数え直すことになる。 */
@@ -256,7 +256,7 @@
    どちらも1行・同じ大きさなので、入れ替わっても行の高さは動かない。 */
 .split-visual-detail{
   flex:1 1 0;min-width:0;margin-right:auto;
-  font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .split-visual-detail[hidden],.split-visual-hint[hidden]{display:none}
@@ -307,22 +307,22 @@
   flex:0 0 auto;
 }
 .split-scrap-alloc[hidden]{display:none}
-.ssa-title{color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em}
+.ssa-title{color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em}
 .ssa-state{
   padding:0 var(--space-2);border-radius:var(--radius-pill);
   background:var(--surface-2);color:var(--ink-2);
-  font-size:var(--fs-micro);font-weight:800;white-space:nowrap;
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);white-space:nowrap;
 }
 .ssa-state.is-biased{background:var(--warn-bg);color:var(--warn-fg)}
 .ssa-field{
   display:flex;align-items:center;gap:var(--space-1);
-  color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;white-space:nowrap;
+  color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;
 }
 /* 読み取り専用の値に**入力欄風の枠を付けない**（§9.129）。地色と等幅数字で
    「読むもの」だと分かるようにする。 */
 .ssa-given output{
   min-width:var(--w-xs);text-align:right;color:var(--ink);
-  font-variant-numeric:tabular-nums;font-weight:800;
+  font-variant-numeric:tabular-nums;font-weight:var(--fw-strong);
 }
 .ssa-unit{display:flex;align-items:center;gap:2px}
 /* 入る値は「32.5」程度＝4桁なので`--w-xs`（§CLAUDE 11 入れ物は中身の
@@ -332,7 +332,7 @@
 /* **縮む役は案内だけが持つ**（§9.229 ⑤／§9.234 ①）。以前は`flex:1 1 100%`で
    **必ず1行増やして**おり、カードの下端で見切れていた（実機で報告）。
    全文は`title`で読める（`renderScrapAllocEditor()`が入れる）。 */
-.ssa-note{flex:1 1 0;min-width:0;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:700;
+.ssa-note{flex:1 1 0;min-width:0;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:var(--fw-ui);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* **警告は省略しない**（§9.149／§9.234 ①）。範囲外を丸めたときは「なぜこの値
    なのか」を読まないと直せないので、そのときだけ1行を取って折り返す。
@@ -362,7 +362,7 @@
 /* 動かしている間は文字を選ばせない（掴んだまま横へ振ると帯の文字が
    青く反転して、動かしているものが分からなくなる）。 */
 .split-visual-measure.is-scrap-dragging{user-select:none;cursor:ew-resize}
-.split-ghost-btn{font-weight:700;color:var(--ink-2);background:#fff;border:1px solid var(--line-mid);
+.split-ghost-btn{color:var(--ink-2);background:#fff;border:1px solid var(--line-mid);
   cursor:pointer;white-space:nowrap}
 .split-ghost-btn:hover:not(:disabled){background:var(--bg);border-color:#9aabab}
 .split-ghost-btn:disabled{color:#b6c2c4;cursor:not-allowed}
@@ -377,14 +377,14 @@
 .split-tolerance-legend th,.split-tolerance-legend td{padding:var(--pad-chip);border:1px solid #d8c47a;text-align:left}
 .split-tolerance-legend th{background:#f2e6b3;position:sticky;top:0}
 .split-legend-missing td{color:var(--danger);background:var(--danger-bg)}
-.split-legend-current td{background:#fff1b8;font-weight:700}
+.split-legend-current td{background:#fff1b8;font-weight:var(--fw-strong)}
 .split-legend-current td:first-child{color:#8a6600}
 /* 幅分割情報パネル(#splitGrid)。分割候補/確定結果を能動的に表示し、
    条割変更モーダルへの導線ボタンを常設する(視覚導線・操作導線の強化)。 *//* 左ペインの他のパネル(基本情報・作業時間・測定データ分析)はいずれも本文
    14px・見出し15pxで組んである。このパネルだけ表と補足行を12pxで組んで
    いたため、同じ列に並べたときに一段小さく沈んで見えていた。角丸・枠線も
    カードのトークン(--radius-card/--card-border)へ揃える。 */
-.split-panel-status{display:block;padding:var(--space-2);border-radius:var(--radius-card);font-weight:700;margin-bottom:var(--space-2)}
+.split-panel-status{display:block;padding:var(--space-2);border-radius:var(--radius-card);font-weight:var(--fw-strong);margin-bottom:var(--space-2)}
 .split-panel-status-none{background:var(--bg);color:var(--muted)}
 .split-panel-status-pending{background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border)}
 .split-panel-status-applied{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
@@ -402,7 +402,7 @@
 .split-panel-table th:nth-child(4),.split-panel-table td:nth-child(4){text-align:right;width:1%;white-space:nowrap}
 /* 見出し行は本文と同じ大きさのまま、色と太さで段差をつける(サイズを
    落とすと表の中だけ字が小さくなり、周りとの落差がまた生まれる)。 */
-.split-panel-table th{background:var(--surface-2);color:var(--muted);font-weight:700;position:sticky;top:0}
+.split-panel-table th{background:var(--surface-2);color:var(--muted);font-weight:var(--fw-strong);position:sticky;top:0}
 .split-panel-table tr.split-legend-missing td{color:var(--danger);background:var(--danger-bg)}
 /* ロット№の頭の色丸。入力欄のバッジ・条割の視覚図と同じ色。 */
 .split-lot-dot{display:inline-block;width:9px;height:9px;margin-right:6px;border-radius:var(--radius-round);vertical-align:baseline;box-shadow:0 0 0 1px #ffffffcc}
@@ -459,13 +459,13 @@
 .split-detail-summary{
  display:flex;align-items:center;gap:var(--space-1);
  padding:var(--pad-row) 0;cursor:pointer;list-style:none;
- font-size:var(--fs-sm);font-weight:800;color:var(--ink-2);
+ font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);
 }
 .split-detail-summary::-webkit-details-marker{display:none}
 /* **開いているかどうかを文字の前の印で言う**（色だけに頼らない）。 */
-.split-detail-summary::before{content:'▸';color:var(--muted);font-weight:700}
+.split-detail-summary::before{content:'▸';color:var(--muted);font-weight:var(--fw-strong)}
 .split-detail-fold[open]>.split-detail-summary::before{content:'▾'}
-.split-detail-summary .sdf-sum{font-weight:600;color:var(--muted);font-size:var(--fs-badge)}
+.split-detail-summary .sdf-sum{font-weight:var(--fw-ui);color:var(--muted);font-size:var(--fs-badge)}
 /* **畳んでいるときは中身を出さない。** `display:flex`を素で当てると、
    `<details>`が閉じていてもUAの`display:none`に勝って**開きっぱなし**に
    なる（カードの中に見出しが3つ出て`test_splitlive`が捕まえた）。 */
@@ -510,7 +510,7 @@
    `display:block`を当てると行が器いっぱいに伸びなくなるので、器を1枚かぶせる。 */
 .split-diff-scroll{max-height:22vh;overflow:auto;margin-bottom:6px}
 .split-diff-scroll .split-diff-table{margin-bottom:0}
-.split-mismatch-badge{margin-bottom:var(--space-2);padding:var(--pad-row);background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-weight:700}
+.split-mismatch-badge{margin-bottom:var(--space-2);padding:var(--pad-row);background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-weight:var(--fw-strong)}
 .split-scrap-line{margin-bottom:var(--space-2);padding:6px 7px;background:var(--surface-2);border:1px solid var(--line-mid);border-radius:var(--radius-card);font-size:var(--fs-base-sm);font-variant-numeric:tabular-nums}
 .split-scrap-line b{font-size:var(--fs)}
 .split-scrap-warn{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}

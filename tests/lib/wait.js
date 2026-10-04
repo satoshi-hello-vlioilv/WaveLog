@@ -204,6 +204,21 @@ const textOf=(page,sel)=>page.evaluate(s=>((document.querySelector(s)||{}).textC
 
 /* 一覧の「表の見せ方」の浮きパネルを開く（§9.468・§9.505）。行間・並び・表示件数は
    この中に畳んである（表示列は帯に直に出した）。開いていれば何もしない。**押すのは本物のボタン**（人と同じ道）。 */
+/* データ一覧（測定データ）の行の帳票を開く（§9.558・利用者の選んだ案C）。操作は行の中ではなく**選んだ1件の帯**
+   （`#recordActionBar`）が出すので、行を押して選んでから帯の「帳票」を押す（人と同じ道）。
+   どの行かは字で選べる（`has`＝含む字・`not`＝含まない字。省けば1行目）。→ 選べたか。 */
+async function openRecordReport(page,{has='',not=''}={}){
+ await until(page,()=>document.querySelectorAll('.record-list-row').length>0,null,{ms:25000,what:'記録の一覧に行が出る'});
+ const hit=await page.evaluate(([has,not])=>{
+  const r=[...document.querySelectorAll('.record-list-row')]
+    .find(x=>(!has||(x.textContent||'').includes(has))&&(!not||!(x.textContent||'').includes(not)));
+  if(!r)return false;r.click();return true;
+ },[has,not]);
+ if(!hit)return false;
+ await until(page,()=>!!document.querySelector('#recordActionBar .report'),null,{ms:5000,what:'帯に「帳票」が出る'});
+ await page.click('#recordActionBar .report');
+ return true;
+}
 async function listView(page){
  const isOpen=()=>page.evaluate(()=>{const p=document.getElementById('listViewPanel');return !!p&&!p.hidden});
  if(await isOpen())return;
@@ -217,6 +232,6 @@ const X={SETTLE,settle,paint,textOf,
  until:traced('until',until),booted:traced('booted',booted),settleFlags:traced('settleFlags',settleFlags),
  openSchedule:traced('openSchedule',openSchedule),poll:traced('poll',poll),opSave:traced('opSave',opSave),
  answerPrompt:traced('answerPrompt',answerPrompt),answerConfirm:traced('answerConfirm',answerConfirm),
- changed:traced('changed',changed),listView:traced('listView',listView),
+ changed:traced('changed',changed),listView:traced('listView',listView),openRecordReport:traced('openRecordReport',openRecordReport),
  track:(page,o)=>{const t=track(page,o);return {idle:traced('idle',t.idle),pending:t.pending}}};
 module.exports=X;

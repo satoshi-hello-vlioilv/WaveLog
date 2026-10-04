@@ -108,7 +108,7 @@ run('test_rpblocks: 帳票の塊（ブロック）と配置の組み換え（§9
   await seedRecord();
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
-  await page.click('.record-list-row .report');
+  await WT.openRecordReport(page);
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
   await settle(page);
 
@@ -282,7 +282,7 @@ run('test_rpblocks: 帳票の塊（ブロック）と配置の組み換え（§9
      ========================================================== */
   await cleanup();
   await page.evaluate(()=>{WL.columnLayout.forget('report:テスト設備A')});
-  await page.click('.record-list-row .report').catch(()=>{});
+  await WT.openRecordReport(page).catch(()=>{/* 一覧が出ていなければ開かない（後片付けの道） */});
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
   await settle(page);
   const baseKeys=await blocks(page);
@@ -762,7 +762,7 @@ run('test_rpblocks: 帳票の塊（ブロック）と配置の組み換え（§9
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
-  await page.click('.record-list-row .report');
+  await WT.openRecordReport(page);
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
   await page.click('#reportArrange');
   await page.waitForSelector('#reportContent .rp-blocks.is-arranging',{timeout:15000});
@@ -822,7 +822,7 @@ run('test_rpblocks: 帳票の塊（ブロック）と配置の組み換え（§9
    await idle();
    await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
-   await page.click('.record-list-row .report');
+   await WT.openRecordReport(page);
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
    await settle(page);
    await idle();
@@ -890,7 +890,7 @@ run('test_rpblocks: 帳票の塊（ブロック）と配置の組み換え（§9
    await page.evaluate(t=>{if(WL.columnLayout.forget)WL.columnLayout.forget(t)},TARGET);
    await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
-   await page.click('.record-list-row .report');
+   await WT.openRecordReport(page);
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
    await settle(page);
    await idle();
@@ -1080,7 +1080,7 @@ run('test_rpblocks: 帳票の塊（ブロック）と配置の組み換え（§9
    await page.evaluate(()=>window.exitReportView&&window.exitReportView());
    await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
-   await page.click('.record-list-row .report');
+   await WT.openRecordReport(page);
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
    await settle(page);await idle();
    /* **開いているとは限らない**——前の節が組み換えを開いたままなので、
@@ -1226,7 +1226,7 @@ run('test_rpblocks: 帳票の塊（ブロック）と配置の組み換え（§9
     await page.evaluate(()=>window.exitReportView&&window.exitReportView());
     await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
     await page.waitForSelector('.record-list-row',{timeout:25000});
-    await page.click('.record-list-row .report');
+    await WT.openRecordReport(page);
     await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
     await settle(page);await idle();
     return page.evaluate(()=>{

@@ -30,6 +30,7 @@
 ============================================================
 """
 import ast
+import gc
 import collections
 import hashlib
 import os
@@ -40,6 +41,8 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BACKEND = ROOT / 'backend'
+sys.path.insert(0, str(ROOT))
+from backend import sqlite_io  # noqa: E402  9) 接続を閉じるかを実物で確かめる
 R = []
 
 # db_access の関数の中から読んでよいbackendのモジュールと、その理由。
@@ -230,6 +233,54 @@ def main():
         rec('網が「関数の中のimport」を実際に数えている',
             'backend.db_mirror' in d2.get('backend._dblayer_probe', set())
             and 'backend.db_access' in t2.get('backend._dblayer_probe', set()))
+
+
+    # 9) `with connect(...)` を抜けたら接続は閉じる（§9.563・§9.270 を根から塞ぐ）。
+    #    `sqlite3.Connection.__exit__`はコミット／ロールバックだけで閉じない。閉じないと Windows では
+    #    そのファイルを置き換えも消しもできない（Linux の rename は通るので「動いたか」では捕まらない）。
+    #    **開いているハンドルを数える**（GC を待たない）。数えられない OS では数えたふりをしない。
+    fd_dir = pathlib.Path('/proc/self/fd')
+    if fd_dir.is_dir():
+        def open_to(path):
+            n = 0
+            for fd in fd_dir.iterdir():
+                try:
+                    if os.path.realpath(fd) == os.path.realpath(path):
+                        n += 1
+                except OSError:
+                    pass                      # 数えている間に閉じた fd（数えなくてよい）
+            return n
+        gc.disable()                          # GC が先に閉じると、閉じ忘れても 0 に見える
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                db = pathlib.Path(td) / 'probe.sqlite3'
+                with sqlite_io.connect(db) as c:
+                    c.execute('CREATE TABLE t(x)')
+                    c.execute('INSERT INTO t VALUES (1)')
+                    inside = open_to(db)
+                after_rw = open_to(db)
+                with sqlite_io.connect(db, readonly=True) as c:
+                    rows = c.execute('SELECT x FROM t').fetchall()
+                after_ro = open_to(db)
+                raised = False
+                try:
+                    with sqlite_io.connect(db) as c:
+                        c.execute('INSERT INTO t VALUES (2)')
+                        raise RuntimeError('網の確かめ')
+                except RuntimeError:
+                    raised = True
+                after_err = open_to(db)
+                with sqlite_io.connect(db) as c:
+                    kept = c.execute('SELECT count(*) FROM t').fetchone()[0]
+        finally:
+            gc.enable()
+        rec('数えられる（with の中では開いている）', inside >= 1, inside)
+        rec('with connect(...) を抜けたら閉じる（書く・読むだけ・例外で抜けた、どれも 0 本）',
+            after_rw == 0 and after_ro == 0 and after_err == 0, (after_rw, after_ro, after_err))
+        rec('閉じる前に確定する（抜けたらコミット・例外ならロールバック）',
+            rows == [(1,)] and raised and kept == 1, (rows, raised, kept))
+    else:
+        print('SKIP: /proc/self/fd が無い OS では開いている数を数えられない')
 
 
 if __name__ == '__main__':

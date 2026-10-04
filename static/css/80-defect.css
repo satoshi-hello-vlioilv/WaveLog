@@ -9,8 +9,8 @@
    ============================================================ */
 @layer component {
 .filter-var-chip{padding:var(--pad-chip);border:1px dashed var(--teal);border-radius:var(--radius-md);
- background:var(--surface-2);color:#17606c;font-size:var(--fs-sm);font-weight:700;line-height:1.6}
-.filter-var-chip::before{content:"{ }";margin-right:4px;opacity:.6;font-weight:800}
+ background:var(--surface-2);color:#17606c;font-size:var(--fs-sm);font-weight:var(--fw-ui);line-height:1.6}
+.filter-var-chip::before{content:"{ }";margin-right:4px;opacity:.6;font-weight:var(--fw-ui)}
 .filter-var-chip:hover{background:#e2f5f8;border-style:solid}
 /* ---------- ダッシュボード「自設備」ビュー(§9.74) ----------
    稼働状況・自由集計は全設備を見渡すスケジューラ視点。こちらは端末の使用設備
@@ -18,10 +18,10 @@
    そのまま使う(新しい見た目を増やさない)。 */
 .db-equip-view{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-4);overflow:auto}
 .db-equip-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap}
-.db-equip-head>b{font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
+.db-equip-head>b{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink)}
 .db-equip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--space-4)}
 .db-equip-grid .db-card{align-items:stretch;text-align:left}
-.db-equip-grid .db-card h3{margin:0 0 var(--space-2);font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
+.db-equip-grid .db-card h3{margin:0 0 var(--space-2);font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink)}
 .db-equip-grid .db-card-wide{grid-column:1/-1}
 /* ============================================================
    異常位置判定（defect-locator.js）
@@ -59,7 +59,7 @@
 .defect-tab{display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:0;
   padding:var(--space-1) var(--space-2);border:0;border-radius:var(--radius-xs);
   background:none;color:var(--ink-3);cursor:pointer;text-align:left}
-.defect-tab>b{font-size:var(--fs-sm);font-weight:800;white-space:nowrap;overflow:hidden;
+.defect-tab>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;max-width:100%}
 .defect-tab>span{font-size:var(--fs-micro);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;max-width:100%}
@@ -76,7 +76,7 @@
   display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
   padding:var(--space-2) var(--space-4);background:var(--header-bar-bg);color:var(--header-bar-fg);
 }
-.defect-dialog>header h2{margin:0;font-size:var(--fs-title);font-weight:800}
+.defect-dialog>header h2{margin:0;font-size:var(--fs-title);font-weight:var(--fw-strong)}
 .defect-dialog>header .defect-sub{display:block;margin-top:2px;font-size:var(--fs-micro);opacity:.85}
 .defect-dialog>header button{background:transparent;border:0;box-shadow:none;color:inherit;font-size:var(--fs-lg);line-height:1}
 .defect-body{
@@ -95,14 +95,14 @@
   padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
   white-space:nowrap;text-align:left}
 .defect-roll-table th{position:sticky;top:0;background:var(--surface-2);color:var(--ink-3);
-  font-size:var(--fs-micro);font-weight:800}
+  font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .defect-roll-table td.num{text-align:right;font-variant-numeric:tabular-nums}
 /* 直接一致とそれ以外（倍音）は**言葉で分ける**（§3）。色は補助。 */
 .defect-roll-table tr.is-direct{background:var(--success-bg)}
 .defect-roll-table tr.is-direct td{color:var(--ink)}
 .defect-roll-kind{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
   padding:var(--pad-chip);border-radius:var(--radius-xs);
-  background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-micro);font-weight:800}
+  background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .defect-roll-kind.is-direct{background:var(--success-bg);color:var(--success);
   border:1px solid var(--success-border)}
 .defect-roll-empty{padding:var(--space-4);color:var(--muted);text-align:center;font-size:var(--fs-sm)}
@@ -112,24 +112,24 @@
 .defect-input{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;overflow:auto}
 /* 「1 どこから測ったか」「2 どこに見つけたか」の2段階。作業記憶の負荷を
    下げるため、5つの入力欄を意味のまとまりへ割り、番号で順序を示す。 */
-.defect-step{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
+.defect-step{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink)}
 .defect-step:not(:first-child){margin-top:var(--space-2)}
 .defect-step-no{
   flex:0 0 auto;display:grid;place-items:center;width:var(--ctl-h-xs);height:var(--ctl-h-xs);
-  border-radius:var(--radius-round);background:var(--teal);color:#fff;font-size:var(--fs-sm);font-weight:800;
+  border-radius:var(--radius-round);background:var(--teal);color:#fff;font-size:var(--fs-sm);font-weight:var(--fw-ui);
 }
-.defect-field{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.defect-field{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
 .defect-field select,.defect-field input{min-width:0;width:100%;box-sizing:border-box}
 .defect-unit{position:relative;display:flex;align-items:center;min-width:0}
 .defect-unit input{padding-right:2.6em;text-align:right}
-.defect-unit i{position:absolute;right:var(--space-2);font-style:normal;font-size:var(--fs-micro);font-weight:700;color:var(--ink-soft);pointer-events:none}
+.defect-unit i{position:absolute;right:var(--space-2);font-style:normal;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-soft);pointer-events:none}
 /* 利用者が入れるのではなく、こちらが前提として使っている値。入力欄と
    同じ見た目にすると「まだ入れていない欄」に見えるので、自動計算値の
    トークン(--computed-*)で塗り分けて下端へ寄せる。 */
 .defect-given{
   margin-top:auto;display:grid;gap:var(--space-1);padding:var(--space-2);
   border-radius:var(--radius-card);background:var(--computed-bg);color:var(--computed-fg);
-  font-size:var(--fs-micro);font-weight:700;font-variant-numeric:tabular-nums;
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);font-variant-numeric:tabular-nums;
 }
 .defect-given span{display:flex;justify-content:space-between;gap:var(--space-2);min-width:0}
 .defect-given .defect-note-warn{display:block;color:var(--warn-fg)}
@@ -147,7 +147,7 @@
   background:var(--success-bg);border:1px solid var(--success-border);
 }
 .defect-answer b,.defect-answer span{min-width:0;overflow-wrap:anywhere}
-.defect-answer b{font-size:var(--fs-lg);font-weight:900;color:var(--success)}
+.defect-answer b{font-size:var(--fs-lg);font-weight:var(--fw-strong);color:var(--success)}
 .defect-answer span{font-size:var(--fs-sm);color:var(--ink-2)}
 /* 「該当なし」は失敗ではなく答えのひとつなので警告色まで、
    「計算できない」は対処が要るので危険色にする(意味で色を分ける)。 */
@@ -169,7 +169,7 @@
 .defect-end{
   flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:28px;align-self:stretch;
   border-radius:var(--radius-sm);background:var(--surface-3);color:var(--ink-3);
-  font-size:var(--fs-micro);font-weight:800;letter-spacing:.03em;
+  font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.03em;
 }
 .defect-measure{flex:1;min-width:0;display:flex;flex-direction:column}
 /* 位置ラベルの置き場。以前は帯(.defect-strip)の中へ負のtopで置いていたため
@@ -187,10 +187,10 @@
 .defect-lane{position:absolute;top:0;bottom:0;background-color:var(--defect-lane-bg,#8a9a97);border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
 .defect-lane:last-of-type{border-right:0}
 .defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--gap-hair);line-height:1.1;pointer-events:none}
-.defect-lane-label b{font-size:var(--fs-micro);font-weight:900}
+.defect-lane-label b{font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .defect-lane-label small{font-size:var(--fs-tiny);opacity:.85}
 .defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,var(--surface-3),var(--surface-3) 4px,var(--line-soft) 4px,var(--line-soft) 8px);display:flex;align-items:center;justify-content:center}
-.defect-scrap span{font-size:var(--fs-tiny);font-weight:800;color:var(--ink-3)}
+.defect-scrap span{font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--ink-3)}
 .defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc;pointer-events:none}
 /* 図の中で唯一の高彩度＝欠陥。条は彩度を落としてあるので、面積が小さくても
    赤が最初に目に入る(前景/背景の対比)。色だけに頼らないよう、該当条には
@@ -200,49 +200,49 @@
 .defect-mark{position:absolute;top:0;bottom:0;min-width:3px;box-sizing:border-box;z-index:3;pointer-events:none;border-left:2px solid var(--danger);border-right:2px solid var(--danger)}
 .defect-mark::before{content:"";position:absolute;inset:0;background:var(--danger);opacity:.32}
 .defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;pointer-events:none;white-space:nowrap}
-.defect-flag b{padding:var(--pad-chip);border-radius:var(--radius-pill);background:var(--danger);color:#fff;font-size:var(--fs-tiny);font-weight:900;font-variant-numeric:tabular-nums}
+.defect-flag b{padding:var(--pad-chip);border-radius:var(--radius-pill);background:var(--danger);color:#fff;font-size:var(--fs-tiny);font-weight:var(--fw-ui);font-variant-numeric:tabular-nums}
 /* 何か所目か（2か所以上のときだけ出る）。旗の色は「欠陥」の意味なので変えず、
    番号は白い丸で分ける——色だけで伝えない（§3）。 */
-.defect-flag b>u{display:inline-block;min-width:1em;margin-right:.25em;padding:0 .2em;border-radius:var(--radius-pill);background:#fff;color:var(--danger);text-decoration:none;font-weight:900}
+.defect-flag b>u{display:inline-block;min-width:1em;margin-right:.25em;padding:0 .2em;border-radius:var(--radius-pill);background:#fff;color:var(--danger);text-decoration:none;font-weight:var(--fw-strong)}
 .defect-flag i{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--danger)}
 /* 端に寄ったときはラベルだけ内側へ寄せる(▼はほぼ位置どおりのまま)。
    translateX(-50%)のままだと数字が図の外へ出て見切れる。 */
 .defect-flag.at-start{align-items:flex-start;transform:translateX(-6px)}
 .defect-flag.at-end{align-items:flex-end;transform:translateX(calc(-100% + 6px))}
 .defect-tick{position:absolute;top:0;width:0;height:5px;border-left:1px solid var(--line-strong)}
-.defect-tick-label{position:absolute;top:6px;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:700;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.defect-tick-label{position:absolute;top:6px;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .defect-tick-label.at-start{transform:translateX(0)}
 .defect-tick-label.at-end{transform:translateX(-100%)}
 /* 条が細いと帯の中にロット番号を書けない。色と番号の対応表を1行で置く。 */
 .defect-legend{display:flex;gap:var(--space-3);min-width:0;min-height:18px;overflow-x:auto;overflow-y:hidden}
-.defect-legend span{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;font-size:var(--fs-tiny);font-weight:700;color:var(--ink-3);white-space:nowrap}
+.defect-legend span{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--ink-3);white-space:nowrap}
 .defect-legend i{width:10px;height:10px;border-radius:var(--radius-xs);background:var(--defect-lane-bg,#8a9a97)}
 .defect-legend b{color:var(--ink-2)}
-.defect-figure-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 var(--space-3);text-align:center;color:var(--muted);font-size:var(--fs-sm);font-weight:700}
+.defect-figure-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 var(--space-3);text-align:center;color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* ---------- 内訳（伸び縮みしてよい唯一の場所） ---------- */
 .defect-detail{min-height:0;overflow:auto;padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-card);background:var(--surface)}
-.defect-detail-head{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-1);font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
-.defect-detail-head span{margin-left:auto;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.defect-detail-head{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-1);font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink)}
+.defect-detail-head span{margin-left:auto;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted)}
 .defect-detail-empty{padding:var(--space-3);text-align:center;color:var(--muted);font-size:var(--fs-sm)}
-.defect-warn{margin-bottom:var(--space-2);padding:5px 9px;border-radius:var(--radius-card);background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700}
+.defect-warn{margin-bottom:var(--space-2);padding:5px 9px;border-radius:var(--radius-card);background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .defect-calc{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-2);font-size:var(--fs-micro);color:var(--ink-3);font-variant-numeric:tabular-nums}
 .defect-calc span{padding:var(--pad-chip);border-radius:var(--radius-sm);background:var(--surface-2);border:1px solid var(--line-soft)}
 /* 何か所目かは**小さな番号**で（図の旗と対応が読める）。色だけで伝えない（§3）。 */
-.defect-calc i{display:inline-block;min-width:1.1em;margin-right:var(--space-1);padding:0 .25em;border-radius:var(--radius-xs);background:var(--line-soft);color:var(--ink-2);font-style:normal;font-weight:800;text-align:center}
+.defect-calc i{display:inline-block;min-width:1.1em;margin-right:var(--space-1);padding:0 .25em;border-radius:var(--radius-xs);background:var(--line-soft);color:var(--ink-2);font-style:normal;font-weight:var(--fw-strong);text-align:center}
 .defect-table{width:100%;margin-top:var(--space-2);border-collapse:collapse;font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
 .defect-table th,.defect-table td{padding:3px 7px;border:1px solid var(--line-mid);text-align:right}
-.defect-table thead th{background:var(--surface-3);text-align:center;font-weight:800}
+.defect-table thead th{background:var(--surface-3);text-align:center;font-weight:var(--fw-strong)}
 .defect-table tbody th{text-align:center;background:var(--surface-2)}
 /* ---------- 操作（常に見えている） ---------- */
 .defect-actions{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);border-top:1px solid var(--card-border);background:var(--surface-2)}
-.defect-actions button{font-weight:700}
+.defect-actions button{font-weight:var(--fw-strong)}
 .defect-ghost-btn{background:var(--surface);color:var(--ink-2)}
 .defect-primary-btn{background:var(--teal);border-color:var(--teal-dark);color:#fff}
 .defect-primary-btn:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
 /* 保存したかどうかは、この判定が帳票へ載るかどうかを決める唯一の合図。
    ボタンの左に常設し、押した結果がその場で読めるようにする。 */
-.defect-save-state{margin-right:auto;display:flex;align-items:center;gap:var(--space-1);min-width:0;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
-.defect-save-state b{font-weight:800}
+.defect-save-state{margin-right:auto;display:flex;align-items:center;gap:var(--space-1);min-width:0;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted)}
+.defect-save-state b{font-weight:var(--fw-strong)}
 .defect-save-state.is-saved{color:var(--success)}
 .defect-save-state.is-stale{color:var(--warn-fg)}
 /* 幅の狭い端末では1カラムへ落とす。器の高さは変えず、body側をスクロールさせる。 */
@@ -265,7 +265,7 @@
 .df-field span{color:#555;white-space:nowrap}
 .df-field b{text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .df-strip-row{display:flex;align-items:center;gap:6px;margin-top:4px}
-.df-strip-row>span{font-weight:800;font-size:10px}
+.df-strip-row>span{font-weight:var(--fw-strong);font-size:10px}
 .df-strip{position:relative;flex:1;height:52px;border:1px solid #666;overflow:hidden}
 .df-table{width:100%;margin-top:4px;border-collapse:collapse;font-size:11px}
 }

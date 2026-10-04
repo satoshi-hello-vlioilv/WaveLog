@@ -1,4 +1,4 @@
-/* test_smalltext.js: 読ませる字は 12px 以上（§9.560）
+/* test_smalltext.js: 読ませる字は 12px 以上（§9.560）・字の太さは3段（§9.562）
    ------------------------------------------------------------
    利用者の指摘:「まだ残っている統一基準になってない小さな文字や冗長な表示や表現」（§9.556）、
    続けて「残りの小さな字の修正を進めてください」。
@@ -35,6 +35,8 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
    const s=getComputedStyle(el);
    if(s.visibility==='hidden'||+s.opacity===0)continue;
    const fs=parseFloat(s.fontSize);
+   /* 太さは3段（§9.562）。アイコンの字体（Font Awesome の solid は 900）は数えない */
+   if(![400,600,700].includes(+s.fontWeight)&&!/Font Awesome/.test(s.fontFamily))window.__wlOddW=(window.__wlOddW||[]).concat(name+':'+s.fontWeight+' '+tx.slice(0,10));
    /* 字を大きくした副作用の見張り: 省略記号で切れている字（数えるだけ・#MEASURE） */
    if(s.textOverflow==='ellipsis'&&el.scrollWidth>el.clientWidth+1)window.__wlCut=(window.__wlCut||[]).concat(name+':'+tx.slice(0,12));
    if(fs>=11.95)continue;
@@ -68,9 +70,12 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
  });
  const by={};found.forEach(f=>{(by[f.screen]=by[f.screen]||[]).push(f)});
  const cut=await page.evaluate(()=>window.__wlCut||[]);
+ const oddW=await page.evaluate(()=>window.__wlOddW||[]);
  console.log('#MEASURE '+JSON.stringify({cut:cut.length,cutList:cut.slice(0,40)}));
  console.log('#MEASURE '+JSON.stringify({total:found.length,perScreen:Object.fromEntries(Object.entries(by).map(([k,v])=>[k,v.length]))}));
  if(process.env.WAVELOG_SHOT)require('fs').writeFileSync(require('path').join(process.env.WAVELOG_SHOT,'smalltext.json'),JSON.stringify({found,cut},null,1));
  const kinds=[...new Set(found.map(f=>`${f.sel} ${f.fs}px「${f.tx}」`))];
  rec('読ませる字に 12px 未満が無い（画面を巡回して数える）',found.length===0,`${found.length}件 ${kinds.slice(0,8).join(' / ')}`);
+rec('描いた字の太さは 400／600／700 の3段だけ（§9.562・500 は 400 と同じに、800・900 は英数字だけ Black になる）',
+  oddW.length===0,`${oddW.length}件 ${oddW.slice(0,6).join(' / ')}`);
 },{mode:'edit',viewport:{width:1728,height:1152}});

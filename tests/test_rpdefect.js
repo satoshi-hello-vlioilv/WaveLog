@@ -252,7 +252,7 @@ run('test_rpdefect: 紙の異常位置判定とピッチ判定（§9.319-C、利
     if(!m)return false;const[,R,G,Bb]=m.map(Number);
     return R>=120&&R>G*2&&R>Bb*2};   /* 赤い＝Rが飛び抜けて高い */
   rec('何条目かを赤太字で出す（§9.323 ⑤）',
-      !!red&&isRed(red.掛かる&&red.掛かる.c)&&Number(red.掛かる.w)>=700,
+      !!red&&isRed(red.掛かる&&red.掛かる.c)&&Number(red.掛かる.w)>=600,   /* 太さは3段（§9.562）: 札 600・番号 700 */
       JSON.stringify(red&&red.掛かる));
   rec('条番号そのものはさらに太い（先に目に入る）',
       !!red&&!!red.番号&&Number(red.番号.w)>Number(red.掛かる.w),
