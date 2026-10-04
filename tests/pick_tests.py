@@ -635,6 +635,7 @@ RULES = [
     ('eslint.config.mjs', ['test_eslint']),
     ('tests/fixtures/eslint_baseline.json', ['test_eslint']),
     ('tests/lib/js_types.js', ['test_tscheck']),
+    ('tests/lib/api_contract.py', ['test_tscheck']),
     ('tests/fixtures/tscheck_baseline.json', ['test_tscheck']),
     ('tests/fixtures/color_baseline.json', ['test_csslint']),
     ('tests/fixtures/import_baseline.json', ['test_importlint']),

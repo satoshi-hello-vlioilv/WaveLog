@@ -17,6 +17,7 @@
  * 使い方:
  *   node tests/lib/js_types.js                 → 診断を JSON で標準出力へ
  *   node tests/lib/js_types.js --decl          → 起こした宣言を標準出力へ（調べる用）
+ *   node tests/lib/js_types.js --contract c.json → サーバーの応答の鍵を api() の型にする（§9.567）
  *   node tests/lib/js_types.js --override a.js=/tmp/x.js …
  *                                              → a.js を /tmp/x.js の中身に差し替えて調べる
  *                                                （網が欠陥を注ぐとき。本物の置き場へ書かない・§9.504）
@@ -29,11 +30,19 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const JS_DIR = path.join(ROOT, 'static', 'js');
 
 function loadTs() {
+  /* `npm i -g` で入れた物は `require` の探す先に無い（CI で踏んだ）。動いている node の置き場の
+     `lib/node_modules` と、`npm root -g` の答えも探す。 */
+  const globalRoot = () => {
+    try { return require('child_process').execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+    catch (e) { return null; }   // npm が無い——ほかの候補で探す
+  };
   const cands = [process.env.WAVELOG_TYPESCRIPT, 'typescript',
-    path.join(path.dirname(process.env.WAVELOG_NODE || '/opt/node22/bin/node'), '..', 'lib', 'node_modules', 'typescript')];
+    path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', 'typescript'),
+    () => { const g = globalRoot(); return g && path.join(g, 'typescript'); }];
   for (const c of cands) {
-    if (!c) continue;
-    try { return require(c); } catch (e) { /* 次の候補へ（見つからなければ最後に断る） */ }
+    const p = typeof c === 'function' ? c() : c;
+    if (!p) continue;
+    try { return require(p); } catch (e) { /* 次の候補へ（見つからなければ最後に断る） */ }
   }
   throw new Error('typescript が見つかりません（npm i -g typescript・または WAVELOG_TYPESCRIPT）');
 }
@@ -204,7 +213,34 @@ function externalNames() {
   return [...names].sort();
 }
 
-function build(files, overrides) {
+/* ---- 境界の約束（§9.567）: サーバーの応答の鍵を `api('/api/…')` の戻りの型にする ----
+   約束はサーバーのコード（`tests/lib/api_contract.py` が読み出す）。道が字面だけの呼び出しは、
+   その道の応答の鍵を持つ型を返す——画面がサーバーの返さない鍵を読むと 2339 で止まる。
+   応答が読めない道（`unknown`）と、`{*}` を含む道は any のまま（推して埋めない）。
+   同じ道の GET と POST は鍵を合わせる（`api()` の型は道でしか分けられない）。 */
+const API_OPTS = 'RequestInit & {quiet?: boolean}';
+function apiType(contract) {
+  const by = new Map();
+  for (const r of contract) {
+    if (r.pattern.includes('{*}')) continue;
+    const cur = by.get(r.rule) || { keys: new Set(), kind: 'closed' };
+    if (r.reply.kind === 'unknown') cur.kind = 'unknown';
+    else if (r.reply.kind === 'open' && cur.kind === 'closed') cur.kind = 'open';
+    for (const k of r.reply.keys) cur.keys.add(k);
+    by.set(r.rule, cur);
+  }
+  const sigs = [];
+  for (const [rule, v] of [...by].sort(([a], [b2]) => (a < b2 ? -1 : 1))) {
+    if (v.kind === 'unknown') continue;
+    const body = [...v.keys].sort().map(k => `${JSON.stringify(k)}?: any`)
+      .concat(v.kind === 'open' ? ['[k: string]: any'] : []).join('; ');
+    sigs.push(`(u: ${JSON.stringify(rule)}, o?: ${API_OPTS}): Promise<{ ${body} }>`);
+  }
+  sigs.push(`(u: string, o?: ${API_OPTS}): Promise<any>`);
+  return { text: '{\n  ' + sigs.join(';\n  ') + ';\n}', typed: sigs.length - 1 };
+}
+
+function build(files, overrides, contract) {
   const firstDecl = 'declare var WL: any;\ninterface Window { [k: string]: any }\n'
     + baseNames(files, overrides).map(n => `declare var ${n}: any;`).join('\n') + '\n';
   const p1 = program(files, overrides, firstDecl);
@@ -214,6 +250,12 @@ function build(files, overrides) {
     glob: [...glob].sort(([a], [b]) => (a < b ? -1 : 1)).filter(([k]) => /^[A-Za-z_$][\w$]*$/.test(k))
       .map(([k, v]) => [k, typeText(ck, v)]),
   };
+  let apiTyped = 0;
+  if (contract) {
+    const t = apiType(contract);
+    apiTyped = t.typed;
+    entries.glob = entries.glob.map(([k, v]) => (k === 'api' ? [k, t.text] : [k, v]));
+  }
   /* 宣言の中で解けない項目を any に倒す（最大3周）。倒した名前は報告に載せる。 */
   const anyNames = new Set();
   for (let i = 0; i < 3; i++) {
@@ -231,7 +273,8 @@ function build(files, overrides) {
       }
     }
   }
-  return { decl: declText(entries, anyNames), anyNames: [...anyNames].sort(), wlCount: entries.wl.length, globCount: entries.glob.length };
+  return { decl: declText(entries, anyNames), anyNames: [...anyNames].sort(), wlCount: entries.wl.length,
+    globCount: entries.glob.length, apiTyped };
 }
 
 /* 第1周で any として置く土台の短い名前（`window.x = …` で名乗っている物）。
@@ -255,36 +298,125 @@ const DOM_TYPES = /on type '(Element|HTMLElement|HTML\w*Element|SVG\w*Element|Ev
    `o.quiet`、`const a = []` の `a[0].x` は、TS が中身を知らないだけで取り違えではない（555件）。 */
 const EMPTY_TYPES = /on type '(\{\}|\{\} \| \{\}|never)'/;
 
-function diagnose(overrides = {}) {
+/* ---- 画面が呼ぶ API（境界の突き合わせに渡す） ----
+   `api(…)`・`fetch(…)` の第1引数が `/api` で始まるもの。道は字面（`{*}`＝式で決まる所・`?`より後は外す）、
+   メソッド、本文の鍵と字面の値の種類（`JSON.stringify({…})` のときだけ）。 */
+function urlOf(a) {
+  if (!a) return null;
+  if (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)) return a.text;
+  if (ts.isTemplateExpression(a)) return a.head.text + a.templateSpans.map(x => '{*}' + x.literal.text).join('');
+  if (ts.isBinaryExpression(a) && a.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const l = urlOf(a.left);
+    return l == null ? null : l + '{*}';
+  }
+  return null;
+}
+function valueKind(v) {
+  if (!v) return 'other';
+  if (ts.isStringLiteral(v) || ts.isTemplateExpression(v) || ts.isNoSubstitutionTemplateLiteral(v)) return 'string';
+  if (ts.isNumericLiteral(v)) return 'number';
+  if (v.kind === ts.SyntaxKind.TrueKeyword || v.kind === ts.SyntaxKind.FalseKeyword) return 'bool';
+  if (ts.isArrayLiteralExpression(v)) return 'array';
+  if (ts.isObjectLiteralExpression(v)) return 'object';
+  return 'other';
+}
+function apiCalls(prog, files) {
+  const want = new Set(files), out = [];
+  for (const sf of prog.getSourceFiles()) {
+    if (!want.has(sf.fileName)) continue;
+    const visit = n => {
+      if (ts.isCallExpression(n)) {
+        const c = n.expression;
+        const name = ts.isIdentifier(c) ? c.text : ts.isPropertyAccessExpression(c) ? c.name.text : '';
+        const raw = (name === 'api' || name === 'fetch') ? urlOf(n.arguments[0]) : null;
+        if (raw && raw.startsWith('/api')) {
+          const call = { file: path.relative(ROOT, sf.fileName).split(path.sep).join('/'),
+            line: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1, url: raw.split('?')[0],
+            method: 'GET', body: 'none', keys: [] };
+          const o = n.arguments[1];
+          if (o && !ts.isObjectLiteralExpression(o)) call.method = '?';
+          for (const p of (o && ts.isObjectLiteralExpression(o)) ? o.properties : []) {
+            const k = p.name && (p.name.text || p.name.getText());
+            const init = ts.isPropertyAssignment(p) ? p.initializer : null;
+            if (k === 'method') call.method = init && ts.isStringLiteral(init) ? init.text.toUpperCase() : '?';
+            if (k !== 'body') continue;
+            call.body = 'expr';
+            const arg = init && ts.isCallExpression(init) && /stringify$/.test(init.expression.getText()) ? init.arguments[0] : null;
+            if (!arg || !ts.isObjectLiteralExpression(arg)) continue;
+            call.body = 'literal';
+            for (const q of arg.properties) {
+              if (ts.isSpreadAssignment(q) || (q.name && ts.isComputedPropertyName(q.name))) { call.body = 'partial'; continue; }
+              call.keys.push([q.name.text || q.name.getText(), valueKind(ts.isPropertyAssignment(q) ? q.initializer : null)]);
+            }
+          }
+          out.push(call);
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+  }
+  return out;
+}
+
+/* `(await api(…)) || {}`・`.catch(e => ({error}))` は「応答の型 | 別の形」になり、応答に在る鍵でも
+   2339 が出る（どれか1つの形に無いだけで出る）。**どれかの形がその鍵を持つ（または何でも持てる）なら**
+   数えない。どの形も持たないなら本物——サーバーが返さない鍵を読んでいる。 */
+function unionParts(t) {
+  const parts = [];
+  let depth = 0, cur = '';
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if ('{([<'.includes(ch)) depth++;
+    if ('})]>'.includes(ch)) depth--;
+    if (depth === 0 && t.startsWith(' | ', i)) { parts.push(cur); cur = ''; i += 2; continue; }
+    cur += ch;
+  }
+  return parts.concat(cur);
+}
+function orEmpty(msg) {
+  const m = /^Property '([^']+)' does not exist on type '(.*)'\.$/.exec(msg);
+  if (!m) return false;
+  const parts = unionParts(m[2]);
+  if (parts.length < 2) return false;
+  const key = new RegExp(`(^\\{ |; |, )"?${m[1].replace(/[$]/g, '\\$')}"?\\??:`);
+  return parts.some(p => p.includes('[k: string]: any') || key.test(p));
+}
+
+function diagnose(overrides = {}, contract = null) {
   const files = walk(JS_DIR);
   const ov = {};
   for (const [k, v] of Object.entries(overrides)) ov[path.resolve(ROOT, k)] = v;
-  const b = build(files, ov);
+  const b = build(files, ov, contract);
   const p2 = program(files, ov, b.decl);
   const out = [];
   for (const d of ts.getPreEmitDiagnostics(p2)) {
     if (!d.file || !d.file.fileName.startsWith(JS_DIR)) continue;
     const msg = ts.flattenDiagnosticMessageText(d.messageText, '\n').split('\n')[0];
-    if (d.code === 2339 && (DOM_TYPES.test(msg) || EMPTY_TYPES.test(msg))) continue;
+    if (d.code === 2339 && (DOM_TYPES.test(msg) || EMPTY_TYPES.test(msg) || orEmpty(msg))) continue;
     const { line } = d.file.getLineAndCharacterOfPosition(d.start);
     out.push({ file: path.relative(ROOT, d.file.fileName).split(path.sep).join('/'), line: line + 1, code: d.code, msg });
   }
-  return { diagnostics: out, anyNames: b.anyNames, wlCount: b.wlCount, globCount: b.globCount, files: files.length };
+  return { diagnostics: out, anyNames: b.anyNames, wlCount: b.wlCount, globCount: b.globCount, files: files.length,
+    apiTyped: b.apiTyped, calls: apiCalls(p2, files) };
 }
 
 if (require.main === module) {
   const args = process.argv.slice(2);
   const overrides = {};
+  let contract = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--override') {
       const [rel, src] = args[++i].split('=');
       overrides[rel] = fs.readFileSync(src, 'utf8');
+    } else if (args[i] === '--contract') {
+      contract = JSON.parse(fs.readFileSync(args[++i], 'utf8'));
     }
   }
   if (args.includes('--decl')) {
-    process.stdout.write(build(walk(JS_DIR), {}).decl);
+    process.stdout.write(build(walk(JS_DIR), {}, contract).decl);
   } else {
-    process.stdout.write(JSON.stringify(diagnose(overrides)));
+    process.stdout.write(JSON.stringify(diagnose(overrides, contract)));
   }
 }
 

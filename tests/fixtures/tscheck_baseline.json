@@ -6,9 +6,8 @@
  "static/js/bladeset/rule-table.js": 10,
  "static/js/core/base.js": 8,
  "static/js/list/filters.js": 3,
- "static/js/list/list-columns.js": 3,
  "static/js/list/list-formula.js": 3,
- "static/js/list/list-view.js": 12,
+ "static/js/list/list-view.js": 3,
  "static/js/master/master-data.js": 4,
  "static/js/master/master-loadfactor.js": 3,
  "static/js/master/master-maint.js": 2,
@@ -24,5 +23,5 @@
  "static/js/report/report-dashboard.js": 14,
  "static/js/schedule/schedule-history.js": 2,
  "static/js/schedule/schedule-times.js": 3,
- "static/js/schedule/schedule-view.js": 29
+ "static/js/schedule/schedule-view.js": 21
 }
