@@ -380,6 +380,34 @@ _base = (CSS_DIR / '00-base.css').read_text(encoding='utf-8')
 rec('太さのトークンは 400／600／700 の3つ・<b> は 700 に止める（既定の bolder は 900 になる）',
     all(t in _base for t in ('--fw-body:400', '--fw-ui:600', '--fw-strong:700', 'b,strong{font-weight:var(--fw-strong)}')))
 
+
+# ---- 字の灰色は3段のトークンから（§9.564） ----
+# --ink（本文）／--ink-2（副）／--muted（補足）。直書きの灰色は約45種あり、--ink-2 と --ink-3 は明るさが 5 しか違わず、
+# --ink-soft は白地で 3.4:1（小さな字に要る 4.5:1 に届かない）だった。紙・濃い地・使えない状態は別の決まり。
+_GRAY_SKIP = (':disabled', '::placeholder', '.nav-group-label', '.os-', '.df-', '.rp-page', '.rp-stat')
+def _gray_literals(code):
+    code = re.sub(r'/\*[\s\S]*?\*/', '', code)
+    out = []
+    for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', code):
+        sel = ' '.join(m.group(1).split())
+        if any(x in sel for x in _GRAY_SKIP):
+            continue
+        for c in re.finditer(r'(?<![-\w])color\s*:\s*#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b', m.group(2)):
+            h = c.group(1) if len(c.group(1)) == 6 else ''.join(ch * 2 for ch in c.group(1))
+            r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+            y = sum(w * ((v / 255) / 12.92 if v / 255 <= 0.03928 else ((v / 255 + 0.055) / 1.055) ** 2.4)
+                    for w, v in ((0.2126, r), (0.7152, g), (0.0722, b)))
+            lstar = 116 * y ** (1 / 3) - 16 if y > 0.008856 else 903.3 * y
+            if max(r, g, b) - min(r, g, b) <= 45 and b >= r and g >= r - 4 and lstar < 70:
+                out.append(f'{sel[-40:]} #{c.group(1)}')
+    return out
+_gl = [f'{_n}: {x}' for _n in CSS_ORDER for x in _gray_literals((CSS_DIR / _n).read_text(encoding='utf-8'))]
+rec('字の灰色は3段のトークン（--ink／--ink-2／--muted）から選ぶ（直書きの灰色が無い・§9.564）', not _gl, '; '.join(_gl[:6]))
+rec('灰色の見張りは同じ形を注ぎ込むと数える', _gray_literals('.x{color:#526970}.y{color:var(--muted)}.z:disabled{color:#888}') == ['.x #526970'])
+_all_css = ''.join((CSS_DIR / _n).read_text(encoding='utf-8') for _n in CSS_ORDER)
+_old = [t for t in ('var(--ink-3)', 'var(--ink-soft)') if t in re.sub(r'/\*[\s\S]*?\*/', '', _all_css)]
+rec('まとめた灰色のトークン（--ink-3／--ink-soft）を使っていない', not _old, str(_old))
+
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')

@@ -18,7 +18,7 @@
    "itemFs": "12px",
    "itemPad": "4px 8px",
    "itemDisp": "block",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "予定の行": {
    "minW": "210px",
@@ -36,7 +36,7 @@
    "itemFs": "12px",
    "itemPad": "4px 8px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "予定の入れ子": {
    "minW": "210px",
@@ -54,7 +54,7 @@
    "itemFs": "12px",
    "itemPad": "4px 8px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "測定データ一覧": {
    "minW": "240px",
@@ -72,7 +72,7 @@
    "itemFs": "12px",
    "itemPad": "8px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "モード": {
    "minW": "190px",
@@ -90,7 +90,7 @@
    "itemFs": "13px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "同期の状態": {
    "minW": "420px",
@@ -108,7 +108,7 @@
    "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "表の切り替え": {
    "minW": "308px",
@@ -126,7 +126,7 @@
    "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "再読込": {
    "minW": "190px",
@@ -144,7 +144,7 @@
    "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "組み合わせ": {
    "minW": "448px",
@@ -162,7 +162,7 @@
    "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "条件": {
    "minW": "448px",
@@ -180,7 +180,7 @@
    "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "説明のヒント": {
    "minW": "190px",
@@ -198,7 +198,7 @@
    "itemFs": "13px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "見本の情報": {
    "minW": "448px",
@@ -216,7 +216,7 @@
    "itemFs": "13px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   },
   "表示": {
    "minW": "320px",
@@ -234,7 +234,7 @@
    "itemFs": "13px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
-   "itemColor": "rgb(23, 56, 66)"
+   "itemColor": "rgb(23, 39, 45)"
   }
  }
 }

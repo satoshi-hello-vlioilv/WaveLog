@@ -33,8 +33,8 @@
 .hd-table-badge:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
 .hd-table-badge:disabled{opacity:.7;cursor:default}
 .hd-table-badge[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
-.hd-table-key{color:var(--ink-soft);font-weight:var(--fw-ui)}
-.hd-table-badge>i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-micro)}
+.hd-table-key{color:var(--muted);font-weight:var(--fw-ui)}
+.hd-table-badge>i{font-style:normal;color:var(--muted);font-size:var(--fs-micro)}
 /* 切り替えの浮きメニュー（body直下・`position:fixed`・§9.201）。
    **1列のラジオ**——表は同時に1つしか開けない。 */
 .hd-table-menu{min-width:var(--w-xl);max-width:min(92vw,520px);max-height:60vh;overflow:auto}
@@ -82,7 +82,7 @@
 .lt-view-panel .lvp-row>*{margin:0}
 /* 名前は`.lt-view-panel`で名乗る（帯の`.list-pagesize>span`＝付随情報の寸法より強く。弱いと表示件数だけ
    10px になった・実測）。 */
-.lt-view-panel .lvp-k{color:var(--ink-3);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
+.lt-view-panel .lvp-k{color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
 .lvp-v{display:flex;align-items:center;gap:var(--space-2);min-width:0;flex-wrap:wrap}
 .lvp-note{font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
 /* `.wl-menu button`は項目用の`display:block;width:100%`。この面は欄の並びなので戻す。 */
@@ -107,7 +107,7 @@
    「いま何を見ているか」の答え（§CLAUDE 画面基準 14）。
    ============================================================ */
 .list-pagesize{display:inline-flex;align-items:center;gap:var(--gap-tight);min-width:0}
-.list-pagesize>span{color:var(--ink-3);font-size:var(--fs-badge);font-weight:var(--fw-ui);white-space:nowrap}
+.list-pagesize>span{color:var(--ink-2);font-size:var(--fs-badge);font-weight:var(--fw-ui);white-space:nowrap}
 .list-pagesize>select{height:var(--ctl-h-xs);padding:0 var(--space-1);
   border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
   font-size:var(--fs-badge);max-width:var(--w-sm)}
@@ -122,12 +122,12 @@
 /* 内側の2つは器（枠1px＋余白1px）の内へ収める——**ページめくり全体で`--lt-h`**。 */
 .list-page-btn{min-width:calc(var(--lt-h) - 4px);height:calc(var(--lt-h) - 4px);padding:0;
   border:0;border-radius:var(--radius-xs);background:transparent;cursor:pointer;
-  font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--nav);line-height:1}
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);line-height:1}
 .list-page-btn:hover:not(:disabled){background:var(--surface-3)}
 /* **押せないことは形で言う**（§CLAUDE 4）——最後のページで「次へ」が
    押せるのに何も起きない、を作らない。理由は`title`が持つ。 */
 .list-page-btn:disabled{color:var(--muted);cursor:not-allowed;opacity:.5}
-.list-count{color:var(--ink-3);font-size:var(--lt-fs);white-space:nowrap;
+.list-count{color:var(--ink-2);font-size:var(--lt-fs);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 /* 元データの鮮度＝押すと再読込のメニューが開くボタン（§9.286 ④）。
    **状態と打つ手を同じ場所に**置く（§CLAUDE 画面基準 2）。 */
@@ -173,7 +173,7 @@
 /* 親の下へ畳んだ子ロットの件数(§9.239 ⑤-2)。**行が減ったことを黙らない**。 */
 .list-child-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
  padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
- background:var(--surface-2);color:var(--ink-3);
+ background:var(--surface-2);color:var(--ink-2);
  font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;cursor:help}
 .list-child-chip.is-off{color:var(--muted)}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar{margin:4px 6px 0;gap:var(--gap-tight)}
@@ -245,10 +245,10 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
    **押せる行ではない**（測定・予定は親から。§9.83で子は親と一緒に載る）。 */
 #grid tbody tr.grid-child-row{background:var(--surface-2);cursor:default}
 #grid tbody tr.grid-child-row:hover{background:var(--surface-2)}
-#grid td.grid-child-cell{color:var(--ink-3);font-size:var(--tbl-fs);border-bottom:1px solid var(--line-soft)}
+#grid td.grid-child-cell{color:var(--ink-2);font-size:var(--tbl-fs);border-bottom:1px solid var(--line-soft)}
 #grid td.grid-child-lot{font-weight:var(--fw-strong);color:var(--ink-2)}
 .grid-child-mark{margin-right:var(--gap-hair);color:var(--line-strong)}
-.grid-child-info{margin-left:var(--space-2);color:var(--ink-3)}
+.grid-child-info{margin-left:var(--space-2);color:var(--ink-2)}
 .grid-child-info i{margin-left:var(--gap-tight);color:var(--muted);font-style:normal}
 /* 畳むつまみ。**件数を数字で出す**（開かなくても何本あるか分かる）。 */
 .grid-child-toggle{display:inline-flex;align-items:center;gap:var(--gap-hair);
@@ -274,7 +274,7 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 /* セルの中の言葉なので、値と同じ大きさで読む(§9.90)。 */
 .split-flag-cell{text-align:center;font-weight:var(--fw-strong);white-space:nowrap}
 .split-flag-cell.split-yes{background:#fff2cc;color:#8a6600}
-.split-flag-cell.split-no{background:inherit;color:#8a9a97}
+.split-flag-cell.split-no{background:inherit;color:var(--muted)}
 .split-flag-cell.split-missing{background:var(--danger-bg);color:var(--danger);animation:split-missing-pulse 1.6s ease-in-out 2}
 @keyframes split-missing-pulse{0%,100%{background:var(--danger-bg)}50%{background:#f8c9c9}}
 .plan-select-head,.plan-select-cell{text-align:center;padding:4px 2px}
@@ -441,7 +441,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .mctx-item[data-k="product"]{flex:0 3 auto}
 .mctx-item[data-k="shape"]{flex:0 2 auto}
 .mctx-item[data-k="tolerance"]{flex:0 1 auto}
-.mctx-item small{flex:0 0 auto;color:var(--ink-soft);font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.04em}
+.mctx-item small{flex:0 0 auto;color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.04em}
 .mctx-item b{min-width:0;color:var(--ink);font-weight:var(--fw-strong);overflow:hidden;text-overflow:ellipsis}
 
 /* 段ナビ。**関門ではなくタブ**なので、いつでも押せる見た目にする。
@@ -451,7 +451,7 @@ th.col-sorted:hover{background:#c7e7ea}
   display:flex;align-items:center;gap:var(--space-2);
   height:var(--ctl-h-sm);padding:0 var(--space-5);
   border:0;border-bottom:3px solid transparent;border-radius:0;
-  background:transparent;color:var(--ink-3);font-weight:var(--fw-strong);box-shadow:none;
+  background:transparent;color:var(--ink-2);font-weight:var(--fw-strong);box-shadow:none;
 }
 .measure-steps .mstep:hover{background:var(--surface-2);color:var(--ink)}
 .measure-steps .mstep .mstep-no{
@@ -461,11 +461,11 @@ th.col-sorted:hover{background:#c7e7ea}
 }
 .measure-steps .mstep .mstep-name{font-size:var(--fs)}
 .measure-steps .mstep .mstep-state{
-  color:var(--ink-soft);font-size:var(--fs-micro);font-style:normal;font-weight:var(--fw-ui);
+  color:var(--muted);font-size:var(--fs-micro);font-style:normal;font-weight:var(--fw-ui);
   font-variant-numeric:tabular-nums;
 }
 .measure-steps .mstep.is-current{
-  color:var(--nav);border-bottom-color:var(--teal);background:var(--pale);
+  color:var(--ink);border-bottom-color:var(--teal);background:var(--pale);
 }
 .measure-steps .mstep.is-current .mstep-no{background:var(--teal);color:#fff}
 .measure-steps .mstep.is-current .mstep-state{color:var(--teal-dark)}
@@ -605,7 +605,7 @@ th.col-sorted:hover{background:#c7e7ea}
 /* 群の見出し。**件数も文字で出す**（§3／§9.242 ④）——値が「—」ばかりの
    群を、中を読む前に見分けられる。 */
 .rv-group>b{display:flex;align-items:baseline;gap:var(--gap-inline);
-  margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs);font-weight:var(--fw-strong);letter-spacing:.04em}
+  margin-bottom:var(--space-1);color:var(--ink-2);font-size:var(--fs);font-weight:var(--fw-strong);letter-spacing:.04em}
 .rv-group>b>small{color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);
   font-variant-numeric:tabular-nums;letter-spacing:0}
 /* 自動で入る値は**人が入れた値と見分けられるように**（§6／§9.234 ⑦と
@@ -844,7 +844,7 @@ th.col-sorted:hover{background:#c7e7ea}
 }
 .prep-fold-name{flex:0 0 auto}
 .prep-sum{
-  flex:1 1 auto;min-width:0;color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);
+  flex:1 1 auto;min-width:0;color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 /* **回った四角は元の枠からはみ出す。** 9pxの正方形を45度回すと対角線が
@@ -853,7 +853,7 @@ th.col-sorted:hover{background:#c7e7ea}
    はみ出すぶんの余白を`margin`で先に空けておく。 */
 .prep-chev{
   flex:0 0 auto;align-self:center;width:9px;height:9px;margin:0 3px 3px 0;
-  border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);
+  border-right:2px solid var(--ink-2);border-bottom:2px solid var(--ink-2);
   transform:rotate(45deg);
 }
 .prep-fold[aria-expanded="true"] .prep-chev{margin:3px 3px 0 0;transform:rotate(-135deg)}
@@ -883,11 +883,11 @@ th.col-sorted:hover{background:#c7e7ea}
 }
 .selectors.prep-open .prep-more-caret{transform:rotate(90deg)}
 .prep-more-name{flex:0 0 auto}
-.prep-more-state{flex:0 0 auto;color:var(--ink-soft);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
+.prep-more-state{flex:0 0 auto;color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .prep-more-state.is-changed{color:var(--warn-fg)}
 .prep-more-list{
   min-width:0;flex:1 1 auto;
-  color:var(--ink-soft);font-size:var(--fs-micro);font-weight:var(--fw-body);
+  color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-body);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .prep-more-list b{color:var(--warn-fg);font-weight:var(--fw-strong)}
@@ -918,7 +918,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .work-auto{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
 .prep-head-static{
   display:block;margin:0 0 var(--space-1);
-  color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em;
+  color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em;
 }
 /* **ラベル列は固定幅**（§9.129）。1つのグリッドに3行を入れているので、
    `max-content`でも列は1本に決まり、値の左端がそろう。 */
@@ -929,10 +929,10 @@ th.col-sorted:hover{background:#c7e7ea}
 /* 参考値の3行は**ラベルの大きさ**まで上げる（§9.157、利用者の指摘「③は
    全体的に文字も小さすぎる」）。11pxは同じカードの中で3px違う文字を作り、
    「別の仕組みの文字」に見えていた。段差は色で付ける。 */
-.wa-k{color:var(--ink-3);font-size:var(--fs-sm)}
+.wa-k{color:var(--ink-2);font-size:var(--fs-sm)}
 .wa-v{font-size:var(--fs-sm);font-weight:var(--fw-ui);font-variant-numeric:tabular-nums;color:var(--ink)}
 #workFillFromAuto{margin-top:var(--space-2);height:var(--ctl-h-sm)}
-#workAutoHint{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-sm)}
+#workAutoHint{display:block;margin-top:var(--space-1);color:var(--muted);font-size:var(--fs-sm)}
 /* ---------- 段ごとの割り付け（§9.131 ゼロベースの組み直し） ----------
    実測（1920×1080）では、①で左ペインの下に253px、②で母材・揃いのとき
    右ペインの下に483〜542px、③で確認表の下に619pxの空きがあった。
@@ -1063,11 +1063,11 @@ th.col-sorted:hover{background:#c7e7ea}
 .fc-row--bad .fc-value{color:var(--danger)}
 .fc-detail{
   grid-column:2/-1;min-width:0;
-  color:var(--ink-soft);font-size:var(--fs-sm);
+  color:var(--muted);font-size:var(--fs-sm);
   overflow-wrap:anywhere;
 }
 .fc-fix{grid-row:1;grid-column:3;height:var(--ctl-h-sm);white-space:nowrap}
-.fc-note{margin:var(--space-3) 0 0;color:var(--ink-soft);font-size:var(--fs-sm)}
+.fc-note{margin:var(--space-3) 0 0;color:var(--muted);font-size:var(--fs-sm)}
 /* ---------- 公差外・基準外はカードで気づく（§9.242 ⑥、利用者の指示） ----------
    「カード自体を背景色または縁の色などを変えて視覚的に気付くように…
     今のままか強調か、色なども含めて変更できるように」
@@ -1089,7 +1089,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .fc-alert-conf{
   margin-left:auto;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line);border-radius:var(--radius-pill);
-  background:var(--surface-2);color:var(--ink-3);font-weight:var(--fw-ui);
+  background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-ui);
   font-size:var(--fs-sm);white-space:nowrap;
 }
 .fc-alert-conf[aria-expanded="true"]{border-color:var(--teal);color:var(--teal)}
@@ -1104,7 +1104,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .fc-alert-pop-head b{flex:1;min-width:0;font-size:var(--fs-sm)}
 .fc-alert-close{
   height:var(--ctl-h-xs);width:var(--ctl-h-xs);padding:0;border:1px solid var(--line);
-  border-radius:var(--radius-sm);background:var(--surface-2);color:var(--ink-3);font-weight:var(--fw-strong);
+  border-radius:var(--radius-sm);background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-strong);
 }
 .fc-alert-row{display:flex;align-items:flex-start;gap:var(--space-2);margin-bottom:var(--space-2)}
 /* 見出しは**折り返さない**（§9.90「列の見出しは折り返さない」と同じ扱い）
@@ -1218,7 +1218,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .measure-shell .measure-body .info-group,
 .measure-shell .measure-body .qp-head,
 .measure-shell .measure-body .split-layout h3{
-  color:var(--ink-3);font-size:var(--fs);font-weight:var(--fw-strong);letter-spacing:.04em;
+  color:var(--ink-2);font-size:var(--fs);font-weight:var(--fw-strong);letter-spacing:.04em;
 }
 /* カードの中の**帯の見出し**（測定表の上の「板幅」など）は題と同じ大きさで、
    色だけ本文の濃さにする。カードの題（teal）と役割が違うことを色で示す
@@ -1249,7 +1249,7 @@ th.col-sorted:hover{background:#c7e7ea}
    なったので**ボタンごと消してある**（押せるのに何も無いボタンを残さない）。
    区切りは破線1本だけ——**枠の中に枠を作らない**（§9.129）。 */
 .quality-info-block{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px dashed var(--line-soft);min-width:0}
-.qp-head{display:block;margin-bottom:var(--space-1);color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em}
+.qp-head{display:block;margin-bottom:var(--space-1);color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em}
 /* 読み取り専用の本文は**幅を器（カード）から、行数を中身から**決める
    （§9.142）。真上の品質規格の表と右端をそろえるため、上限は置かない
    ——ここだけ幅が違うと、カードの中で一番目につく不揃いになる。
@@ -1283,7 +1283,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .quality-info-block.qi-has textarea{border-left-color:#c0504d;color:var(--ink)}
 /* ---------- 5. 左ペイン ---------- */
 .tabs{display:flex}
-.tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:var(--ink-3);box-shadow:none}
+.tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:var(--ink-2);box-shadow:none}
 .tabs button:hover{border-color:transparent;background:var(--bg)}
 .tabs .active{background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 /* **`.split-pane`はここから外した**（§9.234 ①）——`.measure-body>.split-pane`
@@ -1320,7 +1320,7 @@ th.col-sorted:hover{background:#c7e7ea}
    詳細度で勝つため**一度も効いていなかった**。効かない指定を残すと、列幅を
    `em`で決めるときに「ラベルは11px」という誤った前提で計算してしまう
    （実際にそれで6文字のラベルが省略記号になった）。 */
-.field label{color:var(--ink-soft);white-space:nowrap;text-align:right;
+.field label{color:var(--muted);white-space:nowrap;text-align:right;
  min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* 値は**読み取り専用**。入力欄そっくりの枠と白地を与えると押せるように
    見えるうえ、カードの枠と二重になる（§9.129）。枠を外し、そろえた列と
@@ -1328,7 +1328,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .field output{display:block;min-height:0;padding:3px 2px;border:0;border-radius:0;background:transparent;
  color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.field output:empty::before{content:"—";color:var(--ink-soft);font-weight:var(--fw-body)}
+.field output:empty::before{content:"—";color:var(--muted);font-weight:var(--fw-body)}
 /* コース情報(設計/実績/残)は設備の連なりで、実機では
    「3文字+空白」×25程度=100文字近くまで伸びる(平均でも4文字×10=40文字前後)。
    **3項目とも縦に並べて常に全幅**を使う。以前は「入りきらないものだけ
@@ -1356,7 +1356,7 @@ th.col-sorted:hover{background:#c7e7ea}
 /* かたまりの見出し。線ではなく小さな見出し＋上余白で切る。 */
 .info-group{
  grid-column:1/-1;margin-top:6px;padding-bottom:1px;
- color:#93a5ab;font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.08em;
+ color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.08em;
  border-bottom:1px solid var(--bg);
 }
 .info-grid>.info-group:first-child,.info-grid>.field:first-child+.info-group{margin-top:0}
@@ -1421,7 +1421,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .data-management-grid b{background:var(--header-bar-bg);color:var(--header-bar-fg);white-space:nowrap}
 .data-management-grid span{background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .subtabs{display:flex;margin-top:var(--space-1)}
-.subtabs button{position:relative;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:var(--pad-row);border:1px solid transparent;border-bottom:0;background:transparent;color:var(--ink-3);box-shadow:none}
+.subtabs button{position:relative;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:var(--pad-row);border:1px solid transparent;border-bottom:0;background:transparent;color:var(--ink-2);box-shadow:none}
 .subtabs button:hover{border-color:transparent;background:var(--bg)}
 .subtabs button.active{background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 .split-tab-badge{display:inline-block;margin-left:5px;padding:var(--pad-chip);border-radius:var(--radius-sm);font-size:var(--fs-badge);font-weight:var(--fw-ui);vertical-align:middle}
@@ -1443,7 +1443,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .work-time-grid{display:grid;grid-template-columns:1fr;gap:var(--gap-hair)}
 /* `.work-time-item`の定義は 50-master.css の1箇所（§9.324 R6。ここに在った写しは
    後に読まれる側に全部負けていて、一度も効いていなかった）。 */
-.work-time-item span{grid-column:1/-1;color:#526970;font-weight:var(--fw-strong)}
+.work-time-item span{grid-column:1/-1;color:var(--ink-2);font-weight:var(--fw-strong)}
 /* 日時は書式が決まっている（2026/08/14 15:04:05）。494pxも要らない。
    幅は規格から選ぶ（§9.131。JSも同じ段へ丸める）。 */
 .work-time-item input{min-width:0;max-width:var(--w-lg);height:var(--ctl-h);background:#fff;font-variant-numeric:tabular-nums}
@@ -1471,8 +1471,8 @@ th.col-sorted:hover{background:#c7e7ea}
 .an-slot i{font-style:normal;font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--muted);letter-spacing:.04em}
 .an-slot b{font-size:var(--fs-lg);font-weight:var(--fw-strong);color:var(--ink);
  font-variant-numeric:tabular-nums;line-height:1.15}
-.an-slot em{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3)}
-.an-span{font-size:var(--fs-sm);color:var(--ink-3)}
+.an-slot em{font-style:normal;font-size:var(--fs-badge);color:var(--ink-2)}
+.an-span{font-size:var(--fs-sm);color:var(--ink-2)}
 .an-none{font-size:var(--fs-sm);color:var(--muted)}
 /* そのほかの測定項目は**畳んでおく**（§9.216 ⑥、利用者の指示「重要度は
    低めなので折りたたみOK」）。押せる見出しなので、押せると分かる形にする。 */
@@ -1551,7 +1551,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .tolerance-source-control select{
   width:100%;max-width:var(--w-lg);min-width:0;height:var(--ctl-h-sm);padding:0 25px 0 8px;justify-self:start;
 }
-.order-tolerance-unavailable{color:#8b969a}
+.order-tolerance-unavailable{color:var(--muted)}
 /* ---------- 「図の見せ方」はアイコン1つ（§9.210 ①、利用者の指示） ----------
    以前は見出しの中に「図の見せ方 ▾」というボタンを置き、押すと**その場で
    横に2つのプルダウンが生える**作りだった。開いた瞬間に帯が伸びて行が1本
@@ -1564,7 +1564,7 @@ th.col-sorted:hover{background:#c7e7ea}
   flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
   width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
   border:1px solid var(--line);border-radius:var(--radius-sm);
-  background:var(--surface);color:var(--ink-3);cursor:pointer;
+  background:var(--surface);color:var(--ink-2);cursor:pointer;
 }
 .mhead-icon[hidden]{display:none}
 .mhead-icon:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
@@ -1592,7 +1592,7 @@ th.col-sorted:hover{background:#c7e7ea}
 /* ---------- ③の公差一覧（§9.157） ---------- */
 .tol-list{margin:var(--space-2) 0}
 .tol-list[hidden]{display:none}
-.tol-list-head{color:var(--ink-3);font-size:var(--fs);font-weight:var(--fw-strong);letter-spacing:.04em;margin-bottom:var(--space-1)}
+.tol-list-head{color:var(--ink-2);font-size:var(--fs);font-weight:var(--fw-strong);letter-spacing:.04em;margin-bottom:var(--space-1)}
 /* 1項目1枚を縦に積む（§9.166）。**枠は作らない**——区切りは下の細線だけで、
    カードの中にカードを作らない（§9.129「枠は"まとまり"だけに使う」）。
    1行目は「項目名 …… 判定範囲」で、範囲は右端へ寄せて桁をそろえる。 */
@@ -1610,13 +1610,13 @@ th.col-sorted:hover{background:#c7e7ea}
 /* 根拠は**2行目いっぱい**を使う。小さく淡く——読みに来るのは範囲の側で、
    ここは「なぜその範囲なのか」を確かめたいときだけ読む。 */
 .tol-card-basis{
-  grid-column:1/-1;color:var(--ink-soft);font-size:var(--fs-sm);
+  grid-column:1/-1;color:var(--muted);font-size:var(--fs-sm);
   font-variant-numeric:tabular-nums;line-height:1.5;
 }
 /* **公差が無い行は「合格」に混ぜず、項目名で言う**（§9.125と同じ約束）。 */
-.tol-card.is-missing .tol-card-name,.tol-card.is-missing .tol-card-basis{color:var(--ink-soft)}
+.tol-card.is-missing .tol-card-name,.tol-card.is-missing .tol-card-basis{color:var(--muted)}
 .tol-list-missing{color:var(--warn-fg);font-weight:var(--fw-strong)}
-.tol-list-note{margin:var(--space-1) 0 0;color:var(--ink-soft);font-size:var(--fs-sm)}
+.tol-list-note{margin:var(--space-1) 0 0;color:var(--muted);font-size:var(--fs-sm)}
 /* 軸からはみ出した点があることは**文字で言う**（§9.129の3番）。直し方
    （表示幅）と同じ行に置くので、読んだその場で広げられる。 */
 /* **縮んでよいのは案内だけ**（§9.229 ⑤／§9.234 ③）。器を`nowrap`にした
@@ -1681,9 +1681,9 @@ th.col-sorted:hover{background:#c7e7ea}
 .receive-state>div{display:none}
 .auto-mode-label{font-weight:var(--fw-strong);color:#0b5e68;letter-spacing:.02em}
 .manual-state .auto-mode-label{color:var(--warn-fg)}
-.not-ready-state .auto-mode-label{color:#5d7077}
+.not-ready-state .auto-mode-label{color:var(--muted)}
 .state-lamp{width:8px;height:8px;border-radius:var(--radius-round);background:#16a273}
-.not-ready-state .state-lamp{background:var(--ink-soft);box-shadow:none}
+.not-ready-state .state-lamp{background:var(--muted);box-shadow:none}
 .manual-state .state-lamp{background:#e49a20;box-shadow:0 0 0 4px #e49a2022}
 .receive-input-wrap{position:relative}
 .receive-input-wrap input{
@@ -1694,7 +1694,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .device-key-count{color:var(--muted);font-size:var(--fs-badge)}
 .device-key-count.ng{color:#c02020;font-weight:var(--fw-strong)}
 .work-tabs{display:flex;position:sticky;top:0;z-index:4;margin-top:8px;background:#f5f5f3;border-bottom:1px solid var(--line)}
-.work-tabs button{flex:1;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:8px 5px;font-weight:var(--fw-strong);border:1px solid transparent;background:transparent;color:var(--ink-3);box-shadow:none}
+.work-tabs button{flex:1;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:8px 5px;font-weight:var(--fw-strong);border:1px solid transparent;background:transparent;color:var(--ink-2);box-shadow:none}
 .work-tabs button:hover{border-color:transparent;background:var(--bg)}
 .right-pane:is(.layout-mother,.layout-piece) .work-tabs,
 .right-pane.layout-measure .work-tabs{display:none}
@@ -1745,7 +1745,7 @@ th.col-sorted:hover{background:#c7e7ea}
    `test_msteps`が固定している）。帯の中に置くので下余白だけ落とす
    ——`.product-head>b.card-title`と同じ扱い。 */
 .measure-shell .mat-block-title>b.card-title{margin:0}
-.mat-block-title small{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-3)}
+.mat-block-title small{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .mat-block-title>span{margin-left:auto;padding:var(--pad-chip);background:#fff;border:1px solid var(--line);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .mat-block-title>button{height:var(--ctl-h-sm);white-space:nowrap}
 .mat-block-title>span+button{margin-left:0}
@@ -1755,7 +1755,7 @@ th.col-sorted:hover{background:#c7e7ea}
    読み手が信用の置きどころを決められない（§CLAUDE.md 出どころを出す）。 */
 .mother-calc-basis{
   margin:var(--space-1) 0 0;padding:0 var(--space-1);
-  color:var(--ink-soft);font-size:var(--fs-micro);
+  color:var(--muted);font-size:var(--fs-micro);
   font-variant-numeric:tabular-nums;
 }
 .mother-calc-basis[hidden]{display:none}
@@ -1810,7 +1810,7 @@ th.col-sorted:hover{background:#c7e7ea}
   border-bottom:1px solid var(--line);font-size:var(--fs-micro);letter-spacing:.04em;
 }
 .product-rows-table tbody th{
-  text-align:center;color:var(--ink-soft);font-weight:var(--fw-strong);background:var(--surface-2);
+  text-align:center;color:var(--muted);font-weight:var(--fw-strong);background:var(--surface-2);
 }
 /* 値の出どころ(§6/§9.204)。**同じ数字でも、目標値と選んだ値は別物**なので、
    仕掛から入れた初期値のときだけ小さく添える（選び直したら消える）。 */
@@ -1870,7 +1870,7 @@ th.col-sorted:hover{background:#c7e7ea}
   white-space:normal;
 }
 .prt-detail-in{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
-.prt-detail-lead{font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--ink-3);white-space:nowrap}
+.prt-detail-lead{font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--ink-2);white-space:nowrap}
 /* 手で畳む（§9.206）。見出しそのものを押せるようにする——枠は付けない
    （まとまりの枠と混ざる。§9.129）。 */
 .prt-fold{
@@ -1881,7 +1881,7 @@ th.col-sorted:hover{background:#c7e7ea}
    （`.prep-chev`と同じ理由）。 */
 .prt-chev{
   flex:0 0 auto;width:7px;height:7px;margin:0 2px 2px 0;
-  border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);
+  border-right:2px solid var(--ink-2);border-bottom:2px solid var(--ink-2);
   transform:rotate(45deg);
 }
 .prt-fold[aria-expanded="true"] .prt-chev{margin:2px 2px 0 0;transform:rotate(-135deg)}
@@ -1982,7 +1982,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .editor-head h3{white-space:nowrap}
 /* 縮むのは**入力位置と保存容量**だけ（読み飛ばしても測れる情報）。
    バッジ・ボタンは`flex:0 0 auto`のまま——切れると何の項目か分からない。 */
-.editor-head .mhead-at{flex:0 1 auto;min-width:0;color:var(--ink-3);
+.editor-head .mhead-at{flex:0 1 auto;min-width:0;color:var(--ink-2);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .editor-head .mhead-quota{flex:0 1 auto;min-width:0;color:var(--muted);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2014,7 +2014,7 @@ th.col-sorted:hover{background:#c7e7ea}
    （`measure-progress.js`の`itemProgress`）。縦割数が2以上のロットでは
    12/12 と 12/24 で別の数になるので、消すと丈ごとの進みが画面から失われる。
    1行に収めるための縮み代だけを持たせる。 */
-.mhead-status{flex:0 1 auto;min-width:0;color:var(--ink-3);font-weight:var(--fw-strong);
+.mhead-status{flex:0 1 auto;min-width:0;color:var(--ink-2);font-weight:var(--fw-strong);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* ---------- 判定された測定器（§9.320-C、利用者の指示） ----------
    「表示のエリアを無理やりつくらず今あるスペースにうまくなじませて
@@ -2047,7 +2047,7 @@ th.col-sorted:hover{background:#c7e7ea}
    同じ器の中で色を落とすだけにして、位置は動かさない。 */
 .burr-no{
   display:inline-flex;align-items:center;justify-content:center;
-  min-width:1.25em;font-style:normal;font-weight:var(--fw-strong);color:var(--ink-3);
+  min-width:1.25em;font-style:normal;font-weight:var(--fw-strong);color:var(--ink-2);
 }
 .burr-no--next{color:var(--teal)}
 .burr-op{font-style:normal;font-weight:var(--fw-strong);opacity:.7;padding:0 .1em}
@@ -2067,7 +2067,7 @@ th.col-sorted:hover{background:#c7e7ea}
   border:1px solid var(--line);border-radius:var(--radius-pill);overflow:hidden;background:#fff}
 .mode-tabs[hidden]{display:none}
 .mode-tabs button{border-radius:0;padding:0 var(--ctl-pad-x-sm);border:0;background:transparent;
-  color:var(--ink-3);font-weight:var(--fw-strong);box-shadow:none;white-space:nowrap}
+  color:var(--ink-2);font-weight:var(--fw-strong);box-shadow:none;white-space:nowrap}
 .mode-tabs button:hover{border-color:transparent;background:var(--pale)}
 /* 公差は**ピル1つ**（§9.209 ②）。枠付きの帯（実測40px）は`#toleranceFacts`と
    同じ数字を2度書いていた（§9.129）。内訳は`title`で読める。 */
@@ -2096,7 +2096,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .tolerance-source-badge{display:inline-flex;align-items:center;padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--teal);color:#fff;font-weight:var(--fw-ui);font-size:var(--fs-micro)}
 .tolerance-source-badge.order{background:#7652a8}
 .tol-fallback{padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-fg);font-weight:var(--fw-ui);font-size:var(--fs-micro)}
-.tol-formula{margin-top:7px;padding:var(--pad-row);border-radius:var(--radius-sm);background:var(--bg);color:#445d65;font-size:var(--fs-micro);font-variant-numeric:tabular-nums}
+.tol-formula{margin-top:7px;padding:var(--pad-row);border-radius:var(--radius-sm);background:var(--bg);color:var(--ink-2);font-size:var(--fs-micro);font-variant-numeric:tabular-nums}
 #measurementGrid{flex:1 1 auto;min-height:0;overflow:hidden}
 /* --- 測定表のブロック ---
    板厚と板幅を別々の入力内容にしたので、専用の2枚組ワークスペース
@@ -2317,7 +2317,7 @@ th.col-sorted:hover{background:#c7e7ea}
   border:0;border-radius:0;background:transparent;box-shadow:none;
   color:inherit;font-size:inherit;font-weight:inherit;white-space:nowrap;
 }
-.measure-matrix thead th button:hover{background:var(--pale);color:var(--nav)}
+.measure-matrix thead th button:hover{background:var(--pale);color:var(--ink)}
 .measure-matrix thead th.is-current{background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 .measure-matrix thead th.is-current button:hover{background:var(--teal-dark);color:#fff}
 .measure-matrix td.is-current{background:var(--pale)}
@@ -2466,7 +2466,7 @@ th.col-sorted:hover{background:#c7e7ea}
 /* 丈番号タブ: 横スクロール表を避け、1丈ずつ切り替えて縦並びで入力する。
    必須3項目(長さ/肉厚/揃いコード)が入力済みの丈にはドットを表示する。 */
 .product-length-tabs{display:flex;flex-wrap:wrap;gap:var(--space-1);padding:var(--space-2);background:#fff;border:1px solid var(--line);border-top:0}
-.product-length-tabs button{position:relative;min-width:40px;padding:0 var(--ctl-pad-x-xs);border:1px solid transparent;border-radius:var(--radius-tab) var(--radius-tab) 0 0;background:transparent;color:var(--ink-3);font-weight:var(--fw-strong);cursor:pointer;box-shadow:none}
+.product-length-tabs button{position:relative;min-width:40px;padding:0 var(--ctl-pad-x-xs);border:1px solid transparent;border-radius:var(--radius-tab) var(--radius-tab) 0 0;background:transparent;color:var(--ink-2);font-weight:var(--fw-strong);cursor:pointer;box-shadow:none}
 .product-length-tabs button:hover{border-color:transparent;background:var(--bg)}
 .product-length-tabs button.filled::after{content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:var(--radius-round);background:var(--success)}
 .product-length-tabs button.active.filled::after{background:#fff}
@@ -2559,7 +2559,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    割れない（以前は`.op-*`という別の器を別のカードへ置いており、名前・値・
    注記がそれぞれ違う大きさになっていた）。ここで宣言するのは、組み込みには
    無いもの——単位・必須の印・直した理由——だけ。 */
-.opf-unit{font-style:normal;font-size:var(--fs-badge);color:var(--ink-3);margin-left:var(--gap-tight)}
+.opf-unit{font-style:normal;font-size:var(--fs-badge);color:var(--ink-2);margin-left:var(--gap-tight)}
 /* ---------- 単位の置き場・値の寄せ（§9.221 ⑦、利用者の指示） ----------
    「単位を出す位置(外上左、外上中央、外上右、内部、外下左、外中央、外下右)、
     出し方、データの表示方法、桁数、左詰め、右詰め、中央寄せなど」
@@ -2763,7 +2763,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
    **色だけで伝えない**（§3）——欄の`title`と設定窓が「自動で入る値（…）」と
    文字でも言う。ここは補助の合図。 */
 .opf-host[data-opauto]>output{color:var(--computed-fg)}
-.opf-host[data-opauto]>output:empty::before{content:"—";color:var(--ink-soft);font-weight:var(--fw-body)}
+.opf-host[data-opauto]>output:empty::before{content:"—";color:var(--muted);font-weight:var(--fw-body)}
 .opf-native-off{
   position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;
   opacity:0;pointer-events:none;overflow:hidden;
@@ -2799,7 +2799,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
      …白背景に白配色で、淵だけ色付きではわかりにくい」）。以前は`--ink-2`
      （#3a565d＝本文とほぼ同じ濃さ）だったので、**選んだ札より選んでいない札の
      ほうが濃く見えた**——色を1つ足しても、隣がもっと濃ければ差は読めない。
-     見本の絵（`.opd`）は最初から`--ink-3`で描いており、そちらが正しい。 */
+     見本の絵（`.opd`）は最初から`--ink-3`（§9.564 で`--ink-2`へまとめた）で描いており、そちらが正しい。 */
   color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);line-height:1.2;
   cursor:pointer;white-space:nowrap;
 }
@@ -2897,7 +2897,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
   align-self:stretch;width:var(--opf-h,var(--ctl-h-sm));margin:0 calc(var(--space-2) * -1) 0 0;
   border-left:1px solid var(--line-soft);background:var(--surface-2);
-  color:var(--ink-3);font-size:var(--fs-sm);
+  color:var(--ink-2);font-size:var(--fs-sm);
   border-radius:0 calc(var(--opf-radius,var(--radius-sm)) - 1px) calc(var(--opf-radius,var(--radius-sm)) - 1px) 0;
 }
 .opf-pick-btn{overflow:hidden}
@@ -2933,7 +2933,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 .opf-combo-open{
   flex:0 0 auto;width:var(--opf-h,var(--ctl-h-sm));height:var(--opf-h,var(--ctl-h-sm));
   border:0;border-left:1px solid var(--line-soft);background:var(--surface-2);
-  color:var(--ink-3);font-size:var(--fs-sm);cursor:pointer;
+  color:var(--ink-2);font-size:var(--fs-sm);cursor:pointer;
 }
 .opf-combo-open:hover{background:var(--surface-3);color:var(--opf-hue-dark,var(--teal-dark))}
 /* --- ボタン系の「その他」: 席は1つ。押すとその場で入力欄に変わる --- */
@@ -3014,7 +3014,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-picker-item.is-on{border-color:var(--opf-hue,var(--teal));
   background:color-mix(in srgb,var(--opf-hue,var(--teal)) 14%,var(--surface))}
 .opf-picker-item>b{font-size:var(--fs);font-weight:var(--fw-strong)}
-.opf-picker-item>small{color:var(--ink-3);font-size:var(--fs-sm);white-space:normal}
+.opf-picker-item>small{color:var(--ink-2);font-size:var(--fs-sm);white-space:normal}
 .opf-picker-empty{margin:0;color:var(--muted);font-size:var(--fs-sm)}
 /* ---------- 数値の道具は「欄の1行の中」（§9.250 ⑧、利用者の指示） ----------
    「そのまま打つで決まるUIサイズをベースに考えると、縦横サイズが大きくなるか、
@@ -3154,7 +3154,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-card-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .opf-btn-note{display:block;color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-ui);
   line-height:1.3;white-space:normal}
-.opf-card-btn.is-on .opf-btn-note{color:var(--ink-3)}
+.opf-card-btn.is-on .opf-btn-note{color:var(--ink-2)}
 /* **説明を1つも持たないカードは、ふつうの札の高さで真ん中へ**（§9.247 ①）。
    カードは「選ぶのに説明が要る」ための形なので、説明が無いのに1.5倍の高さを
    取ると**文字が上に張り付いた空箱**が並ぶ（実機の見え方がそうだった）。
@@ -3235,7 +3235,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 }
 /* **開いている向きを▾が言う**（開いたのに閉じたままの印が出ていると、
    押した結果が読めない・§3）。 */
-.opf-menu-caret{color:var(--ink-3);transition:transform .12s}
+.opf-menu-caret{color:var(--ink-2);transition:transform .12s}
 .opf-menu-btn[aria-expanded="true"] .opf-menu-caret{transform:rotate(180deg)}
 /* 浮くほう。**`body`直下へ`position:fixed`**（§9.201）。角丸・色は
    開くときに欄から写す（`carryLook()`）ので、ここは変数を読むだけ。 */
@@ -3268,7 +3268,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-menu-text{display:flex;flex-direction:column;gap:1px;min-width:0}
 .opf-menu-text>b{font-size:var(--opf-fs,var(--fs-sm));font-weight:var(--fw-strong);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.opf-menu-text>small{color:var(--ink-3);font-size:var(--fs-micro);white-space:normal}
+.opf-menu-text>small{color:var(--ink-2);font-size:var(--fs-micro);white-space:normal}
 .opf-menu-empty{margin:0;padding:var(--space-2);color:var(--muted);font-size:var(--fs-sm)}
 /* 手打ちの席は**メニューの足元に1つ**（§9.226 ①「打つ場所は1つ」）。 */
 .opf-menu-free{padding:var(--space-1) 0 0;border-top:1px solid var(--line-soft)}
@@ -3302,7 +3302,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
   align-self:stretch;width:var(--opf-h,var(--ctl-h-sm));margin:0 calc(var(--space-2) * -1) 0 0;
   border-left:1px solid var(--line-soft);background:var(--surface-2);
-  color:var(--ink-3);font-size:var(--fs-sm);
+  color:var(--ink-2);font-size:var(--fs-sm);
   border-radius:0 calc(var(--opf-radius,var(--radius-sm)) - 1px) calc(var(--opf-radius,var(--radius-sm)) - 1px) 0;
 }
 .opf-panel-btn:hover .opf-panel-mark{background:var(--surface-3);color:var(--opf-hue-dark,var(--teal-dark))}
@@ -3319,14 +3319,14 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   background:var(--surface);color:var(--ink);text-align:left;cursor:pointer;
 }
 .opf-panel-item>b{font-size:var(--opf-fs,var(--fs));font-weight:var(--fw-strong)}
-.opf-panel-item>small{color:var(--ink-3);font-size:var(--fs-micro);white-space:normal;line-height:1.3}
+.opf-panel-item>small{color:var(--ink-2);font-size:var(--fs-micro);white-space:normal;line-height:1.3}
 .opf-panel-item:hover{border-color:var(--line-mid);background:var(--surface-2)}
 .opf-panel-item.is-on{
   border-color:var(--opf-hue,var(--teal));
   background:color-mix(in srgb,var(--opf-hue,var(--teal)) 14%,var(--surface));
   color:var(--opf-hue-dark,var(--teal-dark));
 }
-.opf-panel-item.is-on>small{color:var(--ink-3)}
+.opf-panel-item.is-on>small{color:var(--ink-2)}
 .opf-panel-free{padding-top:var(--space-1);border-top:1px solid var(--line-soft)}
 /* ---------- 足した3つ（§9.288 ③、利用者の指示） ----------
    「選べるUIの種類をさらに増やしたいです。今ないような新しさを感じる種類の
@@ -3352,7 +3352,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
   align-self:stretch;width:var(--opf-h,var(--ctl-h-sm));margin:0 calc(var(--space-2) * -1) 0 0;
   border-left:1px solid var(--line-soft);background:var(--surface-2);
-  color:var(--ink-3);font-size:var(--fs-sm);font-weight:var(--fw-ui);
+  color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);
   border-radius:0 calc(var(--opf-radius,var(--radius-sm)) - 1px) calc(var(--opf-radius,var(--radius-sm)) - 1px) 0;
 }
 .opf-index-btn:hover .opf-index-mark{background:var(--surface-3);color:var(--opf-hue-dark,var(--teal-dark))}
@@ -3374,7 +3374,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   color:var(--opf-hue-dark,var(--teal-dark));
 }
 .opf-index-key.is-on>i{color:var(--opf-hue-dark,var(--teal-dark))}
-.opf-index-note{margin:0;color:var(--ink-3);font-size:var(--fs-tiny)}
+.opf-index-note{margin:0;color:var(--ink-2);font-size:var(--fs-tiny)}
 .opf-index-grid{max-height:46vh}
 /* --- ダイヤル: 欄の中で回して選ぶ。前後が見える --- */
 .opf-dial{display:flex;flex-direction:column;gap:var(--gap-tight)}
@@ -3389,7 +3389,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
   width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
   border:0;border-radius:var(--radius-xs);background:none;
-  color:var(--ink-3);font-size:var(--fs-micro);line-height:1;cursor:pointer;
+  color:var(--ink-2);font-size:var(--fs-micro);line-height:1;cursor:pointer;
 }
 .opf-dial-arrow:hover:not(:disabled){background:var(--surface-2);color:var(--opf-hue-dark,var(--teal-dark))}
 .opf-dial-arrow:disabled{opacity:.35;cursor:default}
@@ -3414,7 +3414,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-sug-pop{max-height:44vh;overflow:auto}
 .opf-sug-note{
   margin:0;padding:var(--space-1) var(--space-2);
-  border-top:1px solid var(--line-soft);color:var(--ink-3);font-size:var(--fs-tiny);
+  border-top:1px solid var(--line-soft);color:var(--ink-2);font-size:var(--fs-tiny);
 }
 /* --- スピナー: 欄の右端へ縦に積んだ小さな矢印（狭いマス向き） --- */
 /* **欄の行へ引き上げて右端へ寄せる**（`position:absolute`にしない）——
@@ -3534,7 +3534,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;gap:var(--gap-hair);
   min-width:0;min-height:var(--opf-h,var(--ctl-h-sm));padding:0 var(--space-1);
   border:1px solid var(--line);border-radius:var(--opf-radius,var(--radius-sm));
-  background:var(--surface);color:var(--ink-3);
+  background:var(--surface);color:var(--ink-2);
   font-size:var(--opf-fs,var(--fs));font-weight:var(--fw-strong);line-height:1.2;cursor:pointer;
   white-space:nowrap;
 }
@@ -3553,7 +3553,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   color:#fff;font-weight:var(--fw-strong);
 }
 .opf-stage-btn.is-on .opf-stage-no{color:#fff}
-.opf-stage-scale{color:var(--ink-3);font-size:var(--fs-micro)}
+.opf-stage-scale{color:var(--ink-2);font-size:var(--fs-micro)}
 .opf-stage-scale>b{color:var(--opf-hue-dark,var(--teal-dark));font-weight:var(--fw-strong)}
 /* --- 入切: 1つのスイッチ。**状態は文字でも出す**（色だけで伝えない・§3） --- */
 .opf-switch{display:flex;flex-direction:column;gap:var(--gap-hair)}
@@ -3803,7 +3803,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    大きさを2種類に絞る**（以前は項目ごとに違って見えた）。 */
 .info-inline{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--gap-section);align-items:baseline}
 .info-inline .ii{display:flex;align-items:baseline;gap:var(--space-1);min-width:0}
-.info-grid label,.info-inline label{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
+.info-grid label,.info-inline label{color:var(--muted);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .info-grid output,.info-inline output{color:var(--ink);font-size:var(--fs);font-weight:var(--fw-strong)}
 /* 題は**状態の帯の中の1要素**（§9.234 ①）。カードの高さは`.measure-body`の
    1/3で頭打ちなので、題だけで1行（20px＋余白4px）取るのは高い——`母材`
@@ -3904,7 +3904,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   gap:var(--space-2);align-content:start;width:100%}
 .mt-sep{grid-column:1/-1;border:0;border-top:1px solid var(--line-soft);margin:0}
 .mt-k{display:flex;align-items:center;padding-left:6px;position:relative;min-width:0}
-.mt-k b{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--nav);white-space:nowrap}
+.mt-k b{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink);white-space:nowrap}
 /* いま開いている面がどの群にあるか。**選択中のチップの枠とは別の軸**——枠は
    1枚を指し、この縦線は「どの層に居るか」を言う。位置で読めるので色に頼らない。 */
 .mt-k.is-here::before{content:"";position:absolute;left:0;top:1px;bottom:1px;width:3px;
@@ -3912,8 +3912,8 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .mt-v{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
 .mt-ug{display:flex;flex-direction:column;gap:var(--space-2);border-radius:var(--radius-sm)}
 .mt-unit{display:flex;align-items:center;gap:6px;font-size:var(--fs-tiny);
-  color:var(--ink-soft);line-height:1.3}
-.mt-unit b{font-weight:var(--fw-strong);color:var(--ink-3);white-space:nowrap}
+  color:var(--muted);line-height:1.3}
+.mt-unit b{font-weight:var(--fw-strong);color:var(--ink-2);white-space:nowrap}
 .mt-unit i{flex:1 1 auto;height:1px;background:var(--line-soft)}
 .mt-ug .type-chip{flex:0 0 auto}
 /* 中身の説明を持つ項目（全長・寸法・外観）だけ2行。1行目＝名前と件数、

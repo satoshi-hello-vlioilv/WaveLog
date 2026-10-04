@@ -17,7 +17,7 @@
 .mm-field .mm-date input[type=date]{min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 var(--ctl-pad-x-sm);background:#fff;color:inherit;font-size:var(--fs)}
 .mm-date-today{
  height:var(--ctl-h);padding:0 .8em;border:1px solid var(--line);border-radius:var(--radius-sm);
- background:var(--pale);color:var(--nav);font-size:var(--fs-sm);cursor:pointer;
+ background:var(--pale);color:var(--ink);font-size:var(--fs-sm);cursor:pointer;
 }
 .mm-date-today:hover{background:var(--pale);border-color:var(--teal)}
 .mm-combo-inner{display:flex;flex-direction:column;gap:var(--gap-inline)}
@@ -27,7 +27,7 @@
 .mm-field .mm-path input{flex:1 1 auto;min-width:0;min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 var(--ctl-pad-x-sm);background:#fff;color:inherit;font-size:var(--fs-sm);font-family:ui-monospace,Consolas,monospace}
 .mm-path-browse{
  flex:0 0 auto;height:var(--ctl-h);padding:0 .9em;border:1px solid var(--line);border-radius:var(--radius-sm);
- background:var(--pale);color:var(--nav);font-size:var(--fs-sm);cursor:pointer;white-space:nowrap;
+ background:var(--pale);color:var(--ink);font-size:var(--fs-sm);cursor:pointer;white-space:nowrap;
 }
 .mm-path-browse:hover{background:var(--pale);border-color:var(--teal)}
 /* パス参照ダイアログ */
@@ -41,7 +41,7 @@
  background:var(--pale);color:var(--muted);font-size:var(--fs-sm);cursor:pointer;
  max-width:22em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.pathpick-place:hover{background:var(--pale);border-color:var(--teal);color:var(--nav)}
+.pathpick-place:hover{background:var(--pale);border-color:var(--teal);color:var(--ink)}
 .pathpick-list{
  height:min(46vh,380px);overflow:auto;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
 }
@@ -81,7 +81,7 @@
  cursor:pointer;user-select:none;
 }
 .shift-eq-tag>i{font-style:normal;font-size:var(--fs-sm);color:var(--muted);flex:none}
-.shift-eq-tag:hover{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.shift-eq-tag:hover{border-color:var(--teal);background:var(--pale);color:var(--ink)}
 .shift-eq-tag:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
 /* 作業可否フラグ(§9.51)。「残仕掛設備ｺｰｽ」がこの設備で始まっていれば作業可。
    まだ来ていないロットを一目で外せるようにする(色と濃度の両方で示す)。 */
@@ -125,7 +125,7 @@
    帯そのもの（題・割合・棒）は共通の部品`.wl-progress`（89-loaders.css・§9.556）。
    ここに残すのは RNE だけが持つジョブの並び。 */
 .rne-progress-jobs{display:flex;flex-wrap:wrap;gap:var(--gap-inline);
-                   font-size:var(--fs-sm);color:#40606a}
+                   font-size:var(--fs-sm);color:var(--ink-2)}
 .rne-job{display:inline-flex;align-items:center;gap:var(--gap-tight)}
 .rne-job.is-running{color:var(--teal-dark);font-weight:var(--fw-strong)}
 .rne-job.is-ok{color:var(--success)}
@@ -156,12 +156,12 @@
 .pc-node:hover{border-color:var(--teal);background:var(--pale)}
 .pc-node.is-self{border-color:var(--teal);background:var(--pale)}
 .pc-node b{font-size:var(--fs);color:var(--ink)}
-.pc-node-sub{font-size:var(--fs-sm);color:var(--ink-3)}
+.pc-node-sub{font-size:var(--fs-sm);color:var(--ink-2)}
 .pc-node-val{
-  margin-top:2px;font-size:var(--fs-sm);color:var(--nav);font-weight:var(--fw-ui);
+  margin-top:2px;font-size:var(--fs-sm);color:var(--ink);font-weight:var(--fw-ui);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.pc-arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--ink-3)}
+.pc-arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--ink-2)}
 .pc-arrow i{display:block;width:100%;min-width:2.2em;border-top:2px solid var(--line-strong)}
 .pc-arrow em{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .pc-goto{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm)}
@@ -177,7 +177,7 @@
   border:1px solid var(--line);border-radius:var(--radius-pill);
   background:#fff;color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;
 }
-.pc-rail button:hover{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.pc-rail button:hover{border-color:var(--teal);background:var(--pale);color:var(--ink)}
 .pc-rail-restart{
   margin-left:auto;padding:var(--pad-chip);border-radius:var(--radius-pill);
   background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);
@@ -195,7 +195,7 @@
   display:flex;flex-direction:column;gap:1px;min-width:var(--w-md);
   padding:var(--pad-chip);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);
 }
-.pc-who small{font-size:var(--fs-sm);color:var(--ink-3);font-weight:var(--fw-ui)}
+.pc-who small{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
 .pc-who b{font-size:var(--fs);color:var(--ink)}
 .pc-who i{font-style:normal;font-size:var(--fs-sm);color:var(--muted)}
 
@@ -215,7 +215,7 @@
 .pc-look-act{display:flex;flex-wrap:wrap;gap:var(--gap-inline);align-items:center}
 /* 行き先の一言は**ボタンの左**（何のための行き先かを押す前に読める）。 */
 .pc-look-lead{flex:1 1 var(--w-2xl);min-width:var(--w-xl);
-  font-size:var(--fs-sm);color:var(--ink-3);line-height:1.6}
+  font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
 
 /* ---- 読み込みの見せ方の盤（§9.436、利用者の指示「広いエリアでわかりやすく
    選べるように」）。29種を**族ごとに**並べ、見本を大きく出す。 ---- */
@@ -233,7 +233,7 @@
 .pc-ld-group h6{margin:var(--space-2) 0 0;display:flex;flex-wrap:wrap;
   align-items:baseline;gap:var(--gap-inline);
   font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);letter-spacing:.04em}
-.pc-ld-group h6 small{font-size:inherit;font-weight:var(--fw-ui);color:var(--ink-soft);letter-spacing:0}
+.pc-ld-group h6 small{font-size:inherit;font-weight:var(--fw-ui);color:var(--muted);letter-spacing:0}
 /* 札は**中身の長さから決めた固定幅**（いちばん長い名前が1行で入る幅）。
    `1fr`で伸ばすと族ごとに幅が変わり、列がそろわない（§CLAUDE 11）。
    余りは空白のまま残す（列を増やして詰めない・§CLAUDE 13）。 */
@@ -249,7 +249,7 @@
    名前の行がガタつく）。色は本文と同じ濃さ——見本だけ浮かせない。 */
 .pc-ld-fig{display:grid;place-items:center;width:100%;height:52px;color:var(--teal-dark)}
 .pc-ld-card b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);line-height:1.4}
-.pc-ld-card small{font-size:var(--fs-sm);color:var(--ink-soft);
+.pc-ld-card small{font-size:var(--fs-sm);color:var(--muted);
   word-break:break-all;line-height:1.3}
 /* 使用中は**枠の色と字の両方**で言う（色だけで言わない・§CLAUDE 3）。
    字は絶対配置なので、選び直しても札の寸法は1pxも動かない（§9.227）。 */
@@ -273,7 +273,7 @@
   border-radius:var(--radius-sm);background:var(--surface-2)}
 .pc-share-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
 .pc-share-head b{font-size:var(--fs-sm);color:var(--ink)}
-.pc-share-root{font-size:var(--fs-sm);color:var(--ink-3)}
+.pc-share-root{font-size:var(--fs-sm);color:var(--ink-2)}
 .pc-share-rows{display:flex;flex-direction:column;gap:var(--space-1)}
 .pc-share-row{display:grid;gap:var(--space-1) var(--gap-inline);align-items:baseline;
   grid-template-columns:var(--w-sm) var(--w-sm) minmax(0,1fr) var(--w-lg);
@@ -288,7 +288,7 @@
 .pc-share-kind{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
 .pc-share-path{min-width:0;font-size:var(--fs-sm);color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pc-share-where{font-size:var(--fs-sm);color:var(--ink-3);
+.pc-share-where{font-size:var(--fs-sm);color:var(--ink-2);
   display:flex;flex-direction:column;gap:0;min-width:0}
 .pc-share-where b{color:var(--ink-2)}
 .pc-share-note{grid-column:1/-1;font-size:var(--fs-sm);color:var(--warn-fg);line-height:1.5}
@@ -311,7 +311,7 @@
   padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
 .pc-store-group-head{display:flex;flex-direction:column;gap:0;margin:0;
   font-size:var(--fs-sm);color:var(--ink);font-weight:var(--fw-ui)}
-.pc-store-group-head small{font-size:var(--fs-sm);color:var(--ink-3);
+.pc-store-group-head small{font-size:var(--fs-sm);color:var(--ink-2);
   font-weight:var(--fw-body);line-height:1.5}
 .pc-store-row{display:grid;gap:2px var(--gap-inline);
   grid-template-columns:minmax(0,1fr);
@@ -334,14 +334,14 @@
 .pc-store-exists.is-ok{color:var(--ok-fg,var(--ink-2))}
 .pc-store-exists.is-missing{color:var(--warn-fg)}
 .pc-store-exists.is-unknown,.pc-store-exists.is-unset{color:var(--muted)}
-.pc-store-tag{font-size:var(--fs-sm);color:var(--ink-3);font-weight:var(--fw-ui);
+.pc-store-tag{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui);
   padding:0 var(--space-1);border:1px solid var(--line-soft);
   border-radius:var(--radius-xs)}
 .pc-store-tag.is-retired{color:var(--muted)}
 /* 素性は題の右へ添える（別の段にすると1件が4段になる）。**縮む役はここだけ**
    ——種類・状態の札まで一緒に縮むと、折り返して段が増える（§9.229 ⑤）。 */
 .pc-store-what{flex:1 1 var(--w-md);min-width:0;font-size:var(--fs-sm);
-  color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pc-store-kind,.pc-store-exists,.pc-store-tag{flex:0 0 auto}
 /* 読み取り専用の値に入力欄風の枠を付けない（画面基準 10）。 */
 .pc-store-eff{font-family:var(--font-mono,monospace);font-size:var(--fs-sm);
@@ -349,7 +349,7 @@
   min-width:0}
 .pc-store-foot{display:flex;flex-wrap:wrap;align-items:center;
   gap:0 var(--gap-inline);min-width:0;
-  font-size:var(--fs-sm);color:var(--ink-3)}
+  font-size:var(--fs-sm);color:var(--ink-2)}
 .pc-store-foot>*{flex:0 0 auto}
 .pc-store-foot .pc-store-eff{flex:1 1 var(--w-lg)}
 /* 欄は器いっぱい。パスは長いので、器を中身なりにすると必ず切れる
@@ -358,7 +358,7 @@
 .pc-store-row>.mm-path>input{flex:1 1 auto;min-width:0;max-width:none}
 .pc-store-row>.mm-path>.mm-path-browse{flex:0 0 auto}
 .pc-store-foot b{color:var(--ink-2)}
-.pc-store-note{font-size:var(--fs-sm);color:var(--ink-3);line-height:1.5}
+.pc-store-note{font-size:var(--fs-sm);color:var(--ink-2);line-height:1.5}
 /* 保存したのにまだ効いていない、は**打つ手のある状態**なので目立たせる。 */
 .pc-store-note.is-pending{color:var(--warn-fg)}
 .pc-store-pending{color:var(--warn-fg);font-weight:var(--fw-strong)}
@@ -381,7 +381,7 @@
 /* ---- 欄のすぐ下の状態 ---- */
 .pc-state{
   display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);
-  font-size:var(--fs-sm);color:var(--ink-3);
+  font-size:var(--fs-sm);color:var(--ink-2);
 }
 .pc-state i{font-style:normal;margin-right:.4em;color:var(--muted);font-weight:var(--fw-strong)}
 .pc-state-now,.pc-state-saved{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
@@ -395,9 +395,9 @@
 /* 置き場の欄（§9.557）。道は長いので欄は横いっぱい、添え書きは欄の下に1行 */
 .au-dir{display:grid;gap:var(--space-1);margin-bottom:var(--space-3)}
 .au-dir-field input{width:100%}
-.au-dir-note{color:var(--ink-3);font-size:var(--fs-sm)}
-.au-from{color:var(--ink-3)}
-.au-where{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
+.au-dir-note{color:var(--ink-2);font-size:var(--fs-sm)}
+.au-from{color:var(--ink-2)}
+.au-where{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
 .au-where code{color:var(--ink-2)}
 .au-ok{margin-left:var(--space-2);color:var(--teal-dark);font-weight:var(--fw-strong)}
 .au-bad{padding:var(--space-3);border:1px solid var(--danger-border);border-radius:var(--radius-md);
@@ -407,7 +407,7 @@
  border-radius:var(--radius-md);background:var(--surface);min-width:0}
 .au-step>b{font-size:var(--fs-sm);color:var(--ink-2)}
 .au-step>span{font-size:var(--fs);color:var(--ink)}
-.au-step>small{font-size:var(--fs-sm);color:var(--ink-3)}
+.au-step>small{font-size:var(--fs-sm);color:var(--ink-2)}
 .au-step.is-set{border-color:var(--teal);background:var(--teal-soft)}
 .au-step.is-pending{border-color:var(--warn-border);background:var(--warn-bg)}
 .au-arrow{align-self:center;width:var(--space-5);height:2px;background:var(--line-mid);position:relative}
@@ -417,21 +417,21 @@
 .au-new{margin:0;display:grid;grid-template-columns:7em minmax(0,1fr);gap:var(--space-2);align-items:baseline;font-size:var(--fs-sm)}
 .au-new>b{color:var(--ink-2)}
 .au-new code{color:var(--ink);word-break:break-all}
-.au-new small{color:var(--ink-3);font-size:var(--fs-sm)}
+.au-new small{color:var(--ink-2);font-size:var(--fs-sm)}
 .au-new .mm-btn-ghost{margin-left:var(--space-2)}
 .au-warn{font-style:normal;color:var(--warn-fg);font-weight:var(--fw-strong)}
-.au-put small{color:var(--ink-3);font-size:var(--fs-sm)}
+.au-put small{color:var(--ink-2);font-size:var(--fs-sm)}
 /* 置いている間（§9.556）: ボタンの行を進み具合の帯（共通の`.wl-progress`）に替える。帯はこの段の中の枠1つ */
 .au-put.is-busy{display:grid;align-items:stretch;gap:var(--space-2)}
 .au .wl-progress{border:1px solid var(--line);border-radius:var(--radius-md)}
 .au-pick{cursor:pointer}
-.au-empty{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
+.au-empty{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
 .au-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
-.au-table th{text-align:left;font-weight:var(--fw-strong);color:var(--ink-3);border-bottom:1px solid var(--line);padding:var(--space-1) var(--space-2)}
+.au-table th{text-align:left;font-weight:var(--fw-strong);color:var(--ink-2);border-bottom:1px solid var(--line);padding:var(--space-1) var(--space-2)}
 .au-table td{border-bottom:1px solid var(--line-soft);padding:var(--space-1) var(--space-2);vertical-align:middle}
 .au-table tr.is-live td{background:var(--teal-soft)}
-.au-table td small{color:var(--ink-3)}
+.au-table td small{color:var(--ink-2)}
 .au-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.au-tag{font-style:normal;font-size:var(--fs-sm);color:var(--ink-3)}
+.au-tag{font-style:normal;font-size:var(--fs-sm);color:var(--ink-2)}
 .au-tag.is-live{color:var(--teal-dark);font-weight:var(--fw-strong)}
 }

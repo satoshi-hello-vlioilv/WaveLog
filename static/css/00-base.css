@@ -170,7 +170,7 @@
   --card-bg:#f8fbfc;
   --card-border:#b8c9cd;
   --header-bar-bg:var(--pale);
-  --header-bar-fg:var(--nav);
+  --header-bar-fg:var(--ink);   /* 淡い帯の上の字＝本文の濃さ（§9.564。前は --nav で本文と別の濃さだった） */
   --computed-bg:#e6f6f4;
   --computed-fg:#075e67;
 
@@ -297,10 +297,11 @@
   --line-soft:#d6e0e3;      /* カード内の細い区切り */
   --line-mid:#c4d0d4;       /* 表の罫線 */
   --line-strong:#9caeb4;    /* 外枠・強い区切り */
-  --ink:#173842;            /* 本文(= --nav) */
-  --ink-2:#3a565d;          /* 副次的な文字 */
-  --ink-3:#4a6169;          /* 補足の文字 */
-  --ink-soft:#7b8e95;       /* さらに弱い補足・プレースホルダ */
+  /* 字の灰色は3段（§9.564）。明るさ L* が 15／35／48 で隣と 13 以上離れ、どの段も白地で 4.5:1 以上
+     （小さな字に要る濃さ）。前は5段＋直書きの灰色が約45種で、--ink-2 と --ink-3 は L* が 5 しか違わず
+     目で見分けられず、--ink-soft（3.4:1）は小さな字には薄すぎた。補足の段は --muted（下の定義）。 */
+  --ink:#17272d;            /* 本文・見出し・値（白地 15.4:1） */
+  --ink-2:#3a565d;          /* 副次的な文字・札の名前（7.9:1） */
 
   /* タイプスケール（ここだけ変えれば全体の文字が揃う）。§9.23でスケジュール
      モード(.sc-*)がヘッダー部分と表部分でバラバラの文字サイズ(9px〜13pxの
@@ -461,9 +462,9 @@ body{
   margin:0;
   font:var(--fs)/var(--lh) "Segoe UI","Yu Gothic UI",sans-serif;
   background:var(--bg);
-  color:#17272d;
+  color:var(--ink);
 }
-button,select,input,textarea{font:inherit}
+button,select,input,textarea{font:inherit;color:var(--ink)}  /* 既定の黒（#000）を本文の濃さへ（§9.564）。部品の規則が色を決めれば勝つ */
 /* <b>・<strong> の既定は「親より1段太く（bolder）」——600・700 の親の中では 900 になり、英数字だけ Black に
    なって日本語（Bold）と揃わなかった（§9.562）。太さの3段（--fw-*）のいちばん上に止める。 */
 b,strong{font-weight:var(--fw-strong)}

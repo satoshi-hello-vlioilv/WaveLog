@@ -571,7 +571,7 @@
  .wl-progress{
   display:grid;gap:var(--gap-tight);
   padding:var(--pad-card);margin:0;
-  background:var(--pale);border-bottom:1px solid var(--line);color:var(--nav);
+  background:var(--pale);border-bottom:1px solid var(--line);color:var(--ink);
  }
  .wl-progress[hidden]{display:none}
  .wl-progress-head{display:flex;align-items:baseline;gap:var(--gap-inline)}

@@ -1,4 +1,4 @@
-/* test_smalltext.js: 読ませる字は 12px 以上（§9.560）・字の太さは3段（§9.562）
+/* test_smalltext.js: 読ませる字は 12px 以上（§9.560）・字の太さは3段（§9.562）・字の灰色は3段（§9.564）
    ------------------------------------------------------------
    利用者の指摘:「まだ残っている統一基準になってない小さな文字や冗長な表示や表現」（§9.556）、
    続けて「残りの小さな字の修正を進めてください」。
@@ -16,7 +16,7 @@
 const {run}=require('./lib/harness.js');
 
 /* 記号だけの字（読ませる字ではない）。 */
-const GLYPH=/^[\s▾▸◂▴▼▲►◄×✕✓✔…・·|｜/／\-–—+＋※●○◆◇■□▪▫★☆♪→←↑↓⇄⇅↺↻⟳💬🔒🔓⚠]*$/u;
+const GLYPH=/^[\s▾▸◂▴▼▲►◄×✕✓✔…・·|｜/／\-–—+＋※●○◆◇■□▪▫★☆♪→←↑↓⇄⇅↺↻⟳💬🔒🔓⚠⠿]*$/u;
 
 run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,rec,B,W,idle})=>{
  const settle=async()=>{await idle(400,15000);await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
@@ -35,6 +35,14 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
    const s=getComputedStyle(el);
    if(s.visibility==='hidden'||+s.opacity===0)continue;
    const fs=parseFloat(s.fontSize);
+   /* 字の灰色は3段（§9.564）: 明るい地の上の中立の灰色は --ink／--ink-2／--muted のどれか（濃い地・使えない物は数えない） */
+   {const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(s.color);
+    if(m&&!el.closest(':disabled,[disabled],.is-disabled')){const [r,g,b]=[+m[1],+m[2],+m[3]];
+     const gray=Math.max(r,g,b)-Math.min(r,g,b)<=45&&b>=r&&g>=r-4&&Math.max(r,g,b)<190;
+     let e=el,bg='';while(e){const c=getComputedStyle(e).backgroundColor;if(c&&c!=='transparent'&&!/rgba\(\d+, \d+, \d+, 0\)/.test(c)){bg=c;break}e=e.parentElement}
+     const bm=/rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(bg||'rgb(255,255,255)');const light=bm&&(+bm[1]+ +bm[2]+ +bm[3])/3>200;
+     const ok=['rgb(23, 39, 45)','rgb(58, 86, 93)','rgb(96, 116, 123)'];
+     if(gray&&light&&!ok.includes(s.color.replace(/rgba\((\d+), (\d+), (\d+), 1\)/,'rgb($1, $2, $3)')))window.__wlOddGray=(window.__wlOddGray||[]).concat(name+':'+s.color+' '+tx.slice(0,10));}}
    /* 太さは3段（§9.562）。アイコンの字体（Font Awesome の solid は 900）は数えない */
    if(![400,600,700].includes(+s.fontWeight)&&!/Font Awesome/.test(s.fontFamily))window.__wlOddW=(window.__wlOddW||[]).concat(name+':'+s.fontWeight+' '+tx.slice(0,10));
    /* 字を大きくした副作用の見張り: 省略記号で切れている字（数えるだけ・#MEASURE） */
@@ -71,6 +79,7 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
  const by={};found.forEach(f=>{(by[f.screen]=by[f.screen]||[]).push(f)});
  const cut=await page.evaluate(()=>window.__wlCut||[]);
  const oddW=await page.evaluate(()=>window.__wlOddW||[]);
+ const oddGray=await page.evaluate(()=>window.__wlOddGray||[]);
  console.log('#MEASURE '+JSON.stringify({cut:cut.length,cutList:cut.slice(0,40)}));
  console.log('#MEASURE '+JSON.stringify({total:found.length,perScreen:Object.fromEntries(Object.entries(by).map(([k,v])=>[k,v.length]))}));
  if(process.env.WAVELOG_SHOT)require('fs').writeFileSync(require('path').join(process.env.WAVELOG_SHOT,'smalltext.json'),JSON.stringify({found,cut},null,1));
@@ -78,4 +87,6 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
  rec('読ませる字に 12px 未満が無い（画面を巡回して数える）',found.length===0,`${found.length}件 ${kinds.slice(0,8).join(' / ')}`);
 rec('描いた字の太さは 400／600／700 の3段だけ（§9.562・500 は 400 と同じに、800・900 は英数字だけ Black になる）',
   oddW.length===0,`${oddW.length}件 ${oddW.slice(0,6).join(' / ')}`);
+rec('明るい地の上の灰色の字は3段（--ink／--ink-2／--muted）だけ（§9.564）',
+  oddGray.length===0,`${oddGray.length}件 ${[...new Set(oddGray)].slice(0,6).join(' / ')}`);
 },{mode:'edit',viewport:{width:1728,height:1152}});

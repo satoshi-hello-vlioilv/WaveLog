@@ -27,13 +27,13 @@
    そろえる（カードの題と同じ大きさにすると、どちらが器か分からなくなる）。 */
 .split-layout h3{
   margin:0 0 var(--space-1);
-  color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em;
+  color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em;
   display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);
 }
 .split-candidates-stats{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted)}
 .split-candidates-stats b{color:var(--teal);font-size:var(--fs-base-sm)}
-.split-hint-text{margin:8px 0 0;color:#79898d}
-.split-row-loading{padding:var(--space-4);color:#526970;font-weight:var(--fw-strong)}
+.split-hint-text{margin:8px 0 0;color:var(--muted)}
+.split-row-loading{padding:var(--space-4);color:var(--ink-2);font-weight:var(--fw-strong)}
 .split-candidates-empty,.split-result-empty{padding:var(--space-4);text-align:center;color:var(--muted);font-size:var(--fs-base-sm);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md)}
 /* 子ロット候補カード。凡例として割当条数・確認済み数・幅・公差を表示し、
    クリックすると視覚図内の該当する条を一時的に光らせる(位置特定用)。 */
@@ -44,16 +44,16 @@
 .split-candidate-swatch{width:14px;height:14px;margin-top:3px;border-radius:var(--radius-xs);flex:0 0 auto;box-shadow:inset 0 0 0 1px #00000022}
 .split-candidate-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--gap-tight)}
 .split-candidate-head{display:flex;align-items:center;gap:var(--space-2)}
-.split-candidate-head b{color:#1b3438}
+.split-candidate-head b{color:var(--ink)}
 .split-candidate-head em{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted);background:var(--bg);border-radius:var(--radius-pill);padding:1px 8px}
 .split-candidate.active .split-candidate-head em{color:var(--teal-dark);background:#d3f0ee}
-.split-candidate-meta{font-size:var(--fs-sm);color:#79898d}
+.split-candidate-meta{font-size:var(--fs-sm);color:var(--muted)}
 /* 条割結果プレビュー(#splitResult)。左端に視覚図/候補カードと同じ色の
    アクセントを付け、対応関係を示す。 */
 .split-result{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--gap-inline)}
 .split-result-row{display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:var(--gap-section);padding:9px 12px;background:#fff;border:1px solid #dbe4e6;border-left-width:5px;border-left-style:solid;border-radius:var(--radius-sm);font-size:var(--fs-base-sm)}
-.split-result-index{color:#9aabab;font-weight:var(--fw-ui);font-size:var(--fs-sm)}
-.split-result-lot{font-weight:var(--fw-strong);color:#1b3438}
+.split-result-index{color:var(--muted);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
+.split-result-lot{font-weight:var(--fw-strong);color:var(--ink)}
 .split-result-count{color:var(--ink-2);font-weight:var(--fw-strong)}
 .split-result-width{color:var(--muted);font-size:var(--fs-sm);justify-self:end}
 .split-result-tol{display:none}
@@ -78,7 +78,7 @@
 .split-visual-hint{
   /* **基準幅は0**（§9.234 ①）。`auto`だと文の長さが基準になり、
      `flex-wrap:wrap`の器は縮める前に折り返すのでボタンが2行目へ落ちる。 */
-  flex:1 1 0;min-width:0;margin-right:auto;align-self:center;color:var(--ink-soft);
+  flex:1 1 0;min-width:0;margin-right:auto;align-self:center;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 /* 図は**カードの余りをすべて使う**（§9.157）。以前は帯の高さが88px固定で、
@@ -101,7 +101,7 @@
 .split-visual-end{
   flex:0 0 auto;display:flex;align-items:center;justify-content:center;
   width:2.2em;padding:0 var(--space-1);
-  background:transparent;color:var(--ink-3);
+  background:transparent;color:var(--ink-2);
   font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.06em;
 }
 .split-visual-end.os{border-right:2px solid var(--line-mid)}
@@ -118,7 +118,7 @@
    帯が実際より太く出ていた（そのぶん条の束が痩せて「図が崩れる」）。
    基は0で、伸びる量だけをJSが`flex-grow`で渡す。入らない文字は
    `fitScrapLabels()`が段階的に落とす（値は状態帯と`title`に残る）。 */
-.split-visual-scrap{flex:0 1 0;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:repeating-linear-gradient(135deg,#dde3e5 0 7px,#d1d8da 7px 14px);color:#5c6c70;cursor:default}
+.split-visual-scrap{flex:0 1 0;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:repeating-linear-gradient(135deg,#dde3e5 0 7px,#d1d8da 7px 14px);color:var(--muted);cursor:default}
 .split-visual-scrap[hidden]{display:none}
 .split-visual-scrap.os{margin-right:3px}
 .split-visual-scrap.ds{margin-left:3px}
@@ -141,7 +141,7 @@
 .split-visual-ruler{position:absolute;inset:0;pointer-events:none;z-index:2}
 .split-visual-centerline{position:absolute;top:-5px;bottom:-5px;left:50%;border-left:1.5px dashed #64797f;opacity:.75}
 .split-visual-tick{position:absolute;top:0;bottom:0;border-left:1px dashed #a9bcc1;opacity:.6}
-.split-visual-tick-label{position:absolute;top:-15px;left:0;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:#748a90;white-space:nowrap}
+.split-visual-tick-label{position:absolute;top:-15px;left:0;transform:translateX(-50%);font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--muted);white-space:nowrap}
 /* 端に近い目盛りの数字は**内側へ寄せる**（§9.221 ⑥③）。真上に置くと器の外へ
    半分はみ出し、そこにあるOS／DSの文字と重なってどちらも読めなくなる。 */
 .split-visual-tick.is-edge-left>.split-visual-tick-label{transform:translateX(0)}
@@ -213,7 +213,7 @@
 .measure-shell .split-ghost-btn,
 .measure-shell .split-defect-chip{font-size:var(--fs-sm)}
 .split-defect-chip>b{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.split-defect-chip>small{color:var(--ink-3);font-size:var(--fs-micro)}
+.split-defect-chip>small{color:var(--ink-2);font-size:var(--fs-micro)}
 .split-defect-chip.is-hit{border-color:var(--danger);background:var(--danger-bg);
   color:var(--danger)}
 .split-defect-chip.is-hit>small{color:var(--danger)}
@@ -307,7 +307,7 @@
   flex:0 0 auto;
 }
 .split-scrap-alloc[hidden]{display:none}
-.ssa-title{color:var(--ink-3);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em}
+.ssa-title{color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui);letter-spacing:.04em}
 .ssa-state{
   padding:0 var(--space-2);border-radius:var(--radius-pill);
   background:var(--surface-2);color:var(--ink-2);
@@ -328,7 +328,7 @@
 /* 入る値は「32.5」程度＝4桁なので`--w-xs`（§CLAUDE 11 入れ物は中身の
    長さから決める）。以前は`--w-sm`(7em)で、1行に収まらない原因の1つだった。 */
 .ssa-unit input{width:var(--w-xs);height:var(--ctl-h-sm);text-align:right;font-variant-numeric:tabular-nums}
-.ssa-unit i{color:var(--ink-3);font-size:var(--fs-micro);font-style:normal}
+.ssa-unit i{color:var(--ink-2);font-size:var(--fs-micro);font-style:normal}
 /* **縮む役は案内だけが持つ**（§9.229 ⑤／§9.234 ①）。以前は`flex:1 1 100%`で
    **必ず1行増やして**おり、カードの下端で見切れていた（実機で報告）。
    全文は`title`で読める（`renderScrapAllocEditor()`が入れる）。 */

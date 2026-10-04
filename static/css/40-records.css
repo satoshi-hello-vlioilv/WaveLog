@@ -13,7 +13,7 @@
    絞り込み(.record-searchbar)はヘッダーの#headerViewBarへ移る。 */
 .record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:#fff}
 .record-searchbar label{display:grid;gap:var(--space-1)}
-.record-searchbar label>span{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-3)}
+.record-searchbar label>span{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2)}
 /* 検索欄は一覧と同じ部品（§9.507）。上の`label{display:grid}`（名前を上に積む形）を当てない。 */
 .record-searchbar label.lt-search{display:inline-flex;flex:0 1 var(--w-2xl)}  /* 案内の字（22字）が切れない規格幅（§CLAUDE 画面基準 11） */
 /* 右端の群＝**見せ方**（並び・表示列）。仕掛一覧の帯と同じ並び（§9.505・§9.507）。 */
@@ -25,7 +25,7 @@
 .status-filter-btn{border:1.5px solid #c7d4d8;background:#fff;color:var(--muted);font-weight:var(--fw-strong);cursor:pointer;transition:background .15s,border-color .15s,color .15s}
 .status-filter-btn:hover{border-color:#9fb4ba}
 .status-filter-btn[data-status-filter="done"].active{border-color:var(--success);background:var(--success)}
-.record-search-result{align-self:center;text-align:right;color:#526970;font-weight:var(--fw-strong);white-space:nowrap}
+.record-search-result{align-self:center;text-align:right;color:var(--ink-2);font-weight:var(--fw-strong);white-space:nowrap}
 /* ---------- データ一覧は仕掛一覧(#grid)と同じ表の規格で組む（§9.161） ----------
    利用者の指摘「文字サイズのバランスが悪く統一感がない。ボタンUIは大きい、
    ボタン内の文字も大きい、データ内の文字は小さい。文字の見切れも目立つ。
@@ -82,7 +82,7 @@
    `:hover`にも追随する）。行そのものへ`width:max-content`を与える手もあるが、
    `fr`のトラックが最大幅で解けてしまい、**溢れていないときの列幅まで
    変わる**ので採らない。 */
-.record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;color:#28464e;font-weight:var(--fw-strong)}
+.record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;color:var(--ink);font-weight:var(--fw-strong)}
 /* 見出しの左右余白は値のセルより詰める（削る順は 余白 → 省略記号）。 */
 .record-list-head>*{height:var(--row-h);display:flex;align-items:center;
   padding:var(--row-pad-y) var(--row-pad-x-head);border-right:1px solid var(--line-mid);
@@ -102,7 +102,7 @@
 .record-list-cell.primary{font-weight:var(--fw-strong);color:var(--ink)}
 /* **補助の列は色だけで下げる。** 大きさを変えると、同じ距離で同時に読む
    ものが違う大きさになり、表全体が「揃っていない」と感じられる（§9.90）。 */
-.record-list-cell.secondary{color:#526970}
+.record-list-cell.secondary{color:var(--ink-2)}
 .record-duration{font-weight:var(--fw-strong);color:#075e67}
 /* 続きから再開/帳票/削除の3ボタンは役割で色分けしつつ、サイズ・文字サイズ・
    角丸は完全に統一する(特定のボタンだけ大きくしない)。均等幅(flex:1)に
@@ -127,10 +127,10 @@
 .rec-actbar{flex:none;display:flex;align-items:center;gap:var(--space-3);
   min-height:calc(var(--ctl-h) + var(--space-2) * 2 + 1px);padding:var(--space-2) var(--space-4);
   border-top:1px solid var(--line);background:var(--surface);box-shadow:0 -4px 12px #17384214}
-.rec-actbar-hint{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
+.rec-actbar-hint{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
 .rec-actbar-what{flex:1;min-width:0;display:flex;align-items:baseline;gap:var(--space-3);white-space:nowrap;overflow:hidden}
 .rec-actbar-what b{font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink)}
-.rec-actbar-what small{font-size:var(--fs-sm);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}
+.rec-actbar-what small{font-size:var(--fs-sm);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
 .rec-actbar button{flex:none;font-weight:var(--fw-strong);white-space:nowrap;border:1px solid var(--line);
   background:var(--surface);color:var(--ink-2);cursor:pointer}
 .rec-actbar .resume{min-width:var(--w-sm);background:var(--teal);color:#fff;border-color:var(--teal)}
@@ -180,7 +180,7 @@
 .record-mode-denied{margin:0;font-size:var(--fs-sm);line-height:1.6}
 /* 見出しは中央でよいが、理由は2〜3行の説明文になる。中央揃えのまま伸ばすと
    行頭が揃わず読みにくいので、幅を決めて左揃えにする。 */
-.record-empty .record-empty-why{max-width:76ch;margin:var(--space-2) auto 0;font-size:var(--fs-sm);line-height:1.7;text-align:left;color:var(--ink-3)}
+.record-empty .record-empty-why{max-width:76ch;margin:var(--space-2) auto 0;font-size:var(--fs-sm);line-height:1.7;text-align:left;color:var(--ink-2)}
 /* 絞った結果が0件の案内（§9.453）。**効いている条件は左揃えで縦に並べる**——中央揃えの
    ままだと行ごとに左端がずれ、条件を1つずつ読めない（画面基準9）。出どころは小札、
    いつも適用は注意の色（設定要＝橙・§9.338）で字と一緒に出す（色だけで伝えない）。 */
@@ -207,7 +207,7 @@
 .settings-dialog small{color:#8fd4d4}
 .settings-dialog header button{border:0;background:transparent;color:#fff;font-size:var(--fs-lg)}
 .settings-body{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--space-5)}
-.settings-body>p{margin:0 0 18px;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#526970;line-height:1.7}
+.settings-body>p{margin:0 0 18px;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:var(--ink-2);line-height:1.7}
 .settings-body label{display:grid;gap:var(--gap-inline);font-weight:var(--fw-strong)}
 /* ---------- 使用設備の設定（§9.257 ②、利用者の指示） ----------
    「アプリ使用設備の設定のモーダルが使いづらいのでわかりやすく使いやすく
@@ -237,7 +237,7 @@
 .eqset-now.is-none{background:var(--warn-bg);color:var(--warn-fg)}
 .eqset-now.is-pick{background:var(--teal);color:var(--surface)}
 .eqset-now.is-instant{background:transparent;color:var(--muted);font-weight:var(--fw-body)}
-.eqset-lead{margin:0;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.7}
+.eqset-lead{margin:0;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.7}
 .eqset-lead b{color:var(--ink-2)}
 /* ---------- 選んでも1pxも動かない（§9.227 ②） ----------
    「＋ 設備マスタへ新規登録」を選ぶと欄が生える形だと、選んだ拍子に窓が
@@ -258,7 +258,7 @@
    **2行ぶんの場所を先に取る**（§9.227 ②）——文言は場面で1行にも2行にも
    なるので、そのたびに窓が伸び縮みして下のボタンが逃げる（実測19px）。 */
 .eqset-help{margin:0;min-height:calc(var(--fs-sm) * 1.6 * 2);
-  color:var(--ink-3);font-size:var(--fs-sm);line-height:1.6}
+  color:var(--ink-2);font-size:var(--fs-sm);line-height:1.6}
 .eqset-help b{color:var(--ink-2)}
 .eqset-help.is-warn{color:var(--warn-fg)}
 /* 伏せた候補の件数（§9.302）。**助けの一言より弱く**——次にすることは
@@ -270,7 +270,7 @@
 .eqset-steps{margin:0;padding-left:1.6em;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.8}
 .eqset-path{word-break:break-all}
 /* 足の一言。**なぜここに居るか**と保存の結果を出す（§CLAUDE 6）。 */
-.eqset-foot{margin-right:auto;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.5}
+.eqset-foot{margin-right:auto;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.5}
 .eqset-foot.is-warn{color:var(--warn-fg);font-weight:var(--fw-strong)}
 .eqset-foot.is-ok{color:var(--teal-dark);font-weight:var(--fw-strong)}
 /* 決めるボタンは**本文の外**（§9.255 ④／§9.222 ⑤）。本文だけがスクロール
@@ -286,7 +286,7 @@
 .delete-confirm-summary{display:flex;flex-direction:column;gap:var(--gap-hair);margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2)}
 .delete-confirm-row{display:flex;justify-content:space-between;gap:var(--space-3);padding:3px 0;font-size:var(--fs-base-sm);color:var(--ink-2)}
 .delete-confirm-row span{color:var(--muted);font-weight:var(--fw-strong)}
-.delete-confirm-row b{color:#17272d}
+.delete-confirm-row b{color:var(--ink)}
 .delete-confirm-warning{margin:0;padding:var(--pad-card);border-left:4px solid #c62828;background:#fdecec;color:#7a1f1f;line-height:1.7;font-weight:var(--fw-strong)}
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
@@ -337,10 +337,10 @@
   border:1px solid var(--warn-border);border-left:6px solid var(--warn);border-radius:var(--radius-md);background:var(--warn-bg);
 }
 .equipment-setup-banner.configured{display:none}
-.equipment-setup-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:var(--radius-round);background:var(--warn);color:var(--nav);font-weight:var(--fw-strong)}
+.equipment-setup-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:var(--radius-round);background:var(--warn);color:var(--ink);font-weight:var(--fw-strong)}
 .equipment-setup-copy{display:grid;gap:var(--gap-tight)}
 .equipment-setup-copy b{font-size:var(--fs-title)}
-.equipment-setup-copy span{color:#526970}
+.equipment-setup-copy span{color:var(--ink-2)}
 .equipment-setup-banner>button{min-width:160px;border-color:var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 /* ---------- 13. 保存オーバーレイ / トースト ----------
    待機モーダルは「見て飽きない・状況が伝わる」ことを目的に、
@@ -353,8 +353,8 @@
 @keyframes waiting-card-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
 .waiting-overlay>div{display:grid;grid-template-columns:40px minmax(260px,1fr);column-gap:14px;align-items:center;text-align:left}
 .waiting-overlay b,.waiting-overlay small,.waiting-progress,.waiting-steps{grid-column:2}
-.save-overlay b{display:block;font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--nav);margin-bottom:4px}
-.save-overlay small{color:#587078}
+.save-overlay b{display:block;font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink);margin-bottom:4px}
+.save-overlay small{color:var(--muted)}
 /* 保存オーバーレイのローダー。**見せ方は`89-loaders.css`が持つ**（§9.421）
    ——ここは器の席（グリッドのどこに置くか）だけを決める。輪と点の作りは
    `[data-loader="ring"]`へ移した。 */
@@ -365,7 +365,7 @@
    視覚のみで進捗を把握できるようにする。 */
 .waiting-steps{display:flex;align-items:center;gap:0;margin-top:10px}
 .waiting-steps[hidden]{display:none}
-.waiting-step{display:grid;place-items:center;width:20px;height:20px;border-radius:var(--radius-round);background:var(--bg);border:2px solid var(--line);color:#8199a0;font-size:var(--fs-badge);font-weight:var(--fw-ui);flex:none;transition:background .25s,border-color .25s,color .25s}
+.waiting-step{display:grid;place-items:center;width:20px;height:20px;border-radius:var(--radius-round);background:var(--bg);border:2px solid var(--line);color:var(--muted);font-size:var(--fs-badge);font-weight:var(--fw-ui);flex:none;transition:background .25s,border-color .25s,color .25s}
 .waiting-step i{display:block;width:6px;height:6px;border-radius:var(--radius-round);background:currentColor}
 .waiting-step::before{content:attr(data-step);display:none}
 .waiting-step.active{border-color:var(--teal);background:var(--teal);color:#fff;box-shadow:0 0 0 4px #087c8926}
@@ -375,12 +375,12 @@
 .waiting-step-line::after{content:"";position:absolute;inset:0;background:var(--teal);transform:scaleX(0);transform-origin:left;transition:transform .3s ease}
 .waiting-steps:has(.waiting-step.done)>.waiting-step-line::after,.waiting-steps:has(.waiting-step.active~.waiting-step-line)>.waiting-step-line::after{transform:scaleX(0)}
 .waiting-step:first-of-type.done~.waiting-step-line::after,.waiting-step:first-of-type.active~.waiting-step-line::after{transform:scaleX(1)}
-.waiting-progress{margin-top:9px;padding-top:9px;border-top:1px solid #dce5e7;color:#526970;font-size:var(--fs-sm);line-height:1.6}
+.waiting-progress{margin-top:9px;padding-top:9px;border-top:1px solid #dce5e7;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.6}
 /* 通知バナーは右下に配置し、右からスライドイン／右へスライドアウトする */
 .toast-area{position:fixed;bottom:18px;right:22px;top:auto;z-index:var(--z-toast);display:grid;gap:var(--space-2);justify-items:end;pointer-events:none;width:min(420px,calc(100vw - 32px))}
 .toast{width:100%;padding:12px 14px;border:1px solid #55aeb5;border-left:6px solid var(--teal);border-radius:var(--radius-sm);background:#f4ffff;color:#173f45;box-shadow:0 8px 28px #001b2433;animation:toast-in .22s ease-out,toast-glow .7s ease-out .05s;will-change:transform,opacity}
 .toast b{display:block;margin-bottom:3px}
-.toast small{display:block;color:#527078}
+.toast small{display:block;color:var(--muted)}
 .toast.out{opacity:0;transform:translateX(30px);transition:opacity .2s ease-in,transform .2s ease-in}
 /* 知らせの中の「その場で押せる1手」（§9.373）。器は`pointer-events:none`
    なので、押せるのはこのボタンだけ**明示的に戻す**——戻し忘れると
@@ -490,7 +490,7 @@
   border:1px solid #9fb2bf;
   border-radius:var(--radius-sm);
   background:#ffffffee;
-  color:#243a42;
+  color:var(--ink);
   font-size:var(--fs-micro);
   font-weight:var(--fw-ui);
   white-space:nowrap;
@@ -553,7 +553,7 @@
   background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);cursor:pointer;
   white-space:nowrap}
 .record-scope-btn>b{font-weight:var(--fw-strong);max-width:12em;overflow:hidden;text-overflow:ellipsis}
-.record-scope-btn>i{font-style:normal;font-weight:var(--fw-body);color:var(--ink-3)}
+.record-scope-btn>i{font-style:normal;font-weight:var(--fw-body);color:var(--ink-2)}
 .record-scope-btn:hover:not(:disabled){border-color:var(--teal)}
 .record-scope-btn:disabled{opacity:.55;cursor:default}
 
