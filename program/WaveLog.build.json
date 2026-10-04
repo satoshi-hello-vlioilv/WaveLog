@@ -1,8 +1,8 @@
 {
- "source": "desktop:6b7d1c444f70a642bd3719d863e59bbb6f1b3ba4 icon:b66ee6611c396339ea387cda28f53b5ceffc02fc",
- "commit": "61fe672701d727918f02d2a003867ac101c7ae85",
- "version": "2.446.0",
- "builtAt": "2026-10-04T15:51:36Z",
- "size": 4593664,
+ "source": "desktop:3df4aa95d3bc2ce19fcceab5cfd641a106d04542 icon:b66ee6611c396339ea387cda28f53b5ceffc02fc",
+ "commit": "4248da8555d8fe4fce5831938e053409779ed93e",
+ "version": "2.449.0",
+ "builtAt": "2026-10-04T17:04:05Z",
+ "size": 4611584,
  "selftest": "25/25"
 }
