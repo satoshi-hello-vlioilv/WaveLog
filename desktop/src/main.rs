@@ -13,6 +13,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod frame;
+mod launch;
 mod lnk;
 mod locate;
 mod router;
@@ -234,7 +235,8 @@ fn record_download(ev: DownloadEvent<'_>) -> bool {
     true
 }
 
-/// 手元へ写した古い版の exe を片付ける（Start.vbs が版ごとのフォルダへ写す・設計書 §7）。
+/// 手元へ写した古い版の exe を片付ける（入口が版ごとのフォルダへ写す・`launch.rs`・設計書 §7）。
+/// 入口（`desktop\\WaveLog.exe`）と控え（`program.txt`）はファイルなので触らない（消すのはフォルダだけ）。
 /// **動いている版は消せない**（Windows は動いている exe を掴む）ので、消せたものだけ消す。
 fn cleanup_old_copies() {
     let Ok(exe) = std::env::current_exe() else { return };
@@ -257,6 +259,8 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>) {
         Ok(p) => p,
         Err(e) => return splash.fail(&app, "アプリの中身が見つかりません", &e),
     };
+    // 入口（ショートカットの行き先）をこの版にそろえる。中身（Python）がショートカットを付け替える前に置く（§9.554）
+    launch::refresh_entry(&log);
     let py = match locate::python() {
         Ok(p) => p,
         Err(e) => {
@@ -301,6 +305,13 @@ fn main() {
     // 副コマンド: ショートカットを1件作る／読むだけで終わる（窓・1つだけ起動の仕組みより前に分ける・§9.552）
     if std::env::args().nth(1).as_deref() == Some(lnk::ARG) {
         std::process::exit(lnk::run());
+    }
+    // 入口: 共有の exe・入口から起こされたら、この PC の版ごとの写しへ渡して終わる（§9.554）。
+    // 中身が見つからないときは渡さずに進み、起動画面が理由を出す（start() が同じ答えをもう一度引く）
+    if let Ok(program) = locate::program_dir() {
+        if launch::handoff(&program, &log) {
+            return;
+        }
     }
     let slot: Arc<OnceLock<AppRouter>> = Arc::default();
     let splash: Arc<Splash> = Arc::default();

@@ -5,9 +5,12 @@
   「デスクトップにWaveLogの起動ショートカットを作成する機能が欲しいです。
     アイコンも設定できますか？」
 
-**作るのは`.lnk`1本**で、行き先は毎日の入口である`Start.vbs`（§9.405
-「入口は1つ」）。ここで別の起動路（`start_app.bat`等）を指せるようにすると、
-**入口が2つ**になる——現場のショートカットだけが古い入口を指したまま残る。
+**作るのは`.lnk`1本**で、行き先は毎日の入口（§9.405「入口は1つ」）。
+入口は**この PC の決まった場所の exe**（`%LOCALAPPDATA%\\WaveLog\\desktop\\WaveLog.exe`・§9.554）で、
+共有の`program\\WaveLog.exe`と版を比べて、版ごとの写しへ渡す（`desktop/src/launch.rs`）。
+以前の行き先`Start.vbs`（WSH）は、ZIP で届いた印のせいで更新のたびに実行前の警告が2回出た
+（利用者の報告）。前に`Start.vbs`へ作ったショートカットも**自分が作ったもの**として扱い、
+窓の中で起動したときに入口へ付け替える（`migrate()`）。
 
 なぜアプリの窓（`WaveLog.exe --lnk`）に作らせるか（§9.552）
 ---------------------------------------------------------------------------
@@ -40,8 +43,10 @@ from .quiet import quiet
 # ショートカットの既定の名前。**画面で名乗っている名前**にそろえる
 # （デスクトップに「WaveLog」とだけ出ても、現場は何のアイコンか分からない）。
 DEFAULT_NAME='測定伝送システム'
-# 行き先＝毎日の入口（§9.405・§9.406でリポジトリ直下に残した1本）。
-TARGET_NAME='Start.vbs'
+# 前の行き先（§9.405〜§9.553）。**自分が作ったもの**の見分けと、付け替え（`migrate()`）にだけ使う。
+LEGACY_TARGET_NAME='Start.vbs'
+# 入口へ program フォルダを渡す引数（`desktop/src/locate.rs`の`PROGRAM_ARG`と同じ字）。
+PROGRAM_ARG='--program'
 # 指定できるアイコンの種類。`.exe`／`.dll`は中の絵を使う（`,0`が既定）。
 ICON_SUFFIXES=('.ico','.exe','.dll')
 # 窓（exe）の副コマンド（`desktop/src/lnk.rs`の`ARG`と同じ字）。
@@ -50,7 +55,22 @@ DESCRIPTION='測定伝送システム（WaveLog）を起動します'
 
 
 def target_path():
- return APP_ROOT/TARGET_NAME
+ """行き先＝入口（§9.554）。**答えは窓**（`WAVELOG_SHELL_ENTRY`・`launch::entry_path()`）——Store 版の
+    Python は`AppData\\Local`を自分だけの写しに見せるので、ここで場所を組み立てずに窓の答えを使う。
+    窓の外（開発・網）では同じ決まり（`LOCALAPPDATA`の下）で組む。"""
+ given=os.environ.get('WAVELOG_SHELL_ENTRY','')
+ if given:return Path(given)
+ base=os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_DATA_HOME') or str(Path.home()/'.local'/'share')
+ return Path(base)/'WaveLog'/'desktop'/'WaveLog.exe'
+
+
+def legacy_target():
+ return APP_ROOT/LEGACY_TARGET_NAME
+
+
+def target_args():
+ """入口へ渡す引数。**どの program フォルダを使うか**をショートカットが持つ（試しのフォルダと本番を並べても混ざらない）。"""
+ return '%s "%s"'%(PROGRAM_ARG,PROGRAM_DIR)
 
 
 def shell_exe():
@@ -93,7 +113,7 @@ def supported():
  if sys.platform!='win32':
   return False,'この機能はWindowsでだけ使えます（この端末は %s）'%sys.platform
  if not target_path().exists():
-  return False,'起動ファイル（%s）が見つかりません'%target_path()
+  return False,('入口（%s）がまだこの PC にありません。program\\WaveLog.exe を一度起動すると置かれます'%target_path())
  return True,''
 
 
@@ -180,8 +200,12 @@ def link_target(path):
 
 
 def is_ours(path):
- """このアプリが作ったショートカットか（行き先が`Start.vbs`か）。"""
- return _same_path(link_target(path),target_path())
+ """このアプリが作ったショートカットか（行き先が入口か、前の行き先`Start.vbs`か・§9.554）。"""
+ return _is_ours_target(link_target(path))
+
+
+def _is_ours_target(target):
+ return _same_path(target,target_path()) or _same_path(target,legacy_target())
 
 
 def rename_from(prev,name):
@@ -259,7 +283,7 @@ def status(name=None):
       # **同じ名前の物が自分のものか**まで答える（§9.446）。画面はこれを見て
       # 「作り直す（自分の）」と「上書きする（別の物）」を言い分ける
       # ——判定はここの1箇所で、画面に書き写さない（§9.163）。
-      'linkTarget':'','mine':False,
+      'linkTarget':'','mine':False,'legacy':False,
       'updatedAt':'','iconSuffixes':list(ICON_SUFFIXES)}
  try:
   if out['exists']:
@@ -268,7 +292,9 @@ def status(name=None):
   quiet('ショートカットの更新時刻を読めない（時刻を出さない）',_e)
  if out['exists']:
   out['linkTarget']=link_target(link)
-  out['mine']=_same_path(out['linkTarget'],target_path())
+  out['mine']=_is_ours_target(out['linkTarget'])
+  # 前の行き先（Start.vbs）のままか。窓の中で起動すると`migrate()`が付け替える（画面は字で言うだけ）。
+  out['legacy']=_same_path(out['linkTarget'],legacy_target())
  return out
 
 
@@ -282,7 +308,7 @@ def create(name=None,icon=None,uid=None,overwrite=False):
     すでに在るときの振る舞い（§9.446、利用者の指示「すでにある場合は上書きして
     書き換える」）
     ---------------------------------------------------------------------
-    ・**自分が作ったもの**（行き先が`Start.vbs`）なら、そのまま**上書き**する
+    ・**自分が作ったもの**（行き先が入口か、前の行き先`Start.vbs`）なら、そのまま**上書き**する
       ——名前も絵も、いま決めた内容へ書き換わる。
     ・**別のショートカット**（行き先が違う）は`overwrite`が真のときだけ上書き
       する。既定では断り、`needConfirm`と行き先を返す——利用者が自分で作った
@@ -304,7 +330,7 @@ def create(name=None,icon=None,uid=None,overwrite=False):
  except Exception as _e:
   quiet('デスクトップのフォルダを用意できない',_e)
  icon_file,icon_index=_icon_parts(spec)
- made=_lnk({'op':'make','path':str(link),'target':str(target_path()),'workdir':str(APP_ROOT),
+ made=_lnk({'op':'make','path':str(link),'target':str(target_path()),'args':target_args(),'workdir':str(APP_ROOT),
             'icon':icon_file,'iconIndex':icon_index,'description':DESCRIPTION})
  if not made.get('ok') or not link.exists():
   return {'ok':False,'error':'ショートカットを作れませんでした: '+str(made.get('error') or '作ったはずのファイルがありません')}
@@ -333,3 +359,21 @@ def create(name=None,icon=None,uid=None,overwrite=False):
  out['iconUsed']=spec
  out['iconSource']=source
  return out
+
+
+def migrate():
+ """前の行き先（`Start.vbs`）へ作ったショートカットを、入口へ付け替える（§9.554）。窓の中で起動したときに1回。
+
+    付け替えるのは**共通設定に残した名前のショートカットで、行き先が`Start.vbs`のもの**だけ——
+    利用者が自分で作った別のショートカットは触らない。名前と絵は残してある値のまま。
+    戻り値は何をしたかの1文（していなければ空）。"""
+ ok,_why=supported()
+ if not ok or desktop_shell.running()['kind']!='desktop':return ''
+ name=saved('shortcut_name')
+ link=link_path(name)
+ if not link.exists() or not _same_path(link_target(link),legacy_target()):return ''
+ out=create(name,saved('shortcut_icon'),overwrite=True)
+ if not out.get('ok'):
+  quiet('起動アイコンを入口へ付け替えられない（前の Start.vbs のまま動く）',out.get('error'))
+  return ''
+ return 'デスクトップの起動アイコンを入口（%s）へ付け替えました: %s'%(target_path(),link)

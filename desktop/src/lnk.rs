@@ -9,7 +9,7 @@
 //! **決めるのは Python**（どこへ・どの名前で・上書きしてよいか・前の名前を片付けるか——`backend/desktop_shortcut.py`）。
 //! ここは頼まれた1件を作る／読むだけ。頼みは標準入力の JSON 1つ、答えは標準出力の JSON 1つ（字は UTF-8・位置で読まない）。
 //!
-//!   `WaveLog.exe --lnk` ← `{"op":"make","path":…,"target":…,"workdir":…,"icon":…,"iconIndex":0,"description":…}`
+//!   `WaveLog.exe --lnk` ← `{"op":"make","path":…,"target":…,"args":…,"workdir":…,"icon":…,"iconIndex":0,"description":…}`
 //!                       ← `{"op":"read","path":…}` → `{"ok":true,"target":…}`（無いファイルは空の行き先）
 
 use serde_json::{json, Value};
@@ -23,6 +23,8 @@ pub const ARG: &str = "--lnk";
 pub struct Make<'a> {
     pub path: &'a str,
     pub target: &'a str,
+    /// 行き先へ渡す引数（入口へ program フォルダを渡す `--program "…"`・§9.554）。空なら付けない
+    pub args: &'a str,
     pub workdir: &'a str,
     pub icon: &'a str,
     pub icon_index: i32,
@@ -61,6 +63,7 @@ pub fn handle(req: &Value) -> Result<Value, String> {
             let m = Make {
                 path,
                 target: text("target"),
+                args: text("args"),
                 workdir: text("workdir"),
                 icon: text("icon"),
                 icon_index: req["iconIndex"].as_i64().unwrap_or(0) as i32,
@@ -94,6 +97,9 @@ mod imp {
     pub fn make(m: &Make) -> Result<(), String> {
         with_link(|l| unsafe {
             l.SetPath(&HSTRING::from(m.target))?;
+            if !m.args.is_empty() {
+                l.SetArguments(&HSTRING::from(m.args))?;
+            }
             l.SetWorkingDirectory(&HSTRING::from(m.workdir))?;
             l.SetDescription(&HSTRING::from(m.description))?;
             if !m.icon.is_empty() {

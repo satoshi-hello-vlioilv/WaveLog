@@ -72,6 +72,8 @@ impl Sidecar {
             // 窓が何から作られたか・どこで動いているか（§9.552。答えは backend/desktop_shell.py の1箇所）
             .env("WAVELOG_SHELL_COMMIT", env!("WAVELOG_BUILD_COMMIT"))
             .env("WAVELOG_SHELL_EXE", std::env::current_exe().unwrap_or_default())
+            // 入口（ショートカットの行き先・§9.554）。ショートカットを作る・付け替えるのは Python（desktop_shortcut.py）
+            .env("WAVELOG_SHELL_ENTRY", crate::launch::entry_path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(stderr);
@@ -109,7 +111,7 @@ impl Sidecar {
             Ok(Ok(Some(head))) if head["event"] == "ready" && head["protocol"].as_u64() != Some(PROTOCOL) => {
                 let _ = child.kill();
                 return Err(format!(
-                    "窓とアプリの中身の版が食い違っています（窓 {PROTOCOL} / 中身 {}）。アプリを閉じて、Start.vbs から開き直してください。",
+                    "窓とアプリの中身の版が食い違っています（窓 {PROTOCOL} / 中身 {}）。アプリを閉じて、デスクトップの起動アイコンから開き直してください。",
                     head["protocol"]
                 ));
             }

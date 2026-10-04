@@ -1,28 +1,69 @@
 //! 置き場所を探す: アプリの中身（program フォルダ）・Python・この PC の作業場所。
-//! 決まりは Python 側（backend/paths.py の local_root）と Start.vbs に合わせる。
+//! 決まりは Python 側（backend/paths.py の local_root）に合わせる。
 
 use std::env;
 use std::path::{Path, PathBuf};
 
-/// program フォルダ（sidecar.py がある所）。
-/// 探す順: 環境変数 WAVELOG_PROGRAM_DIR（Start.vbs が exe を手元へ写して起動するときに渡す）→
-/// この exe の置き場所から上へたどって `program/sidecar.py` がある所（作る途中: desktop/target/release/ から3つ上）。
+/// 入口から版ごとの写しへ渡すときの引数（`--program <フォルダ>`・ショートカットも同じ形で渡す・§9.554）。
+pub const PROGRAM_ARG: &str = "--program";
+/// 最後に使った program フォルダの控え（`local_root()/desktop/program.txt`）。
+const REMEMBERED: &str = "program.txt";
+
+/// program フォルダ（sidecar.py がある所）。答えはここの1箇所。
+/// 探す順: 引数 `--program`（入口・ショートカット）→ 環境変数 WAVELOG_PROGRAM_DIR（開発・網）→
+/// この exe の置き場所から上へたどって `program/sidecar.py` がある所（配る exe・作る途中は3つ上）→
+/// **最後に使った場所の控え**（引数の無い入口・タスクバーに留めた写し）。見つけたら控えを書き直す。
 pub fn program_dir() -> Result<PathBuf, String> {
-    if let Some(p) = env::var_os("WAVELOG_PROGRAM_DIR") {
-        let p = PathBuf::from(p);
-        return if p.join("sidecar.py").is_file() {
-            Ok(p)
-        } else {
-            Err(format!("WAVELOG_PROGRAM_DIR に sidecar.py がありません: {}", p.display()))
-        };
+    let given = arg_value(PROGRAM_ARG).or_else(|| env::var_os("WAVELOG_PROGRAM_DIR").map(PathBuf::from));
+    let found = match given {
+        Some(p) if p.join("sidecar.py").is_file() => p,
+        Some(p) => return Err(format!("指定された program フォルダに sidecar.py がありません: {}", p.display())),
+        None => {
+            let exe = env::current_exe().map_err(|e| e.to_string())?;
+            match find_program_from(&exe).or_else(remembered) {
+                Some(p) => p,
+                None => {
+                    return Err(format!(
+                        "アプリの中身（program フォルダ）が見つかりません。アプリのフォルダの program\\WaveLog.exe を一度ダブルクリックして起動してください（次からはデスクトップの起動アイコンで開けます）。\n探し始めた場所: {}",
+                        exe.parent().unwrap_or(&exe).display()
+                    ))
+                }
+            }
+        }
+    };
+    remember(&found);
+    Ok(found)
+}
+
+/// 引数 `name <値>` の値（`--name=値` も受ける）。
+fn arg_value(name: &str) -> Option<PathBuf> {
+    let args: Vec<String> = env::args().collect();
+    let eq = format!("{name}=");
+    args.iter().enumerate().find_map(
+        |(i, a)| {
+            if a == name {
+                args.get(i + 1).map(PathBuf::from)
+            } else {
+                a.strip_prefix(&eq).map(PathBuf::from)
+            }
+        },
+    )
+}
+
+fn remembered() -> Option<PathBuf> {
+    let text = std::fs::read_to_string(local_root().join("desktop").join(REMEMBERED)).ok()?;
+    let p = PathBuf::from(text.trim());
+    p.join("sidecar.py").is_file().then_some(p)
+}
+
+fn remember(p: &Path) {
+    let dir = local_root().join("desktop");
+    let file = dir.join(REMEMBERED);
+    let text = p.display().to_string();
+    if std::fs::read_to_string(&file).ok().as_deref() != Some(text.as_str()) {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(file, text);
     }
-    let exe = env::current_exe().map_err(|e| e.to_string())?;
-    find_program_from(&exe).ok_or_else(|| {
-        format!(
-            "アプリの中身（program フォルダ）が見つかりません。アプリのフォルダの Start.vbs（またはデスクトップの起動アイコン）から起動してください。\n探し始めた場所: {}",
-            exe.parent().unwrap_or(&exe).display()
-        )
-    })
 }
 
 pub fn find_program_from(start: &Path) -> Option<PathBuf> {
