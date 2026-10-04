@@ -60,7 +60,7 @@ fi
 # 互いの状態を触らないことが「純粋」の定義なので、並列にしてよい。
 # **`--pure` はパス設定の差し替えも見せ方の戻しもしない**（差し替えが要る
 # 網は、そもそもここに載っていない）。
-PURE_TESTS="test_apiguard test_assetcache test_atomicio test_body test_browserdir test_bladeset \
+PURE_TESTS="test_apiguard test_appupdate test_assetcache test_atomicio test_body test_browserdir test_bladeset \
 test_changelog test_cleanup test_csslint test_dblayer test_dbmirror \
 test_dbopen test_ddllint test_displayrule test_docindex test_dskeylint \
 test_eqstd test_lfpoints test_error test_eslint test_faststart test_flags \
@@ -550,7 +550,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
-         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_lfpoints test_actualmatch test_finishjoin test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_browserdir test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers test_waitlint test_importlint test_funclen test_bladeset test_stopsub test_shortcut test_schedhist test_portdep test_sidecar test_terminalstore; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_lfpoints test_actualmatch test_finishjoin test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_browserdir test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers test_waitlint test_importlint test_funclen test_bladeset test_stopsub test_shortcut test_schedhist test_portdep test_sidecar test_terminalstore test_appupdate; do run python3 $t.py; done
 
 # ---- 落ちた本を単独で回し直して切り分ける（§9.356） -------------------
 # 「通しでだけ落ちる」と「単独でも落ちる」は**直し方がまるで違う**:
