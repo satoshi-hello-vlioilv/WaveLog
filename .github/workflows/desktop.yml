@@ -80,25 +80,43 @@ jobs:
           WAVELOG_PYTHON: python
         run: cargo build --release --locked
 
-      # 毎日の起動アイコンと同じ道（引数なしの Start.vbs）で起こす。Start.vbs は exe を手元へ写して起動するだけ（§9.548）。
-      - name: 自己診断（本物の WebView2・ポートなし・Start.vbs から）
+      # 入口の道（§9.554）を2回たどる。
+      #   1回目: 共有の program\WaveLog.exe を直に起こす（最初の1回の道）。ZIP で届いた物と同じ「インターネットから来た」
+      #          印を付けておき、exe が版ごとの写しと入口を置いて、**どちらからも印を外した**ことを確かめる。
+      #   2回目: Start.vbs（移行期間）から。入口が在るので入口を起こし、入口が写しへ渡す（毎日の道）。
+      # 起こすのは呼び出し（CreateProcess）なので、印があっても実行前の警告は出ない（警告はエクスプローラー・WSH の道）。
+      - name: 自己診断（本物の WebView2・ポートなし・入口の道を2回）
         run: |
           Copy-Item desktop\target\release\WaveLog.exe program\WaveLog.exe
-          $env:WAVELOG_SELFTEST = "$env:RUNNER_TEMP\selftest.json"
-          cscript //nologo Start.vbs
-          $deadline = (Get-Date).AddSeconds(240)
-          while (-not (Test-Path $env:WAVELOG_SELFTEST) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
-          Wait-Process -Name WaveLog -Timeout 30 -ErrorAction SilentlyContinue
-          $copies = Get-ChildItem "$env:LOCALAPPDATA\WaveLog\desktop" -Recurse -Filter WaveLog.exe -ErrorAction SilentlyContinue
-          Write-Host "手元へ写した exe: $($copies.FullName -join ', ')"
+          Set-Content -Path program\WaveLog.exe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
+          $dir = "$env:LOCALAPPDATA\WaveLog\desktop"
+          function Run-Selftest($label, [scriptblock]$start) {
+            $out = "$env:RUNNER_TEMP\selftest-$label.json"
+            $env:WAVELOG_SELFTEST = $out
+            & $start
+            $deadline = (Get-Date).AddSeconds(240)
+            while (-not (Test-Path $out) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+            Wait-Process -Name WaveLog -Timeout 30 -ErrorAction SilentlyContinue
+            if (-not (Test-Path $out)) { Write-Host "[$label] 結果のファイルがありません"; return $null }
+            $r = Get-Content $out -Raw -Encoding utf8 | ConvertFrom-Json
+            $r.results | ForEach-Object { Write-Host ("[{0}] {1}: {2} -- {3}" -f $label, ($(if ($_.ok) { "PASS" } else { "FAIL" })), $_.name, $_.info) }
+            if ($r.error) { Write-Host "[$label] ERROR: $($r.error)" }
+            return $r
+          }
+          $r1 = Run-Selftest "share" { & .\program\WaveLog.exe }
+          $copies = Get-ChildItem $dir -Recurse -Filter WaveLog.exe -ErrorAction SilentlyContinue
+          Write-Host "この PC へ写した exe: $($copies.FullName -join ', ')"
+          $marked = $copies | Where-Object { Get-Item $_.FullName -Stream Zone.Identifier -ErrorAction SilentlyContinue }
+          $r2 = Run-Selftest "vbs" { cscript //nologo Start.vbs }
           Get-ChildItem "$env:LOCALAPPDATA\WaveLog\logs" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.Name)"; Get-Content $_.FullName -Tail 25 -Encoding utf8 }
-          if (-not (Test-Path $env:WAVELOG_SELFTEST)) { Write-Host "結果のファイルがありません"; exit 2 }
-          $r = Get-Content $env:WAVELOG_SELFTEST -Raw -Encoding utf8 | ConvertFrom-Json
-          $r.results | ForEach-Object { Write-Host ("{0}: {1} -- {2}" -f ($(if ($_.ok) { "PASS" } else { "FAIL" }), $_.name, $_.info)) }
-          if ($r.error) { Write-Host "ERROR: $($r.error)" }
-          if (-not $copies) { Write-Host "Start.vbs が exe を手元へ写していません"; exit 3 }
+          if (-not $r1 -or -not $r2) { exit 2 }
+          if (-not (Test-Path "$dir\WaveLog.exe")) { Write-Host "入口（$dir\WaveLog.exe）が置かれていません"; exit 3 }
+          if (-not ($copies | Where-Object { $_.Directory.FullName -ne $dir })) { Write-Host "版ごとの写しがありません"; exit 3 }
+          if ($marked) { Write-Host "印が残っている写し: $($marked.FullName -join ', ')"; exit 5 }
+          if (-not (Get-Item program\WaveLog.exe -Stream Zone.Identifier -ErrorAction SilentlyContinue)) { Write-Host "配った exe の印まで消えています（触らない約束）"; exit 6 }
           if (Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*hostedtoolcache*" }) { Write-Host "Python が残っています（窓を閉じても中身が終わっていない）"; exit 4 }
-          if (-not $r.ok) { exit 1 }
+          if (-not $r1.ok -or -not $r2.ok) { exit 1 }
+          Copy-Item "$env:RUNNER_TEMP\selftest-vbs.json" "$env:RUNNER_TEMP\selftest.json"
 
       # 置く物をまとめる: exe・自己診断の結果・**作った元の指紋**（publish が比べる）。
       - name: 成果物をまとめる

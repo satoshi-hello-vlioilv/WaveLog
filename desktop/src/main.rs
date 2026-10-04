@@ -290,7 +290,8 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>) {
     splash.step(&app, "backend", "ok", &format!("版 {} ・ {:.1} 秒", ready["version"].as_str().unwrap_or("?"), elapsed));
     let info = json!({
         "shell": "tauri", "shell_version": env!("CARGO_PKG_VERSION"), "commit": env!("WAVELOG_BUILD_COMMIT"), "protocol": sidecar::PROTOCOL,
-        "program": program, "python": py_text, "backend": ready, "url": app_url("/").as_str(),
+        "program": program, "python": py_text,
+        "exe": std::env::current_exe().unwrap_or_default(), "entry": launch::entry_path(), "backend": ready, "url": app_url("/").as_str(),
     });
     let static_dir = program.parent().unwrap_or(Path::new(".")).join("static");
     let _ = slot.set(Router { static_dir, backend: sup, native: native(app.clone(), info), after: after(app.clone(), slot.clone()) });

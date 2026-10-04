@@ -1,6 +1,6 @@
 """server.py: **開発と網（テスト）のための HTTP の入口**（§9.548）。利用者の起動の道ではない。
 
-利用者が起動するのはデスクトップ版だけ（Start.vbs → WaveLog.exe → `program/sidecar.py`・ポートなし）。
+利用者が起動するのはデスクトップ版だけ（起動アイコン → この PC の WaveLog.exe → `program/sidecar.py`・ポートなし・§9.554）。
 ブラウザ版の起動の道（待機画面・二重起動の判定・タブが0件で終わる見張り）は§9.548で外した。
 ここは、画面を HTTP で開いて確かめる網（Playwright）と手元の開発のために、**同じアプリを
 同じ背景処理で**立てるだけ: `python3 program/app.py`。止めるのは`POST /api/shutdown`（片付けを通る）。

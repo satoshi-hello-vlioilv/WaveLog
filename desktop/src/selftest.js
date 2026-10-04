@@ -129,12 +129,17 @@
     const info = await (await fetch("/__desktop/info")).json();
     ok("窓の版: 窓を作ったコミットが中身（Python）へ届く", bi.shell === "desktop" && !!bi.shellCommit && String(info.commit || "").startsWith(bi.shellCommit),
        `窓 ${bi.shellCommit} / 配ってある窓 ${bi.shellPlaced || "（名乗りなし）"} / 違う=${bi.shellStale}`);
+    // 入口（§9.554）: 窓として動いているのは版ごとの写し（共有の exe・入口から起こしても、写しへ渡っている）
+    ok("入口: 窓は この PC の版ごとの写しで動いている（共有の exe を掴まない）",
+       !/Windows/.test(navigator.userAgent) || /\\WaveLog\\desktop\\[^\\]+\\WaveLog\.exe$/i.test(info.exe || ""),
+       `動いている exe ${info.exe} / 入口 ${info.entry}`);
     const lnkName = "WaveLog自己診断";
     if (/Windows/.test(navigator.userAgent)) {
       const mk = await get("/api/app/shortcut", json("POST", { name: lnkName, icon: "", overwrite: true }));
       const st = JSON.parse((await get("/api/app/shortcut?name=" + encodeURIComponent(lnkName))).text);
-      ok("ショートカット: 窓（--lnk）が作り、読み戻した行き先が Start.vbs（自分の物と分かる）",
-         mk.r.ok && st.exists && st.mine && /Start\.vbs$/i.test(st.linkTarget || ""), `${mk.r.status} ${mk.text.slice(0, 120)} → ${st.linkTarget}`);
+      ok("ショートカット: 窓（--lnk）が作り、読み戻した行き先が入口の exe（自分の物と分かる・§9.554）",
+         mk.r.ok && st.exists && st.mine && !st.legacy && /\\WaveLog\\desktop\\WaveLog\.exe$/i.test(st.linkTarget || ""),
+         `${mk.r.status} ${mk.text.slice(0, 120)} → ${st.linkTarget}`);
     } else {
       ok("ショートカット: 測っていない（.lnk は Windows でだけ作る）", true, navigator.userAgent);
     }

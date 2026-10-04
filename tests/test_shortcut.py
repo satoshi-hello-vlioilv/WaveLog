@@ -84,7 +84,10 @@ rec('前の行き先（Start.vbs）はリポジトリ直下（付け替えの見
 # ---- 3) 作れない端末は理由を返す -------------------------------------------
 ok, why = desktop_shortcut.supported()
 if sys.platform == 'win32':
-    rec('Windowsでは作れると答える', ok, why)
+    # 入口（この PC の exe）は最初の起動で置かれる（§9.554）。無いうちは理由と次の一手を言う
+    _has = desktop_shortcut.target_path().exists()
+    rec('Windowsでは、入口があれば作れる・無ければ理由（program\\WaveLog.exe を一度起動）を言う',
+        ok == _has and (ok or 'program' in why), f'入口あり={_has} / {why}')
 else:
     rec('Windows以外では理由を付けて断る', (not ok) and 'Windows' in why, why)
     out = desktop_shortcut.create('回帰_shortcut')

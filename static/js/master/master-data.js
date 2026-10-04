@@ -2245,7 +2245,7 @@
    <div class="pc-look-head"><b>デスクトップの起動アイコン</b>
     <span class="lnk-state" data-sc-state>確認しています…</span></div>
    <div class="pc-look-act">
-    <span class="pc-look-lead">毎日の入口（<b>Start.vbs</b>）へのショートカットを作ります。決めるのはヘッダーの「表示」——
+    <span class="pc-look-lead">毎日の入口（<b>この PC の WaveLog.exe</b>）へのショートカットを作ります。決めるのはヘッダーの「表示」——
      <b>どのモードからも開けます</b>。</span>
     <button type="button" class="mm-btn-ghost" id="pcScOpen">「表示」から作る</button>
    </div>
