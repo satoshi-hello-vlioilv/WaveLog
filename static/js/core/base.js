@@ -101,6 +101,7 @@ const apiErrorMessage=(status,text,url)=>{
    サーバーの`_READ_ONLY_POST_ENDPOINTS`が正で、**呼ぶ側がその印を付ける**
    （知っているのは呼ぶ側）。付け忘れは`tests/test_savechip.py`が数える。 */
 const SAVE_CHIP_DELAY_MS=500;
+/** 問い合わせ先と fetch の設定（`quiet`＝保存中の札を出さない）。 @type {(u: string, o?: RequestInit & {quiet?: boolean}) => Promise<any>} */
 const api=async(u,o)=>{
  const opt={...(o||{})};
  const quiet=opt.quiet===true;delete opt.quiet;
@@ -121,7 +122,7 @@ const api=async(u,o)=>{
   const err=Error((parsed&&j.error)||apiErrorMessage(r.status,text,u));
   if(parsed)Object.assign(err,j);err.status=r.status;err.body=String(text||'').slice(0,500);throw err}
  settle(true);
- return j},
+ return j};
 /* ---------- HTMLへ埋める前の逃がし（§9.276 ⑤、利用者の報告） ----------
    「帳票ブロックのカスタムで表で組み替えて保存したらその瞬間はきれいに
     保存されますが、再度読み込むと『表に組む』というボタンが押せなく
@@ -136,7 +137,8 @@ const api=async(u,o)=>{
    （そのまま保存すると**マスタの中身まで壊れる**）。
    属性にも中身にも使える1つの関数にする——`&quot;`／`&#39;`は文字として
    出るので、中身に使ったときの見え方は1文字も変わらない。 */
-esc=v=>String(v??'').replace(/[&<>"']/g,c=>(
+/** @param {*} v @returns {string} */
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>(
   {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 /* ---------- 説明文の印は1箇所で解く（§9.286 ⑦、利用者の報告） ----------
    「更新履歴の<b>みたいなタグが出ているので修正をお願いします」
@@ -154,9 +156,11 @@ WL.markup=t=>esc(t)
   .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
   .replace(/`([^`]+)`/g,'<code>$1</code>');
 const aliases={lotNo:['ロット番号','ﾛｯﾄ番号','LTNO'],inspectionNo:['検査番号','KNNO'],orderNo:['オーダー番号','JUON','JUNO'],castingNo:['鋳造番号','CYNO'],allocationNo:['引当番号','HKNO'],orderMaterial:['オーダー材質','JUA'],orderTemper:['オーダー調質','JUB'],orderThickness:['オーダー板厚','JUX'],orderWidth:['オーダー板幅','JUY'],orderLength:['オーダー板丈','JUZ'],mfgMaterial:['製造材質','LTA'],mfgTemper:['製造調質','LTB'],mfgThickness:['製造板厚','LTX'],mfgWidth:['製造板幅','LTY'],mfgLength:['製造板丈','LTZ'],purposeCode:['用途コード','用途ｺｰﾄﾞ','YOTOC'],purposeName:['用途名','YOTON'],customer:['取引先','TOKUNA'],delivery:['納入先','NONNA'],designCourse:['設計_設備ｺｰｽ','設計_設備コース'],course:['実績_設備ｺｰｽ','実績_設備コース','実績コース'],residualCourse:['残仕掛設備ｺｰｽ','残仕掛設備コース','ZANMC'],equipment:['BOX設計_設備名','設備'],originalWidth:['BOX実績_板幅'],boxHorizontalCount:['BOX設計_横割数'],boxVerticalCount:['BOX設計_縦割数']};
+/** @param {object} row @param {string} key `aliases` の鍵 */
 function pick(row,key){for(const n of aliases[key]||[])if(row[n]!==undefined&&row[n]!==null)return String(row[n]);return ''}
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}
 /* 基本情報タブの寸法表示整形。板厚=小数2桁 / 板幅・板丈=小数1桁。数値でない・空欄はそのまま。 */
+/** @param {*} value @param {number} digits */
 function fmtDim(value,digits){const raw=String(value??'').trim();if(raw==='')return '';const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
 /* ロット№クリックでLotDsp検索サイトをロット番号指定で開く。
    linkkeyは「7文字固定幅のロット番号 + 半角スペース3つ + 7文字固定幅の
@@ -268,6 +272,7 @@ WL.lotDspTab={
   sel.onchange=()=>localStorage.setItem(WL.lotDspTab.KEY,sel.value);
  }
 };
+/** @param {string} x */
 function setState(x){$('#localState').textContent=x}
 /* 保存されていない変更があるかどうかを追跡する。×ボタン/背景クリックで
    閉じようとした際、破棄してよいか確認するために使う。WL.measureView.renderMeasurement()
@@ -480,6 +485,7 @@ function normalizedLot(value){return String(value||'').normalize('NFKC').replace
    （§9.373）。失敗を知らせるだけでは、利用者は「で、どうすれば」に答えを
    持たない——**次にすることを1つだけ指す**（§CLAUDE 画面基準2）。
    押したら知らせは閉じる（押したのに残ると、効いたのか分からない）。 */
+/** @param {string} title @param {string} [detail] @param {number} [duration] ミリ秒 @param {{label: string, run: Function}|null} [action] */
 function showToast(title, detail='', duration=3400, action=null){
  const area=$('#toastArea'); if(!area)return;
  const item=document.createElement('div'); item.className='toast';
@@ -591,6 +597,7 @@ function ensureConfirmModal(){
  document.body.append(modal);
  return modal;
 }
+/** @param {string|{message?: string, title?: string, eyebrow?: string, bodyHtml?: string, confirmLabel?: string, cancelLabel?: string, danger?: boolean, hideCancel?: boolean, focus?: string}} opts 字だけなら本文 @returns {Promise<boolean>} */
 function confirmModal(opts){
  const o=typeof opts==='string'?{message:opts}:(opts||{});
  return new Promise(resolve=>{
@@ -629,6 +636,7 @@ function confirmModal(opts){
    `master-opdata.js`は自前の`promptModal`を持ちながら、同じファイルの
    5箇所で素の`prompt()`を呼んでいた。 */
 /* お知らせ。ボタンは1つ（「閉じる」）。返り値は使わない。 */
+/** @param {string|{message?: string, title?: string, eyebrow?: string, bodyHtml?: string, confirmLabel?: string, danger?: boolean}} opts 字だけなら本文 */
 function alertModal(opts){
  const o=typeof opts==='string'?{message:opts}:(opts||{});
  return confirmModal({...o,eyebrow:o.eyebrow||'NOTICE',title:o.title||'お知らせ',
@@ -641,6 +649,7 @@ function alertModal(opts){
    場面は`if(!v)return`でどちらも弾けるが、**理由のように空でも通す欄**
    （在席の切断理由）は、分かれていないと「やめた」が「理由なしで実行」に
    化ける。`prompt()`と同じ形にしてあるので、置き換えは1行で済む。 */
+/** @param {string|{label?: string, message?: string, title?: string, eyebrow?: string, value?: string, placeholder?: string, hint?: string, maxLength?: number, confirmLabel?: string, cancelLabel?: string, danger?: boolean}} opts 字だけなら欄の名前 @returns {Promise<string|null>} */
 function promptModal(opts){
  const o=typeof opts==='string'?{label:opts}:(opts||{});
  return confirmModal({
@@ -2117,6 +2126,7 @@ function isInternalDbSwitch(){return internalDbSwitchDepth>0}
    **既存のキャッシュは置き換えないこと**。それぞれ無効化の条件が業務仕様と
    絡んでおり(例: §9.67の作業可否は「一度可になったら再取得しない」)、
    一括置換はその仕様を落とす。新規のみこのヘルパを使う。 */
+/** @param {number} ttlMs 生きている長さ（ミリ秒・位置引数） @param {number} [maxEntries] */
 function ttlCache(ttlMs,maxEntries=40){
  const store=new Map(),inflight=new Map();
  const alive=e=>e&&(Date.now()-e.at)<=ttlMs;
@@ -2282,6 +2292,7 @@ window.WL.measureDevice={label:measureDeviceLabel,of:measureDeviceOf,note:noteMe
 /* 公差・基準の表示桁は**測定値と同じ**（§9.242 ②）。値だけ2桁にして範囲を
    1桁のままにすると、`1234.55`が`1233.5 ～ 1234.5`の中に見えてしまう
    （実際の判定は生の範囲で行うので、**画面だけが嘘をつく**）。 */
+/** @param {string} kind @param {*} value */
 function fixedToleranceValue(kind,value){const n=Number(value);if(!Number.isFinite(n))return '-';const d=measurementDigits(kind);return n.toFixed(d==null?1:d)}
 /* Final title guard for delayed initialization and browser history restoration. */
 function enforceApplicationTitle(){if(document.title!=='測定伝送システム')document.title='測定伝送システム'}

@@ -399,6 +399,7 @@
   /* 登録名は**変数をトークンのまま**入れる(§9.80)。condLabel は
      「{使用設備}（=LS4）」のように今の値を併記するため、そのまま名前に
      すると設備を変えるたびに別名で登録され、同じ条件が増えていく。 */
+  /** @param {{column: string, op: string, value?: *}} f 条件1件 */
   function presetName(f){
     if(noValueOp(f.op))return `${f.column} ${opShort(f.op)}`.slice(0,60);
     return `${f.column} ${opShort(f.op)} ${f.value}`.slice(0,60);
