@@ -28,4 +28,4 @@
 | `<select>`に値の見せ方を当てない | — | [§9.221](../../docs/decisions/9.221.md) |
 | フィールド名 | — | [決まり](../../docs/decisions/rules-misc.md) |
 | 作業時間は分まで | — | [§9.242](../../docs/decisions/9.242.md) |
-| update.batの文字コード | — | [決まり](../../docs/decisions/rules-misc.md) |
+| 【§9.559で update.bat を外した】update.batの文字コード | — | [決まり](../../docs/decisions/rules-misc.md) |

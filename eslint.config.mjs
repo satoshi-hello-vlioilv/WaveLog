@@ -87,7 +87,7 @@ const BROWSER = Object.fromEntries([
 
 export default [
   {
-    // バイトコードの置き場は歩かない（JS は無い）。update.bat の片付け（`run_for_update`）を本物で回す網と並列で走ると、
+    // バイトコードの置き場は歩かない（JS は無い）。片付けを本物で回す網と並列で走ると、
     // 走査の途中でフォルダが消えて eslint ごと止まっていた（§9.549）。
     ignores: ['static/vendor/**', 'node_modules/**', 'db/**', '**/__pycache__/**'],
   },

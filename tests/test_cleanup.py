@@ -204,7 +204,7 @@ try:
     file_cleanup._cfg = lambda key, default: 'off' if key == 'cleanup_auto_enabled' else default
     rec('定期掃除は切にできる', file_cleanup.auto_enabled() is False)
 
-    # ---- 9) 更新のとき（update.bat）は作り直せる物を丸ごと片付ける（§9.497、利用者の指示） ----
+    # ---- 9) 起動の部品の書きかけを数える（§9.497。update.bat の「更新の片付け」は §9.559 で update.bat ごと外した） ----
     # 「古いデータ(一時ファイルたち)をアップデートで一旦消して、作り直した方が良い」
     # 「update.batでアップデートの版の表示追加と、古いデータの処理など」
     rt, vis = tmp / 'runtime', tmp / 'visible'
@@ -230,30 +230,14 @@ try:
     try:
         cat = next((c for c in file_cleanup.survey()['categories'] if c['key'] == 'runtime'), None)
         names = sorted({e['name'] for e in (cat or {}).get('examples', [])})
-        rec('更新で片付ける起動の部品の書きかけを数える（§9.497）',
+        rec('起動の部品の書きかけを数える（§9.497）',
             cat is not None and cat['removable'] == 4 and cat['auto'] is False,
             f"{cat and cat['removable']}件 {names}")
-        upd = getattr(file_cleanup, 'run_for_update', None)
-        out = upd() if upd else None
-        left_rt = sorted(p.name for d0 in (rt, vis) for p in d0.iterdir())
-        rec('更新の片付けは作り直せる部品を消し、刻印・絵を残す（§9.497）',
-            out is not None and left_rt == sorted(['ready.json', 'wavelog.ico'] * 2), str(left_rt))
-        rec('更新の片付けはバイトコードも消す（直後に update.bat が作り直す）（§9.497）',
-            out is not None and not (tmp / 'pycache' / 'cpython-312').exists())
-        rec('更新の片付けでも本物のデータは残る（§9.497）',
-            all((dbdir / n).exists() for n in ('master.sqlite3', 'records.sqlite3', 'schedule.sqlite3')))
     finally:
         if has_rt:
             file_cleanup._runtime_dirs = _real['rt']
         _paths.APP_ROOT = _real_root
         unpatch()
-    from backend.launcher import ready as _ready
-    vn = getattr(_ready, 'version_note', None)
-    rec('版の1行は前回の版と今回の版を言い分ける（§9.497）',
-        vn is not None and '2.381.0' in vn({'appVersion': '2.381.0'}) and '更新' in vn({'appVersion': '2.381.0'})
-        and '同じ' in vn({'appVersion': _ready.current()['appVersion']}) and vn(None),
-        vn and [vn({'appVersion': '2.381.0'}), vn({'appVersion': _ready.current()['appVersion']}), vn(None)])
-
     # ---- 10) 更新の片付けは db_access を読み込まない（§9.497の追補3） ----
     # 読み込むと共有マスタの写しを錠なしで作り直し（master_share.configure → _pull(force)）、
     # アプリが起動中なら書込を上書きし得る。**別のプロセスで**確かめる（この網の中では既に読み込んでいる）。
@@ -302,11 +286,8 @@ try:
     print('#MEASURE ' + json.dumps({'failed_note': notes}, ensure_ascii=False))
     rec('消せなかった物が定期の掃除で消える種別だけなら「次の掃除で消えます」と言う（§9.497の追補3）',
         fn is not None and '次の掃除' in notes[0], str(notes[0]))
-    rec('定期の掃除では消さない種別を含むなら「次の掃除で消えます」と言わず、次の update.bat を言う（§9.497の追補3）',
-        fn is not None and '次の掃除で消えます' not in notes[1] and 'update.bat' in notes[1], str(notes[1]))
-    down = vn({'appVersion': '99.0.0'}) if vn else ''
-    rec('版が下がったときは「更新」と言わず、前の版に戻っていると言う（§9.497の追補3）',
-        '更新' not in down and '戻' in down, down)
+    rec('定期の掃除では消さない種別を含むなら「次の掃除で消えます」と言わず、消す手を言う（§9.497の追補3・§9.559）',
+        fn is not None and '次の掃除で消えます' not in notes[1] and '選んだものを掃除する' in notes[1], str(notes[1]))
 
     # ---- 8) 種別の作りが揃っている（画面はこの並びをそのまま出す） ----
     need = {'key', 'label', 'icon', 'note', 'why', 'auto', 'scan'}

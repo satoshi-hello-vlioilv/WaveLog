@@ -99,8 +99,21 @@
    :`<small>版を置く・配る版を決めるのは、開発者・メンテナンス者だけです（この端末は「${esc(st.role)}」）。</small>`;
   host.innerHTML=`<p class="au-where">${where} <span class="au-ok">届いています</span></p>
    ${flowHtml(st)}
+   ${entryHtml(st)}
    <div class="au-put${busy?' is-busy':''}">${put}</div>
    ${rowsHtml(st)}`;
+ }
+ /* 新しい PC へ渡すもの（§9.559、利用者の指示「初回に配布する際に、ショートカット(アドレス)だけ渡す」）。
+    配る入口のアドレスと、初回に写る共有のマスタの置き場。どちらも配る版を決めたときにサーバーが置く。 */
+ function entryHtml(st){
+  const e=st.entry;
+  if(!e)return '';
+  if(!e.exists)return `<p class="au-new"><b>新しい PC へ</b><span>配る版を決めると、ここに渡すアドレスが出ます（置き場の直下に入口の exe を置きます）。</span></p>`;
+  const seed=e.seed&&e.seed.master_db_path
+   ?`初回に写る共有のマスタ: <code>${esc(e.seed.master_db_path)}</code>`
+   :'<em class="au-warn">共有のマスタの置き場をまだ渡していません。config\\local.json に master_db_path を持つ PC で「この版を配る」を押してください。</em>';
+  return `<p class="au-new"><b>新しい PC へ</b><span>このアドレスを渡し、ダブルクリックしてもらいます: <code>${esc(e.path)}</code>
+   <button type="button" class="mm-btn-ghost" data-au-copy="${esc(e.path)}">アドレスをコピー</button><br><small>${seed}。アプリは %USERPROFILE%\\WaveLog へ写り、デスクトップの起動アイコンは作るかを聞きます。</small></span></p>`;
  }
  async function refresh(){
   const host=document.getElementById('appUpdate');if(!host)return;
@@ -177,6 +190,8 @@
   try{
    const j=await api('/api/app/update/release',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version})});
    showToast&&showToast(`配る版を ${j.version} にしました`,'各PCは次の起動でそろいます。',5000);
+   /* 配る版は決まったが、新しい PC へ渡すもの（入口・設定）が置けなかったときは理由を言う */
+   if(j.notes&&j.notes.length)await alertModal({title:'新しい PC へ渡すものに注意があります',message:j.notes.join('\n')});
   }catch(e){await alertModal({title:'配る版を決められませんでした',message:e.message})}
   refresh();
  }
@@ -189,6 +204,8 @@
   if(ev.target&&ev.target.id==='auZip'){publish(ev.target.files&&ev.target.files[0]);ev.target.value=''}
  }
  async function onClick(ev){
+  const cp=ev.target.closest('[data-au-copy]');
+  if(cp){ev.preventDefault();WL.base.copyText(cp.dataset.auCopy).then(()=>showToast&&showToast('アドレスをコピーしました',cp.dataset.auCopy,3600));return}
   const b=ev.target.closest('[data-au-release]');if(!b)return;
   ev.preventDefault();
   try{release(b.dataset.auRelease,await api('/api/app/update'))}

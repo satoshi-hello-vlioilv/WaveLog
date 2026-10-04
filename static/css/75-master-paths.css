@@ -413,6 +413,13 @@
 .au-arrow{align-self:center;width:var(--space-5);height:2px;background:var(--line-mid);position:relative}
 .au-arrow::after{content:"";position:absolute;right:-1px;top:-4px;border:5px solid transparent;border-left-color:var(--line-mid);border-right:0}
 .au-put{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+/* 新しい PC へ渡すもの（§9.559）: 名前の列は固定幅、値（アドレス）は横いっぱい */
+.au-new{margin:0;display:grid;grid-template-columns:7em minmax(0,1fr);gap:var(--space-2);align-items:baseline;font-size:var(--fs-sm)}
+.au-new>b{color:var(--ink-2)}
+.au-new code{color:var(--ink);word-break:break-all}
+.au-new small{color:var(--ink-3);font-size:var(--fs-sm)}
+.au-new .mm-btn-ghost{margin-left:var(--space-2)}
+.au-warn{font-style:normal;color:var(--warn-fg);font-weight:700}
 .au-put small{color:var(--ink-3);font-size:var(--fs-sm)}
 /* 置いている間（§9.556）: ボタンの行を進み具合の帯（共通の`.wl-progress`）に替える。帯はこの段の中の枠1つ */
 .au-put.is-busy{display:grid;align-items:stretch;gap:var(--space-2)}

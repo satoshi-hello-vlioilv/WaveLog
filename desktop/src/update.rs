@@ -261,7 +261,7 @@ pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&s
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::fs;
 
@@ -273,7 +273,7 @@ mod tests {
     }
 
     /// 版のフォルダと目録を作る（Python の `_manifest` と同じ形）。
-    fn version(share: &Path, v: &str, body: &str) {
+    pub(crate) fn version(share: &Path, v: &str, body: &str) {
         let root = share.join("versions").join(v);
         let files = [
             ("backend/changelog_data.py", format!("APP_VERSION='{v}'\n")),

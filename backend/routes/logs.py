@@ -280,8 +280,8 @@ def boot_places():
                                     'mtime':'','readable':None,'note':note,
                                     'error':f'{type(e).__name__}: {e}',
                                     'optional':bool(optional),'bad':True})
- add('アプリ本体',lambda:P.APP_ROOT,'Start.vbs・program/ の置き場')
- add('デスクトップ版の本体',lambda:P.PROGRAM_DIR/'WaveLog.exe','Start.vbs がこの PC へ写して起動する物（main へは CI が置く）')
+ add('アプリ本体',lambda:P.APP_ROOT,'backend・static・program の置き場（初めての起動で %USERPROFILE%\\WaveLog へ写す）')
+ add('デスクトップ版の本体',lambda:P.PROGRAM_DIR/'WaveLog.exe','入口がこの PC の版ごとの写しへ写して起動する物（main へは CI が置く）')
  add('ローカル領域',lambda:P.local_root(),'%LOCALAPPDATA%\\'+APP_ID+' 相当。書ける場所を順に探した結果')
  add('ログ',lambda:P.logs_dir())
  add('runtime',lambda:P.runtime_dir(),'刻印などの置き場')

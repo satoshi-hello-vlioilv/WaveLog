@@ -24,7 +24,7 @@ pub fn program_dir() -> Result<PathBuf, String> {
                 Some(p) => p,
                 None => {
                     return Err(format!(
-                        "アプリの中身（program フォルダ）が見つかりません。アプリのフォルダの program\\WaveLog.exe を一度ダブルクリックして起動してください（次からはデスクトップの起動アイコンで開けます）。\n探し始めた場所: {}",
+                        "アプリの中身（program フォルダ）が見つかりません。配られた共有の入口（共有の置き場の WaveLog.exe）を一度ダブルクリックしてください（この PC へアプリを写して開きます。次からはデスクトップの起動アイコンで開けます）。\n探し始めた場所: {}",
                         exe.parent().unwrap_or(&exe).display()
                     ))
                 }
@@ -56,7 +56,8 @@ fn remembered() -> Option<PathBuf> {
     p.join("sidecar.py").is_file().then_some(p)
 }
 
-fn remember(p: &Path) {
+/// program フォルダを控える（初回のインストールのあとも・`install::program_for()`）。
+pub fn remember(p: &Path) {
     let dir = local_root().join("desktop");
     let file = dir.join(REMEMBERED);
     let text = p.display().to_string();
@@ -100,7 +101,7 @@ pub fn python() -> Result<Python, String> {
     cands.iter().find(|c| exists(&c.exe)).cloned().ok_or_else(|| {
         let tried: Vec<String> = cands.iter().map(|c| format!("  {}", c.exe.display())).collect();
         format!(
-            "Python が見つかりません。PATH で最初に見つかる Python を使います（update.bat と同じ）。\n探した場所:\n{}",
+            "Python が見つかりません。PATH で最初に見つかる Python を使います。\n探した場所:\n{}",
             tried.join("\n")
         )
     })
@@ -112,7 +113,7 @@ fn exists(p: &Path) -> bool {
     std::fs::symlink_metadata(p).is_ok()
 }
 
-/// 探す順（先にあるほど優先）。**update.bat と同じ Python を使う**ことが要る——起動前の確認の刻印と端末の控え
+/// 探す順（先にあるほど優先）。**いつも同じ Python を使う**ことが要る（以前の update.bat も同じ探し方だった）——起動前の確認の刻印と端末の控え
 /// （§9.545）は Python が書き、Microsoft Store 版の Python は書いた物を自分にしか見えない写しへ回すので、違う Python
 /// だと別々の物を見る。**PATH を前から見て、最初に pythonw.exe がある場所の python.exe**（並べ替えない）。
 /// その前に WAVELOG_PYTHON（指定があれば・開発と CI 用）、後ろに PATH の最初の python.exe と py ランチャー。
@@ -162,7 +163,7 @@ mod tests {
         let c = python_candidates(Some(PathBuf::from("/given/python")), &[a.clone(), b.clone()]);
         assert_eq!(c[0].exe, PathBuf::from("/given/python"), "指定された Python（WAVELOG_PYTHON）が先");
         if !cfg!(windows) {
-            assert_eq!(c[1].exe, a.join("python3"), "PATH の順は並べ替えない（update.bat と同じ Python）");
+            assert_eq!(c[1].exe, a.join("python3"), "PATH の順は並べ替えない（いつも同じ Python）");
             assert_eq!(c[2].exe, b.join("python3"));
         }
     }

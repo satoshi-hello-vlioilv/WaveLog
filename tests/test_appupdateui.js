@@ -19,7 +19,8 @@ const B='http://127.0.0.1:5029';
 const STATUS={dir:'\\\\srv\\share\\WaveLog',reachable:true,why:'',local:'2.443.0',
  release:{version:'2.442.0',setAt:'2026-10-04 22:46',setBy:'tester',previous:''},
  versions:[{version:'2.442.0',placedAt:'2026-10-04 22:46',placedBy:'tester',source:'WaveLog-main.zip',commit:'71b375c',files:188,bytes:15204352}],
- pending:false,payload:['backend','static','templates','program','Start.vbs','README.md'],publishing:false,
+ pending:false,payload:['backend','static','templates','program','README.md'],publishing:false,
+ entry:{path:'\\\\srv\\share\\WaveLog\\WaveLog.exe',exists:true,seed:{master_db_path:'\\\\srv\\Records\\master.sqlite3'}},
  role:'開発者',canRelease:true};
 
 run('test_appupdateui: 版を置く間の進み具合（§9.556）',async({page,rec,W,idle})=>{
@@ -41,6 +42,12 @@ run('test_appupdateui: 版を置く間の進み具合（§9.556）',async({page,
   await idle(400,10000);
   await page.evaluate(()=>{const b=[...document.querySelectorAll('#masterMaintForm [role=tab],#masterMaintForm button')].find(x=>x.textContent.trim().startsWith('アプリの更新'));b&&b.click()});
   await page.waitForSelector('#appUpdate #auZip',{state:'attached',timeout:10000});
+
+  /* ---- 0) 新しい PC へ渡すもの（§9.559）: 入口のアドレス・コピー・初回に写る共有のマスタ ---- */
+  const nw=await page.evaluate(()=>{const e=document.querySelector('#appUpdate .au-new');return e?{字:e.textContent,
+   コピー:!!e.querySelector('[data-au-copy]'),道:(e.querySelector('[data-au-copy]')||{}).dataset?.auCopy||''}:null});
+  rec('新しい PC へ渡すアドレス（配る入口）とコピーのボタンを出す',!!nw&&nw.コピー&&/WaveLog\.exe/.test(nw.道)&&/新しい PC へ/.test(nw.字),JSON.stringify(nw));
+  rec('初回に写る共有のマスタの置き場を言う',!!nw&&/master\.sqlite3/.test(nw.字)&&/USERPROFILE/.test(nw.字),nw&&nw.字.slice(0,120));
 
   /* ---- 1) 選んだその場で帯に替わる ---- */
   const t0=Date.now();

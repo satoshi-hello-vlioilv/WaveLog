@@ -241,6 +241,42 @@ rec('覚えることが無ければ控えを作らない（窓は既定を読む
 stray = [str(d) for base in (ROOT, ROOT / 'tests') for d in base.iterdir() if d.name.startswith('\\\\')]
 rec('この網を回しても、UNC の字のフォルダが作業フォルダに生まれない', not stray, str(stray))
 
+# ---- 9) 新しい PC へ渡すもの（§9.559、利用者の指示「初回に配布する際に、ショットカット(アドレス)だけ渡す」） ----
+base9 = Path(tempfile.mkdtemp()) / 'share'
+app_update.publish_zip(make_zip('9.20.0', extra={'program/WaveLog.exe': 'MZ v20'}), 'a.zip', 't', base9)
+app_update.publish_zip(make_zip('9.21.0', extra={'program/WaveLog.exe': 'MZ v21'}), 'b.zip', 't', base9)
+orig_local = app_update.load_local_config
+try:
+    app_update.load_local_config = lambda: {}
+    r = app_update.set_release('9.20.0', 't', base9)
+    entry = base9 / app_update.ENTRY_EXE
+    rec('配る版を決めると、置き場の直下にその版の exe（配る入口）を置く',
+        r.get('ok') and entry.read_text(encoding='utf-8') == 'MZ v20', entry.read_text(encoding='utf-8') if entry.exists() else '無い')
+    rec('この PC が共有のマスタの置き場を持たないときは、渡す設定を書かずに理由を言う',
+        not (base9 / app_update.SEED).exists() and any('master_db_path' in x for x in r.get('notes', [])), str(r.get('notes')))
+    app_update.load_local_config = lambda: {'master_db_path': r'\\srv\Records\master.sqlite3', 'master_share_mode': 'auto',
+                                            'db_dir': r'D:\mine', 'records_db_path': r'D:\mine\r.sqlite3'}
+    r = app_update.set_release('9.21.0', 't', base9)
+    seed = json.loads((base9 / app_update.SEED).read_text(encoding='utf-8'))
+    rec('配る版を選び直すと入口もその版になる', entry.read_text(encoding='utf-8') == 'MZ v21')
+    rec('渡す設定は共有のマスタの置き場だけ（db_dir・records_db_path はその PC の物）',
+        seed == {'master_db_path': r'\\srv\Records\master.sqlite3', 'master_share_mode': 'auto'}, str(seed))
+    rec('置けたら注意は無い', r.get('notes') == [], str(r.get('notes')))
+    app_update.load_local_config = lambda: {}
+    app_update.set_release('9.20.0', 't', base9)
+    rec('共有のマスタの置き場を持たない PC が配っても、前の控えを空で消さない',
+        json.loads((base9 / app_update.SEED).read_text(encoding='utf-8')).get('master_db_path') == r'\\srv\Records\master.sqlite3')
+    info = app_update.entry_info(base9)
+    rec('画面へ渡す形: 入口のアドレスと渡す設定', info['exists'] and info['path'] == str(entry)
+        and info['seed'].get('master_db_path'), str(info))
+finally:
+    app_update.load_local_config = orig_local
+INS = (ROOT / 'desktop' / 'src' / 'install.rs').read_text(encoding='utf-8')
+rec('入口と渡す設定の名前・鍵は窓（install.rs）と同じ字',
+    f'pub const ENTRY: &str = "{app_update.ENTRY_EXE}";' in INS and f'pub const SEED: &str = "{app_update.SEED}";' in INS
+    and 'pub const SEED_KEYS: [&str; 2] = [%s];' % ', '.join('"%s"' % k for k in app_update.SEED_KEYS) in INS)
+rec('Start.vbs は版に入れない（§9.559で外した）', 'Start.vbs' not in app_update.PAYLOAD)
+
 ok = sum(1 for _, x in R if x)
 print(f'\n== {ok}/{len(R)} PASS ==')
 sys.exit(0 if ok == len(R) else 1)

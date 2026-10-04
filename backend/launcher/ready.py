@@ -8,7 +8,8 @@
 旧配置DBの取り込み。実測では、バイトコードが無い状態のapp読み込みが
 1,168ms、有る状態が211ms(5.5倍)、flaskの有無を調べるだけで83msだった。
 
-そこで確認は`setup_app.py`(update.bat)が受け持ち、済んだらこの刻印を書く。
+そこで確認は起動の窓口（`sidecar._prepare()`）が刻印が食い違ったときだけ行い、済んだらこの刻印を書く
+（以前は update.bat も受け持っていた。§9.559 で外した）。
 毎日の起動は刻印を見て、合っていれば確認を飛ばす。
 
 **刻印は「速くするための門」であって「正しさの門」ではない。**
@@ -204,33 +205,6 @@ def diff():
         else:
             out.append((key, text))
     return out
-
-
-def version_note(prev=None):
-    """update.bat に出す版の1行（§9.497）。`prev`は前回の刻印（無ければ初めて）。
-    **前回の確認と比べる**——前回の確認は update.bat か、刻印が食い違ったときの起動が書く。"""
-    cur = current().get('appVersion') or '?'
-    old = (prev or {}).get('appVersion') if isinstance(prev, dict) else None
-    if not old:
-        return 'VER%s（この端末で初めての確認です）' % cur
-    if str(old) == str(cur):
-        return 'VER%s（前回の確認と同じ版です）' % cur
-    # 版が**下がった**ときは「更新」と言わない（前の版へ戻したのか、別の置き場の古い版を開いたのかを
-    # 利用者が見分けられるように・§9.497の追補3）。「更新されています」はファイルの事実で、確認の結果ではない。
-    if _version_key(cur) < _version_key(old):
-        return 'VER%s（前回の確認は %s → 今回は前の版に戻っています）' % (cur, old)
-    return 'VER%s（前回の確認は %s → 今回 更新されています）' % (cur, old)
-
-
-def _version_key(v):
-    """'2.390.0' → (2, 390, 0)。数でない段は0として比べる（読めない版で落とさない）。"""
-    out = []
-    for part in str(v or '').split('.'):
-        try:
-            out.append(int(part))
-        except ValueError:
-            out.append(0)
-    return tuple(out)
 
 
 def mismatch():

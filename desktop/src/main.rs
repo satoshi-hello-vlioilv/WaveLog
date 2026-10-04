@@ -14,6 +14,7 @@
 
 mod close;
 mod frame;
+mod install;
 mod launch;
 mod lnk;
 mod locate;
@@ -325,11 +326,29 @@ fn bring_up_to_date(app: &AppHandle, program: &Path, splash: &Arc<Splash>) -> bo
     false
 }
 
+/// 初回のインストール（§9.559）。この PC にアプリが在ればそれを使い、無ければ`%USERPROFILE%\WaveLog`へ配る版を写す。
+/// 進み具合は起動画面の段「版をそろえる」に出す（写すのは更新と同じ道）。
+fn first_install(app: &AppHandle, from: &Path, splash: &Arc<Splash>) -> Result<std::path::PathBuf, String> {
+    splash.step(app, "update", "now", &format!("初めての起動です。共有の置き場（{}）からこの PC へアプリを写しています…", from.display()));
+    let (a, s) = (app.clone(), splash.clone());
+    let progress = move |t: &str| s.step(&a, "update", "now", &format!("初めての起動: {t}"));
+    let program = install::program_for(from, &log, &progress)?;
+    splash.step(app, "update", "ok", &format!("この PC のアプリ: {}", program.parent().unwrap_or(&program).display()));
+    Ok(program)
+}
+
 /// 中身（Python）を探して起こし、準備できたら主の窓を画面へ切り替える（裏の糸で。窓は先に出しておく）。
-fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>) {
-    let program = match locate::program_dir() {
-        Ok(p) => p,
-        Err(e) => return splash.fail(&app, "アプリの中身が見つかりません", &e),
+fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>, from: Option<std::path::PathBuf>) {
+    let program = match from {
+        // 共有の入口から（§9.559）: この PC にまだ無ければ、配る版を写してから起動する
+        Some(dir) => match first_install(&app, &dir, &splash) {
+            Ok(p) => p,
+            Err(e) => return splash.fail(&app, "この PC へアプリを写せません", &e),
+        },
+        None => match locate::program_dir() {
+            Ok(p) => p,
+            Err(e) => return splash.fail(&app, "アプリの中身が見つかりません", &e),
+        },
     };
     // 配る版にそろえる（§9.555）。中身（Python）を起こす前に——動いている Python のファイルを入れ替えない
     if bring_up_to_date(&app, &program, &splash) {
@@ -385,7 +404,14 @@ fn main() {
     }
     // 更新で開き直したとき: 前の窓が終わるのを待つ（「1つだけ起動」が前の窓へ回さないように・§9.555）
     launch::wait_for_previous(Duration::from_secs(15));
-    // 入口: 共有の exe・入口から起こされたら、この PC の版ごとの写しへ渡して終わる（§9.554）。
+    // 配る入口（共有の置き場の直下）から起こされたら、この PC の写しへ渡して終わる（§9.559）。
+    // 写しは`--install-from`を受け、アプリが無ければ写してから起動する
+    let from = match install::handoff_from_share(&log) {
+        install::FromShare::HandedOff => return,
+        install::FromShare::Here(dir) => Some(dir),
+        install::FromShare::No => install::from_arg(),
+    };
+    // 入口: アプリの program\WaveLog.exe・入口から起こされたら、この PC の版ごとの写しへ渡して終わる（§9.554）。
     // 中身が見つからないときは渡さずに進み、起動画面が理由を出す（start() が同じ答えをもう一度引く）
     if let Ok(program) = locate::program_dir() {
         if launch::handoff(&program, &log) {
@@ -433,6 +459,7 @@ fn main() {
         .setup({
             let slot = slot.clone();
             let splash = splash.clone();
+            let from = from.clone();
             move |app| {
                 let handle = app.handle().clone();
                 window(&handle, "main", WebviewUrl::App("index.html".into()), splash.clone())?;
@@ -443,7 +470,7 @@ fn main() {
                         selftest_finish(&h, &json!({"ok": false, "error": format!("{} 秒で終わりませんでした", SELFTEST_LIMIT.as_secs())}));
                     });
                 }
-                std::thread::spawn(move || start(handle, slot, splash));
+                std::thread::spawn(move || start(handle, slot, splash, from));
                 Ok(())
             }
         })

@@ -201,6 +201,7 @@ _ENDPOINT_EXTRA_MODES={
  # 現場の端末（scheduleモード）・閲覧専用の端末こそ入口のアイコンが要るので、
  # 3モードとも通す（ここを開け忘れると、押しても403で黙って弾かれる）。
  'core.app_shortcut_create':{'edit','view','schedule'},
+ 'core.app_shortcut_decline':{'edit','view','schedule'},
  'masters.filter_preset_register':{'schedule'},
  'masters.filter_preset_delete':{'schedule'},
  'masters.filter_preset_use':{'schedule'},

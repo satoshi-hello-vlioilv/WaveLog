@@ -376,6 +376,13 @@ def app_shortcut_create():
                  link=out.get('link') or ''),400
  return jsonify(**out)
 
+@bp.post('/api/app/shortcut/decline')
+@api_guard('断ったことを控えられません')
+def app_shortcut_decline():
+ """起動したあとの「デスクトップに起動アイコンを作りますか」を断った（§9.559）。次からは聞かない。
+    この端末の控えにしか触らないので、どのモードからでも通す。"""
+ return jsonify(ok=desktop_shortcut.decline())
+
 # ========================================================================
 # アプリの更新（§9.555、利用者の指示「バージョンごとのデータをこの場所に保存し、
 # アップデートを行う機能を組み込みたい」）

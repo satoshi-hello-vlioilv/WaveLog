@@ -49,12 +49,20 @@ MIRROR = 'update.json'
 REMEMBER_SEC = 600
 # 版に入れる物（アプリのフォルダの最上位の名前）。**データ（db・config）と開発の物（tests・docs・desktop）は入れない**。
 # 窓（update.rs）はこの並びを manifest から読むので、ここを変えれば入れ替える範囲も変わる。
-PAYLOAD = ('backend', 'static', 'templates', 'program', 'Start.vbs', 'README.md')
+PAYLOAD = ('backend', 'static', 'templates', 'program', 'README.md')
 # 版に欠かせない物（無い ZIP は断る）。
 REQUIRED = ('backend/changelog_data.py', 'program/sidecar.py', 'program/WaveLog.exe')
 MANIFEST = 'manifest.json'
 RELEASE = 'release.json'
 VERSIONS = 'versions'
+# **配る入口**（§9.559、利用者の指示「初回に配布する際に、ショートカット(アドレス)だけ渡す」）。配る版を決めると、
+# その版の exe を置き場の直下へ写す。新しい PC にはこの exe へのアドレスだけを渡し、初回の起動で窓（`desktop/src/install.rs`）が
+# 配る版をこの PC へ写す。名前は窓の`install::ENTRY`と同じ字。
+ENTRY_EXE = 'WaveLog.exe'
+# 新しい PC へ渡す最初の設定（`config/local.json`の種）。配る版を決めた PC の値を控える（利用者の選択）。
+# 渡すのは**共有のマスタの置き場**だけ——`db_dir`・`records_db_path`はその PC の物で、全 PC へ配る値ではない。
+SEED = 'install.json'
+SEED_KEYS = ('master_db_path', 'master_share_mode')
 # 共有に届くかを確かめる長さ。届かない UNC は OS が数十秒待たせることがある（画面を止めない）。
 REACH_SEC = 3.0
 # 置いている最中に終わった書きかけを片付けるまでの長さ（別の PC がいま置いている物を消さない）。
@@ -367,8 +375,73 @@ def release(base=None):
     return r if isinstance(r, dict) and r.get('version') else None
 
 
+def _replace_file(src_bytes_or_path, dst):
+    """途中のファイルへ書いてから名前を変える（読む側が半端な物を見ない）。"""
+    tmp = dst.with_name(dst.name + '.%d.tmp' % os.getpid())
+    try:
+        if isinstance(src_bytes_or_path, Path):
+            shutil.copyfile(src_bytes_or_path, tmp)
+        else:
+            tmp.write_bytes(src_bytes_or_path)
+        os.replace(tmp, dst)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError as _e:
+                quiet('途中のファイルを消せない（次に置くときに上書きする）', _e)
+
+
+def place_entry(version, base=None):
+    """配る入口（置き場の直下の exe）を、その版の exe にする。→ 置けなかった理由（置けたら空）。
+    入口から起こされた exe はすぐこの PC へ写して終わる（§9.554）ので、掴まれている時間は短い。"""
+    base = Path(base or update_dir())
+    src = base / VERSIONS / version / 'program' / ENTRY_EXE
+    dst = base / ENTRY_EXE
+    try:
+        if dst.is_file() and dst.stat().st_size == src.stat().st_size and _sha256(dst) == _sha256(src):
+            return ''
+        _replace_file(src, dst)
+        return ''
+    except OSError as e:
+        return '配る入口（%s）を置き換えられませんでした: %s。どこかの PC が入口を開いている最中かもしれません。もう一度「この版を配る」を押してください。' % (dst, e)
+
+
+def seed_values():
+    """この PC の`config/local.json`のうち、新しい PC へ渡す値（書いたまま・環境変数も展開しない）。"""
+    local = load_local_config() or {}
+    return {k: str(local[k]).strip() for k in SEED_KEYS if str(local.get(k) or '').strip()}
+
+
+def place_seed(base=None):
+    """新しい PC へ渡す最初の設定（`install.json`）を、この PC の値で書く。→ (書いた値, 理由)。
+    **この PC が共有のマスタの置き場を持たないときは書かない**（ほかの PC が控えた値を空で消さない）。"""
+    base = Path(base or update_dir())
+    vals = seed_values()
+    if not vals.get('master_db_path'):
+        if (base / SEED).is_file():
+            return {}, 'この PC の config/local.json に master_db_path が無いので、新しい PC へ渡す設定は前の控えのままにしました'
+        return {}, ('新しい PC へ共有のマスタの置き場を渡せません（この PC の config/local.json に master_db_path がありません）。'
+                    'master_db_path を持つ PC で「この版を配る」を押してください')
+    try:
+        _replace_file(json.dumps(vals, ensure_ascii=False, indent=1).encode('utf-8'), base / SEED)
+        return vals, ''
+    except OSError as e:
+        return {}, '新しい PC へ渡す設定を書けませんでした（%s）: %s' % (base / SEED, e)
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 20), b''):
+            h.update(block)
+    return h.hexdigest()
+
+
 def set_release(version, uid='', base=None):
-    """配る版を決める（前の版も控える）。**置いてある版だけ**選べる。書くのは途中のファイル→名前を変える。"""
+    """配る版を決める（前の版も控える）。**置いてある版だけ**選べる。書くのは途中のファイル→名前を変える。
+    あわせて配る入口（`place_entry()`）と新しい PC へ渡す設定（`place_seed()`）を置く（§9.559）。
+    この2つが置けなくても、配る版は決まっている（各 PC の更新は進む）——理由は`notes`で言う。"""
     base = Path(base or update_dir())
     have = {v['version'] for v in versions(base)}
     if version not in have:
@@ -382,7 +455,19 @@ def set_release(version, uid='', base=None):
         os.replace(tmp, base / RELEASE)
     except OSError as e:
         return {'ok': False, 'error': '配る版を書けません（%s）: %s' % (base, e)}
-    return {'ok': True, **doc}
+    notes = [x for x in (place_entry(version, base),) if x]
+    _vals, why = place_seed(base)
+    if why:
+        notes.append(why)
+    return {'ok': True, **doc, 'notes': notes}
+
+
+def entry_info(base):
+    """新しい PC へ渡すもの（入口のアドレスと、渡す設定）。画面はこれを出すだけ。"""
+    entry = Path(base) / ENTRY_EXE
+    seed = _read_json(Path(base) / SEED) or {}
+    return {'path': str(entry), 'exists': entry.is_file(),
+            'seed': {k: str(seed.get(k) or '') for k in SEED_KEYS if seed.get(k)}}
 
 
 def status():
@@ -399,4 +484,5 @@ def status():
             'release': rel, 'versions': vs,
             # この PC が次の起動でそろえるか（窓が同じ比べ方をする）
             'pending': bool(rel and rel['version'] != APP_VERSION),
-            'payload': list(PAYLOAD), 'publishing': progress().get('state') == 'running'}
+            'payload': list(PAYLOAD), 'publishing': progress().get('state') == 'running',
+            'entry': entry_info(base) if ok else None}

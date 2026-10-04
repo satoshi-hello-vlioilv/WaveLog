@@ -2236,6 +2236,32 @@
    loadShortcut();
   },
  });
+ /* 起動したあと、デスクトップに起動アイコンが無ければ作るか聞く（§9.559、利用者の指示「アプリのショートカットが
+    デスクトップになければ、許可を求めつくられる」）。聞くかどうかは**サーバーの1箇所**（`desktop_shortcut.offer()`）が
+    答える——窓の中・作れる端末・アイコンが無い・この PC で断っていない。断ったら次からは聞かない（「表示」から作れる）。 */
+ async function offerShortcut(){
+  if(!WL.base.inDesktopShell())return;
+  let info;
+  try{info=await api('/api/app/shortcut',{quiet:true})}
+  catch(e){WL.quiet.note('起動アイコンの状態を読めない（聞かずに続ける）',e);return}
+  if(!info||!info.offer)return;
+  const ok=await confirmModal({title:'デスクトップに起動アイコンを作りますか？',
+   message:`次からは、デスクトップの「${info.name||info.defaultName}」から開けます（この PC へ写したアプリが開きます。共有の置き場を通しません）。\n`
+     +`作る場所: ${info.link}\n\n作らない場合も、あとでヘッダーの「表示」から作れます。`,
+   confirmLabel:'作る',cancelLabel:'作らない'});
+  try{
+   if(!ok){
+    await api('/api/app/shortcut/decline',{method:'POST'});
+    showToast('起動アイコンは作りませんでした','作るときはヘッダーの「表示」から作れます',5000);
+    return;
+   }
+   const r=await api('/api/app/shortcut',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({name:'',icon:'',overwrite:false})});
+   shortcutState.info=r;shortcutState.loaded=true;
+   showToast('デスクトップに起動アイコンを作りました',r.link||'',5000);
+  }catch(e){showToast('起動アイコンを作れませんでした',String(e&&e.message||e),6000)}
+ }
+ WL.onReady(offerShortcut);
  /* 共通設定（この端末）に残すのは**いまの状態と行き先だけ**（§9.445。作法は
     §9.433「読み込みの見せ方」と同じ——設定の持ち主は1箇所で、面が2つ）。 */
  function pcShortcutHtml(){

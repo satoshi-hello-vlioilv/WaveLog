@@ -3,7 +3,7 @@
 **この1枚は「汎用」だけを持つ**——利用者からの恒久的な指示（すべての作業・
 すべてのコード・すべての画面に常時かかるもの）と、置き場への入口。
 領域ごとの**個別**の規則は
-[`.claude/rules/`](.claude/rules/README.md)（1120件・領域別の15枚）、
+[`.claude/rules/`](.claude/rules/README.md)（1125件・領域別の15枚）、
 なぜそうなのか（実測値・撤回した案・踏んだ罠）は
 [`docs/decisions/`](docs/decisions/README.md)（471の決定記録＋主題別の索引）。
 **コードを触る前に、触る領域の1枚を開くこと。**
@@ -137,7 +137,7 @@
 | 触る場所 | 開く1枚 |
 | --- | --- |
 | どの画面でも（上の基準をWaveLogの寸法へ落としたもの） | [ui-principles.md](.claude/rules/ui-principles.md) |
-| `program/`・`Start.vbs`・`#appBoot`・更新・在席 | [boot.md](.claude/rules/boot.md) |
+| `program/`・配る入口・`#appBoot`・更新・在席 | [boot.md](.claude/rules/boot.md) |
 | 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](.claude/rules/data.md) |
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](.claude/rules/api.md) |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](.claude/rules/master-server.md) |

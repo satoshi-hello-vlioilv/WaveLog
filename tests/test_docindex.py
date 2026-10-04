@@ -58,6 +58,8 @@ ARCH_ALLOW = {
     'masters.py': '3-10 で分けた旧ファイル。「から分離」の経緯として残す',
     'launch_guard.py': '旧名（いまは backend/launcher/guard.py）。「旧」と併記',
     'setup.bat': '旧名（いまは update.bat・§9.405）。「旧名」と併記',
+    'setup_app.py': '§9.559で外した物。「外した」と併記',
+    'install.json': '共有の置き場に「この版を配る」で置く（app_update.place_seed・§9.559）。実行時に作る',
     'count_io.py': 'scratchpad の計測道具。経緯として残す',
     'program/WaveLog.build.json': 'main へは CI（desktop.yml の publish）が exe と一緒に置く（§9.548）',
     'probe_scale3/4.js': 'scratchpad の計測道具。経緯として残す',
