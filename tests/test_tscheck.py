@@ -21,7 +21,7 @@
    減ったら上限も下げる——`python3 tests/test_tscheck.py --update`（上げる更新は断る）。
  * 境界の食い違いは**0件**（当たる道が無い・メソッドが違う・宣言に無い鍵を送る・字面の値の種類が宣言と違う）。
  * 宣言の中で解けずに any へ倒した項目は0。
- * typescript が無い環境では**落とす**（黙って通さない）。入れ方は`npm i -g typescript`。
+ * typescript が無い環境では**落とす**（黙って通さない）。入れ方は`npm i -g typescript@6`（7 系は JS の API を持たない）。
  * 網そのものが素通りしないこと: 型の欠陥2つ・境界の欠陥3つを**記憶の中で**注ぎ、それぞれ新しく1件ずつ
    出る（本物の置き場へは書かない・§9.504。前から在る診断に当たって通らないよう、注ぐ前との差で見る）。
 ============================================================
@@ -153,7 +153,7 @@ def main(update=False):
         try:
             res = run(node, cpath)
         except RuntimeError as e:
-            rec('typescript が使える（無ければ npm i -g typescript）', False, e)
+            rec('typescript 6 系が使える（無ければ npm i -g typescript@6）', False, e)
             return
         rec('typescript が使える', True, f"{res['files']}本・WL の項目 {res['wlCount']}・土台の名前 {res['globCount']}")
         rec('起こした宣言に any へ倒した項目が無い（倒れると見張りが黙る）', not res['anyNames'], res['anyNames'])

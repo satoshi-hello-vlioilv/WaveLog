@@ -44,7 +44,8 @@ function loadTs() {
     if (!p) continue;
     try { return require(p); } catch (e) { /* 次の候補へ（見つからなければ最後に断る） */ }
   }
-  throw new Error('typescript が見つかりません（npm i -g typescript・または WAVELOG_TYPESCRIPT）');
+  /* 7 系は Go で書き直され、`require` で読める検査器の API を持たない（ES モジュールだけ・CI で踏んだ）。 */
+  throw new Error('typescript 6 系が見つかりません（npm i -g typescript@6・または WAVELOG_TYPESCRIPT。7 系は JS の API を持たない）');
 }
 const ts = loadTs();
 
