@@ -42,6 +42,9 @@
                 /* 記録した値の候補（§9.288 ⑧）。**サーバーが答える**——
                    帳票の候補と同じ1箇所（`report_block_repo.field_catalog()`）。 */
                 fieldCatalog:[],fieldNote:'',
+                /* 一覧の見せ方（§9.553）。'line'＝1行（表示列の設定）／'stack'＝2段組（操業データ表と
+                   同じ配置の盤）。**読み方の好みなのでPCごと**に覚える。 */
+                view:'line',stackFor:'',
                 query:'',gen:0};
 
  function loadPref(){
@@ -62,13 +65,14 @@
    if(Object.prototype.hasOwnProperty.call(v,'equipment'))
     acState.equipment=String(v.equipment||'');
    if(v.basis==='cal')acState.basis='cal';
+   if(v.view==='stack')acState.view='stack';
    const d=Number(v.days);
    if(Number.isFinite(d)&&d>0&&d<=3660)acState.days=d;
   }catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  }
  function savePref(){
   try{localStorage.setItem(AC_PREF_KEY,JSON.stringify(
-   {equipment:acState.equipment,basis:acState.basis,days:acState.days}))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
+   {equipment:acState.equipment,basis:acState.basis,days:acState.days,view:acState.view}))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  }
  /* **`new Date('2026-08-18')`で組み立てないこと**（§9.195）——UTCの0時として
     読まれ、地方時へ直すと1日ずれる端末がある。地方時の年月日から文字列を作る。 */
@@ -278,8 +282,14 @@
     <!-- 検索欄は仕掛一覧・データ一覧と同じ部品（§9.507）。 -->
     <label class="lt-search" title="ロット番号・検査番号の字で絞り込みます（打つとすぐ効きます）"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" id="acSearch" placeholder="ロット・検査番号で絞り込む" autocomplete="off" aria-label="ロット・検査番号で絞り込む"></label>
     <button type="button" id="acReload" class="ac-btn">再読込</button>
-    <!-- 表示列の入口は**どの画面でも同じ印**（§9.476・fa-table-columns。スケジュール表・仕掛一覧と同じ）。 -->
-    <button type="button" id="acColumns" class="ac-btn" title="この一覧に出す列・並び・幅・書式を決めます"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> 表示列</button>
+    <!-- 1行／2段組（§9.553）。2段組は操業データ表と**同じ配置の盤**を読む（紙で見たとおりに画面でも読める）。
+         1つだけ選ぶ切り替えなので、期間の札と同じ部品（§9.507）。 -->
+    <span class="ac-presets ac-view" id="acView" role="radiogroup" aria-label="一覧の見せ方">
+     <button type="button" class="ac-chip" role="radio" data-view="line" title="1件を1行で出します（表示列の設定）">1行</button>
+     <button type="button" class="ac-chip" role="radio" data-view="stack" title="1件を操業データ表と同じ2段組で出します（配置の盤）">2段組</button></span>
+    <!-- 表示列の入口は**どの画面でも同じ印**（§9.476・fa-table-columns。スケジュール表・仕掛一覧と同じ）。
+         2段組のときは**配置の盤**を開く（1行の表示列を変えても2段組は変わらない——押して何も起きない物を残さない）。 -->
+    <button type="button" id="acColumns" class="ac-btn" title="この一覧に出す列・並び・幅・書式を決めます"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> <span id="acColumnsWord">表示列</span></button>
     <button type="button" id="acSheet" class="ac-btn ac-btn--primary" title="いま出ている実績を、日＋直ごとに1枚の操業データ表として刷ります">操業データ表</button>
     <!-- 押すと何が起きるか（刷る）を印で、何を刷るか（選んだ行の帳票）を字で言う（§9.507。旧「選択した帳票」）。 -->
     <button type="button" id="acReport" class="ac-btn" title="選んだ行の測定帳票をまとめて刷ります" disabled><i class="fa-solid fa-print" aria-hidden="true"></i> 選んだ行の帳票 (<span id="acReportCount">0</span>)</button>
@@ -300,7 +310,11 @@
   $id('acTo').onchange=e=>{acState.to=e.target.value;acState.days=0;load(true)};
   $id('acSearch').oninput=e=>{acState.query=e.target.value;renderList()};
   $id('acReload').onclick=()=>load(true);
-  $id('acColumns').onclick=openColumnPanel;
+  $id('acColumns').onclick=()=>acState.view==='stack'?openStackBoard():openColumnPanel();
+  $id('acView').querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+   acState.view=b.dataset.view==='stack'?'stack':'line';savePref();syncView();renderList();
+  });
+  syncView();
   $id('acSheet').onclick=openSheet;
   $id('acReport').onclick=printSelectedReports;
   const box=$id('acPresets');
@@ -393,6 +407,7 @@
       設備の応答が後から届いて画面に出る。 */
    if(gen!==acState.gen)return;
    acState.items=(r&&r.items)||[];
+   acState.stackFor='';
    acState.total=(r&&r.total)||0;
    acState.truncated=!!(r&&r.truncated);
    acState.limit=(r&&r.limit)||0;
@@ -446,6 +461,8 @@
   if(note){const h=noteHtml();note.hidden=!h;note.innerHTML=h}
   syncSelectionUi();
   if(acState.loading){list.innerHTML='<div class="ac-empty">読み込んでいます…</div>';return}
+  list.classList.toggle('is-stack',acState.view==='stack');
+  if(acState.view==='stack'){renderStack(list);return}
   const keys=visibleColumnKeys(),items=filtered();
   list.style.setProperty('--ac-cols',keys.map(trackOf).join(' '));
   const head=`<div class="ac-row head">`
@@ -467,7 +484,7 @@
    row.dataset.id=x.id;
    row.innerHTML=keys.map(k=>{
     const c=columnOf(k);
-    if(k==='#')return `<span class="ac-idx"><label class="ac-pick" title="帳票をまとめて刷る行を選びます"><input type="checkbox" data-pick="${esc(x.id)}"${acState.selected.has(x.id)?' checked':''}><b>${i+1}</b></label></span>`;
+    if(k==='#')return `<span class="ac-idx">${pickHtml(x,i)}</span>`;
     if(k==='操作')return `<span class="ac-act"><button type="button" class="ac-row-btn" data-report="${esc(x.id)}" title="この記録の測定帳票を開きます">帳票</button></span>`;
     /* 値は作り方の式を通す（§9.489。計算列も元データの列も`rawOf()`の1本）。以前は`view[k]`のままで、
        **計算列のセルが空**だった（式を当てる道が無かった）。 */
@@ -486,17 +503,68 @@
    frag.append(row);
   });
   list.append(frag);
+  wireRows(list);
+  bindHeadTools(list);
+ }
+ /* 選ぶ印と帳票のボタン（1行・2段組の両方で同じ配線）。 */
+ function wireRows(list){
   list.querySelectorAll('[data-pick]').forEach(cb=>cb.onclick=e=>{
    e.stopPropagation();
    const id=cb.dataset.pick;
    if(cb.checked)acState.selected.add(id);else acState.selected.delete(id);
-   cb.closest('.ac-row')?.classList.toggle('is-picked',cb.checked);
+   cb.closest('.ac-row,.rl-rec')?.classList.toggle('is-picked',cb.checked);
    syncSelectionUi();
   });
   list.querySelectorAll('[data-report]').forEach(b=>b.onclick=e=>{
    e.stopPropagation();openReport(b.dataset.report);
   });
-  bindHeadTools(list);
+ }
+ const pickHtml=(x,i)=>`<label class="ac-pick" title="帳票をまとめて刷る行を選びます"><input type="checkbox" data-pick="${esc(x.id)}"${acState.selected.has(x.id)?' checked':''}><b>${i+1}</b></label>`;
+ /* ---------- 2段組（§9.553） ----------
+    操業データ表の紙と**同じ配置の答え**（`WL.opSheet.listHtml`）を画面に出す。材料（設備・項目）は
+    読み込むたびに揃え直す（`prepare`）——前の設備の配置で今の設備の実績を並べない。 */
+ function renderStack(list){
+  if(!WL.opSheet||typeof WL.opSheet.listHtml!=='function'){
+   list.innerHTML='<div class="ac-empty">2段組を出せません（操業データ表の画面が読み込まれていません）。「1行」に戻してください。</div>';return;
+  }
+  const items=filtered();
+  if(!items.length){
+   list.innerHTML=`<div class="ac-empty">${esc(acState.query?'絞り込み条件に一致する実績がありません。'
+     :'この設備・期間には記録された実績がありません。期間を広げるか、設備を「すべての設備」にしてみてください。')}</div>`;
+   return;
+  }
+  const want=acState.equipment+'|'+acState.gen;
+  if(acState.stackFor!==want){
+   list.innerHTML='<div class="ac-empty">2段組の配置を読んでいます…</div>';
+   WL.opSheet.prepare({equipment:acState.equipment,items:acState.items,opDefs:acState.opDefs,lotFields:acState.lotFields})
+    .then(()=>{acState.stackFor=want;renderList()})
+    .catch(e=>{list.innerHTML=`<div class="ac-empty">2段組の配置を読めませんでした: ${esc(e&&e.message||String(e))}</div>`});
+   return;
+  }
+  list.innerHTML=WL.opSheet.listHtml({items,
+   lead:pickHtml,leadHead:'#',tailHead:'',
+   tail:x=>`<button type="button" class="ac-row-btn" data-report="${esc(x.id)}" title="この記録の測定帳票を開きます">帳票</button>`,
+   rowCls:x=>acState.selected.has(x.id)?'is-picked':'',
+   rowAttrs:x=>` data-id="${esc(x.id)}"`});
+  wireRows(list);
+ }
+ /* 見せ方の札と、表示列のボタンの名前（2段組のときは配置の盤を開く）。 */
+ function syncView(){
+  document.querySelectorAll('#acView [data-view]').forEach(b=>{
+   const on=b.dataset.view===acState.view;b.classList.toggle('is-on',on);b.setAttribute('aria-checked',String(on));
+  });
+  const w=$id('acColumnsWord');if(w)w.textContent=acState.view==='stack'?'2段組の配置':'表示列';
+  const btn=$id('acColumns');
+  if(btn)btn.title=acState.view==='stack'?'2段組で使うデータ・段・位置・幅を盤の上で決めます（操業データ表の紙と同じ配置）'
+                                         :'この一覧に出す列・並び・幅・書式を決めます';
+ }
+ function openStackBoard(){
+  if(!WL.opSheet||typeof WL.opSheet.open!=='function'){
+   showToast&&showToast('配置の盤を開けません','操業データ表の画面が読み込まれていません。',5000);return;
+  }
+  WL.opSheet.open({equipment:acState.equipment,items:filtered(),basis:acState.basis,
+                   from:acState.from,to:acState.to,opDefs:acState.opDefs,lotFields:acState.lotFields,
+                   board:true,onClose:()=>{acState.stackFor='';renderList()}});
  }
  function syncSelectionUi(){
   const n=acState.selected.size;

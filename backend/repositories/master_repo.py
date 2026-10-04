@@ -1735,6 +1735,28 @@ def normalize_align(value,head=False):
  return v if v in (HEAD_ALIGNS if head else VALUE_ALIGNS) else ''
 
 
+# 段組の配置（§9.553）。**1件ぶんを「段×横24マス」の盤**に置く——どの段の・何マス目から・何マスぶん。
+# 盤の寸法は画面の`WL.recordLayout`（`record-layout.js`の`UNITS`/`LINES`）と同じ値（網`test_recordlayout`が突き合わせる）。
+# サーバーは保存する値を盤に収まる形へ整えるために使う。
+PLACE_UNITS=24
+PLACE_LINES=4
+
+def normalize_place(value):
+ """保存できる配置へ整える。読めない・盤からはみ出す値はNone（＝置いていない・自動で置く）。
+
+ **はみ出しを縮めて救わない**——縮めると利用者が決めていない幅が保存され、
+ 「置いたとおりに出ない」が黙って起きる。"""
+ if isinstance(value,str):
+  try:value=json.loads(value) if value.strip() else None
+  except ValueError:return None
+ if not isinstance(value,dict):return None
+ try:
+  line=int(value.get('line'));col=int(value.get('col'));span=int(value.get('span'))
+ except (TypeError,ValueError):return None
+ if not (1<=line<=PLACE_LINES and 0<=col<PLACE_UNITS and 1<=span<=PLACE_UNITS-col):return None
+ return {'line':line,'col':col,'span':span}
+
+
 def ensure_column_layout_table(c):
  names=tables(c);created=False
  if COLUMN_LAYOUT_TABLE not in names:
@@ -1766,6 +1788,8 @@ def ensure_column_layout_table(c):
                    # 揃え(§9.239 ④)。**2列に分ける**——値と見出しは別の設定で、
                    # 「見出しだけ中央」「見出しは値に追従」を1つの値では書けない。
                      ('値揃え','TEXT'),('見出し揃え','TEXT'),
+                     # 段組の配置(§9.553)。**1列ぶんをJSONで持つ**（段・何マス目から・何マスぶん）。
+                     ('配置','TEXT'),
                      # 所有者(§9.259): **空欄＝みんなのもの**。既存の行はそのまま
                    # 共通の設定として効き続ける（フィルタの[所有者ID]・§9.172と
                    # 同じ約束）。**NULLにしないこと**——SQLiteの一意索引は
@@ -1897,7 +1921,7 @@ def column_layout_for(c,target,owner=''):
  **hiddenは「この対象で隠す列」**。[表示]がNULLの行は表示(既定)として扱う
  ——列を足したときに既存の行が勝手に隠れないようにするため。"""
  empty={'order':[],'widths':{},'hidden':[],'names':{},'formats':{},'rules':{},'formulas':{},
-        'locks':[],'sorts':{},'aligns':{}}
+        'locks':[],'sorts':{},'aligns':{},'places':{}}
  if COLUMN_LAYOUT_TABLE not in tables(c):return dict(empty)
  target=str(target or '').strip()
  if not target:return dict(empty)
@@ -1908,12 +1932,12 @@ def column_layout_for(c,target,owner=''):
              +col('書式種別')+','+col('書式パターン')+','+col('小数桁')+','
              +col('桁区切り')+','+col('単位前')+','+col('単位後')+','
              +col('読み替えルール')+','+col('計算式')+','+col('幅固定')+','
-             +col('並べ替え')+','+col('値揃え')+','+col('見出し揃え')+
+             +col('並べ替え')+','+col('値揃え')+','+col('見出し揃え')+','+col('配置')+
              ' FROM [列レイアウトマスタ] WHERE [対象]=? AND '
              +('[所有者ID]=?' if '所有者ID' in have else '?=?')+
              ' ORDER BY [表示順],[ID]',
              [target,str(owner or '')] if '所有者ID' in have else [target,'',''])
- order=[];widths={};hidden=[];names={};formats={};rules={};formulas={};locks=[];sorts={};aligns={}
+ order=[];widths={};hidden=[];names={};formats={};rules={};formulas={};locks=[];sorts={};aligns={};places={}
  for row in cur.fetchall():
   name=str(row[0] or '').strip()
   if not name:continue
@@ -1945,9 +1969,13 @@ def column_layout_for(c,target,owner=''):
   if len(row)>16:
    va=normalize_align(row[15]);ha=normalize_align(row[16],True)
    if va or ha:aligns[name]={'data':va,'head':ha}
+  # 段組の配置(§9.553)。**壊れた値は「置いていない」**（自動で置く）。
+  if len(row)>17:
+   pl=normalize_place(row[17])
+   if pl:places[name]=pl
  return {'order':order,'widths':widths,'hidden':hidden,'names':names,
          'formats':formats,'rules':rules,'formulas':formulas,'locks':locks,
-         'sorts':sorts,'aligns':aligns}
+         'sorts':sorts,'aligns':aligns,'places':places}
 
 def column_layout_targets(c,owner=''):
  """保存されている対象(target)の一覧。**持ち出し・取り込み用**(§9.178)。
@@ -1969,7 +1997,7 @@ def column_layout_targets(c,owner=''):
  return [str(r[0] or '').strip() for r in cur.fetchall() if str(r[0] or '').strip()]
 
 def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=None,rules=None,
-                      formulas=None,locks=None,sorts=None,aligns=None,fields=None,owner=''):
+                      formulas=None,locks=None,sorts=None,aligns=None,fields=None,owner='',places=None):
  """対象(target)の行をまとめて書き直す。渡された順序がそのまま表示順になる。
 
  **並び(order)は必ず全体を送ること。** 部分的な並べ替えは「どちらが正か」が
@@ -2003,6 +2031,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   if 'locks'    not in own:locks=keep['locks']
   if 'sorts'    not in own:sorts=keep['sorts']
   if 'aligns'   not in own:aligns=keep['aligns']
+  if 'places'   not in own:places=keep['places']
  widths=widths if isinstance(widths,dict) else {}
  hide={str(x or '').strip() for x in (hidden or []) if str(x or '').strip()}
  label=names if isinstance(names,dict) else {}
@@ -2023,6 +2052,11 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   if not isinstance(v,dict):continue
   va=normalize_align(v.get('data'));ha=normalize_align(v.get('head'),True)
   if va or ha:align[str(k or '').strip()]={'data':va,'head':ha}
+ # 段組の配置(§9.553)。読めない・盤からはみ出す値は持たない（自動で置く）。
+ place={}
+ for k,v in (places if isinstance(places,dict) else {}).items():
+  pl=normalize_place(v)
+  if pl and str(k or '').strip():place[str(k).strip()]=pl
  cur=c.cursor()
  # 所有者の行だけを書き直す(§9.259)。**所有者を絞り忘れると、個人の設定を
  # 保存した瞬間に共通の設定が消える**（あるいはその逆）。
@@ -2034,9 +2068,9 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
   a=align.get(name) or {}
   cur.execute('INSERT INTO [列レイアウトマスタ] ([対象],[列名],[表示名],[表示順],[幅],[表示],'
               '[書式種別],[書式パターン],[小数桁],[桁区切り],[単位前],[単位後],'
-              '[読み替えルール],[計算式],[幅固定],[並べ替え],[値揃え],[見出し揃え],'
+              '[読み替えルール],[計算式],[幅固定],[並べ替え],[値揃え],[見出し揃え],[配置],'
               '[所有者ID],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
               [target,name,str(label.get(name) or '').strip() or None,seq,
                normalize_column_width(widths.get(name)),
                0 if name in hide else -1,
@@ -2048,7 +2082,8 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
                (str(formula.get(name) or '').strip() if name in formula else None),
                -1 if name in lock else 0,
                sortspec.get(name) or None,
-               a.get('data') or None,a.get('head') or None,owner,uid,uid])
+               a.get('data') or None,a.get('head') or None,
+               json.dumps(place[name],ensure_ascii=False) if name in place else None,owner,uid,uid])
 
  seq=0;seen=set()
  for name in (order or []):
@@ -2061,7 +2096,7 @@ def set_column_layout(c,target,order,widths,uid,hidden=None,names=None,formats=N
  # **どれか1つでも拾い漏らすと、その設定だけが黙って消える**——並びを
  # 送らずに書式だけ保存した場合に実際に起きた。
  extra=[n for n in (list(widths)+list(label)+list(fmt)+list(rule)+list(formula)
-                    +list(sortspec)+list(align)+sorted(hide)+sorted(lock))
+                    +list(sortspec)+list(align)+list(place)+sorted(hide)+sorted(lock))
         if str(n or '').strip() and str(n).strip() not in seen]
  for name in extra:
   name=str(name).strip()

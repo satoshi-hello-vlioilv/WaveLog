@@ -127,13 +127,13 @@ body.ac-mode .pager{display:none}
 .os-table th,.os-table td{border:0.15mm solid #666;padding:0.3mm 0.6mm;
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 .os-table th{background:#eceff1;font-weight:800;text-align:center}
-.os-table .os-head-2 th{background:#f4f6f7;font-weight:700}
+.os-table .os-head-sub th{background:#f4f6f7;font-weight:700}
 .os-num{text-align:right;font-variant-numeric:tabular-nums}
-/* 2行1データ構成。**1件が2行であることを見た目で言う**——上段の下罫線を
-   薄くし、件と件のあいだ（下段の下）に太い線を引く。 */
-.os-row-1>td{border-bottom-color:#c8ced1}
-.os-row-2>td{border-bottom:0.35mm solid #111;background:#fafbfc}
-.os-page:not([data-borders="off"]) .os-row-2>td{background:#fafbfc}
+/* 段組（§9.553・2〜4段で1件）。**1件が何段かであることを見た目で言う**——段の下罫線は
+   薄くし、件と件のあいだ（最後の段の下＝`os-rec-end`）に太い線を引く。 */
+.os-table tbody tr>td{border-bottom-color:#c8ced1}
+.os-table tbody tr.os-rec-end>td{border-bottom:0.35mm solid #111;background:#fafbfc}
+.os-table .os-gap{background:#fff}
 
 /* 枠線OFF（§9.236 ①）。**線を完全には無くさない**——セルの余白が1mmしか
    ないので、太い黒枠だけを外して極細の薄い区切りにとどめる。 */
@@ -141,12 +141,103 @@ body.ac-mode .pager{display:none}
 .os-page[data-borders="off"] .os-table th,
 .os-page[data-borders="off"] .os-table td{border:0;border-bottom:0.1mm solid #d8dde0}
 .os-page[data-borders="off"] .os-table th{background:#f5f7f8}
-.os-page[data-borders="off"] .os-row-2>td{border-bottom:0.2mm solid #b9c0c4}
+.os-page[data-borders="off"] .os-table tbody tr.os-rec-end>td{border-bottom:0.2mm solid #b9c0c4}
 .os-page[data-borders="off"] .os-head{border-bottom:0.2mm solid #999}
 
 .os-foot{font-size:8px;margin-top:auto;display:flex;align-items:baseline;
  justify-content:space-between;gap:3mm;border-top:0.2mm solid #999;
  padding-top:1mm;color:#333}
+
+
+/* ---------- 段組の配置（§9.553・`record-layout.js`） ----------
+   **画面**なので寸法・色はトークンから選ぶ。盤（`.rl-board`）と画面の2段組（`.rl-grid`）は
+   同じ`--rl-units`マスの目盛りで組む——盤で見た並びが一覧でも同じ縦線にそろう。 */
+.rl-wrap{display:grid;grid-template-columns:var(--w-lg) minmax(0,1fr) var(--w-lg);gap:var(--space-3);
+ height:100%;min-height:0}
+.rl-wrap h4{margin:0 0 var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
+.rl-wrap h4 small{margin-left:var(--space-2);font-weight:500;color:var(--ink-3);font-size:var(--fs-micro)}
+.rl-pal{display:flex;flex-direction:column;min-height:0;gap:var(--space-1)}
+.rl-search{height:var(--ctl-h-sm);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 var(--ctl-pad-x-xs);font-size:var(--fs-sm)}
+.rl-pal-list{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable}
+.rl-grp{display:flex;justify-content:space-between;margin:var(--space-2) 0 var(--space-1);font-size:var(--fs-micro);font-weight:800;color:var(--ink-3)}
+.rl-grp small{font-weight:500}
+.rl-pal-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--space-1);
+ padding:2px var(--space-1);border-bottom:1px solid var(--line-soft);font-size:var(--fs-sm);cursor:pointer}
+.rl-pal-item>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rl-pal-item.is-sel{background:var(--pale)}
+.rl-st{font-style:normal;font-size:var(--fs-micro);color:var(--teal-dark);white-space:nowrap}
+.rl-st.is-auto{color:var(--ink-3)}
+.rl-st.is-off{color:var(--muted)}
+.rl-st.is-bad,.rl-bad{color:var(--warn-fg)}
+.rl-main{display:grid;grid-template-columns:var(--space-6) minmax(0,1fr);grid-template-rows:auto auto auto;
+ column-gap:var(--space-2);row-gap:var(--space-1);align-content:start;min-width:0}
+.rl-head{grid-column:1/-1;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.rl-head h4{margin:0}
+.rl-grow{flex:1}
+.rl-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--ink);font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap}
+.rl-btn:hover{background:var(--surface-2)}
+.rl-btn--primary{background:var(--teal);border-color:var(--teal);color:var(--surface)}
+.rl-btn--primary:hover{background:var(--teal-dark)}
+.rl-lanes{display:grid;grid-template-rows:repeat(var(--rl-lines,2),var(--ctl-h-lg));row-gap:var(--space-1);
+ padding:var(--space-1) 0;font-size:var(--fs-micro);font-weight:800;color:var(--ink-3)}
+.rl-lanes span{display:flex;align-items:center}
+/* 盤。**目盛り（1マスの縦線）を地に描く**——どの縦線にそろっているかが見える。 */
+.rl-board{position:relative;display:grid;grid-template-columns:repeat(24,minmax(0,1fr));
+ grid-template-rows:repeat(var(--rl-lines,2),var(--ctl-h-lg));row-gap:var(--space-1);
+ padding:var(--space-1);border:1px dashed var(--line);border-radius:var(--radius-sm);touch-action:none;user-select:none;
+ background:repeating-linear-gradient(90deg,transparent 0,transparent calc((100% - 1px)/24 - 1px),var(--line-soft) calc((100% - 1px)/24 - 1px),var(--line-soft) calc((100% - 1px)/24)) content-box}
+.rl-chip{position:relative;display:flex;align-items:center;min-width:0;margin:0 1px;padding:0 var(--space-2);
+ border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--pale);color:var(--teal-dark);
+ font-size:var(--fs-sm);font-weight:700;text-align:left;cursor:grab;overflow:hidden}
+.rl-chip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rl-chip:hover{transform:translateY(-1px)}
+.rl-chip.is-auto{border-style:dashed;background:var(--surface);color:var(--ink-2)}
+.rl-chip.is-sel{border-color:var(--look-violet);background:var(--look-violet-pale);color:var(--look-violet);box-shadow:0 0 0 2px var(--look-violet-pale)}
+.rl-grip{position:absolute;top:0;right:0;bottom:0;width:8px;background:var(--teal);opacity:.35;cursor:ew-resize}
+.rl-ghost{border:2px solid var(--teal);border-radius:var(--radius-sm);background:transparent;pointer-events:none}
+.rl-ghost.is-bad{border-style:dashed;border-color:var(--warn-fg)}
+.rl-note{grid-column:2;margin:0;font-size:var(--fs-micro);color:var(--ink-3);min-height:2.6em}
+.rl-insp{min-width:0}
+.rl-insp dl{display:grid;grid-template-columns:var(--w-xs) minmax(0,1fr);gap:var(--space-2);margin:0 0 var(--space-2);font-size:var(--fs-sm)}
+.rl-insp dt{color:var(--ink-3);font-weight:700}
+.rl-insp dd{margin:0}
+.rl-insp input[type=number]{width:var(--w-xs);height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.rl-seg{display:inline-flex;gap:var(--gap-hair)}
+.rl-seg button{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.rl-empty{color:var(--muted);font-size:var(--fs-sm)}
+/* 画面の2段組の一覧。1件＝1つの`.rl-rec`（段ぶんの行）。先頭（選ぶ印）と末尾（操作）は段をまたぐ。
+   **横は盤と同じ24マス**——一覧の幅が変わってもマスの比は紙と同じ（読み取る位置が紙と一致する）。 */
+.rl-grid{min-width:max(100%,72em);font-size:var(--tbl-fs)}
+.rl-rec{display:grid;grid-template-columns:var(--w-xs) repeat(24,minmax(0,1fr)) var(--w-xs);
+ grid-template-rows:repeat(var(--rl-lines,2),var(--row-h));border-bottom:2px solid var(--line-mid);background:var(--surface)}
+.rl-rec:nth-child(odd):not(.rl-head){background:var(--surface-2)}
+.rl-rec.rl-head{position:sticky;top:0;z-index:2;background:var(--surface-2);color:var(--ink-2);font-weight:800}
+.rl-rec.is-picked{box-shadow:inset 3px 0 0 var(--teal)}
+.rl-c{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 var(--space-2);
+ display:flex;align-items:center;border-right:1px solid var(--line-soft)}
+.rl-c.rl-l1{border-bottom:1px solid var(--line-soft)}
+.rl-head .rl-c.rl-l2{font-weight:700}
+.rl-num{justify-content:flex-end;font-variant-numeric:tabular-nums}
+.rl-lead,.rl-tail{grid-column:1;display:flex;align-items:center;gap:var(--space-1);padding:0 var(--space-2);color:var(--ink-3);
+ border-right:1px solid var(--line-soft)}
+.rl-tail{grid-column:-2;border-right:0;border-left:1px solid var(--line-soft)}
+.rl-over{margin:var(--space-2);font-size:var(--fs-sm);color:var(--warn-fg)}
+.ac-list.is-stack{overflow:auto}
+/* プレビューの中の盤（上）と、できあがり（下）。 */
+.os-pv-board{flex:none;height:var(--os-board-h,320px);padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line-soft);
+ background:var(--surface)}
+.os-pv-board[hidden]{display:none}
+.os-pv-look{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-1) var(--space-3);
+ font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);border-bottom:1px solid var(--line-soft)}
+.os-pv-look[hidden]{display:none}
+.os-pv-listview{flex:1;min-height:0;overflow:auto;padding:var(--space-2) var(--space-3);
+ --row-h:calc(var(--tbl-fs) * var(--lh) + var(--space-1) * 2 + 1px)}
+.os-pv-listview[hidden]{display:none}
+.os-pv-scroll[hidden]{display:none}
+.os-pv-btn--wide{width:100%;white-space:normal;height:auto;min-height:var(--ctl-h-sm);padding:var(--space-1) var(--ctl-pad-x-sm)}
+.os-pv-bad{color:var(--warn-fg)}
 
 /* ---------- 印刷プレビュー（画面。§9.186） ---------- */
 .os-pv{position:fixed;inset:0;z-index:var(--z-modal);display:grid;place-items:center;

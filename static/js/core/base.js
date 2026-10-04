@@ -831,13 +831,19 @@ const columnLayout=(()=>{
     自動と手動はwidthsの有無で分かるが、固定はもう1つの状態なので別に持つ。 */
  /* sorts=列ごとの並べ替えの決まり(§9.187)。`{列名:{buckets,on,natural}}`。 */
  /* aligns=値と見出しの揃え(§9.239 ④)。`{列名:{data,head}}`。 */
+ /* places=段組の配置(§9.553)。`{列名:{line,col,span}}`（段・何マス目から・何マスぶん）。
+    **配置の盤（`WL.recordLayout`）だけが持つ**——列の設定パネル・帳票は知らないので、
+    `save()`に`places`が無ければ保存済みを残す（`OWNED_ELSEWHERE`）。 */
  const empty=()=>({order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},
-                   locks:[],sorts:{},aligns:{}});
- const KEYS=['order','widths','hidden','names','formats','rules','formulas','locks','sorts','aligns'];
+                   locks:[],sorts:{},aligns:{},places:{}});
+ const KEYS=['order','widths','hidden','names','formats','rules','formulas','locks','sorts','aligns','places'];
+ /* 全置換の`save()`でも**渡されなければ消さない**鍵。持ち主の画面が別にあり、
+    ほかの画面は全部の鍵を書き写さない（書き写させると1か所の漏れで黙って消える・§9.113）。 */
+ const OWNED_ELSEWHERE=['places'];
  const norm=l=>({order:(l&&l.order)||[],widths:(l&&l.widths)||{},hidden:(l&&l.hidden)||[],
                  names:(l&&l.names)||{},formats:(l&&l.formats)||{},rules:(l&&l.rules)||{},
                  formulas:(l&&l.formulas)||{},locks:(l&&l.locks)||[],sorts:(l&&l.sorts)||{},
-                 aligns:(l&&l.aligns)||{}});
+                 aligns:(l&&l.aligns)||{},places:(l&&l.places)||{}});
  /* 重ねを畳んだ結果。**毎回作り直すと重い**(1列ごとに引く場面がある)ので
     覚え、どれかの重ねが変わったときだけ捨てる。 */
  const eff=new Map();
@@ -946,14 +952,21 @@ const columnLayout=(()=>{
  function savedOf(target){return saved.get(target)||empty()}
  async function save(target,layout){
   if(!target)return;
-  /* 全部を送る＝全部が保存済みになる（設定パネルの「保存」）。 */
+  /* 全部を送る＝全部が保存済みになる（設定パネルの「保存」）。**ただし持ち主が別の鍵**
+     （`OWNED_ELSEWHERE`）は、渡されなければ保存済みのまま——サーバーへも送らない
+     （送らなければサーバーも今の値を残す・§9.212 ②）。 */
   const v=norm(layout);
+  const send={...v};
+  OWNED_ELSEWHERE.forEach(k=>{
+   if(layout&&Object.prototype.hasOwnProperty.call(layout,k))return;
+   v[k]=savedOf(target)[k]||{};delete send[k];
+  });
   const way=routeNow(target)||await route(target);   // 行き先を先に決める（切り替えは保存済みを入れ替える）
   saved.set(target,v);draft.delete(target);live.delete(target);bump(target);
   if(way==='local')return;
   await saveState.run(target,()=>api('/api/column-layout-master',
    {method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({target,...v}))}));
+    body:JSON.stringify(withUserId({target,...send}))}));
  }
  /* **触った項目だけ**を保存する(§9.212 ②)。サーバーは送られてきたキーだけを
     書き換えるので、渡していない設定は消えない——列幅を引いただけで計算式や
@@ -1055,6 +1068,8 @@ const columnLayout=(()=>{
          /* この列の並べ替えの決まり(§9.187)。未設定ならnull(=今までどおり
             SQLの素の並び)。 */
          sort:(target,col)=>(get(target).sorts||{})[col]||null,
+         /* この列の段組の配置(§9.553)。未設定ならnull(=自動で置く)。 */
+         place:(target,col)=>(get(target).places||{})[col]||null,
          /* この列の揃え(§9.239 ④)。未設定なら`{data:'',head:''}`(=既定)。 */
          align:(target,col)=>{
           const a=(get(target).aligns||{})[col];
