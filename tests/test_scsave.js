@@ -270,6 +270,10 @@ run('test_scsave: 変更が戻ってしまう不具合・保存できない不�
   await W.until(page,n=>document.querySelectorAll("#scIconPick .sc-icon-cell").length===n,pick.n,{ms:4000,what:"絞り込みを消すと盤が元の数へ戻る"});
   await page.click('#scIconPick [data-icon-pick="svg:bolt"]');
   await W.poll(rowStyles,xs=>xs.some(x=>x.key==='cat:stop'&&/bolt/.test(String(x.icon||''))),8000);
+  /* 画面は「保存の応答 → 読み直し → 描き直し」の順なので、サーバーに入ったことだけを待って読むと、
+     描き直す前の見本（「なし」）を読む回がある（§9.554で踏んだ）。**確かめる物そのもの**で待つ。 */
+  await W.until(page,()=>{const nm=document.querySelector('.sc-rs-row[data-rs="cat:stop"] .sc-rs-iconname');
+    return !!nm&&nm.textContent.trim()==='突発'},null,{ms:8000,what:'行の見せ方の見本が選んだ絵（突発）になる'}).catch(()=>{});
   const saved=await page.evaluate(async()=>{
    const r=await fetch('/api/schedule/row-style-master');
    const hit=((await r.json()).items||[]).find(x=>x.key==='cat:stop');

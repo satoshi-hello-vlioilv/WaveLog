@@ -1,4 +1,4 @@
-# 起動・停止・監視（53件）
+# 起動・停止・監視（56件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,15 +10,18 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 入口は exe 自身（`desktop\\WaveLog.exe`）。写しへ渡す判断は`launch::plan()`の1箇所。写した物から印を外す（配った物は触らない） | `test_shortcut.py` | [§9.554](../../docs/decisions/9.554.md) |
+| program フォルダは`locate::program_dir()`の1箇所（`--program`→環境変数→exe の上→控え） | `test_shortcut.py` | [§9.554](../../docs/decisions/9.554.md) |
+| 前に`Start.vbs`へ作ったショートカットは起動時に入口へ付け替える（`migrate()`・自分の物だけ） | `test_shortcut.py` | [§9.554](../../docs/decisions/9.554.md) |
 | 窓の版は exe を作ったコミット（CI が埋める）。窓だけ古いかは`desktop_shell.stale()`の1箇所 | `test_presence.py` | [§9.552](../../docs/decisions/9.552.md) |
 | `.lnk`を作る・読むのは窓の副コマンド`--lnk`（JSON 1つ）。決めるのは`desktop_shortcut.py` | `test_shortcut.py` | [§9.552](../../docs/decisions/9.552.md) |
 | 窓の自己診断は保存（1つの画面で1本だけ）と印刷の書類も見る。保存の受け手（`on_download`）は**自己診断のときだけ**付ける（付けると既定の案内が消える） | — | [§9.551](../../docs/decisions/9.551.md) |
-| 利用者の起動はデスクトップ版だけ（Start.vbs → `program/WaveLog.exe`）。HTTP の入口`program/app.py`は開発と網のため | `test_faststart.py` | [§9.548](../../docs/decisions/9.548.md) |
+| 利用者の起動はデスクトップ版だけ（起動アイコン → この PC の入口の exe）。HTTP の入口`program/app.py`は開発と網のため | `test_faststart.py` | [§9.548](../../docs/decisions/9.548.md) |
 | main へは CI が exe を置く（`publish`・作った元の指紋で置き直しを決める）。手で作った exe を足さない | — | [§9.548](../../docs/decisions/9.548.md) |
 | 外した物の残りは`setup_check.RETIRED`で片付ける（合図は新しい Start.vbs）。端末の手元の物は`RETIRED_LOCAL` | `test_faststart.py` | [§9.548](../../docs/decisions/9.548.md) |
 | デスクトップ版の窓は`desktop/`（Rust）。`/static/`だけ直に返し、残り（画面・API・連結 CSS）は Python へ | `test_boot.py`・`test_sidecar.py` | [§9.546](../../docs/decisions/9.546.md) |
 | 窓の Python は PATH の順に最初の`pythonw.exe`がある場所（並べ替えない）。版（`protocol`）が違えば起こさない | `test_sidecar.py` | [§9.546](../../docs/decisions/9.546.md) |
-| Start.vbs は exe を手元の版ごとのフォルダへ写して起動するだけ。起動できなければ理由と次の一手（ブラウザ版へ逃げない） | `test_faststart.py` | [§9.546](../../docs/decisions/9.546.md)・[§9.548](../../docs/decisions/9.548.md) |
+| 【§9.554で改めた】Start.vbs は移行期間のため入口の exe を起こすだけ（写さない）。起動できなければ理由と次の一手 | `test_faststart.py` | [§9.548](../../docs/decisions/9.548.md)・[§9.554](../../docs/decisions/9.554.md) |
 | 起動画面（`desktop/splash`）は`#appBoot`と同じトークン・同じ地。アイコンは`app_icon.py`が描く（`.ico`を置かない） | `test_boot.py` | [§9.546](../../docs/decisions/9.546.md) |
 | デスクトップ版の窓口は`program/sidecar.py`（標準入出力の枠・ポートなし）。標準出力は枠だけ。入力が閉じたら`watchdog._exit()`で終わる | `test_sidecar.py` | [§9.544](../../docs/decisions/9.544.md) |
 | 起動の背景処理（写し・見張り・書込役）は`services.start()`の1箇所（窓口と開発・網の入口が呼ぶ）。タブの見張りは持たない | `test_sidecar.py` | [§9.544](../../docs/decisions/9.544.md) |
@@ -39,7 +42,7 @@
 | ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](../../docs/decisions/9.404.md) |
 | 起動画面の地は深い紺＋斜めの光。**カードは不透明な白のまま**（透かすと本文が薄れ、描画も重い） | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |
 | 波紋はヘッダーの帯の中だけ（`overflow:hidden`）。輪は**幅と高さ**で広げる（`scale`は線まで太る） | `test_theme.js` | [§9.411](../../docs/decisions/9.411.md) |
-| ショートカットの行き先は`Start.vbs`1本、アイコンは`app_icon.py`が描く。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](../../docs/decisions/9.410.md) |
+| ショートカットの行き先は入口の exe 1本（＋`--program`・§9.554）。絵は`app_icon.py`。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](../../docs/decisions/9.410.md) |
 | 【§9.552で撤回】補助スクリプト（`make_shortcut.vbs`）へ位置で渡す——いまは窓の副コマンドへ JSON 1つ | `test_shortcut.py` | [§9.486](../../docs/decisions/9.486.md) |
 | 起動前の確認は`update.bat`（旧`setup.bat`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](../../docs/decisions/9.225.md) |
 | 入口の名前は「いつ押すか」を言う。旧名を入口として残さない（入口は1つ） | `test_faststart.py` | [§9.405](../../docs/decisions/9.405.md) |

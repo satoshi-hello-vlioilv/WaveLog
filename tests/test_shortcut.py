@@ -6,7 +6,7 @@
 **サーバーもブラウザも要らない**（1段目の網・§9.337）。固定するのは4つ:
   1. アイコンは**コードで描いて**`.ico`として読める形になっている
      （同梱の画像を持たない＝同じ絵が2箇所に無い・§9.410）
-  2. 行き先は**毎日の入口（`Start.vbs`）1本**（入口を2つにしない・§9.405）
+  2. 行き先は**毎日の入口1本**＝この PC の決まった場所の exe（§9.554。入口を2つにしない・§9.405）
   3. **作れない端末は理由を返す**（黙って失敗しない・§CLAUDE 4）
   4. アイコンの指定は**読めないものを黙って既定へ落とさない**（§9.231）
 """
@@ -58,14 +58,36 @@ colors = {tuple(rgba[i:i + 3]) for i in range(0, len(rgba), 4) if rgba[i + 3] > 
 rec('描いた絵に地・波・丸の3色が出ている', len(colors) >= 3, f'{len(colors)}色')
 
 # ---- 2) 行き先は毎日の入口1本 ---------------------------------------------
-rec('行き先は Start.vbs（入口を2つにしない・§9.405）',
-    desktop_shortcut.target_path().name == 'Start.vbs', desktop_shortcut.TARGET_NAME)
-rec('行き先が実在する', desktop_shortcut.target_path().exists(), str(desktop_shortcut.target_path()))
+import os as _os0  # noqa: E402
+_keep_entry = _os0.environ.get('WAVELOG_SHELL_ENTRY')
+try:
+    _os0.environ['WAVELOG_SHELL_ENTRY'] = r'C:\Users\u\AppData\Local\WaveLog\desktop\WaveLog.exe'
+    _given = desktop_shortcut.target_path()
+    _os0.environ.pop('WAVELOG_SHELL_ENTRY')
+    _built = desktop_shortcut.target_path()
+finally:
+    if _keep_entry is not None:
+        _os0.environ['WAVELOG_SHELL_ENTRY'] = _keep_entry
+rec('行き先は入口の exe（答えは窓の WAVELOG_SHELL_ENTRY・§9.554）', str(_given).endswith(r'desktop\WaveLog.exe'), str(_given))
+rec('窓の外では同じ決まり（LOCALAPPDATA の下の WaveLog/desktop/WaveLog.exe）で組む',
+    _built.parts[-3:] == ('WaveLog', 'desktop', 'WaveLog.exe'), str(_built))
+LAUNCH_RS = (ROOT / 'desktop' / 'src' / 'launch.rs').read_text(encoding='utf-8')
+LOCATE_RS = (ROOT / 'desktop' / 'src' / 'locate.rs').read_text(encoding='utf-8')
+rec('入口の場所と引数は窓と同じ字（desktop/WaveLog.exe・--program）',
+    'desktop_dir().join(EXE)' in LAUNCH_RS and 'pub const EXE: &str = "WaveLog.exe";' in LAUNCH_RS
+    and f'pub const PROGRAM_ARG: &str = "{desktop_shortcut.PROGRAM_ARG}";' in LOCATE_RS)
+rec('入口へ渡す引数は program フォルダ（ショートカットがどの中身を使うかを持つ）',
+    desktop_shortcut.target_args() == '--program "%s"' % (ROOT / 'program'), desktop_shortcut.target_args())
+rec('前の行き先（Start.vbs）はリポジトリ直下（付け替えの見分けにだけ使う）',
+    desktop_shortcut.legacy_target() == ROOT / 'Start.vbs')
 
 # ---- 3) 作れない端末は理由を返す -------------------------------------------
 ok, why = desktop_shortcut.supported()
 if sys.platform == 'win32':
-    rec('Windowsでは作れると答える', ok, why)
+    # 入口（この PC の exe）は最初の起動で置かれる（§9.554）。無いうちは理由と次の一手を言う
+    _has = desktop_shortcut.target_path().exists()
+    rec('Windowsでは、入口があれば作れる・無ければ理由（program\\WaveLog.exe を一度起動）を言う',
+        ok == _has and (ok or 'program' in why), f'入口あり={_has} / {why}')
 else:
     rec('Windows以外では理由を付けて断る', (not ok) and 'Windows' in why, why)
     out = desktop_shortcut.create('回帰_shortcut')
@@ -140,7 +162,7 @@ rec('残せなくても作成そのものは失敗にしない（黙って捨て
 
 # ---- 7) すでに在るときは上書き・名前を変えたら付け替え（§9.446、利用者の指示） ----
 # 「すでにある場合は上書きして書き換える機能も実装して下さい」
-# ・**自分が作ったもの**（行き先が Start.vbs）は、そのまま上書きする。
+# ・**自分が作ったもの**（行き先が入口か、前の Start.vbs）は、そのまま上書きする（§9.554）。
 # ・**別のショートカット**は `overwrite` が真のときだけ上書きする（黙って消さない）。
 # ・**名前を変えたとき**は前のほうを片付ける（デスクトップに2つ残さない）。
 LNK_RS = (ROOT / 'desktop' / 'src' / 'lnk.rs').read_text(encoding='utf-8')
@@ -173,6 +195,10 @@ if sys.platform == 'win32':
     ctypes.windll.kernel32.GetShortPathNameW(str(_f), _buf, 1024)
     rec('短い名前（8.3）と長い名前を同じ場所と見る（Windows）',
         _buf.value and _buf.value != str(_f) and desktop_shortcut._same_path(_buf.value, _f), f'{_buf.value} / {_f}')
+rec('前の行き先（Start.vbs）も入口も「自分のもの」と見る（付け替えのため・§9.554）',
+    desktop_shortcut._is_ours_target(str(ROOT / 'Start.vbs'))
+    and desktop_shortcut._is_ours_target(str(desktop_shortcut.target_path()))
+    and not desktop_shortcut._is_ours_target(str(ROOT / 'program' / 'update.bat')))
 rec('空の行き先は「自分のもの」と見ない（読めなかったものを消さない）',
     not desktop_shortcut._same_path('', str(desktop_shortcut.target_path())))
 # 付け替えの判断は**字だけで決まる**ので、ここで直に確かめられる。
@@ -243,7 +269,8 @@ for _label, _spec, _want in (('既定の絵', r'C:\x\wavelog.ico', (r'C:\x\wavel
     _r = _make[0] if _make else {}
     rec(f'窓へ渡す頼みは名前付きの1件（{_label}・§9.552）',
         bool(_r) and _seen[0][0][1:] == [desktop_shortcut.LNK_ARG] and _r['path'].endswith('試し 測定.lnk')
-        and _r['target'] == str(desktop_shortcut.target_path()) and (_r['icon'], _r['iconIndex']) == _want,
+        and _r['target'] == str(desktop_shortcut.target_path()) and _r['args'] == desktop_shortcut.target_args()
+        and (_r['icon'], _r['iconIndex']) == _want,
         str({k: _r.get(k) for k in ('icon', 'iconIndex')}))
     rec(f'その頼みで作成が成功として返る（{_label}）', bool(_out.get('ok') and _out.get('created')),
         str(_out.get('error') or '')[:80])
@@ -279,6 +306,51 @@ finally:
             _os.environ.pop(k, None)
         else:
             _os.environ[k] = v
+# ---- 前の行き先からの付け替え（§9.554） ----
+# 前に Start.vbs へ作ったショートカットは、窓の中で起動したときに入口へ付け替える。
+# **付け替えるのは「残した名前」で「行き先が Start.vbs」の物だけ**——それ以外は触らない。
+def _migrate_with(target, kind='desktop', exists=True):
+    calls = []
+    keep = {k: getattr(desktop_shortcut, k) for k in ('supported', 'saved', 'link_path', 'link_target', 'create')}
+    import tempfile as _t
+    lnk = Path(_t.mkdtemp()) / '測定伝送システム.lnk'
+    if exists:
+        lnk.write_bytes(b'lnk')
+    keep_env = _os.environ.get('WAVELOG_SHELL')
+    try:
+        _os.environ['WAVELOG_SHELL'] = kind
+        desktop_shortcut.supported = lambda: (True, '')
+        desktop_shortcut.saved = lambda key: {'shortcut_name': '', 'shortcut_icon': r'C:\x\a.ico'}[key]
+        desktop_shortcut.link_path = lambda name=None: lnk
+        desktop_shortcut.link_target = lambda path: target
+        desktop_shortcut.create = lambda *a, **k: calls.append((a, k)) or {'ok': True}
+        said = desktop_shortcut.migrate()
+    finally:
+        for k, v in keep.items():
+            setattr(desktop_shortcut, k, v)
+        if keep_env is None:
+            _os.environ.pop('WAVELOG_SHELL', None)
+        else:
+            _os.environ['WAVELOG_SHELL'] = keep_env
+    return said, calls
+
+
+_said, _calls = _migrate_with(str(ROOT / 'Start.vbs'))
+rec('行き先が Start.vbs なら入口へ付け替える（名前と絵は残した値のまま・上書きで）',
+    bool(_said) and len(_calls) == 1 and _calls[0][0][1] == r'C:\x\a.ico' and _calls[0][1].get('overwrite') is True,
+    f'{_said} {_calls}')
+_said, _calls = _migrate_with(str(desktop_shortcut.target_path()))
+rec('もう入口を指していれば何もしない', not _said and not _calls)
+_said, _calls = _migrate_with(r'C:\Other\tool.exe')
+rec('利用者が自分で作った別のショートカットは触らない', not _said and not _calls)
+_said, _calls = _migrate_with(str(ROOT / 'Start.vbs'), kind='')
+rec('窓の外（開発・網）では付け替えない', not _said and not _calls)
+_said, _calls = _migrate_with(str(ROOT / 'Start.vbs'), exists=False)
+rec('ショートカットが無ければ作らない（作るのは利用者が「表示」から）', not _said and not _calls)
+SERVICES = (ROOT / 'backend' / 'launcher' / 'services.py').read_text(encoding='utf-8')
+rec('付け替えは起動の背景処理の1箇所から・裏の糸で（起動を待たせない）',
+    'desktop_shortcut.migrate()' in SERVICES and 'threading.Thread(' in SERVICES)
+
 rec('窓の中では、いま動いている窓（手元へ写した exe）に作らせる', str(_in).endswith(r'1-2\WaveLog.exe'), str(_in))
 rec('窓の外では配ってある program/WaveLog.exe', _out_shell == ROOT / 'program' / 'WaveLog.exe', str(_out_shell))
 

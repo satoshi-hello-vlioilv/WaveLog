@@ -11,7 +11,7 @@
 - **確認の実処理は1箇所**。update.bat とデスクトップ版の窓口（`sidecar._prepare()`）が同じ
   `setup_check.run()`を通る——2つ持つと「update.batでは通るのに起動では
   失敗する」が作れる。
-- **毎日の入口（Start.vbs）は exe を手元へ写して起こすだけ**（§9.548）。ブラウザ版の起動の道は無い。
+- **毎日の入口は exe**（§9.554）。Start.vbs は移行期間のため exe を起こすだけ。ブラウザ版の起動の道は無い。
 - **外した物の残り**（上書きコピーで消えずに残る）は、新しい Start.vbs が届いていれば片付ける。
 - update.bat（旧`setup.bat`・§9.405）は **CP932**（UTF-8の日本語だとcmd.exeが誤読する）。
 - 起動スクリプトは **CRLF改行**（LFだけだとcmd.exeが行の途中から実行する）。
@@ -240,18 +240,19 @@ try:
     rec('リポジトリ直下に .py / .bat を置かない（§9.406）', not stray, ', '.join(stray))
     rec('Start.vbs は直下のまま（毎日の入口は動かさない）',
         (ROOT / 'Start.vbs').exists())
-    # 毎日の入口は**デスクトップ版だけ**（§9.546・§9.548）。exe を**手元の版ごとのフォルダへ写して**起動する
-    # （Box の上の exe を直に起こすと、動いている間ファイルを掴み、その PC の更新が詰まる）。
+    # 毎日の入口は**exe**（§9.554）。Start.vbs は移行期間のために残し、**exe を起こすだけ**——版を比べて写すのは
+    # exe（desktop/src/launch.rs）。Start.vbs が写すと「インターネットから来た」印ごと写り、警告が2回出た。
     vbs = (ROOT / 'Start.vbs').read_bytes().decode('cp932')
-    rec('Start.vbs は program\\WaveLog.exe を手元の版ごとのフォルダへ写して起動する（§9.546・§9.548）',
-        all(w in vbs for w in ('"\\program\\WaveLog.exe"', '\\WaveLog\\desktop\\', 'f.Size', 'MoveFile tmp, dst')))
-    rec('Start.vbs は program の場所を exe へ渡す（WAVELOG_PROGRAM_DIR）',
-        '("WAVELOG_PROGRAM_DIR") = root & "\\program"' in vbs)
+    rec('Start.vbs は入口（この PC の exe）があればそれを、無ければ program\\WaveLog.exe を起こすだけ（§9.554）',
+        all(w in vbs for w in ('\\WaveLog\\desktop\\WaveLog.exe', 'prog & "\\WaveLog.exe"', 'If fso.FileExists(entry)'))
+        and 'CopyFile' not in vbs and 'MoveFile' not in vbs)
+    rec('Start.vbs は program の場所を引数で渡す（ショートカットと同じ --program）',
+        '--program' in vbs and 'prog = root & "\\program"' in vbs)
     rec('Start.vbs はブラウザ版を起こさない（start_app.py・pythonw を呼ばない・§9.548）',
         'start_app.py' not in vbs and 'pythonw' not in vbs)
-    rec('exe が無い・写せない・起こせないときは理由と次の一手を出す（黙ってブラウザ版へ逃げない）',
-        vbs.count('StartDesktop = "') >= 3 and 'MsgBox why' in vbs and 'ZIP' in vbs,
-        '理由 %d個' % vbs.count('StartDesktop = "'))
+    rec('exe が無い・起こせないときは理由と次の一手を出す（黙ってブラウザ版へ逃げない）',
+        vbs.count('MsgBox ') >= 2 and 'ZIP' in vbs and 'program\\WaveLog.exe' in vbs,
+        'MsgBox %d個' % vbs.count('MsgBox '))
     # 動かせない2つ。**移すと落ちるのではなく「黙って効かなくなる」**ので、
     # 在ることを機械で押さえる（§9.406の実測: eslint は 306件→0件）。
     rec('.gitignore は直下（gitはそのフォルダ以下にしか当てない）',

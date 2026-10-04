@@ -13,6 +13,7 @@
 
 どれも**失敗しても起動は止めない**（画面は前の写し・自分で書く道で動く）。
 """
+import threading
 
 
 def start(log):
@@ -59,3 +60,13 @@ def start(log):
    log.info('共有スケジュールの持ち主機構: 無効（各端末が自分で共有へ書きます）')
  except Exception as e:
   log.warning('持ち主機構を開始できませんでした: %s',e)
+ # 起動アイコンの付け替え(§9.554)。前に Start.vbs へ作ったショートカットを入口（この PC の exe）へ。
+ # 窓の中でだけ・裏で（ショートカットを読むのに窓の副コマンドを起こすので、起動を待たせない）。
+ try:
+  from backend import desktop_shortcut  # 遅延: 読めなくても起動は止めない（前の Start.vbs のまま動く）
+  def _move():
+   said=desktop_shortcut.migrate()
+   if said:log.info(said)
+  threading.Thread(target=_move,name='shortcut-migrate',daemon=True).start()
+ except Exception as e:
+  log.warning('起動アイコンの付け替えを始められませんでした: %s',e)
