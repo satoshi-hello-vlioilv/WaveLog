@@ -13,7 +13,7 @@
 | 版の確かめ（`update::peek()`）は Python の起動と同時に進める。違えば Python を止めて（写しを手放してから）`apply()`、起こし直す | `test_appupdate.py` | [§9.561](../../docs/decisions/9.561.md) |
 | 終わる入口は×だけ。閉じる前に聞くのは`close.rs`の`Gate`（名乗った画面だけ・2秒で閉じる） | `test_appquit.js` | [§9.556](../../docs/decisions/9.556.md) |
 | 版を置く進み具合は`app_update.progress()`の1箇所。同時に1本・書きかけは1時間より古い物だけ片付ける | `test_appupdate.py`・`test_appupdateui.js` | [§9.556](../../docs/decisions/9.556.md) |
-| 更新の置き場はこの PC の local.json → 共有の設定 → 既定の順（Python と窓が同じ順・控えは`config/update.json`） | `test_appupdate.py` | [§9.557](../../docs/decisions/9.557.md) |
+| 更新の置き場は local.json → 共有の設定 → 入れた元（`from: install`）→ 既定の順（Python と窓が同じ順） | `test_appupdate.py` | [§9.557](../../docs/decisions/9.557.md)・[§9.561](../../docs/decisions/9.561.md) |
 | 置き場は見るだけで作らない（作るのは版を置くとき）。網は一時の置き場を渡す | `test_appupdate.py` | [§9.557](../../docs/decisions/9.557.md) |
 | 新しい PC には共有の**配る入口**（`<置き場>\WaveLog.exe`）のアドレスだけ渡す。入口と渡す設定（`install.json`）は配る版を決めたときに置く | `test_appupdate.py`・`test_appupdateui.js` | [§9.559](../../docs/decisions/9.559.md) |
 | 共有の入口から起こされたら手元の写しへ渡し、アプリが無ければ`%USERPROFILE%\WaveLog`へ配る版を写す（`install::run()`＝更新と同じ道） | `test_appupdate.py` | [§9.559](../../docs/decisions/9.559.md) |

@@ -44,7 +44,7 @@ pub enum Outcome {
     Failed(String),
 }
 
-/// 置き場。`config/local.json` の `update_dir`（この PC だけの上書き）→ `config/update.json`（共有の設定の控え）→ 既定。
+/// 置き場。`config/local.json` の `update_dir`（この PC だけの上書き）→ `config/update.json`（共有の設定か、入れた元の控え）→ 既定。
 /// 順は Python の `app_update.update_dir()` と同じ。`%VAR%` は展開する。
 pub fn update_dir(app_root: &Path) -> PathBuf {
     let conf = app_root.join("config");
@@ -117,13 +117,17 @@ fn within<T: Send + 'static>(wait: Duration, f: impl FnOnce() -> T + Send + 'sta
 }
 
 /// 配る版を読む。`Ok(None)`＝決めていない、`Err`＝届かない・読めない。
+/// 「無い」は**置き場のフォルダが在るときだけ**「決めていない」と読む——届かない UNC（WinError 53）も「無い」と答えるので、
+/// フォルダごと見えないなら「置き場が見つかりません」と言う（前は「配る版が決まっていません」と取り違えていた・§9.561）。
 pub fn release_version(dir: &Path, wait: Duration) -> Result<Option<String>, String> {
     let file = dir.join("release.json");
     let shown = file.display().to_string();
-    match within(wait, move || std::fs::read(&file)) {
+    let (folder, folder_shown) = (dir.to_path_buf(), dir.display().to_string());
+    match within(wait, move || std::fs::read(&file).map_err(|e| (e.kind() == std::io::ErrorKind::NotFound && !folder.is_dir(), e))) {
         None => Err(format!("{} 秒待っても置き場に届きません（{shown}）", wait.as_secs())),
-        Some(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Some(Err(e)) => Err(format!("配る版を読めません（{shown}）: {e}")),
+        Some(Err((true, e))) => Err(format!("置き場が見つかりません（{folder_shown}）: {e}")),
+        Some(Err((_, e))) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Some(Err((_, e))) => Err(format!("配る版を読めません（{shown}）: {e}")),
         Some(Ok(b)) => {
             let v: Value = serde_json::from_slice(b.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&b))
                 .map_err(|e| format!("配る版の形が違います（{shown}）: {e}"))?;
@@ -293,6 +297,16 @@ pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&s
 pub(crate) mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn missing_folder_is_not_an_undecided_release() {
+        let d = tmp("rv");
+        assert_eq!(release_version(&d, REACH), Ok(None), "置き場は在り配る版が無い＝決めていない");
+        let gone = d.join("nowhere");
+        let e = release_version(&gone, REACH).unwrap_err();
+        assert!(e.contains("置き場が見つかりません"), "置き場ごと無い・届かない UNC は「決めていない」と取り違えない: {e}");
+        fs::remove_dir_all(&d).ok();
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("wl-update-{name}-{}", std::process::id()));

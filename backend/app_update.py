@@ -40,11 +40,16 @@ DEFAULT_DIR = r'\\nlmsrvngy03\工場内共有\検査データ\Apps\WaveLog'
 # 置き場を変える鍵。決める順は`update_dir()`（窓の`update.rs`も同じ順）:
 #   ① この PC の`config/local.json`（この PC だけの上書き）
 #   ② 共有の設定（パス設定マスタ・画面「アプリの更新」で変える。全 PC が同じ値を見る）
-#   ③ 既定（`DEFAULT_DIR`）
+#   ③ この PC を入れた元（共有の配る入口から入れた PC だけ・§9.559。窓が控えに印を付けて書く）
+#   ④ 既定（`DEFAULT_DIR`）
 CONFIG_KEY = 'update_dir'
-# ② の控え（`config/update.json`）。窓は Python を起こす前に置き場を知る必要があり、マスタ（SQLite）は
+# ②③ の控え（`config/update.json`）。窓は Python を起こす前に置き場を知る必要があり、マスタ（SQLite）は
 # 読まないので、Python が写しておく（`remember()`）。`config`は版に入れない（入れ替えで消えない）。
 MIRROR = 'update.json'
+# ③ の印（窓の`install::seed_config()`が書く）。**共有の設定が空のあいだは消さない**——消すと次の起動で既定の
+# 置き場を見に行き、既定でない置き場から入れた PC が配る版へそろわなくなる（§9.561 の CI で見つけた）。
+ORIGIN_KEY = 'from'
+ORIGIN_INSTALL = 'install'
 # 控えを確かめ直す間隔（ハートビートから呼ぶ・マスタを開くのはこの間隔に1回だけ）。
 REMEMBER_SEC = 600
 # 版に入れる物（アプリのフォルダの最上位の名前）。**データ（db・config）と開発の物（tests・docs・desktop）は入れない**。
@@ -77,14 +82,29 @@ def _shared_value():
     return str(path_config.value(CONFIG_KEY, '') or '').strip()
 
 
+def _origin_of(target):
+    """控え`target`が持つ「この PC を入れた元」の置き場（印 from=install があるときだけ・無ければ空）。"""
+    try:
+        data = json.loads(Path(target).read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return ''                                 # 控えが無い・読めない＝入れた元を知らない（既定へ）
+    if not isinstance(data, dict) or data.get(ORIGIN_KEY) != ORIGIN_INSTALL:
+        return ''
+    return str(data.get(CONFIG_KEY) or '').strip()
+
+
 def dir_choice():
-    """→ (置き場, 出どころ)。出どころは `local`（この PC の config/local.json）／`shared`（共有の設定）／`default`。"""
+    """→ (置き場, 出どころ)。出どころは `local`（この PC の config/local.json）／`shared`（共有の設定）／
+    `install`（この PC を入れた元）／`default`。"""
     local = str((load_local_config() or {}).get(CONFIG_KEY) or '').strip()
     if local:
         return Path(os.path.expandvars(local)), 'local'
     shared = _shared_value()
     if shared:
         return Path(os.path.expandvars(shared)), 'shared'
+    origin = _origin_of(mirror_path())
+    if origin:
+        return Path(os.path.expandvars(origin)), 'install'
     return Path(DEFAULT_DIR), 'default'
 
 
@@ -102,6 +122,8 @@ def remember(path=None):
     窓は次の起動からこの値を読む。→ 書いたか。"""
     target = Path(path) if path else mirror_path()
     shared = _shared_value()
+    if not shared and _origin_of(target):
+        return False                              # 入れた元の控え（③）は、共有の設定が決まるまで残す
     text = json.dumps({CONFIG_KEY: shared}, ensure_ascii=False)
     try:
         if target.exists() and target.read_text(encoding='utf-8') == text:

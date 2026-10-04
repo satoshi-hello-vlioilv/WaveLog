@@ -238,6 +238,33 @@ try:
 finally:
     app_update._shared_value = orig_shared
 rec('覚えることが無ければ控えを作らない（窓は既定を読む）', not w0 and not none.exists())
+
+# 共有の入口から入れた PC（§9.559）は、窓が「どこから来たか」を控えに書く（印 from=install）。共有の設定が空でも
+# Python はこれを消さない——消すと次の起動で既定の置き場を見に行き、配る版へそろわない（CI の4回目で見つけた・§9.561）
+origin = Path(tempfile.mkdtemp()) / 'config' / 'update.json'
+origin.parent.mkdir(parents=True)
+origin.write_text(json.dumps({'update_dir': r'D:\share\WaveLog', 'from': 'install'}), encoding='utf-8')
+orig_mirror = app_update.mirror_path
+try:
+    app_update._shared_value = lambda: ''
+    app_update.load_local_config = lambda: {}
+    app_update.mirror_path = lambda: origin
+    k1 = app_update.remember(origin)
+    kept = json.loads(origin.read_text(encoding='utf-8'))
+    c1 = app_update.dir_choice()
+    app_update._shared_value = lambda: r'\\srv\Apps2\WaveLog'
+    k2 = app_update.remember(origin)
+    c2 = app_update.dir_choice()
+    over = json.loads(origin.read_text(encoding='utf-8'))
+finally:
+    app_update._shared_value, app_update.load_local_config, app_update.mirror_path = orig_shared, orig_local, orig_mirror
+rec('入れた元の置き場は、共有の設定が空でも消さない（Python も窓と同じ置き場を答える）',
+    not k1 and kept.get('from') == 'install' and c1 == (Path(r'D:\share\WaveLog'), 'install'), str([k1, kept, c1]))
+rec('共有の設定が決まれば、そちらが勝つ（入れた元の控えを上書きする）',
+    k2 and c2[1] == 'shared' and over == {'update_dir': r'\\srv\Apps2\WaveLog'}, str([k2, c2, over]))
+INS = (ROOT / 'desktop' / 'src' / 'install.rs').read_text(encoding='utf-8')
+rec('窓は入れた元の置き場に印（from=install）を付けて控える',
+    f'"{app_update.ORIGIN_KEY}": "{app_update.ORIGIN_INSTALL}"' in INS if hasattr(app_update, 'ORIGIN_KEY') else False)
 stray = [str(d) for base in (ROOT, ROOT / 'tests') for d in base.iterdir() if d.name.startswith('\\\\')]
 rec('この網を回しても、UNC の字のフォルダが作業フォルダに生まれない', not stray, str(stray))
 

@@ -99,7 +99,8 @@ pub fn handoff_from_share(log: &dyn Fn(&str)) -> FromShare {
 }
 
 /// 新しい PC へ渡す設定を`config`へ写す。**すでに在る`local.json`は触らない**（その PC の設定が先）。
-/// 置き場が既定でなければ、置き場の控え（`config\update.json`・Python が後で共有の設定で書き直す）も書く。
+/// 置き場が既定でなければ、置き場の控え（`config\update.json`）へ**入れた元**として印（`from: install`）を付けて書く。
+/// Python は共有の設定が決まればそれで書き直し、空のあいだはこの控えを消さない（`app_update.remember()`・§9.561）。
 pub fn seed_config(app: &Path, from: &Path) -> Vec<String> {
     let mut said = vec![];
     let conf = app.join("config");
@@ -122,7 +123,7 @@ pub fn seed_config(app: &Path, from: &Path) -> Vec<String> {
     }
     let mirror = conf.join(update::MIRROR);
     if from != Path::new(update::DEFAULT_DIR) && !mirror.exists() {
-        let text = serde_json::json!({ update::CONFIG_KEY: from.display().to_string() }).to_string();
+        let text = serde_json::json!({ update::CONFIG_KEY: from.display().to_string(), "from": "install" }).to_string();
         let _ = std::fs::write(&mirror, text);
     }
     said
@@ -200,6 +201,7 @@ mod tests {
         assert!(v.get("db_dir").is_none(), "その PC の物（db_dir）は渡さない");
         let mirror: Value = serde_json::from_slice(&fs::read(app.join("config").join(update::MIRROR)).unwrap()).unwrap();
         assert_eq!(mirror[update::CONFIG_KEY], share.display().to_string(), "既定でない置き場から入れたら控える");
+        assert_eq!(mirror["from"], "install", "入れた元の印（Python が共有の設定の空で消さない・§9.561）");
         fs::write(app.join("config/local.json"), r#"{"master_db_path":"mine"}"#).unwrap();
         seed_config(&app, &share);
         assert_eq!(

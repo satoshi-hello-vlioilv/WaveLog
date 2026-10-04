@@ -43,7 +43,7 @@
    <div class="au" id="appUpdate" aria-live="polite"><p class="au-empty">更新の状態を読んでいます…</p></div>`;
  }
  /* 置き場の欄の添え書き: 既定の字・いま効いている置き場の出どころ（共有の設定／既定／この PC だけの上書き）。 */
- const DIR_FROM={shared:'共有の設定',default:'既定',local:'この PC の config\\local.json（この PC だけの上書き）'};
+ const DIR_FROM={shared:'共有の設定',install:'この PC を入れた元の置き場',default:'既定',local:'この PC の config\\local.json（この PC だけの上書き）'};
  function paintDir(st){
   const inp=document.querySelector('[data-pc-field="update_dir"]');
   if(inp&&st.defaultDir)inp.placeholder=`空欄なら既定: ${st.defaultDir}`;
