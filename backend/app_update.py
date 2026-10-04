@@ -30,13 +30,23 @@ import time
 import zipfile
 from pathlib import Path
 
+from . import path_config
 from .changelog_data import APP_VERSION
-from .paths import load_local_config
+from .paths import APP_ROOT, load_local_config
 from .quiet import quiet
 
-# 置き場の既定（利用者の指定）。`config/local.json`の`update_dir`で変えられる（窓も同じ鍵を読む）。
-DEFAULT_DIR = r'\\nlmsrvngy03\工場内共有\検査データ\Records\アプリメンテナンス\WaveLog'
+# 置き場の既定（利用者の指定・§9.557で Records\アプリメンテナンス から Apps へ移した）。
+DEFAULT_DIR = r'\\nlmsrvngy03\工場内共有\検査データ\Apps\WaveLog'
+# 置き場を変える鍵。決める順は`update_dir()`（窓の`update.rs`も同じ順）:
+#   ① この PC の`config/local.json`（この PC だけの上書き）
+#   ② 共有の設定（パス設定マスタ・画面「アプリの更新」で変える。全 PC が同じ値を見る）
+#   ③ 既定（`DEFAULT_DIR`）
 CONFIG_KEY = 'update_dir'
+# ② の控え（`config/update.json`）。窓は Python を起こす前に置き場を知る必要があり、マスタ（SQLite）は
+# 読まないので、Python が写しておく（`remember()`）。`config`は版に入れない（入れ替えで消えない）。
+MIRROR = 'update.json'
+# 控えを確かめ直す間隔（ハートビートから呼ぶ・マスタを開くのはこの間隔に1回だけ）。
+REMEMBER_SEC = 600
 # 版に入れる物（アプリのフォルダの最上位の名前）。**データ（db・config）と開発の物（tests・docs・desktop）は入れない**。
 # 窓（update.rs）はこの並びを manifest から読むので、ここを変えれば入れ替える範囲も変わる。
 PAYLOAD = ('backend', 'static', 'templates', 'program', 'Start.vbs', 'README.md')
@@ -54,10 +64,63 @@ _VERSION_RE = re.compile(r"^APP_VERSION\s*=\s*['\"]([0-9][0-9A-Za-z.\-]*)['\"]",
 _SAFE_VERSION = re.compile(r'^[0-9][0-9A-Za-z.\-]{0,40}$')
 
 
+def _shared_value():
+    """共有の設定（パス設定マスタの`update_dir`）。無ければ空。"""
+    return str(path_config.value(CONFIG_KEY, '') or '').strip()
+
+
+def dir_choice():
+    """→ (置き場, 出どころ)。出どころは `local`（この PC の config/local.json）／`shared`（共有の設定）／`default`。"""
+    local = str((load_local_config() or {}).get(CONFIG_KEY) or '').strip()
+    if local:
+        return Path(os.path.expandvars(local)), 'local'
+    shared = _shared_value()
+    if shared:
+        return Path(os.path.expandvars(shared)), 'shared'
+    return Path(DEFAULT_DIR), 'default'
+
+
 def update_dir():
-    """置き場。`config/local.json`の`update_dir`（環境変数を展開）→ 既定。"""
-    given = str((load_local_config() or {}).get(CONFIG_KEY) or '').strip()
-    return Path(os.path.expandvars(given)) if given else Path(DEFAULT_DIR)
+    """置き場（決める順は`dir_choice()`・窓の`update.rs`と同じ）。"""
+    return dir_choice()[0]
+
+
+def mirror_path():
+    return APP_ROOT / 'config' / MIRROR
+
+
+def remember(path=None):
+    """共有の設定を窓の読む控え（`config/update.json`）へ写す。**変わったときだけ書く**（中身を比べる）。
+    窓は次の起動からこの値を読む。→ 書いたか。"""
+    target = Path(path) if path else mirror_path()
+    shared = _shared_value()
+    text = json.dumps({CONFIG_KEY: shared}, ensure_ascii=False)
+    try:
+        if target.exists() and target.read_text(encoding='utf-8') == text:
+            return False
+        if not shared and not target.exists():
+            return False                          # 覚えることが無い（窓は既定を読む）——空の控えを作らない
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(target.name + '.%d.tmp' % os.getpid())
+        tmp.write_text(text, encoding='utf-8')
+        os.replace(tmp, target)
+        return True
+    except OSError as _e:
+        quiet('置き場の控えを書けない（窓は前の控えか既定を読む）', _e)
+        return False
+
+
+_REMEMBERED_AT = [0.0]
+
+
+def remember_soon():
+    """ハートビートから呼ぶ。`REMEMBER_SEC`に1回だけ、裏で`remember()`する（開いたままの PC も
+    共有の設定の変更を拾い、次の起動から新しい置き場を見る）。"""
+    now = time.time()
+    if now - _REMEMBERED_AT[0] < REMEMBER_SEC:
+        return
+    _REMEMBERED_AT[0] = now
+    threading.Thread(target=remember, name='update-remember', daemon=True).start()
 
 
 def reachable(path=None, wait=REACH_SEC):
@@ -66,9 +129,13 @@ def reachable(path=None, wait=REACH_SEC):
     out = {}
 
     def look():
+        # **作らない**（見るだけ）。まだ無ければ、親に届くなら「届く」と答える——置き場は版を置くときに作る
+        # （`publish_zip()`）。見るだけで作ると、Windows 以外では UNC の字がただのフォルダ名になり、
+        # 動いている場所に字のとおりのフォルダが生まれる（網で踏んだ・§9.557）。
         try:
-            path.mkdir(parents=True, exist_ok=True)
-            out['ok'] = path.is_dir()
+            out['ok'] = path.is_dir() or path.parent.is_dir()
+            if not out['ok']:
+                out['why'] = '置き場もその親のフォルダも見つかりません'
         except OSError as e:
             out['why'] = str(e)
     t = threading.Thread(target=look, name='update-reach', daemon=True)
@@ -320,13 +387,15 @@ def set_release(version, uid='', base=None):
 
 def status():
     """画面へ渡す形（判定はここ・画面は読むだけ）。"""
-    base = update_dir()
+    base, source = dir_choice()
+    remember()
     ok, why = reachable(base)
     if ok:
         sweep_partial(base)
     rel = release(base) if ok else None
     vs = versions(base) if ok else []
-    return {'dir': str(base), 'reachable': ok, 'why': why, 'local': APP_VERSION,
+    return {'dir': str(base), 'dirSource': source, 'shared': _shared_value(), 'defaultDir': DEFAULT_DIR,
+            'reachable': ok, 'why': why, 'local': APP_VERSION,
             'release': rel, 'versions': vs,
             # この PC が次の起動でそろえるか（窓が同じ比べ方をする）
             'pending': bool(rel and rel['version'] != APP_VERSION),

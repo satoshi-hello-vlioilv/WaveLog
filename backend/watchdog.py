@@ -140,6 +140,13 @@ def install(app):
    notice=presence.version_notice(role)   # 開発者の端末は急かさない(§9.516)
   except Exception as _e:
    quiet('在席を書けない（ハートビートは受け付ける）',_e)
+  # 更新の置き場の控え（§9.557）。共有の設定を変えたら、開いたままの PC も10分以内に拾い、
+  # 次の起動から窓が新しい置き場を見る。10分に1回だけ裏で書く（ここは待たない）。
+  try:
+   from . import app_update  # 遅延: 寿命の口（watchdog）が起動のときにマスタの読み方を引き込まない
+   app_update.remember_soon()
+  except Exception as _e:
+   quiet('更新の置き場の控えを書けない（窓は前の控えか既定を読む）',_e)
   return jsonify(ok=True,version=notice)
 
  @app.post('/api/shutdown')

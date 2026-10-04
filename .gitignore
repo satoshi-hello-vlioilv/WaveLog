@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 *.sqlite3
 config/local.json
+# 更新の置き場の控え（共有の設定を窓が読めるよう Python が写す・§9.557）
+config/update.json
 config/local.json.bak
 config/local.json.tmp
 

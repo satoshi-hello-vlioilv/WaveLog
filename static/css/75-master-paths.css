@@ -184,6 +184,8 @@
   font-size:var(--fs-micro);font-weight:800;white-space:nowrap;
 }
 .pc-rail-restart[hidden]{display:none}
+/* 札が1つも出ていないときは帯ごと伏せる（§9.556 B8。中身の無い灰色の帯が図とタブのあいだに残っていた） */
+.pc-rail:not(:has(>:not([hidden]))){display:none}
 /* 飛んだ先が一瞬だけ分かるようにする（どこへ来たのかを推測させない）。 */
 .mm-set-group.is-jumped{box-shadow:0 0 0 2px var(--teal)}
 
@@ -390,6 +392,11 @@
    流れ（① 版を置く → ② 配る版を選ぶ → ③ 各PCがそろう）は左から右——作業の順と同じ（§CLAUDE 14）。
    状態は色だけで言わない（段の字・札の字が言う）。 */
 .au{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+/* 置き場の欄（§9.557）。道は長いので欄は横いっぱい、添え書きは欄の下に1行 */
+.au-dir{display:grid;gap:var(--space-1);margin-bottom:var(--space-3)}
+.au-dir-field input{width:100%}
+.au-dir-note{color:var(--ink-3);font-size:var(--fs-sm)}
+.au-from{color:var(--ink-3)}
 .au-where{margin:0;color:var(--ink-3);font-size:var(--fs-sm)}
 .au-where code{color:var(--ink-2)}
 .au-ok{margin-left:var(--space-2);color:var(--teal-dark);font-weight:700}

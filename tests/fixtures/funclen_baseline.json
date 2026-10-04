@@ -17,7 +17,7 @@
  ],
  "backend/repositories/master_repo.py": [
   1,
-  22
+  12
  ],
  "backend/repositories/operation_repo.py": [
   3,
@@ -67,10 +67,6 @@
   1,
   28
  ],
- "backend/watchdog.py": [
-  1,
-  26
- ],
  "backend/xlsx_io.py": [
   1,
   3
@@ -78,10 +74,6 @@
  "program/setup_app.py": [
   1,
   12
- ],
- "program/start_app.py": [
-  2,
-  69
  ],
  "static/js/bladeset/blade-3d.js": [
   4,
@@ -125,7 +117,7 @@
  ],
  "static/js/master/master-maint.js": [
   1,
-  11
+  9
  ],
  "static/js/master/master-opdata.js": [
   5,

@@ -849,6 +849,8 @@
     t.classList.toggle('is-on',on);
    });
    panels.forEach((p,j)=>{if(p.hidden!==(j!==i))p.hidden=j!==i});
+   /* 段が替わったことを器へ知らせる（段ごとに出し分ける物——保存の帯など——は器の持ち主が受ける） */
+   form.dispatchEvent(new CustomEvent('mm-tab',{detail:{panel:panels[i]}}));
   };
   const paint=()=>panels.forEach((p,i)=>{
    const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);

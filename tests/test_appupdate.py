@@ -11,6 +11,8 @@
   4. 配る版は**置いてある版だけ**・前の版を控える（戻すのは選び直すだけ）
   5. 窓（update.rs）と同じ置き場・鍵・版の読み方（2つの実装の字がずれない）
   6. 置く・配るのは開発者・メンテナンス者だけ
+  8. 置き場を変える（§9.557）: この PC の local.json → 共有の設定（パス設定マスタ）→ 既定 の順。
+     共有の設定は窓の読む控え（config/update.json）へ**変わったときだけ**写す。窓も同じ順・同じ控えの名を読む
   7. 置いている間の進み具合（§9.556）: 確かめる→写す n/N（量）→仕上げ を順に言う・同時に2本は置かない・
      途中で終わった書きかけは**1時間より古い物だけ**片付ける（別の PC がいま置いている物を消さない）
 """
@@ -126,7 +128,7 @@ RS = (ROOT / 'desktop' / 'src' / 'update.rs').read_text(encoding='utf-8')
 rs_dir = re.search(r'pub const DEFAULT_DIR: &str = r"([^"]+)";', RS)
 rec('既定の置き場は窓と同じ字（利用者の指定した共有）',
     rs_dir and rs_dir.group(1) == app_update.DEFAULT_DIR
-    and app_update.DEFAULT_DIR == r'\\nlmsrvngy03\工場内共有\検査データ\Records\アプリメンテナンス\WaveLog',
+    and app_update.DEFAULT_DIR == r'\\nlmsrvngy03\工場内共有\検査データ\Apps\WaveLog',
     rs_dir.group(1) if rs_dir else '窓に無い')
 rec('置き場を変える鍵は窓と同じ（config/local.json の update_dir）',
     f'pub const CONFIG_KEY: &str = "{app_update.CONFIG_KEY}";' in RS)
@@ -136,8 +138,10 @@ rec('版の読み方は窓と同じ（changelog_data.py の APP_VERSION）',
 rec('窓は目録の項目だけを入れ替え、db・config を項目として受けない',
     'man["payload"]' in RS and 'p == "db" || p == "config"' in RS)
 # 届かない置き場では待たせない（窓は3秒・こちらも同じ長さで打ち切る）
-r_ok, why = app_update.reachable(Path(tempfile.mkdtemp()) / 'x', wait=1)
-rec('届く置き場は届くと言う', r_ok, why)
+probe = Path(tempfile.mkdtemp()) / 'x'
+r_ok, why = app_update.reachable(probe, wait=1)
+rec('届く置き場は届くと言う（まだ無くても親に届けば届く）', r_ok, why)
+rec('届くかを見るだけで置き場を作らない（Windows 以外では UNC の字がフォルダ名になる・§9.557）', not probe.exists())
 
 # ---- 6) 権限 ----
 can = {r: role_can(r, 'app:release') for r in ROLES}
@@ -157,6 +161,8 @@ rec('写す段は1ファイルごとに n/N と量を言い、最後は全部',
     and copies[-1]['bytes'] == copies[-1]['totalBytes'] == out['bytes']
     and [c['done'] for c in copies] == list(range(1, len(copies) + 1)),
     str(copies[-1] if copies else None))
+orig_dir = app_update.update_dir
+app_update.update_dir = lambda: base7   # 本物の置き場（既定の UNC）へ書かない（§9.504・§9.557 で踏んだ）
 gate = threading.Event()
 slow = lambda **kw: gate.wait(5)   # noqa: E731  1本目を写す段で止めておく
 orig = app_update.publish_zip
@@ -171,6 +177,7 @@ second = app_update.run_publish(make_zip('9.5.0'), 'b.zip', 't')
 gate.set()
 th.join(10)
 app_update.publish_zip = orig
+app_update.update_dir = orig_dir
 rec('この PC で同時に2本は置かない（2本目は理由を返す）', second.get('busy') and 'いま別の版' in second.get('error', ''),
     str(second))
 rec('置き終わると進み具合は「終わった」と結果を言う',
@@ -186,6 +193,53 @@ gone = app_update.sweep_partial(base7)
 rec('途中で終わった書きかけは片付ける（古い物だけ・いま置いている物は残す）',
     gone == 1 and not old_tmp.exists() and new_tmp.exists(), str(sorted(p.name for p in vd.iterdir())))
 rec('書きかけは配る版の候補に数えない', all(not v['version'].startswith('.') for v in app_update.versions(base7)))
+
+# ---- 8) 置き場を変える（§9.557） ----
+orig_local, orig_shared = app_update.load_local_config, app_update._shared_value
+try:
+    app_update.load_local_config = lambda: {}
+    app_update._shared_value = lambda: ''
+    d0 = app_update.dir_choice()
+    app_update._shared_value = lambda: r'\\srv\Apps2\WaveLog'
+    d1 = app_update.dir_choice()
+    app_update.load_local_config = lambda: {'update_dir': r'D:\local\share'}
+    d2 = app_update.dir_choice()
+finally:
+    app_update.load_local_config, app_update._shared_value = orig_local, orig_shared
+rec('置き場の順は この PC の local.json → 共有の設定 → 既定',
+    d0 == (Path(app_update.DEFAULT_DIR), 'default') and d1[1] == 'shared' and str(d1[0]).endswith('Apps2\\WaveLog')
+    and d2 == (Path(r'D:\local\share'), 'local'), str([d0, d1, d2]))
+mirror = Path(tempfile.mkdtemp()) / 'config' / 'update.json'
+try:
+    app_update._shared_value = lambda: r'\\srv\Apps2\WaveLog'
+    w1 = app_update.remember(mirror)
+    w2 = app_update.remember(mirror)
+    app_update._shared_value = lambda: ''
+    w3 = app_update.remember(mirror)
+finally:
+    app_update._shared_value = orig_shared
+rec('共有の設定を窓の控えへ写す（変わったときだけ書く・空に戻せば空）',
+    w1 and not w2 and w3 and json.loads(mirror.read_text(encoding='utf-8')) == {'update_dir': ''}, str([w1, w2, w3]))
+rec('窓は同じ控えの名・同じ順で読む（local.json → update.json → 既定）',
+    f'pub const MIRROR: &str = "{app_update.MIRROR}";' in RS and '["local.json", MIRROR]' in RS)
+# db_access を読み込むと共有マスタの写しを作り直す（§9.497）ので、ここ（1段目）は字で確かめる
+DBA = (ROOT / 'backend' / 'db_access.py').read_text(encoding='utf-8')
+PCR = (ROOT / 'backend' / 'routes' / 'path_config.py').read_text(encoding='utf-8')
+live = DBA[DBA.index('PATH_CONFIG_LIVE_KEYS='):DBA.index('PATH_CONFIG_KEYS=PATH_CONFIG_STATIC_KEYS')]
+text = PCR[PCR.index('_PATH_CONFIG_TEXT_FIELDS='):]
+text = text[:text.index('\n\n')]
+rec('置き場は共通設定の保存に載る（パス設定マスタの鍵・受け側の鍵）',
+    f"'{app_update.CONFIG_KEY}'" in live and f"'{app_update.CONFIG_KEY}'" in text)
+
+none = Path(tempfile.mkdtemp()) / 'config' / 'update.json'
+try:
+    app_update._shared_value = lambda: ''
+    w0 = app_update.remember(none)
+finally:
+    app_update._shared_value = orig_shared
+rec('覚えることが無ければ控えを作らない（窓は既定を読む）', not w0 and not none.exists())
+stray = [str(d) for base in (ROOT, ROOT / 'tests') for d in base.iterdir() if d.name.startswith('\\\\')]
+rec('この網を回しても、UNC の字のフォルダが作業フォルダに生まれない', not stray, str(stray))
 
 ok = sum(1 for _, x in R if x)
 print(f'\n== {ok}/{len(R)} PASS ==')

@@ -190,6 +190,7 @@
 .mm-tag-suggest-item:hover,.mm-tag-suggest-item:focus-visible{outline:0;background:#eafafa;color:#0a6570}
 .mm-tag-suggest-empty{padding:7px 10px;color:#8a9aa0;font-size:var(--fs-sm)}
 .mm-form-tail{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.mm-form-tail[hidden]{display:none}
 .mm-btn-primary{border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .mm-btn-primary:hover{background:var(--teal-dark)}
 .mm-btn-primary.sm{}
