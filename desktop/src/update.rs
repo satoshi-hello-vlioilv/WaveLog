@@ -262,7 +262,7 @@ mod tests {
         d
     }
 
-    /// 版のフォルダと目録を作る（Python の build_manifest と同じ形）。
+    /// 版のフォルダと目録を作る（Python の `_manifest` と同じ形）。
     fn version(share: &Path, v: &str, body: &str) {
         let root = share.join("versions").join(v);
         let files = [

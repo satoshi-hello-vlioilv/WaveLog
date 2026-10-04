@@ -11,13 +11,18 @@
   4. 配る版は**置いてある版だけ**・前の版を控える（戻すのは選び直すだけ）
   5. 窓（update.rs）と同じ置き場・鍵・版の読み方（2つの実装の字がずれない）
   6. 置く・配るのは開発者・メンテナンス者だけ
+  7. 置いている間の進み具合（§9.556）: 確かめる→写す n/N（量）→仕上げ を順に言う・同時に2本は置かない・
+     途中で終わった書きかけは**1時間より古い物だけ**片付ける（別の PC がいま置いている物を消さない）
 """
 import hashlib
 import io
 import json
+import os
 import re
 import sys
 import tempfile
+import threading
+import time
 import zipfile
 from pathlib import Path
 
@@ -138,6 +143,49 @@ rec('届く置き場は届くと言う', r_ok, why)
 can = {r: role_can(r, 'app:release') for r in ROLES}
 rec('置く・配るのは開発者・メンテナンス者だけ',
     can[ROLE_DEVELOPER] and can[ROLE_MAINTAINER] and sum(can.values()) == 2, str(can))
+
+# ---- 7) 置いている間の進み具合・同時に2本・書きかけの片付け（§9.556） ----
+base7 = Path(tempfile.mkdtemp()) / 'share'
+ticks = []
+out = app_update.publish_zip(make_zip('9.3.0'), 'p.zip', 'tester', base7, tick=lambda **kw: ticks.append(kw))
+stages = [t.get('stage') for t in ticks]
+order = [s0 for i, s0 in enumerate(stages) if i == 0 or stages[i - 1] != s0]
+rec('進み具合は 確かめる→写す→仕上げ の順に言う', out.get('ok') and order == ['check', 'copy', 'finish'], str(order))
+copies = [t for t in ticks if t.get('stage') == 'copy' and t.get('done')]
+rec('写す段は1ファイルごとに n/N と量を言い、最後は全部',
+    copies and copies[-1]['done'] == copies[-1]['total'] == out['files']
+    and copies[-1]['bytes'] == copies[-1]['totalBytes'] == out['bytes']
+    and [c['done'] for c in copies] == list(range(1, len(copies) + 1)),
+    str(copies[-1] if copies else None))
+gate = threading.Event()
+slow = lambda **kw: gate.wait(5)   # noqa: E731  1本目を写す段で止めておく
+orig = app_update.publish_zip
+app_update.publish_zip = lambda *a, **k: orig(*a, **dict(k, tick=slow))
+first = {}
+th = threading.Thread(target=lambda: first.update(app_update.run_publish(make_zip('9.4.0'), 'a.zip', 't')))
+th.start()
+deadline = time.time() + 5
+while app_update.progress().get('state') != 'running' and time.time() < deadline:
+    time.sleep(0.01)
+second = app_update.run_publish(make_zip('9.5.0'), 'b.zip', 't')
+gate.set()
+th.join(10)
+app_update.publish_zip = orig
+rec('この PC で同時に2本は置かない（2本目は理由を返す）', second.get('busy') and 'いま別の版' in second.get('error', ''),
+    str(second))
+rec('置き終わると進み具合は「終わった」と結果を言う',
+    app_update.progress().get('state') in ('done', 'failed') and 'elapsed' in app_update.progress(),
+    str({k: app_update.progress().get(k) for k in ('state', 'elapsed')}))
+vd = base7 / 'versions'
+old_tmp, new_tmp = vd / '.8.0.0.111.tmp', vd / '.8.0.1.222.tmp'
+for d in (old_tmp, new_tmp):
+    (d / 'backend').mkdir(parents=True)
+t0 = time.time() - 2 * app_update.STALE_SEC
+os.utime(old_tmp, (t0, t0))
+gone = app_update.sweep_partial(base7)
+rec('途中で終わった書きかけは片付ける（古い物だけ・いま置いている物は残す）',
+    gone == 1 and not old_tmp.exists() and new_tmp.exists(), str(sorted(p.name for p in vd.iterdir())))
+rec('書きかけは配る版の候補に数えない', all(not v['version'].startswith('.') for v in app_update.versions(base7)))
 
 ok = sum(1 for _, x in R if x)
 print(f'\n== {ok}/{len(R)} PASS ==')

@@ -404,8 +404,14 @@ def app_update_publish():
  data=request.get_data(cache=False)
  if not data:
   return jsonify(error='ZIP ファイルが届いていません。'),400
- out=app_update.publish_zip(data,request.args.get('name',''),current_login_id())
- return jsonify(**out),(200 if out.get('ok') else 400)
+ out=app_update.run_publish(data,request.args.get('name',''),current_login_id())
+ return jsonify(**out),(200 if out.get('ok') else 409 if out.get('busy') else 400)
+
+@bp.get('/api/app/update/progress')
+@api_guard('進み具合を読めません')
+def app_update_progress():
+ """いま置いている版の進み具合（画面は置き終わるまでこれを問い合わせて描く・§9.556）。"""
+ return jsonify(**app_update.progress())
 
 @bp.post('/api/app/update/release')
 @api_guard('配る版を決められません')

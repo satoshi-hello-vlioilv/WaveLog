@@ -4,8 +4,9 @@ app.pyから起動制御を切り離したもの。業務機能の変更が起�
 影響しないようにするため、プロセスの寿命に関わる処理はここへ集める。
 
 **終わり方は`_exit()`の1箇所**（片付け＝書込役・編集セッション・在席を通ってから）。
-入口は3つ: 窓を閉じる（デスクトップ版の窓口`program/sidecar.py`が標準入力の閉じで呼ぶ）、
-画面の「アプリを終了」（`/api/app/quit`）、明示停止（`/api/shutdown`・開発と網の入口を止める）。
+入口は2つ: 窓を閉じる（デスクトップ版の窓口`program/sidecar.py`が標準入力の閉じで呼ぶ）と、
+明示停止（`/api/shutdown`・開発と網の入口を止める）。画面の「アプリを終了」（`/api/app/quit`・§9.301 ②）は
+§9.556 で外した——×で窓を閉じれば同じ片付けを通るので、口を2つ持たない（利用者の指示）。
 
 以前のブラウザ版は「開いているタブが0件になったら終わる」見張り（タブごとのハートビート・
 閉じた通知・猶予8秒／90秒・§9.98）を持っていた。§9.548 でブラウザ版の起動の道を外したので、
@@ -146,42 +147,6 @@ def install(app):
   """明示停止（開発と網の入口を止める・§9.548）。応答を返してから終了したいので少し遅らせる。
      片付け（書込役・編集セッション・在席）は`_exit()`が持つ（§9.301 ②）。"""
   threading.Timer(0.3,lambda:_exit('明示停止の要求を受け付けた(/api/shutdown)')).start()
-  return jsonify(ok=True,stopping=True)
-
- @app.get('/api/app/quit-check')
- def app_quit_check():
-  """終了ボタンを押す前に**何が起きるか**を答える（§9.301 ②）。
-
-  **判定はここ1箇所**（§9.163）——画面はこの答えをそのまま出す。
-  未保存の測定は**画面しか知らない**（端末のブラウザの中にある・§9.202）ので、
-  ここでは数えない。画面の側が自分で見て添える。"""
-  owner=False;sessions=[]
-  try:
-   from . import schedule_owner
-   owner=schedule_owner.is_owner()
-  except Exception as _e:quiet('書込役かどうかを確かめられない（その一言を出さない）',_e)
-  try:
-   from . import schedule_sync
-   from .access_mode import current_login_id,current_pc_name
-   st=schedule_sync.sessions_all(current_login_id(),current_pc_name())
-   sessions=[x['equipment'] for x in (st.get('sessions') or []) if x.get('mine')]
-  except Exception as _e:quiet('編集権の状況を引けない（その一言を出さない）',_e)
-  return jsonify(ok=True,isOwner=owner,sessions=sessions)
-
- @app.post('/api/app/quit')
- def app_quit():
-  """画面の「アプリを終了」（§9.301 ②、利用者の指示「安全なアプリの終了
-  ボタンも欲しいです」）。
-
-  `/api/shutdown`と**同じ道**（`_exit()`）を通す——片付けの手順を2つ持つと、
-  片方だけ直した状態が作れる。違うのは「誰が押したか」を記録へ残すことだけ。
-  """
-  who=''
-  try:
-   from .access_mode import current_login_id,current_pc_name
-   who=f'{current_login_id() or "?"}@{current_pc_name() or "?"}'
-  except Exception as _e:quiet('誰が終了したかを記録できない（終了は続ける）',_e)
-  threading.Timer(0.3,lambda:_exit(f'画面の終了ボタン({who})')).start()
   return jsonify(ok=True,stopping=True)
 
  return app

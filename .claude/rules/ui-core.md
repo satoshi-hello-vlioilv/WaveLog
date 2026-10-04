@@ -1,4 +1,4 @@
-# 画面の土台（46件）
+# 画面の土台（48件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -13,6 +13,8 @@
 | ファイルの保存は`WL.base.saveBlob()`／`saveFrom()`の1箇所。添付へページを移さない（断られると画面が JSON に置き換わる） | `test_saveio.js` | [§9.551](../../docs/decisions/9.551.md) |
 | 乗せると浮く面は`WL.popMenu.peek()`の1箇所（鍵盤の焦点だけで開く・乗せた物の下か上。横へ出さない） | `test_equse.js`・`test_partboards.js` | [§9.542](../../docs/decisions/9.542.md) |
 | 入力欄の候補の器は`WL.popMenu.suggest()`の1箇所。判定表のセルは**↑↓で選ぶまで選ばない**（`pick:false`） | `test_bladepick.js`・`test_formula.js` | [§9.529](../../docs/decisions/9.529.md) |
+| ×で失うものは画面が`WL.closeGuard.hold()`で名乗る（土台は中身を知らない） | `test_appquit.js` | [§9.556](../../docs/decisions/9.556.md) |
+| 進み具合の帯は`WL.progress`の1箇所（RNE抽出・版を置く）。割合が分からない段は棒を往復させる | `test_appupdateui.js`・`test_density.js` | [§9.556](../../docs/decisions/9.556.md) |
 | 「画面を印刷」の中身と説明は画面が名乗る（`registerView({print, printHint})`）。名乗らない画面はブラウザの印刷 | `test_screenprint.js` | [§9.525](../../docs/decisions/9.525.md) |
 | 骨組みのHTMLは`index.html`の`<template id="tpl-名前">`、複製は`WL.template()`の1箇所。Jinjaの構文の字を書かない | `test_loadorder.py` | [§9.522](../../docs/decisions/9.522.md) |
 | 状態から組む所は差し込み口`<i data-tpl-slot="名前">`で、JSが名前で渡す。渡し忘れ・余りは名前を言って止まる | `test_loadorder.py` | [§9.522](../../docs/decisions/9.522.md) |
@@ -35,7 +37,7 @@
 | 選ぶ面が2つ以上あるとき、**印を付ける役も1箇所**（`WL.loader.mark()`）。描いた直後に呼ぶ | `test_uisize.js` | [§9.436](../../docs/decisions/9.436.md) |
 | 「この端末の見え方」の入口は「表示」バッジの1つ。節を足す（入口は増やさない） | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
 | 第三者のCSS/JSは**同梱**し、許諾は`static/vendor/<名前>/LICENSE`へ置く | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
-| 終了したらタブも閉じる。断られたときだけ案内を出す（「閉じました」と言わない） | `test_appquit.js` | [§9.409](../../docs/decisions/9.409.md) |
+| 【§9.556で撤回】終了したらタブも閉じる。断られたときだけ案内を出す | `test_appquit.js` | [§9.409](../../docs/decisions/9.409.md) |
 | 拡張は登録表へ: あとに足す`on`／前で断る`gate`／丸ごと持つ`own`（`WL.measureHooks`・`WL.listHooks`）。被せも全置換も作らない | `test_patchlint.py`・`test_tolscale.js` | [§9.352](../../docs/decisions/9.352.md) |
 | 押す形をやめたら`cursor:pointer`も消す。押しても何も起きない物に指のカーソルを出さない | — | [§9.385](../../docs/decisions/9.385.md) |
 | マウスを乗せたら**押せることを動きで**言い（1px持ち上げ）、**仲間は群ごと薄く光らせる**（9%）。濃くすると選択中と誤読される | `test_msteps.js` | [§9.396](../../docs/decisions/9.396.md) |

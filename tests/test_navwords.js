@@ -41,12 +41,6 @@ run('test_navwords: 左メニューの言葉と説明（§9.447）', async ({pag
       over:sp.scrollWidth-sp.clientWidth});
    });
   });
-  document.querySelectorAll('.nav-foot .nav-item').forEach(b=>{
-   const sp=b.querySelector('span')||b;
-   out.push({group:'(足元)',label:(sp.textContent||'').trim(),
-     title:(b.getAttribute('title')||'').trim(),fromMaster:false,
-     over:sp.scrollWidth-sp.clientWidth});
-  });
   return out;
  });
  rec('行き先を読めた（10件以上）',items.length>=10,items.length+'件');

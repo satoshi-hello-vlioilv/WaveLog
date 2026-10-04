@@ -279,8 +279,10 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  await page.click('.layout>aside .brand .ver-behind');
  await page.waitForSelector('#changelogModal:not([hidden])');
  const sub=await page.evaluate(()=>{const e=document.getElementById('changelogSub');return {t:e.textContent,on:e.classList.contains('is-behind')}});
- rec('⑧ 押すと更新履歴の窓が「最新版・この端末の版・すること（update.bat）」を言う',
-   sub.on&&sub.t.includes('VER99.0.0')&&sub.t.includes('VER'+mine)&&/update\.bat/.test(sub.t)&&/配布の担当者/.test(sub.t),sub.t);
+ /* すること は「×で閉じて開き直す（起動のときに配る版へそろう）」（§9.556。§9.555 で update.bat は要らなくなった） */
+ rec('⑧ 押すと更新履歴の窓が「最新版・この端末の版・すること（開き直す）」を言う',
+   sub.on&&sub.t.includes('VER99.0.0')&&sub.t.includes('VER'+mine)&&/開き直す/.test(sub.t)&&!/update\.bat/.test(sub.t)
+   &&/配布の担当者/.test(sub.t),sub.t);
  await page.click('#closeChangelog');
  const hideWhenRestart=await page.evaluate(()=>{
   const box=document.getElementById('restartNeeded');const was=box.hidden;

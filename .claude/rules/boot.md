@@ -1,4 +1,4 @@
-# 起動・停止・監視（59件）
+# 起動・停止・監視（61件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 終わる入口は×だけ。閉じる前に聞くのは`close.rs`の`Gate`（名乗った画面だけ・2秒で閉じる） | `test_appquit.js` | [§9.556](../../docs/decisions/9.556.md) |
+| 版を置く進み具合は`app_update.progress()`の1箇所。同時に1本・書きかけは1時間より古い物だけ片付ける | `test_appupdate.py`・`test_appupdateui.js` | [§9.556](../../docs/decisions/9.556.md) |
 | 更新の置き場と配る版は`app_update.py`、各PCをそろえるのは窓の`update::check_and_apply()`の1箇所 | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |
 | そろえるのは Python を起こす前。届かなければ3秒で打ち切りいまの版で起動。sha256 を全部確かめ、途中で失敗したら全部戻す | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |
 | 版に入れるのは`PAYLOAD`だけ。`db`・`config`は版に入れず、入れ替えでも触らない。同じ版の置き直しは断る | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |

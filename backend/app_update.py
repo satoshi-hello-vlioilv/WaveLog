@@ -47,6 +47,8 @@ RELEASE = 'release.json'
 VERSIONS = 'versions'
 # 共有に届くかを確かめる長さ。届かない UNC は OS が数十秒待たせることがある（画面を止めない）。
 REACH_SEC = 3.0
+# 置いている最中に終わった書きかけを片付けるまでの長さ（別の PC がいま置いている物を消さない）。
+STALE_SEC = 3600
 _VERSION_RE = re.compile(r"^APP_VERSION\s*=\s*['\"]([0-9][0-9A-Za-z.\-]*)['\"]", re.M)
 # 窓（update.rs）と同じ読み方: 版の字は数字で始まり、英数字・点・ハイフンだけ。
 _SAFE_VERSION = re.compile(r'^[0-9][0-9A-Za-z.\-]{0,40}$')
@@ -85,14 +87,6 @@ def version_in(text):
     return m.group(1) if m else ''
 
 
-def _sha256(path):
-    h = hashlib.sha256()
-    with open(path, 'rb') as f:
-        for block in iter(lambda: f.read(1 << 20), b''):
-            h.update(block)
-    return h.hexdigest()
-
-
 def _zip_root(names):
     """ZIP の中でアプリのフォルダにあたる頭（GitHub の ZIP は`WaveLog-main/`が付く）。無ければ None。"""
     for n in names:
@@ -109,68 +103,163 @@ def _payload_name(rel):
     return parts[0] in PAYLOAD and not any(p == '__pycache__' for p in parts)
 
 
-def build_manifest(root, version, extra=None):
-    """版のフォルダの全ファイルの道（`/`区切り）・大きさ・sha256。窓はこれで写した物を確かめる。"""
-    root = Path(root)
-    files = []
-    for p in sorted(root.rglob('*')):
-        if p.is_file() and p.name != MANIFEST:
-            files.append({'path': p.relative_to(root).as_posix(), 'size': p.stat().st_size, 'sha256': _sha256(p)})
+def _manifest(version, files, extra=None):
+    """目録の形（窓の`update.rs`が読む）。`files`は道（`/`区切り）・大きさ・sha256。"""
+    files = sorted(files, key=lambda f: f['path'])
     out = {'version': version, 'payload': list(PAYLOAD), 'files': files,
            'bytes': sum(f['size'] for f in files)}
     out.update(extra or {})
     return out
 
 
-def publish_zip(data, source='', uid='', base=None):
-    """ZIP（GitHub の main を落とした物）を検めて、`versions/<版>/`として置く。
+def _quiet_tick(**_kw):
+    """進み具合を受け取らない呼び手の既定。"""
 
-    断る: ZIP でない・アプリの物でない・欠かせない物が無い・**同じ版がもう在る**（版を上げずに置き直すと、
-    もうその版を写した PC と中身が食い違う）。置くときは途中のフォルダへ書いてから名前を変える（半端な版を残さない）。"""
-    base = Path(base or update_dir())
+
+def sweep_partial(base=None, older=STALE_SEC):
+    """置いている最中に終わった（窓を閉じた・落ちた）書きかけ（`versions/.<版>.<pid>.tmp`）を片付ける。
+
+    **`older`秒より古い物だけ**——別の PC がいま置いている最中の物を消さない。書きかけは点で始まるので
+    `versions()`はもともと数えない（配られることは無い）。片付けは置き場を散らかさないため。"""
+    root = Path(base or update_dir()) / VERSIONS
+    gone = 0
+    try:
+        dirs = [d for d in root.iterdir() if d.is_dir() and d.name.startswith('.') and d.name.endswith('.tmp')]
+    except OSError as _e:
+        quiet('置き場の書きかけを数えられない（片付けない）', _e)
+        return 0
+    for d in dirs:
+        try:
+            if time.time() - d.stat().st_mtime < older:
+                continue
+            shutil.rmtree(d)
+            gone += 1
+        except OSError as _e:
+            quiet('書きかけを片付けられない（次に開いたときにもう一度）', _e)
+    return gone
+
+
+def _open_zip(data):
+    """ZIP を検める。→ (ZipFile, 頭を外した道→ZIPの名前, 版, None) か (None, None, None, 断る理由)。"""
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
-        return {'ok': False, 'error': 'ZIP ファイルとして読めません（GitHub の「Download ZIP」で落とした物を選んでください）。'}
+        return None, None, None, 'ZIP ファイルとして読めません（GitHub の「Download ZIP」で落とした物を選んでください）。'
+    names = zf.namelist()
+    head = _zip_root(names)
+    if head is None:
+        zf.close()
+        return None, None, None, 'アプリの ZIP ではありません（backend/changelog_data.py が入っていません）。'
+    rel = {n[len(head):]: n for n in names if n.startswith(head) and not n.endswith('/')}
+    lack = [r for r in REQUIRED if r not in rel]
+    version = version_in(zf.read(rel['backend/changelog_data.py']).decode('utf-8', 'replace')) if not lack else ''
+    why = ('欠かせない物が入っていません: ' + '・'.join(lack) if lack
+           else '' if _SAFE_VERSION.match(version or '') else '版を読めません（APP_VERSION）: %r' % version)
+    if why:
+        zf.close()
+        return None, None, None, why
+    return zf, {r: n for r, n in rel.items() if _payload_name(r)}, version, None
+
+
+def _copy_payload(zf, rel, tmp, tick):
+    """版に入れる物を`tmp`へ写す。**写しながら sha256 を数える**（置き場から読み直さない——
+    共有は遅いので、読み直すと同じ時間がもう1回かかる）。→ 目録の`files`。"""
+    total = len(rel)
+    total_bytes = sum(zf.getinfo(n).file_size for n in rel.values())
+    files, done_bytes = [], 0
+    for i, (r, n) in enumerate(sorted(rel.items()), 1):
+        target = tmp / r
+        target.parent.mkdir(parents=True, exist_ok=True)
+        h, size = hashlib.sha256(), 0
+        with zf.open(n) as src, open(target, 'wb') as out:
+            for chunk in iter(lambda: src.read(1 << 20), b''):
+                h.update(chunk)
+                out.write(chunk)
+                size += len(chunk)
+        files.append({'path': r, 'size': size, 'sha256': h.hexdigest()})
+        done_bytes += size
+        tick(stage='copy', done=i, total=total, bytes=done_bytes, totalBytes=total_bytes)
+    return files
+
+
+def _build_commit(tmp):
+    """exe を作ったコミット（`WaveLog.build.json`）。無ければ空。"""
+    try:
+        return str(json.loads((tmp / 'program' / 'WaveLog.build.json').read_text(encoding='utf-8')).get('commit') or '')
+    except (OSError, ValueError) as _e:
+        quiet('ZIP に exe の名乗り（WaveLog.build.json）が無い（コミットを残さない）', _e)
+        return ''
+
+
+def publish_zip(data, source='', uid='', base=None, tick=_quiet_tick):
+    """ZIP（GitHub の main を落とした物）を検めて、`versions/<版>/`として置く。
+
+    断る: ZIP でない・アプリの物でない・欠かせない物が無い・**同じ版がもう在る**（版を上げずに置き直すと、
+    もうその版を写した PC と中身が食い違う）。置くときは途中のフォルダへ書いてから名前を変える（半端な版を残さない）。
+    `tick(stage=…, …)`へ進み具合を渡す（`check`→`copy`（done/total・bytes/totalBytes）→`finish`）。"""
+    base = Path(base or update_dir())
+    tick(stage='check')
+    sweep_partial(base)
+    zf, rel, version, why = _open_zip(data)
+    if why:
+        return {'ok': False, 'error': why}
     with zf:
-        names = zf.namelist()
-        head = _zip_root(names)
-        if head is None:
-            return {'ok': False, 'error': 'アプリの ZIP ではありません（backend/changelog_data.py が入っていません）。'}
-        rel = {n[len(head):]: n for n in names if n.startswith(head) and not n.endswith('/')}
-        lack = [r for r in REQUIRED if r not in rel]
-        if lack:
-            return {'ok': False, 'error': '欠かせない物が入っていません: ' + '・'.join(lack)}
-        version = version_in(zf.read(rel['backend/changelog_data.py']).decode('utf-8', 'replace'))
-        if not _SAFE_VERSION.match(version or ''):
-            return {'ok': False, 'error': '版を読めません（APP_VERSION）: %r' % version}
         dest = base / VERSIONS / version
         if dest.exists():
             return {'ok': False, 'error': '版 %s はもう置いてあります。版を上げた ZIP を選んでください。' % version,
                     'version': version}
+        tick(stage='copy', version=version, done=0, total=len(rel), bytes=0,
+             totalBytes=sum(zf.getinfo(n).file_size for n in rel.values()))
         tmp = base / VERSIONS / ('.%s.%d.tmp' % (version, os.getpid()))
         try:
             shutil.rmtree(tmp, ignore_errors=True)
-            for r, n in rel.items():
-                if not _payload_name(r):
-                    continue
-                target = tmp / r
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(n) as src, open(target, 'wb') as out:
-                    shutil.copyfileobj(src, out)
-            build = {}
-            try:
-                build = json.loads((tmp / 'program' / 'WaveLog.build.json').read_text(encoding='utf-8'))
-            except (OSError, ValueError) as _e:
-                quiet('ZIP に exe の名乗り（WaveLog.build.json）が無い（コミットを残さない）', _e)
-            man = build_manifest(tmp, version, {'placedAt': time.strftime('%Y-%m-%d %H:%M'), 'placedBy': uid or '',
-                                                'source': source or '', 'commit': str(build.get('commit') or '')})
+            files = _copy_payload(zf, rel, tmp, tick)
+            tick(stage='finish')
+            man = _manifest(version, files, {'placedAt': time.strftime('%Y-%m-%d %H:%M'), 'placedBy': uid or '',
+                                             'source': source or '', 'commit': _build_commit(tmp)})
             (tmp / MANIFEST).write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding='utf-8')
             os.replace(tmp, dest)
         except OSError as e:
             shutil.rmtree(tmp, ignore_errors=True)
             return {'ok': False, 'error': '置き場へ書けません（%s）: %s' % (base, e)}
     return {'ok': True, 'version': version, 'files': len(man['files']), 'bytes': man['bytes']}
+
+
+# ---- いま置いている版の進み具合（この PC の1本だけ・画面が問い合わせて描く） ----
+_RUN_LOCK = threading.Lock()
+_STATE_LOCK = threading.Lock()
+_PROGRESS = {'state': 'idle'}
+
+
+def _set_progress(**kw):
+    with _STATE_LOCK:
+        _PROGRESS.update(kw)
+
+
+def progress():
+    """いま置いている版の進み具合（`state`: idle／running／done／failed）。経過秒も添える。"""
+    with _STATE_LOCK:
+        out = dict(_PROGRESS)
+    if out.get('startedAt'):
+        out['elapsed'] = round((out.get('endedAt') or time.time()) - out['startedAt'], 1)
+    return out
+
+
+def run_publish(data, source='', uid=''):
+    """画面の「ZIP から版を置く」の1本。**この PC で同時に置けるのは1本だけ**（2本目は理由を返す）。
+    進み具合は`progress()`が答える（画面は置き終わるまで問い合わせて描く）。"""
+    if not _RUN_LOCK.acquire(blocking=False):
+        return {'ok': False, 'busy': True, 'error': 'いま別の版を置いています。置き終わってから選んでください。'}
+    try:
+        with _STATE_LOCK:
+            _PROGRESS.clear()
+            _PROGRESS.update(state='running', stage='check', source=source or '', startedAt=time.time())
+        out = publish_zip(data, source, uid, tick=_set_progress)
+        _set_progress(state='done' if out.get('ok') else 'failed', endedAt=time.time(),
+                      result=out, error=out.get('error', ''))
+        return out
+    finally:
+        _RUN_LOCK.release()
 
 
 def _read_json(path):
@@ -233,10 +322,12 @@ def status():
     """画面へ渡す形（判定はここ・画面は読むだけ）。"""
     base = update_dir()
     ok, why = reachable(base)
+    if ok:
+        sweep_partial(base)
     rel = release(base) if ok else None
     vs = versions(base) if ok else []
     return {'dir': str(base), 'reachable': ok, 'why': why, 'local': APP_VERSION,
             'release': rel, 'versions': vs,
             # この PC が次の起動でそろえるか（窓が同じ比べ方をする）
             'pending': bool(rel and rel['version'] != APP_VERSION),
-            'payload': list(PAYLOAD)}
+            'payload': list(PAYLOAD), 'publishing': progress().get('state') == 'running'}

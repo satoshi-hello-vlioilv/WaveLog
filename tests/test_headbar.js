@@ -311,31 +311,24 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
  }
 
  /* マスタ管理は移設(§9.100)の当事者なので、個別に確かめる。
-    絞り込み・再読込がヘッダーにあり、パネルには見出しだけが残ること。 */
+    再読込がヘッダーにあり、パネルには見出しだけが残ること。絞り込みは§9.556で外した
+    （利用者の指示「最上部の絞り込みの検索バーもあまり意味がないので基本的に削除」）。 */
  await page.click('#openMasterMaint');
  await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},'mmHead',{ms:10000,what:'マスタ管理の操作列がヘッダーへ載る'});
  await idle();
  const mm=await page.evaluate(()=>{
   const inBar=id=>!!document.querySelector('#headerViewBar #'+id);
-  const icon=document.querySelector('#mmHead .mm-search-icon');
-  const inp=document.getElementById('masterMaintSearch');
-  const cs=inp?getComputedStyle(inp):null;
   return {
-   search:inBar('masterMaintSearch'),reload:inBar('reloadMasterMaint'),user:inBar('masterUserId'),
+   search:!!document.getElementById('masterMaintSearch'),reload:inBar('reloadMasterMaint'),user:inBar('masterUserId'),
    toolbarCtls:document.querySelectorAll('.mm-toolbar input,.mm-toolbar button,.mm-toolbar select').length,
    title:!!document.querySelector('.mm-toolbar #masterMaintTitle'),
-   // 虫めがねの右端より内側から文字が始まること
-   iconRight:icon?Math.round(icon.getBoundingClientRect().right):0,
-   textStart:inp?Math.round(inp.getBoundingClientRect().left+parseFloat(cs.paddingLeft)+parseFloat(cs.borderLeftWidth)):0,
   };
  });
- rec('マスタ管理: 絞り込みがヘッダーにある',mm.search);
+ rec('マスタ管理: 絞り込みの欄は無い（§9.556）',!mm.search);
  rec('マスタ管理: 再読込がヘッダーにある',mm.reload);
  rec('マスタ管理: 更新者IDもヘッダーのまま',mm.user);
  rec('マスタ管理: パネルに残るのは見出しだけ(操作は0件)',mm.toolbarCtls===0&&mm.title,
      '操作 '+mm.toolbarCtls+'件 / 見出し '+mm.title);
- rec('マスタ管理: 虫めがねが文字に重ならない',mm.textStart>mm.iconRight,
-     `アイコン右端 ${mm.iconRight} < 文字開始 ${mm.textStart}`);
 
  /* 相乗りは**入るときだけ**（§9.509）。窓を狭めたら2行目へ移り、戻したら1行目へ戻る——載せたまま
     画面名を札の下へ潰さない（§9.508 のあと1366pxで「マス」しか見えなかった）。 */
@@ -344,8 +337,9 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
   return {w:innerWidth,inline:vb.classList.contains('is-inline'),ctxOver:ctx.scrollWidth>ctx.clientWidth+1};
  });
  const wide=await mmFit();
- /* 900px＝どの状態でも1行目に入りきらない幅（この網の状態では1280pxでも入る——札2枚・使用設備「LS4」）。 */
- await page.setViewportSize({width:900,height:1000});await paint();
+ /* 700px＝どの状態でも1行目に入りきらない幅（この網の状態では1280pxでも入る——札2枚・使用設備「LS4」）。
+    §9.556で絞り込みの欄（約300px）を外したので、以前の900pxでは入るようになった。 */
+ await page.setViewportSize({width:700,height:1000});await paint();
  const narrowMm=await mmFit();
  await page.setViewportSize({width:wide.w,height:1000});await paint();
  const wideAgain=await mmFit();

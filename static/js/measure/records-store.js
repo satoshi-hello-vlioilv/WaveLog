@@ -1727,7 +1727,6 @@ WL.recordColumns={open:openRecordColumnPanel,close:closeRecordColumnPanel,bind:b
 
 /* ---- 使用設備の登録・設備マスタ ---- */
 let pendingMeasurementRow=null;
-function updateRegisteredEquipmentBadge(){const badge=$('#registeredEquipmentBadge'),equipment=currentConfiguredEquipment();if(!badge)return;const label=badge.querySelector('.equip-badge-text')||badge;label.textContent=equipment?`使用設備: ${equipment}`:'使用設備: 未登録';badge.classList.toggle('unregistered',!equipment);badge.title=equipment?'クリックして使用設備を変更できます':'測定開始前に使用設備の登録が必要です';badge.onclick=openAppSettings}
 /* ---------- 使用設備の設定（§9.257 ②、利用者の指示） ----------
    「アプリ使用設備の設定のモーダルが使いづらいのでわかりやすく使いやすく
     再構築してください。」
@@ -1905,13 +1904,11 @@ function bindAppSettingsControls(){
     するので一度も動かず、消しても画面は1つも変わらない）。`#openAppSettings`
     という入口も、そのボタンが画面から無くなったあとも配線だけ残っていた。 */
  ensureEquipmentSettingsModal();
- updateRegisteredEquipmentBadge();
 }
 function updateEquipmentEntryPoints(){
  const equipment=currentConfiguredEquipment(),configured=!!equipment,banner=$('#equipmentSetupBanner');
  const header=$('.hd-chip-equip'),headerName=$('#headerEquipmentName');if(header){header.classList.toggle('is-unset',!configured)}if(headerName)headerName.textContent=equipment||'未設定';
  if(banner){banner.classList.toggle('configured',configured);const title=$('#equipmentSetupTitle'),help=$('#equipmentSetupHelp'),button=banner.querySelector('button');if(title)title.textContent=configured?`使用設備: ${equipment}`:'最初に使用設備を設定してください';if(help)help.textContent=configured?'この端末の登録設備です。変更する場合は右のボタンを押してください。':'測定を開始する前に、この端末で使用する設備を登録します。';if(button)button.textContent=configured?'使用設備を変更':'使用設備を設定'}
- updateRegisteredEquipmentBadge();
  {const configured=!!currentConfiguredEquipment(),banner=$('#equipmentSetupBanner');if(banner)banner.classList.toggle('configured',configured)}
 }
 /* Equipment master final workflow. */
@@ -2133,7 +2130,6 @@ async function openEquipmentSettingsFinal(reason='manual',suggested=''){
  });
  return true;
 }
-function openAppSettings(){return openEquipmentSettingsFinal('manual')}
 /* 使用設備が未登録なら従来通り登録を促す。登録済みでも、対象データの
    BOX設計_設備名が登録設備と一致しない場合は、開く/再開するどちらの
    経路でも必須条件としてブロックする(仕掛一覧の行クリック・編集中/完了
@@ -2159,7 +2155,7 @@ function updateCourseGuard(){
  warning.innerHTML=`<span class="course-warning-main">${esc(message)}</span><span class="course-warning-actions">${suggestion?`<span class="course-suggestion">候補: ${esc(suggestion)}</span>`:''}<button type="button" id="changeEquipmentFromWarning">${suggestion?'候補の設備へ変更':'設備登録を変更'}</button></span>`;
  const button=$('#changeEquipmentFromWarning');if(button)button.onclick=()=>openEquipmentSettingsFinal('suggestion',suggestion);
 }
-document.addEventListener('click',event=>{const trigger=event.target.closest('[data-open-equipment-settings],#registeredEquipmentBadge');if(!trigger)return;event.preventDefault();event.stopImmediatePropagation();openEquipmentSettingsFinal('manual')},true);
+document.addEventListener('click',event=>{const trigger=event.target.closest('[data-open-equipment-settings]');if(!trigger)return;event.preventDefault();event.stopImmediatePropagation();openEquipmentSettingsFinal('manual')},true);
 document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!$('#appSettingsModal')?.hidden){$('#appSettingsModal').hidden=true}},true);
 document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!$('#changelogModal')?.hidden){$('#changelogModal').hidden=true}},true);
 /* ---------- 使用設備が変わったら、この端末の見え方も変わる（§9.285 ①） ----------
@@ -2181,8 +2177,8 @@ queueMicrotask(()=>{ensureEquipmentSettingsModal();updateEquipmentEntryPoints()}
 // 作業スケジュールに実体の無い「作業中」が出続ける。
 queueMicrotask(()=>{flushPendingBackupDeletes().catch(e=>console.warn('バックアップ削除の再試行に失敗',e))});
 queueMicrotask(async()=>{try{await loadEquipmentMaster();updateEquipmentEntryPoints()}catch(error){console.warn('equipment master init failed',error)}});
-queueMicrotask(()=>{updateRegisteredEquipmentBadge();const start=$('#stampWorkStart'),end=$('#stampWorkEnd');if(start)start.onclick=()=>WL.measureView.stampWorkTimeLocked('start');if(end)end.onclick=()=>WL.measureView.stampWorkTimeLocked('end')});
-queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquipmentBadge');if(badge){badge.setAttribute('role','button');badge.tabIndex=0;badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openEquipmentSettingsFinal('manual')}}}});
+queueMicrotask(()=>{const start=$('#stampWorkStart'),end=$('#stampWorkEnd');if(start)start.onclick=()=>WL.measureView.stampWorkTimeLocked('start');if(end)end.onclick=()=>WL.measureView.stampWorkTimeLocked('end')});
+queueMicrotask(()=>{updateEquipmentEntryPoints()});
 /* 編集中/完了データ一覧をモーダルからメイン画面切替表示へ変更(帳票・
    ダッシュボードと同じIA)。既存のopenRecords/closeRecords等の表示
    切替コードは触らず、#recordModalの位置とスタイルだけ変え、

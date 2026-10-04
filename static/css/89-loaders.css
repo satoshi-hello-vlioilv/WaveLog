@@ -562,4 +562,32 @@
   75%{transform:translateY(calc(var(--wl-ld) * .48)) scale(.5) rotate(-270deg)}
   100%{transform:rotate(-360deg)}
  }
+
+ /* ---------- 進み具合の帯（§9.78 → §9.556） ----------
+    時間のかかる仕事（RNEファイルから作成・版を置く）が**動いていること**と**どこまで進んだか**を
+    言う部品。題（いま何をしているか）・割合・棒・数（何件中何件・量・経過）の4つ。
+    以前は RNE だけの物（`.rne-progress`）だったので、版を置く段は何も言わずに待たせていた。
+    割合が分からない段（受け取る・確かめる）は`is-indef`で棒を往復させる（止まっていないと言う）。 */
+ .wl-progress{
+  display:grid;gap:var(--gap-tight);
+  padding:var(--pad-card);margin:0;
+  background:var(--pale);border-bottom:1px solid var(--line);color:var(--nav);
+ }
+ .wl-progress[hidden]{display:none}
+ .wl-progress-head{display:flex;align-items:baseline;gap:var(--gap-inline)}
+ .wl-progress-title{font-size:var(--fs-base-sm);font-weight:700}
+ .wl-progress-pct{margin-left:auto;font-size:var(--fs-sm);font-weight:700;
+                  color:var(--teal-dark);font-variant-numeric:tabular-nums}
+ .wl-progress-bar{height:6px;border-radius:var(--radius-pill);overflow:hidden;background:#fff}
+ .wl-progress-bar i{
+  display:block;height:100%;width:var(--wl-pct,0%);border-radius:var(--radius-pill);
+  background:linear-gradient(90deg,var(--teal),var(--warn));
+  transition:width .4s cubic-bezier(.25,.8,.3,1);
+ }
+ .wl-progress.is-indef .wl-progress-bar i{width:30%;animation:wl-progress-indef 1.3s ease-in-out infinite alternate}
+ .wl-progress.is-indef .wl-progress-pct{visibility:hidden}
+ .wl-progress-meta{margin:0;font-size:var(--fs-sm);color:var(--ink-2);font-variant-numeric:tabular-nums}
+ .wl-progress-meta:empty{display:none}
+ @keyframes wl-progress-indef{from{transform:translateX(0)}to{transform:translateX(233%)}}
+ @media (prefers-reduced-motion:reduce){.wl-progress.is-indef .wl-progress-bar i{animation:none;width:100%;opacity:.45}}
 }

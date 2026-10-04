@@ -12,6 +12,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod close;
 mod frame;
 mod launch;
 mod lnk;
@@ -29,14 +30,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
-use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 /// 自前の仕組みの名前。backend/config.py の DESKTOP_SCHEME と同じ（食い違うと URL の組み立てがずれる）。
 const SCHEME: &str = "wavelog";
 const TITLE: &str = "測定伝送システム";
 const SELFTEST_JS: &str = include_str!("selftest.js");
 const SELFTEST_LIMIT: Duration = Duration::from_secs(180);
-/// 終了ボタンのあと、中身（Python）が片付けて終わるのを待つ長さ（片付けの持ち時間3秒＋余裕）。
+/// 明示停止のあと、中身（Python）が片付けて終わるのを待つ長さ（片付けの持ち時間3秒＋余裕）。
 const QUIT_WAIT: Duration = Duration::from_secs(6);
 
 /// 画面の置き場。Windows（WebView2）は http://wavelog.localhost/、ほかは wavelog://localhost/ になる（Tauri の決まり）。
@@ -109,9 +110,50 @@ fn selftest_finish(app: &AppHandle, result: &serde_json::Value) {
     }
 }
 
-/// 窓そのものが答える問い合わせ（窓の情報と自己診断の受け口）。終了は Python が答える（片付けの1箇所を通すため）。
+/// 閉じる前の確かめ（`close.rs`・§9.556）。窓の×と画面の返事（`/__desktop/close`）が同じ1つを見る。
+fn gate() -> &'static close::Gate {
+    static G: OnceLock<close::Gate> = OnceLock::new();
+    G.get_or_init(close::Gate::default)
+}
+
+/// 主の窓の×。失うものがあるかを画面に聞き、返事が無ければ待ち切って閉じる（`close.rs`）。
+fn on_close_requested(w: &tauri::Window, api: &tauri::CloseRequestApi) {
+    if w.label() != "main" {
+        return;
+    }
+    match gate().request() {
+        close::Decision::Ask(seq) => {
+            api.prevent_close();
+            if let Some(v) = w.app_handle().get_webview_window("main") {
+                let _ = v.eval(close::ASK_JS);
+            }
+            let app = w.app_handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(close::ANSWER_WAIT);
+                if gate().timeout(seq) == close::Decision::Close {
+                    log("EXIT 窓を閉じた（画面が返事をしなかったので待ち切った）");
+                    app.exit(0);
+                }
+            });
+        }
+        close::Decision::Hold => api.prevent_close(),
+        _ => {}
+    }
+}
+
+/// 窓そのものが答える問い合わせ（窓の情報・閉じる前の返事・自己診断の受け口）。
 fn native(app: AppHandle, info: serde_json::Value) -> Native {
     Box::new(move |method, path, body| match (method, path) {
+        ("POST", "/__desktop/close") => {
+            let word = serde_json::from_slice::<serde_json::Value>(body).ok();
+            let word = word.as_ref().and_then(|v| v["answer"].as_str()).unwrap_or("");
+            if gate().answer(word) == close::Decision::Close {
+                log("EXIT 窓を閉じた（閉じる前の確かめを通った）");
+                let app = app.clone();
+                std::thread::spawn(move || app.exit(0));
+            }
+            Some(json_reply(&json!({"received": true})))
+        }
         ("GET", "/__desktop/info") => Some(json_reply(&info)),
         ("GET", "/__desktop/downloads") => Some(json_reply(&json!(downloads().lock().map(|v| v.clone()).unwrap_or_default()))),
         ("POST", "/__desktop/selftest") => {
@@ -123,11 +165,11 @@ fn native(app: AppHandle, info: serde_json::Value) -> Native {
     })
 }
 
-/// 中身が答えたあと: 画面の「アプリを終了」（/api/app/quit）・明示停止（/api/shutdown）が受け付けられたら、
-/// 中身が**片付け（書込役・編集セッション・在席）を済ませて自分で終わる**のを待ってから窓も閉じる。
+/// 中身が答えたあと: 明示停止（/api/shutdown）が受け付けられたら、中身が**片付け（書込役・編集セッション・在席）を
+/// 済ませて自分で終わる**のを待ってから窓も閉じる。画面の「アプリを終了」（/api/app/quit）は §9.556 で外した（×で閉じる）。
 fn after(app: AppHandle, slot: Arc<OnceLock<AppRouter>>) -> After {
     Box::new(move |method, path, status| {
-        if method == "POST" && status == 200 && matches!(path, "/api/app/quit" | "/api/shutdown") {
+        if method == "POST" && status == 200 && path == "/api/shutdown" {
             let (app, slot, path) = (app.clone(), slot.clone(), path.to_string());
             std::thread::spawn(move || {
                 let end = Instant::now() + QUIT_WAIT;
@@ -364,6 +406,12 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        // ×: 失うもの（保存していない測定・版を置いている最中）があれば閉じる前に聞く（§9.556）
+        .on_window_event(|w, ev| {
+            if let WindowEvent::CloseRequested { api, .. } = ev {
+                on_close_requested(w, api);
+            }
+        })
         // 画面からの問い合わせ（wavelog）。1つずつ別の糸で答える（長い問い合わせが画面を止めない）
         .register_asynchronous_uri_scheme_protocol(SCHEME, move |_ctx, req, responder| {
             let slot = proto_slot.clone();
