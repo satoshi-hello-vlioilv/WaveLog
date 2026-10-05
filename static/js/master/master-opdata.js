@@ -707,6 +707,14 @@
   /* **描き直したら閉じる**（§9.222 ①）——控えの持ち主が切り離された古い
      要素になると、押して閉じて即開き直すちらつきになる。 */
   closeOpMenu();
+  wireOpBoardHead();
+  document.querySelectorAll('#masterMaintList .op-tile').forEach(wireOpTile);
+  document.querySelectorAll('#masterMaintList .op-band').forEach(wireOpBand);
+  document.querySelectorAll('#masterMaintList .op-board-grid').forEach(wireOpGrid);
+  wireOpGroupTools();
+ }
+ /* 盤の頭: レイアウトの対象と「追加」の4つ。 */
+ function wireOpBoardHead(){
   const pick=$('#opEqPick');
   if(pick)pick.onchange=()=>{opState.equipment=pick.value;loadOpItemMaint(true)};
   const add=$('#opAddItem');
@@ -717,88 +725,99 @@
   if(addP)addP.onclick=()=>opCreatePad();
   const addA=$('#opAddAuto');
   if(addA)addA.onclick=e=>opOpenAutoMenu(e);
-  document.querySelectorAll('#masterMaintList .op-tile').forEach(t=>{
-   /* **押したら設定の窓が開く**（§9.218 ①、利用者の指摘「メニューが右側で
-      固定され、設定しにくい」）。以前は右の細い柱に押し込んでいたため、
-      幅・型・選択肢を触るたびに視線が盤と柱を往復していた。 */
-   /* **右クリックでメニュー**（§9.228 ⑤）。掴んで並べ替える盤なので、
-      よく使う操作（幅・出す/出さない・空き・削除）はここから直接。 */
-   t.oncontextmenu=e=>{
-    const x=opItemById(t.dataset.opId);
-    if(!x)return;
-    opState.picked=x.id;renderOpItem();
-    opOpenTileMenu(e,x);
-   };
-   t.onclick=()=>{
-    opState.picked=t.dataset.opId;renderOpItem();
-    /* **空きのカードも同じ窓を開く**（§9.230 ③、利用者の指摘「空きの
-       カードを追加しても、ダブルクリックで編集がでないので、右クリックの
-       メニューが最終手段となっており、通常の方法では幅変更や削除など
-       できない」）。決めることは少ないので**要る列だけ出す**
-       （`opSecsFor()`）——押しても何も無い窓を開かないための元の判断は、
-       列を絞ることで満たす。 */
-    openOpModal(t.dataset.opId);
-   };
-   t.onkeydown=e=>{
-    if(e.key!=='Enter'&&e.key!==' ')return;
-    e.preventDefault();opState.picked=t.dataset.opId;renderOpItem();
-    openOpModal(t.dataset.opId);
-   };
-   t.ondragstart=e=>{
-    opState.drag=t.dataset.opId;t.classList.add('is-dragging');
-    try{e.dataTransfer.setData('text/plain',t.dataset.opId);e.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
-   };
-   t.ondragend=()=>{opState.drag=null;t.classList.remove('is-dragging');opClearMark()};
-  });
-  /* 帯（群）を掴む（§9.230 ④）。**カードの掴みとは別の控え**にする
-     ——1つにまとめると「いま何を運んでいるか」が読めなくなる。 */
-  document.querySelectorAll('#masterMaintList .op-band').forEach(bd=>{
-   bd.ondragstart=e=>{
-    opState.drag=null;
-    opState.dragGroup={place:bd.dataset.opPlace,name:bd.dataset.opBand};
-    bd.classList.add('is-dragging');
-    try{e.dataTransfer.setData('text/plain','group:'+bd.dataset.opBand);
-        e.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
-   };
-   bd.ondragend=()=>{opState.dragGroup=null;bd.classList.remove('is-dragging');opClearMark()};
-  });
-  document.querySelectorAll('#masterMaintList .op-board-grid').forEach(grid=>{
-   grid.ondragover=e=>{
-    if(!opState.drag&&!opState.dragGroup)return;
-    e.preventDefault();
-    opMark(grid,opState.dragGroup?opGroupDropAt(grid,e):opDropAt(grid,e));
-   };
-   grid.ondragleave=e=>{
-    if(!opState.drag&&!opState.dragGroup)return;
-    if(grid.contains(e.relatedTarget))return;
-    opClearMark();
-   };
-   grid.ondrop=e=>{
-    if(!opState.drag&&!opState.dragGroup)return;
-    e.preventDefault();
-    if(opState.dragGroup){
-     /* 群ごと。**帯とその下の札をまとめて**挿す（順番は塊のまま）。 */
-     const src=[...document.querySelectorAll('#masterMaintList .op-band')]
-       .find(b=>b.dataset.opBand===opState.dragGroup.name
-              &&b.dataset.opPlace===opState.dragGroup.place);
-     const at=opGroupDropAt(grid,e);
-     if(src){
-      const block=opGroupBlock(src.parentElement,src);
-      /* 自分の塊の中へは落とさない（動かないのに保存だけ走る）。 */
-      if(block.indexOf(at)<0){
-       block.forEach(el=>{at?grid.insertBefore(el,at):grid.appendChild(el)});
-       opClearMark();opSaveLayout();return;
-      }
-     }
-     opClearMark();return;
-    }
-    const at=opDropAt(grid,e);
-    const el=document.querySelector(`#masterMaintList .op-tile[data-op-id="${CSS.escape(opState.drag)}"]`);
-    if(el){at?grid.insertBefore(el,at):grid.appendChild(el)}
-    opClearMark();
-    opSaveLayout();
-   };
-  });
+ }
+ /* 札（項目のカード）1枚。 */
+ function wireOpTile(t){
+  /* **押したら設定の窓が開く**（§9.218 ①、利用者の指摘「メニューが右側で
+     固定され、設定しにくい」）。以前は右の細い柱に押し込んでいたため、
+     幅・型・選択肢を触るたびに視線が盤と柱を往復していた。 */
+  /* **右クリックでメニュー**（§9.228 ⑤）。掴んで並べ替える盤なので、
+     よく使う操作（幅・出す/出さない・空き・削除）はここから直接。 */
+  t.oncontextmenu=e=>{
+   const x=opItemById(t.dataset.opId);
+   if(!x)return;
+   opState.picked=x.id;renderOpItem();
+   opOpenTileMenu(e,x);
+  };
+  t.onclick=()=>{
+   opState.picked=t.dataset.opId;renderOpItem();
+   /* **空きのカードも同じ窓を開く**（§9.230 ③、利用者の指摘「空きの
+      カードを追加しても、ダブルクリックで編集がでないので、右クリックの
+      メニューが最終手段となっており、通常の方法では幅変更や削除など
+      できない」）。決めることは少ないので**要る列だけ出す**
+      （`opSecsFor()`）——押しても何も無い窓を開かないための元の判断は、
+      列を絞ることで満たす。 */
+   openOpModal(t.dataset.opId);
+  };
+  t.onkeydown=e=>{
+   if(e.key!=='Enter'&&e.key!==' ')return;
+   e.preventDefault();opState.picked=t.dataset.opId;renderOpItem();
+   openOpModal(t.dataset.opId);
+  };
+  t.ondragstart=e=>{
+   opState.drag=t.dataset.opId;t.classList.add('is-dragging');
+   try{e.dataTransfer.setData('text/plain',t.dataset.opId);e.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
+  };
+  t.ondragend=()=>{opState.drag=null;t.classList.remove('is-dragging');opClearMark()};
+ }
+ /* 帯（群）を掴む（§9.230 ④）。**カードの掴みとは別の控え**にする
+    ——1つにまとめると「いま何を運んでいるか」が読めなくなる。 */
+ function wireOpBand(bd){
+  bd.ondragstart=e=>{
+   opState.drag=null;
+   opState.dragGroup={place:bd.dataset.opPlace,name:bd.dataset.opBand};
+   bd.classList.add('is-dragging');
+   try{e.dataTransfer.setData('text/plain','group:'+bd.dataset.opBand);
+       e.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
+  };
+  bd.ondragend=()=>{opState.dragGroup=null;bd.classList.remove('is-dragging');opClearMark()};
+ }
+ /* 落とし先の盤（置き場1つ）。運んでいる物が無ければ何もしない。 */
+ function wireOpGrid(grid){
+  const carrying=()=>!!(opState.drag||opState.dragGroup);
+  grid.ondragover=e=>{
+   if(!carrying())return;
+   e.preventDefault();
+   opMark(grid,opState.dragGroup?opGroupDropAt(grid,e):opDropAt(grid,e));
+  };
+  grid.ondragleave=e=>{
+   if(!carrying())return;
+   if(grid.contains(e.relatedTarget))return;
+   opClearMark();
+  };
+  grid.ondrop=e=>{
+   if(!carrying())return;
+   e.preventDefault();
+   if(opState.dragGroup){opDropGroup(grid,e);return}
+   const at=opDropAt(grid,e);
+   const el=document.querySelector(`#masterMaintList .op-tile[data-op-id="${CSS.escape(opState.drag)}"]`);
+   if(el){at?grid.insertBefore(el,at):grid.appendChild(el)}
+   opClearMark();
+   opSaveLayout();
+  };
+ }
+ /* 群ごと。**帯とその下の札をまとめて**挿す（順番は塊のまま）。 */
+ function opDropGroup(grid,e){
+  const src=[...document.querySelectorAll('#masterMaintList .op-band')]
+    .find(b=>b.dataset.opBand===opState.dragGroup.name
+           &&b.dataset.opPlace===opState.dragGroup.place);
+  const at=opGroupDropAt(grid,e);
+  if(src){
+   const block=opGroupBlock(src.parentElement,src);
+   /* 自分の塊の中へは落とさない（動かないのに保存だけ走る）。 */
+   if(block.indexOf(at)<0){
+    block.forEach(el=>{at?grid.insertBefore(el,at):grid.appendChild(el)});
+    opClearMark();opSaveLayout();return;
+   }
+  }
+  opClearMark();
+ }
+ /* 群の設定を読む1行——幅・畳みは群の全部の行へ同じ値を書くので、最初の1行で足りる。 */
+ function opGroupRow(place,group){
+  return opState.items.find(x=>(x.place||'準備')===place&&(x.group||'その他')===group);
+ }
+ /* 帯の上の「名前」「幅」「畳む」。 */
+ function wireOpGroupTools(){
   document.querySelectorAll('#masterMaintList [data-op-rename]').forEach(b=>{
    b.onclick=async e=>{
     e.stopPropagation();
@@ -818,7 +837,7 @@
     e.stopPropagation();
     const uid=requireMaintUser();if(uid===null)return;
     const place=b.dataset.opPlace,group=b.dataset.opBand2;
-    const g=opState.items.find(x=>(x.place||'準備')===place&&(x.group||'その他')===group);
+    const g=opGroupRow(place,group);
     try{
      await api('/api/operation-item-master/group',{method:'POST',
        headers:{'Content-Type':'application/json'},
@@ -838,7 +857,7 @@
     const uid=requireMaintUser();if(uid===null)return;
     const on=b.getAttribute('aria-pressed')==='true';
     const place=b.dataset.opPlace,group=b.dataset.opFold;
-    const g=opState.items.find(x=>(x.place||'準備')===place&&(x.group||'その他')===group);
+    const g=opGroupRow(place,group);
     try{
      await opSyncGroupFlags(place,group,g?(g.showWhen||[]):[],!on,uid);
      await loadOpItemMaint(true);
@@ -2860,6 +2879,66 @@
    show();
   }
  }
+ /* 窓の中の「押すと値を1つ当てる札」の表——[印, 押した札（と項目）から当てる値]。
+    押せない札は何もしない。足すときは表へ1行。 */
+ /** @type {Array<[string,function(any,any):Object]>} */
+ const OP_MODAL_PICKS=[
+  ['data-op-place',b=>({place:b.dataset.opPlace})],
+  ['data-op-span',b=>({span:Number(b.dataset.opSpan)})],
+  ['data-op-type',b=>({type:b.dataset.opType})],
+  ['data-op-widget',b=>({widget:b.dataset.opWidget})],
+  /* 見せ方（§9.221 ⑦）。**押した結果はその場で見本に出る**ので、
+     保存する前に「どこに出るか」を確かめられる。 */
+  ['data-op-unitplace',b=>({unitPlace:b.dataset.opUnitplace})],
+  ['data-op-layout',b=>({layout:b.dataset.opLayout})],
+  /* §9.228 ④ 空欄（選ばない）の札と、その場で直せる初期値。 */
+  ['data-op-blank',b=>({noBlank:b.dataset.opBlank==='1'})],
+  /* §9.286 ⑥ 未入力・未選択の配色。 */
+  ['data-op-btint',b=>({blankTint:b.dataset.opBtint})],
+  /* §9.248 ⑤ 選択肢の並び。 */
+  ['data-op-corder',b=>({choiceOrder:b.dataset.opCorder})],
+  /* §9.323 ① 測定画面からの間接登録。**保存値（`inlineAddSaved`）を書く**——
+     効いている値を書くと、手打ちを一時的に切っただけで設定そのものが消える
+     （`freeTextSaved`と同じ作法）。 */
+  ['data-op-inadd',b=>({inlineAddSaved:b.dataset.opInadd==='1'})],
+  ['data-op-align',b=>({align:b.dataset.opAlign})],
+  /* §9.233 ⑤ 仕掛由来の添え書きの置き場。 */
+  ['data-op-srcnote',b=>({sourceNote:b.dataset.opSrcnote})],
+  ['data-op-vfmt',b=>({valueFormat:b.dataset.opVfmt})],
+  ['data-op-when',(b,x)=>{
+   const now=new Set(x.showWhen||[]);
+   if(now.has(b.dataset.opWhen))now.delete(b.dataset.opWhen);else now.add(b.dataset.opWhen);
+   return {showWhen:[...now]};
+  }],
+  /* 対象設備（§9.219 ③）。**「すべての設備」と名指しは排他**——両方立つと
+     どちらが効くのか読めない。 */
+  ['data-op-eq',(b,x)=>{
+   const now=new Set(opEquipmentList(x));
+   const n=b.dataset.opEq;
+   if(now.has(n))now.delete(n);else now.add(n);
+   return {equipment:now.size?[...now].join(','):'*'};
+  }],
+  /* 選択肢のまとまり名のサジェスト（§9.220 ④）。押すだけで当たる。 */
+  ['data-op-suggest',b=>({choice:b.dataset.opSuggest})],
+  /* 意匠（§9.223 ③）。色・形・大きさの3軸。 */
+  ['data-op-look',(b,x)=>{
+   const lk=opLookOf(x);lk[b.dataset.opLook]=b.dataset.opVal;
+   return {look:lk};
+  }],
+ ];
+ /* 窓の中の入切（1つの欄が1つの値を反転する）。[欄のID, 押した時点の項目から当てる値]。 */
+ /** @type {Array<[string,function(any):Object]>} */
+ const OP_MODAL_TOGGLES=[
+  ['opdRequired',x=>({required:!x.required})],
+  ['opdEnabled',x=>({enabled:x.enabled===false})],
+  ['opdFold',x=>({fold:!x.fold})],
+  /* §9.242 ④ ③「記録した値」へ出すか。**既定は出す**なので、`false`だけを
+     「外した」として持つ（`undefined`と`true`はどちらも出す）。 */
+  ['opdRecordShow',x=>({recordShow:x.recordShow===false})],
+  ['opdEqAll',()=>({equipment:'*'})],
+  /* 手打ち（§9.220 ③）。 */
+  ['opdFreeText',x=>({freeText:!x.freeText})],
+ ];
  function bindOpModal(x){
   /* §9.256。式の欄（`[自動値]`が`式`のときだけ在る）。 */
   opBindFormula();
@@ -2874,81 +2953,23 @@
      丸ごと入れ替わるので、覚えていないと**未保存の変更が黙って消える**。 */
   const touch=patch=>{Object.assign(x,opFormEdits(),patch);
     opState.dirty=x.id;renderOpModal()};
-  form.querySelectorAll('[data-op-place]').forEach(b=>b.onclick=()=>touch({place:b.dataset.opPlace}));
-  form.querySelectorAll('[data-op-span]').forEach(b=>b.onclick=()=>touch({span:Number(b.dataset.opSpan)}));
-  form.querySelectorAll('[data-op-type]').forEach(b=>b.onclick=()=>touch({type:b.dataset.opType}));
-  form.querySelectorAll('[data-op-widget]').forEach(b=>b.onclick=()=>{
-   if(b.disabled)return;touch({widget:b.dataset.opWidget});
-  });
-  /* 見せ方（§9.221 ⑦）。**押した結果はその場で見本に出る**ので、
-     保存する前に「どこに出るか」を確かめられる。 */
-  form.querySelectorAll('[data-op-unitplace]').forEach(b=>b.onclick=()=>{
-   if(b.disabled)return;touch({unitPlace:b.dataset.opUnitplace});
-  });
-  form.querySelectorAll('[data-op-layout]').forEach(b=>b.onclick=()=>touch({layout:b.dataset.opLayout}));
-  /* §9.228 ④ 空欄（選ばない）の札と、その場で直せる初期値。 */
-  form.querySelectorAll('[data-op-blank]').forEach(b=>b.onclick=()=>
-    touch({noBlank:b.dataset.opBlank==='1'}));
-  /* §9.286 ⑥ 未入力・未選択の配色。 */
-  form.querySelectorAll('[data-op-btint]').forEach(b=>b.onclick=()=>
-    touch({blankTint:b.dataset.opBtint}));
-  /* §9.248 ⑤ 選択肢の並び。 */
-  form.querySelectorAll('[data-op-corder]').forEach(b=>b.onclick=()=>{
-   if(b.disabled)return;touch({choiceOrder:b.dataset.opCorder});
-  });
-  /* §9.323 ① 測定画面からの間接登録。 */
-  form.querySelectorAll('[data-op-inadd]').forEach(b=>b.onclick=()=>{
-   /* **保存値（`inlineAddSaved`）を書く**——効いている値を書くと、手打ちを
-      一時的に切っただけで設定そのものが消える（`freeTextSaved`と同じ作法）。 */
-   if(b.disabled)return;touch({inlineAddSaved:b.dataset.opInadd==='1'});
-  });
-
-  form.querySelectorAll('[data-op-align]').forEach(b=>b.onclick=()=>touch({align:b.dataset.opAlign}));
-  /* §9.233 ⑤ 仕掛由来の添え書きの置き場。 */
-  form.querySelectorAll('[data-op-srcnote]').forEach(b=>b.onclick=()=>
-    touch({sourceNote:b.dataset.opSrcnote}));
-  form.querySelectorAll('[data-op-vfmt]').forEach(b=>b.onclick=()=>touch({valueFormat:b.dataset.opVfmt}));
-  form.querySelectorAll('[data-op-when]').forEach(b=>b.onclick=()=>{
-   const now=new Set(x.showWhen||[]);
-   if(now.has(b.dataset.opWhen))now.delete(b.dataset.opWhen);else now.add(b.dataset.opWhen);
-   touch({showWhen:[...now]});
-  });
-  const req=$('#opdRequired');
-  if(req)req.onclick=()=>touch({required:!x.required});
-  const en=$('#opdEnabled');
-  if(en)en.onclick=()=>touch({enabled:x.enabled===false});
-  const fold=$('#opdFold');
-  if(fold)fold.onclick=()=>touch({fold:!x.fold});
-  /* §9.242 ④ ③「記録した値」へ出すか。**既定は出す**なので、`false`だけを
-     「外した」として持つ（`undefined`と`true`はどちらも出す）。 */
-  const rsw=$('#opdRecordShow');
-  if(rsw)rsw.onclick=()=>touch({recordShow:x.recordShow===false});
-  /* 対象設備（§9.219 ③）。**「すべての設備」と名指しは排他**——両方立つと
-     どちらが効くのか読めない。 */
-  const eqAll=$('#opdEqAll');
-  if(eqAll)eqAll.onclick=()=>touch({equipment:'*'});
-  form.querySelectorAll('[data-op-eq]').forEach(b=>b.onclick=()=>{
-   const now=new Set(opEquipmentList(x));
-   const n=b.dataset.opEq;
-   if(now.has(n))now.delete(n);else now.add(n);
-   touch({equipment:now.size?[...now].join(','):'*'});
-  });
+  OP_MODAL_PICKS.forEach(([attr,patch])=>form.querySelectorAll(`[${attr}]`).forEach(b=>b.onclick=()=>{
+   if(b.disabled)return;touch(patch(b,x));
+  }));
+  OP_MODAL_TOGGLES.forEach(([id,patch])=>{const el=$('#'+id);if(el)el.onclick=()=>touch(patch(x))});
+  wireOpModalSelects(form,touch);
+  wireOpModalChoiceValues(form);
+  wireOpModalPops();
+  wireOpModalActions(x);
+  /* **描き直したあとも浮き出しは開いたまま**（§9.299）。 */
+  opSyncPops();
+ }
+ /* 窓の中の選ぶ欄（`change`で当てる）。 */
+ function wireOpModalSelects(form,touch){
   /* **覚え書きは入力中に描き直さない**（§9.117。作り替えるとカーソルが飛ぶ）。
      値は保存のときに`opDetailValues()`が読む。 */
   const ch=$('#opdChoice');
   if(ch)ch.onchange=()=>touch({choice:ch.value});
-  /* 選択肢のまとまり名のサジェスト（§9.220 ④）。押すだけで当たる。 */
-  form.querySelectorAll('[data-op-suggest]').forEach(b=>b.onclick=()=>
-    touch({choice:b.dataset.opSuggest}));
-  /* 手打ち（§9.220 ③）。 */
-  const ft=$('#opdFreeText');
-  if(ft)ft.onclick=()=>touch({freeText:!x.freeText});
-  /* 値の説明はその場で書き換える（**入力中に描き直さない**・§9.117）。 */
-  form.querySelectorAll('[data-op-cnote]').forEach(inp=>inp.onchange=()=>
-    opSaveChoiceNote(inp.dataset.opCnote,inp.value));
-  form.querySelectorAll('[data-op-cdel]').forEach(b=>b.onclick=()=>opDeleteChoiceValue(b.dataset.opCdel));
-  const addV=$('#opdAddChoiceValue');
-  if(addV)addV.onclick=()=>opAddChoiceValue();
   /* 役割（§9.223 ①）。**付け替えは即座に見本と要約へ出る**——「いまは誰が
      担当か」は付け替える前に読めないと選べない。 */
   const role=$('#opdRole');
@@ -2959,19 +2980,28 @@
   form.querySelectorAll('[data-op-from]').forEach(sel=>sel.onchange=()=>{
    touch(sel.dataset.opFrom==='min'?{minFrom:sel.value}:{maxFrom:sel.value});
   });
-  /* 意匠（§9.223 ③）。色・形・大きさの3軸。 */
-  form.querySelectorAll('[data-op-look]').forEach(b=>b.onclick=()=>{
-   const lk=opLookOf(x);lk[b.dataset.opLook]=b.dataset.opVal;
-   touch({look:lk});
-  });
-  /* 浮き出し（§9.299）。**押した札は`opState.pop`が1つだけ覚える**ので、
-     描き直しても開いたまま続けられる（値を1つ足すたびに閉じない）。 */
+ }
+ /* 選択肢の値の行（説明・削除・追加）。選択肢マスタへその場で書く。 */
+ function wireOpModalChoiceValues(form){
+  /* 値の説明はその場で書き換える（**入力中に描き直さない**・§9.117）。 */
+  form.querySelectorAll('[data-op-cnote]').forEach(inp=>inp.onchange=()=>
+    opSaveChoiceNote(inp.dataset.opCnote,inp.value));
+  form.querySelectorAll('[data-op-cdel]').forEach(b=>b.onclick=()=>opDeleteChoiceValue(b.dataset.opCdel));
+  const addV=$('#opdAddChoiceValue');
+  if(addV)addV.onclick=()=>opAddChoiceValue();
+ }
+ /* 浮き出し（§9.299）。**押した札は`opState.pop`が1つだけ覚える**ので、
+    描き直しても開いたまま続けられる（値を1つ足すたびに閉じない）。 */
+ function wireOpModalPops(){
   $('#opItemModal').querySelectorAll('[data-op-pop]').forEach(b=>b.onclick=e=>{
    e.preventDefault();e.stopPropagation();
    const k=b.dataset.opPop;
    opState.pop=(opState.pop===k)?'':k;
    opSyncPops();
   });
+ }
+ /* 窓の足元の操作（保存・削除・ふつうの項目へ戻す・①へ連れて行く）。 */
+ function wireOpModalActions(x){
   const save=$('#opdSave');
   if(save)save.onclick=()=>opSaveItem();
   const del=$('#opdDelete');
@@ -3000,8 +3030,6 @@
    t.scrollIntoView({block:'nearest'});
    t.focus();t.classList.add('op-flash');setTimeout(()=>t.classList.remove('op-flash'),1200);
   };
-  /* **描き直したあとも浮き出しは開いたまま**（§9.299）。 */
-  opSyncPops();
  }
  /* いま窓に打ち込まれている値。**在る欄だけ**返す（組み込みの行では
     名前・型の欄そのものが無い）。 */
