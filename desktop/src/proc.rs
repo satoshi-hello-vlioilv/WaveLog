@@ -142,18 +142,26 @@ mod tests {
     use super::*;
     use std::process::{Command, Stdio};
 
+    /// 30秒ほど眠るだけのプロセス（どの OS にもある物で）。
+    fn sleeper() -> std::process::Child {
+        let mut c = if cfg!(windows) { Command::new("ping") } else { Command::new("sleep") };
+        if cfg!(windows) {
+            c.args(["-n", "30", "127.0.0.1"]);
+        } else {
+            c.arg("30");
+        }
+        c.stdout(Stdio::null()).stderr(Stdio::null()).spawn().expect("sleeper")
+    }
+
     #[test]
-    fn grandchild_is_seen_waited_and_killed() {
-        // 入口（子）が本物（孫）を起こしてすぐ終わる形: 子が終わっても孫は動いている
-        let out = Command::new("sh")
-            .args(["-c", "sleep 30 >/dev/null 2>&1 & echo $!"])
-            .stdout(Stdio::piped())
-            .output()
-            .expect("sh");
-        let pid: u32 = String::from_utf8_lossy(&out.stdout).trim().parse().expect("pid");
-        assert!(alive(pid), "子が終わっても孫は残る（入口だけを見ると見落とす）");
+    fn pid_is_seen_waited_and_killed() {
+        // 窓は本物の Python を PID だけで見る（自分の子ではない）。子の持ち手を使わず、PID だけで見る・待つ・止める
+        let mut c = sleeper();
+        let pid = c.id();
+        assert!(alive(pid), "動いている物を動いていると見る");
         assert!(!wait_gone(pid, Duration::from_millis(200)), "終わっていない物を終わったと言わない");
         kill(pid);
+        let _ = c.wait(); // 回収（Linux ではゾンビの印も alive が見分ける）
         assert!(wait_gone(pid, Duration::from_secs(5)), "止めたら終わったと分かる");
     }
 
