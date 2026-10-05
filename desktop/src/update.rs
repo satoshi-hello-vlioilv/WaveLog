@@ -237,7 +237,12 @@ pub fn peek(app_root: &Path) -> Peek {
         return Peek::Skip("開発の作業ツリーなので更新しません".into());
     }
     let dir = update_dir(app_root);
-    let want = match release_version(&dir, REACH) {
+    let read = release_version(&dir, REACH);
+    if read.is_ok() {
+        // 置き場に届いたら、新しい PC へ渡す設定の写しも新しくする（マスタの置き場を共有から渡す・§9.568）
+        let _ = crate::install::mirror_seed(&app_root.join("config"), &dir);
+    }
+    let want = match read {
         Ok(Some(v)) => v,
         Ok(None) => return Peek::Skip("配る版が決まっていません".into()),
         Err(e) => return Peek::Skip(e),

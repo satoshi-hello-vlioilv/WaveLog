@@ -7,6 +7,7 @@
 `--bump`を付けると、同じ中身で版の字だけ`-ci`を足した版を置いて配る（4回目＝起動のときに配る版へそろえる道・§9.561）。
 """
 import io
+import json
 import sys
 import zipfile
 from pathlib import Path
@@ -37,6 +38,12 @@ def main(share, bump=False):
         return 1
     rel = app_update.set_release(out['version'], 'ci', base)
     print('release:', rel)
+    # 本番の置き場と同じく「新しい PC へ渡す設定」を置く（共有のマスタの置き場・§9.568）。CI の PC は工場の共有に
+    # 届かないので、試しの置き場の中のマスタを渡す——置き忘れると既定の共有の場所を見に行く（それ自体は正しい振る舞い）。
+    seed = base / app_update.SEED
+    (base / 'Masters').mkdir(exist_ok=True)
+    seed.write_text(json.dumps({'master_db_path': str(base / 'Masters' / 'master.sqlite3')}, ensure_ascii=False), encoding='utf-8')
+    print('seed:', seed.read_text(encoding='utf-8'))
     return 0 if rel.get('ok') and (base / app_update.ENTRY_EXE).is_file() else 1
 
 

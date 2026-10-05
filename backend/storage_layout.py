@@ -161,8 +161,18 @@ def _records_configured():
     return str(MEAS_DB)
 
 
+def _master_from():
+    """マスタの置き場がどこで決まったか（§9.568: 共有の置き場から渡された値・既定の共有の場所も言う）。"""
+    src = paths.setting('master_db_path')[1]
+    if src == 'local':
+        return 'master_db_path'
+    if src:
+        return paths.SETTING_SOURCES[src]
+    return 'db_dir' if _local_config_raw().get('db_dir') else '既定'
+
+
 def _master_share_mode():
-    v = str(_local_config_raw().get('master_share_mode') or '').strip().lower()
+    v = str(paths.setting('master_share_mode')[0] or '').strip().lower()
     return v if v in ('auto', 'on', 'off') else 'auto'
 
 
@@ -323,8 +333,7 @@ def _items_inner(records_export):
               '読むのはこの端末の写しからです。' if master_share.is_shared()
               else 'この端末の中だけです。共有フォルダへ移すと、'
                    '書き込みが重ならないよう順番待ちを通る形で動きます。')))
-    out[-1]['from'] = ('master_db_path' if _local_config_raw().get('master_db_path')
-                       else ('db_dir' if _local_config_raw().get('db_dir') else '既定'))
+    out[-1]['from'] = _master_from()
     out[-1]['shared'] = master_share.is_shared()
     if master_share.is_shared():
         out[-1]['mirror'] = str(master_share.local_path() or '')

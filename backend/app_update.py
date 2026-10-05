@@ -32,6 +32,7 @@ from pathlib import Path
 
 from . import path_config
 from .changelog_data import APP_VERSION
+from . import paths
 from .paths import APP_ROOT, load_local_config
 from .quiet import quiet
 
@@ -67,7 +68,7 @@ ENTRY_EXE = 'WaveLog.exe'
 # 新しい PC へ渡す最初の設定（`config/local.json`の種）。配る版を決めた PC の値を控える（利用者の選択）。
 # 渡すのは**共有のマスタの置き場**だけ——`db_dir`・`records_db_path`はその PC の物で、全 PC へ配る値ではない。
 SEED = 'install.json'
-SEED_KEYS = ('master_db_path', 'master_share_mode')
+SEED_KEYS = paths.SEED_KEYS   # 渡す鍵の顔ぶれは`paths`の1か所（読む側と同じ定義・§9.568）
 # 共有に届くかを確かめる長さ。届かない UNC は OS が数十秒待たせることがある（画面を止めない）。
 REACH_SEC = 3.0
 # 置いている最中に終わった書きかけを片付けるまでの長さ（別の PC がいま置いている物を消さない）。
@@ -430,9 +431,14 @@ def place_entry(version, base=None):
 
 
 def seed_values():
-    """この PC の`config/local.json`のうち、新しい PC へ渡す値（書いたまま・環境変数も展開しない）。"""
-    local = load_local_config() or {}
-    return {k: str(local[k]).strip() for k in SEED_KEYS if str(local.get(k) or '').strip()}
+    """新しい PC へ渡す値（書いたまま・環境変数も展開しない）。**この PC で効いている値**を渡す
+    （`paths.setting()`——この PC の設定・共有から渡された値・既定の順・§9.568）。"""
+    out = {}
+    for k in SEED_KEYS:
+        v, _src = paths.setting(k)
+        if str(v or '').strip():
+            out[k] = str(v).strip()
+    return out
 
 
 def place_seed(base=None):

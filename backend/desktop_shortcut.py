@@ -133,6 +133,54 @@ def desktop_dir():
  return Path(os.path.expanduser('~'))/'Desktop'
 
 
+def public_desktop_dir():
+ """みんなのデスクトップ（`C:\\Users\\Public\\Desktop`）。管理者がここへ置いた起動アイコンも**自分の画面に出る**ので、
+    「在るか」はここも見る（§9.568）。作るのはその人のデスクトップだけ。"""
+ try:
+  import winreg                                    # 遅延: Windowsにしか無い
+  key=r'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders'
+  with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,key) as k:
+   val=winreg.QueryValueEx(k,'Common Desktop')[0]
+  path=Path(os.path.expandvars(str(val)))
+  if path.is_dir():return path
+ except Exception as _e:
+  quiet('みんなのデスクトップの場所をレジストリから引けない（既定の場所を使う）',_e)
+ return Path(os.environ.get('PUBLIC') or r'C:\Users\Public')/'Desktop'
+
+
+def _list_links(folder):
+ """フォルダの直下の`.lnk`と行き先（窓の`list`・§9.568）。読めなければ空——「無い」と同じに扱い、聞くほうへ倒す。"""
+ if sys.platform!='win32':return []
+ out=_lnk({'op':'list','path':str(folder)})
+ if not out.get('ok'):
+  quiet('デスクトップのショートカットを一覧できない（無いものとして扱う）',out.get('error'))
+  return []
+ return [x for x in out.get('links') or [] if isinstance(x,dict)]
+
+
+def find_ours():
+ """**このアプリの起動アイコンが、いまデスクトップに在るか**（§9.568、利用者の報告「実際にショートカットが存在するか
+    どうかを確認していないためか、作成済みで2回目に起動したときにも同じ選択肢が出てきて困ります」）。
+
+    名前では探さない——行き先が入口（または前の`Start.vbs`）の`.lnk`を、その人のデスクトップ・みんなのデスクトップの
+    順に探す。利用者が名前を変えても、別の名前で作っても、管理者がみんなのデスクトップへ置いても見つかる。
+    見つかった道（無ければ空）。"""
+ for folder in (desktop_dir(),public_desktop_dir()):
+  for x in _list_links(folder):
+   if _is_ours_target(x.get('target')):return str(x.get('path') or '')
+ return ''
+
+
+def free_name():
+ """名前を決めずに作るときの名前。既定の名前が**ほかの物**に使われていれば「（2）」…と空いている名前にする
+    （上書きして他人の物を消さない・聞いたのに作れない、を起こさない）。"""
+ for n in range(1,50):
+  name=DEFAULT_NAME if n==1 else '%s（%d）'%(DEFAULT_NAME,n)
+  link=link_path(name)
+  if not link.exists() or is_ours(link):return name
+ return DEFAULT_NAME
+
+
 def _safe_name(raw):
  """ファイル名にできない字を落とす。空になったら既定へ戻す。"""
  name=str(raw or '').strip()
@@ -231,14 +279,29 @@ def remember(name,icon,uid=None):
     「まだ作っていません」**と出る（`status()`は名前からファイルを探す）。
     残すのは**この2つの鍵だけ**——置き場・読み込み先といった他の設定は
     ここからは一切触らない（あちらは編集モードの画面が持つ）。"""
- from .db_access import DBS, connect, set_path_config   # 遅延: 起動順に縛りを作らない
+ # **この PC の控えへ書く**（§9.568）。デスクトップはその PC の物なので、共有のマスタへ置くと別の PC の名前が
+ # 混ざり、マスタを切り替えるたびに「作成済み」が外れた（利用者の報告）。書くのは Python だけ（`runtime_dir()`）。
  try:
-  with connect(DBS['MASTER']['path'],False) as c:
-   set_path_config(c,'shortcut_name',str(name or '').strip(),uid or '')
-   set_path_config(c,'shortcut_icon',str(icon or '').strip(),uid or '')
+  f=runtime_dir()/LOCAL_FILE
+  f.parent.mkdir(parents=True,exist_ok=True)
+  f.write_text(json.dumps({'shortcut_name':str(name or '').strip(),'shortcut_icon':str(icon or '').strip(),
+                           'by':uid or '','at':time.strftime('%Y-%m-%d %H:%M')},ensure_ascii=False),encoding='utf-8')
  except Exception as _e:
   # 作れてはいるので**作成そのものは成功**として返す（黙って捨てない・§9.328）。
   quiet('ショートカットの設定を残せない（作成自体は成功している）',_e)
+
+
+# 作ったときの名前と絵の控え（この PC）。§9.568 より前は`パス設定マスタ`（マスタ＝共有）に置いていた。
+LOCAL_FILE='shortcut.json'
+
+
+def _local_saved():
+ try:
+  f=runtime_dir()/LOCAL_FILE
+  return json.loads(f.read_text(encoding='utf-8')) if f.is_file() else None
+ except Exception as _e:
+  quiet('起動アイコンの控えを読めない（前の置き場を見る）',_e)
+  return None
 
 
 def saved(key):
@@ -249,6 +312,9 @@ def saved(key):
 
     **遅延importにする理由**: `db_access`はマスタDBの置き場を解決するため
     起動の途中で組み上がる。ここを頭で読むと、起動の順番に縛りが増える。"""
+ local=_local_saved()
+ if isinstance(local,dict):return str(local.get(key) or '').strip()
+ # この PC の控えがまだ無い（§9.568 より前に作った）ときだけ、前の置き場（パス設定マスタ）を読む。
  from .db_access import path_config_value            # 遅延: 起動順に縛りを作らない
  try:
   return str(path_config_value(key,'') or '').strip()
@@ -293,8 +359,19 @@ def status(name=None):
  if out['exists']:
   out['linkTarget']=link_target(link)
   out['mine']=_is_ours_target(out['linkTarget'])
-  # 前の行き先（Start.vbs）のままか。窓の中で起動すると`migrate()`が付け替える（画面は字で言うだけ）。
-  out['legacy']=_same_path(out['linkTarget'],legacy_target())
+ # **名前の物が自分の物でなければ、行き先で探す**（§9.568）。名前を変えた・別の名前で作った・みんなのデスクトップに
+ # 在る起動アイコンも「作成済み」と答える（画面の状態と「作りますか」は同じ答えを読む）。
+ if ok and not out['mine']:
+  found=find_ours()
+  if found:
+   link=Path(found)
+   out.update(link=found,exists=True,mine=True,name=link.stem,linkTarget=link_target(link))
+   try:out['updatedAt']=time.strftime('%Y-%m-%d %H:%M',time.localtime(link.stat().st_mtime))
+   except Exception as _e:quiet('ショートカットの更新時刻を読めない（時刻を出さない）',_e)
+ # 名前を決めずに作るとき（「作りますか」）の作る先。同じ名前の別の物があれば空いている名前（`free_name()`）。
+ out['createAt']=str(link_path(free_name())) if ok and not out['mine'] else out['link']
+ # 前の行き先（Start.vbs）のままか。窓の中で起動すると`migrate()`が付け替える（画面は字で言うだけ）。
+ out['legacy']=bool(out['exists'] and _same_path(out['linkTarget'],legacy_target()))
  out['offer']=offer(out)
  return out
 
@@ -320,6 +397,8 @@ def create(name=None,icon=None,uid=None,overwrite=False):
  if not ok:return {'ok':False,'error':why}
  spec,source,bad=_icon_spec(icon)
  if bad:return {'ok':False,'error':bad}
+ # 名前を決めていなければ空いている名前（既定の名前がほかの物に使われていたら「（2）」…・§9.568）
+ if not str(name or '').strip():name=free_name()
  link=link_path(name)
  # **別の物の上は、断ってから**（黙って消さない・§CLAUDE 4）。
  if link.exists() and not overwrite and not is_ours(link):
@@ -391,12 +470,13 @@ def decline():
 def offer(st=None):
  """起動したあと、画面が「デスクトップに起動アイコンを作りますか」と聞くか（§9.559、利用者の指示「アプリの
     ショートカットがデスクトップになければ、許可を求めつくられる」）。**答えるのはここだけ**——
-    窓の中で動いている・作れる端末・残した名前（無ければ既定の名前）のアイコンがデスクトップに無い・この PC で断っていない、
-    のすべてが真のとき。同じ名前の別の物が在るときは聞かない（上書きの確認は「表示」の側が持つ）。"""
+    窓の中で動いている・作れる端末・**行き先が入口の起動アイコンがデスクトップ（みんなのデスクトップを含む）に無い**・
+    この PC で断っていない、のすべてが真のとき（§9.568: 名前では見ない）。同じ名前の別の物だけが在るときは聞き、
+    空いている名前で作る（`free_name()`）。"""
  st=st or status()
  # 自己診断の窓（CI・`WAVELOG_SELFTEST`）は人が居ないので聞かない（窓が開いたまま答えを待たせない）
  return bool(st.get('supported') and desktop_shell.running()['kind']=='desktop' and not os.environ.get('WAVELOG_SELFTEST')
-             and st.get('link') and not st.get('exists') and not declined())
+             and st.get('link') and not (st.get('exists') and st.get('mine')) and not declined())
 
 
 def migrate():

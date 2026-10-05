@@ -142,10 +142,49 @@ def expand_path(raw):
   quiet('`~`を展開できない（書いたまま使う）',_e)
  return text
 
+# ---------------------------------------------------------------------------
+# 共有の置き場から渡す設定（§9.568、利用者の報告「初回起動時にマスタをつかみに行ってくれないので、まっさらな
+# 状態になってしまいます。マスタの置き場は\\nlmsrvngy03\工場内共有\検査データ\Masters\master.sqlite3とした
+# ので、共有置き場のリンクから起動して使い始めるときでも問題なくすぐ使用できるように」）
+# ---------------------------------------------------------------------------
+# 窓（Rust）が共有の置き場の`install.json`を`config/install.json`へ写す（初回のインストールと、置き場に届いた起動の
+# たび）。**書き手は窓だけ**——ここは読むだけ。写しが在る＝共有の置き場から入れた PC。
+# 決め方は`setting()`の1か所: その PC で決めた値（local.json）→ 共有から渡された値 → 共有から入れた PC なら既定の置き場。
+SEED_FILE='install.json'
+SEED_KEYS=('master_db_path','master_share_mode')
+# 共有のマスタの既定の置き場（利用者の指定・更新の置き場の既定`app_update.DEFAULT_DIR`と同じ共有の下）。
+DEFAULT_MASTER_PATH=r'\\nlmsrvngy03\工場内共有\検査データ\Masters\master.sqlite3'
+SETTING_SOURCES={'local':'この PC の設定（config/local.json）','seed':'共有の置き場から渡された設定（install.json）',
+                 'default':'既定の共有の置き場','':'未設定'}
+
+def seed_config():
+ """窓が写した「共有の置き場から渡す設定」。写しが無ければ None（共有の置き場から入れた PC ではない）。"""
+ path=APP_ROOT/'config'/SEED_FILE
+ try:
+  data=json.loads(path.read_text(encoding='utf-8-sig')) if path.is_file() else None
+ except Exception as e:
+  quiet('共有から渡された設定の写しを読めない（無いものとして続ける）',e)
+  return None
+ return data if isinstance(data,dict) else None
+
+def setting(key):
+ """起動の設定1つ → (書いた値, 出どころ)。**答えはここ1か所**（マスタの置き場を決める値・§9.568）。
+    その PC で決めた値が先。無ければ共有の置き場から渡された値。共有から入れた PC でどちらも無ければ、
+    マスタの置き場は既定の共有の場所——配る人が渡す設定を置き忘れても、新しい PC はまっさらで始まらない。"""
+ value=load_local_config().get(key)
+ if value:return str(value),'local'
+ if key not in SEED_KEYS:return None,''
+ seed=seed_config()
+ if seed is None:return None,''
+ if str(seed.get(key) or '').strip():return str(seed[key]).strip(),'seed'
+ if key=='master_db_path':return DEFAULT_MASTER_PATH,'default'
+ return None,''
+
 def configured_path(key):
  """config/local.jsonでのパス上書き値(db_dir/master_db_path/records_db_path
- 専用)。未設定/該当なしはNone。**環境変数を展開してから返す。**"""
- value=load_local_config().get(key)
+ 専用)。未設定/該当なしはNone。**環境変数を展開してから返す。**
+ マスタの置き場は共有から渡された値・既定も見る（`setting()`・§9.568）。"""
+ value,_src=setting(key)
  if not value:return None
  text=expand_path(value)
  return Path(text) if text else None
