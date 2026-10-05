@@ -52,7 +52,7 @@
  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);
  font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;cursor:pointer}
 .lg-panel :is(.lg-bar,.lg-card-acts,.lg-flow-acts,.lg-danger-zone) button:hover:not(:disabled){border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
-.lg-panel button:disabled{opacity:.45;cursor:default}
+.lg-panel button:disabled{opacity:var(--op-disabled);cursor:default}
 .lg-panel select{height:var(--ctl-h-sm);max-width:var(--w-xl);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line-mid);
  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font-size:var(--fs-sm)}
 /* 主要な一手は画面に1つ（§CLAUDE 画面基準 2）。大きさも一段上げる（押す場所を探させない）。 */

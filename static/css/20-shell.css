@@ -333,7 +333,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    既定は編集可能モードで、権限マスタの設定に応じて閲覧モード/スケジュール
    モードで起動する端末もある。クリックで(権限のあるモードの範囲で)切り替えられる。 */
 .access-mode-badge{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1.5px solid var(--success-border);border-radius:var(--radius-pill);background:var(--success-bg);color:var(--success);font-weight:var(--fw-strong);font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap;position:relative}
-.access-mode-badge:disabled{cursor:not-allowed;opacity:.7}
+.access-mode-badge:disabled{cursor:not-allowed;opacity:var(--op-disabled)}
 /* ---------- 浮きメニューの器は1つ（§9.448、寸法の扱いは§9.449で改めた） ----------
    押すと浮いて出る面は13ある——列見出し・予定の行・その入れ子・測定データ一覧・
    モード・同期の状態・表の切り替え・再読込・フィルタの組み合わせ・条件・
@@ -424,7 +424,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .lc-presets .lc-preset-pick>span{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2);white-space:nowrap}
 .lc-presets select{max-width:280px;height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 .lc-presets .lc-preset-sep{flex:1 1 auto}
-.lc-presets button[disabled]{opacity:.45;cursor:not-allowed}
+.lc-presets button[disabled]{opacity:var(--op-disabled);cursor:not-allowed}
 /* ---------- 列の設定の持ち出し・取り込み(§9.178) ----------
    **パネルの中の帯**として開く(モーダルを増やさない)。何が出て行くのか・
    何が運ばれないのかを必ず文字で出す。 */
@@ -439,7 +439,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .lc-io-scope label{display:flex;align-items:baseline;gap:var(--gap-inline);
  font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
 .lc-io-scope label b{color:var(--ink);white-space:nowrap}
-.lc-io-scope input[disabled]+b{opacity:.5}
+.lc-io-scope input[disabled]+b{opacity:var(--op-disabled)}
 .lc-io-list{margin:0 0 var(--space-2);padding:0;list-style:none;
  border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface-2)}
 .lc-io-list li{display:flex;align-items:baseline;gap:var(--gap-inline);
@@ -456,7 +456,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .lc-io-foot{display:flex;align-items:center;gap:var(--gap-inline);
  padding:var(--space-2) var(--space-4);border-top:1px solid var(--line-soft);background:var(--surface-2)}
 .lc-io-note{flex:1 1 auto;color:var(--ink-2);font-size:var(--fs-sm)}
-.lc-io-foot button[disabled]{opacity:.45;cursor:not-allowed}
+.lc-io-foot button[disabled]{opacity:var(--op-disabled);cursor:not-allowed}
 /* 式で作る列(§9.111 ⑦)。**書いたそばから確かめられる**ことが要点で、
    式は書き間違えても一覧では空欄になるだけなので、ここで言わないと
    原因に辿り着けない。 */
@@ -765,7 +765,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   cursor:pointer;white-space:nowrap}
  .lc-origin-chip b{font-weight:var(--fw-ui);font-size:var(--fs-micro);color:var(--muted)}
  .lc-origin-chip:hover:not(:disabled){border-color:var(--teal)}
- .lc-origin-chip:disabled{opacity:.45;cursor:default}
+ .lc-origin-chip:disabled{opacity:var(--op-disabled);cursor:default}
  .lc-origin-chip.is-on b{color:#cfe6ea}
  .lc-origin-chip.lc-origin-source.is-on{background:var(--origin-source);border-color:var(--origin-source)}
  .lc-origin-chip.lc-origin-join.is-on{background:var(--origin-join);border-color:var(--origin-join)}
@@ -810,7 +810,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-item.is-marked{background:var(--pale);border-left-color:var(--teal-dark)}
  .lc-item.is-marked.is-picked{border-color:var(--teal-dark)}
  .lc-item.is-off{background:var(--surface-2)}
- .lc-item.is-off .lc-name,.lc-item.is-off .lc-eg{opacity:.45}
+ .lc-item.is-off .lc-name,.lc-item.is-off .lc-eg{opacity:var(--op-disabled)}
  /* 掴んだ元の行は、そこに「空き」があると分かる程度に薄くする
     (消すと行が詰まって、どこから抜いたのかが分からなくなる)。 */
  .lc-item.lc-dragging{opacity:.32}
@@ -960,7 +960,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   border-radius:var(--radius-sm);background:var(--pale);color:var(--computed-fg);font-size:var(--fs-micro)}
  .lc-bucket button{width:var(--ctl-box);height:var(--ctl-box);padding:0;border:1px solid var(--line-soft);
   border-radius:var(--radius-sm);background:var(--surface-2);color:var(--ink-2);font-size:var(--fs-micro)}
- .lc-bucket button:disabled{opacity:.35}
+ .lc-bucket button:disabled{opacity:var(--op-disabled)}
  .lc-bucket-arrow{color:var(--muted);font-size:var(--fs-micro)}
  /* ---------- 結果(§9.105) ----------
     **1件では「たまたま」と区別が付かない**ので、違う値を3件並べて
@@ -1030,7 +1030,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  /* 既定の行(どれにも当てはまらないとき)は面で見分ける。 */
  .lr-row-default{background:var(--surface-2)}
  /* 決して来ない行。**色だけで伝えない**ので、必ず理由の文も出す。 */
- .lr-row-dead{border-color:var(--line-mid);opacity:.72}
+ .lr-row-dead{border-color:var(--line-mid);opacity:var(--op-disabled)}
  .lr-row-stat{font-size:var(--fs-micro);color:var(--muted);padding-inline-start:var(--lr-conj-w)}
  .lr-row-stat.is-dead{color:var(--danger)}
  .lr-which{color:var(--teal-dark);font-size:var(--fs-micro);font-weight:var(--fw-ui);white-space:nowrap}

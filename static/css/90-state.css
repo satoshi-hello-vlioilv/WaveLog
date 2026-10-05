@@ -105,7 +105,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    どのセルがどの点かを一目で結び付けられるようにする。 */
 .work-time-item.validation-ng input{background:var(--invalid-bg);border-color:var(--invalid)}
 #workTimeHint.is-invalid{font-weight:var(--fw-strong)}
-.mm-tag-box.is-disabled{opacity:.5;background:var(--bg);cursor:not-allowed;pointer-events:none}
+.mm-tag-box.is-disabled{opacity:var(--op-disabled);background:var(--bg);cursor:not-allowed;pointer-events:none}
 .mm-apply-badge.is-restart{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
 .mm-apply-badge.is-live{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .mm-apply-badge.is-info{background:var(--bg);border-color:var(--line-soft);color:var(--muted)}
@@ -117,7 +117,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .db-card.is-warn .db-card-label{color:var(--warn-fg)}
 .db-status-table tbody tr.is-running{background:var(--surface-2)}
 .db-status-table tbody tr.is-late{background:var(--warn-bg)}
-.sc-stop-button.is-disabled{opacity:.5;cursor:not-allowed}
+.sc-stop-button.is-disabled{opacity:var(--op-disabled);cursor:not-allowed}
 .sc-stop-button.is-row-dragging{opacity:.45;outline:1px dashed var(--teal)}
 #grid tbody tr.is-row-dragging{opacity:.45;outline:1px dashed var(--teal)}
 /* いま選んでいる項目の印は**内側に描く**（§9.159、利用者の指摘「入力内容の
@@ -171,7 +171,7 @@ body.view-mode .rec-actbar .resume,
 body.schedule-mode .rec-actbar .resume{display:none}
 body.view-mode #recordSyncBar,
 body.schedule-mode #recordSyncBar{display:none}
-body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
+body.view-mode #openMasterMaint{opacity:var(--op-disabled);pointer-events:none}
 /* ============================================================
 2026-07-21 Quality analysis V7 : Power BI流フィールドウェル / SPA一画面
 - 3タブ（元データ/グラフ/対象データ一覧）。元データが既定

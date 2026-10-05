@@ -31,7 +31,7 @@
   font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;
 }
 .hd-table-badge:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
-.hd-table-badge:disabled{opacity:.7;cursor:default}
+.hd-table-badge:disabled{opacity:var(--op-disabled);cursor:default}
 .hd-table-badge[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
 .hd-table-key{color:var(--muted);font-weight:var(--fw-ui)}
 .hd-table-badge>i{font-style:normal;color:var(--muted);font-size:var(--fs-micro)}
@@ -126,7 +126,7 @@
 .list-page-btn:hover:not(:disabled){background:var(--surface-3)}
 /* **押せないことは形で言う**（§CLAUDE 4）——最後のページで「次へ」が
    押せるのに何も起きない、を作らない。理由は`title`が持つ。 */
-.list-page-btn:disabled{color:var(--muted);cursor:not-allowed;opacity:.5}
+.list-page-btn:disabled{color:var(--muted);cursor:not-allowed;opacity:var(--op-disabled)}
 .list-count{color:var(--ink-2);font-size:var(--lt-fs);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 /* 元データの鮮度＝押すと再読込のメニューが開くボタン（§9.286 ④）。
@@ -2965,7 +2965,7 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 }
 .opf-addchoice::before{content:'＋';font-weight:var(--fw-strong)}
 .opf-addchoice:hover{background:var(--surface-2)}
-.opf-addchoice:disabled{opacity:.6;cursor:progress}
+.opf-addchoice:disabled{opacity:var(--op-disabled);cursor:progress}
 /* 未入力・公差外の印を**ボタン側へ移す**（selectは見えないので）。
    **器の名前を並べないこと**（§9.288 ①）——並べていたので、あとから足した
    形（パネル・メニュー・切替・入切・メモ）には橙も赤も一度も付いていな
@@ -3392,7 +3392,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   color:var(--ink-2);font-size:var(--fs-micro);line-height:1;cursor:pointer;
 }
 .opf-dial-arrow:hover:not(:disabled){background:var(--surface-2);color:var(--opf-hue-dark,var(--teal-dark))}
-.opf-dial-arrow:disabled{opacity:.35;cursor:default}
+.opf-dial-arrow:disabled{opacity:var(--op-disabled);cursor:default}
 /* **前後は薄く、いまは濃く**——3つとも同じ濃さだと、どれが選ばれているのか
    読めない（§3。色だけでなく大きさと太さでも差を付ける）。 */
 .opf-dial-win{

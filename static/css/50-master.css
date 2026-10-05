@@ -584,7 +584,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-fold[hidden]{display:none}
 .mm-fold-state{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);white-space:nowrap}
 .mm-fold-state span{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
-.mm-fold button[disabled]{opacity:.5;cursor:default}
+.mm-fold button[disabled]{opacity:var(--op-disabled);cursor:default}
 .mm-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md);margin-top:14px}
 .mm-empty.error{color:#8a2b2b;border-color:#d8a6a6;background:#fff5f5}
 .mm-loading{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
@@ -701,7 +701,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   padding:var(--gap-tight) var(--space-2);
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);
   background:var(--surface);font-size:var(--fs-sm)}
-.ds-row.is-off{opacity:.6}
+.ds-row.is-off{opacity:var(--op-disabled)}
 .ds-row.is-pending{border-color:var(--nav)}
 /* **見出しも本文と同じ文字サイズにする。** 列幅は`em`で書いてあり、`em`は
    その要素の文字サイズで解決される——見出しだけ小さくすると、同じ
@@ -1241,7 +1241,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    （`data-op-auto`が上でまったく同じ理由で前に在る）。
    **色だけで伝えない**ので、チップの文字と`title`が本体（§3）。 */
 .op-tile[data-op-scope="one"]{background:var(--pale);border-color:var(--teal-soft)}
-.op-tile.is-off{opacity:.55;background:var(--surface-3)}
+.op-tile.is-off{opacity:var(--op-disabled);background:var(--surface-3)}
 .op-tile.is-dragging{opacity:.4}
 .op-tile-name{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1549,7 +1549,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-widget-tile>span{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .op-widget-tile>small{color:var(--ink-2);font-size:var(--fs-micro);white-space:normal}
 .op-widget-tile.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal)}
-.op-widget-tile[disabled]{opacity:.45;cursor:not-allowed}
+.op-widget-tile[disabled]{opacity:var(--op-disabled);cursor:not-allowed}
 .op-choice-pick{display:flex;gap:var(--gap-tight);flex:1 1 100%;min-width:0}
 .op-choice-pick select,.op-choice-pick input{flex:1 1 0;min-width:0}
 .op-choice-rows{display:flex;flex-direction:column;gap:2px;flex:1 1 100%;min-width:0}
@@ -2081,7 +2081,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   display:flex;align-items:center;justify-content:center;
 }
 .op-upad-cell:hover:not(:disabled){border-color:var(--teal);color:var(--teal)}
-.op-upad-cell:disabled{opacity:.4;cursor:not-allowed}
+.op-upad-cell:disabled{opacity:var(--op-disabled);cursor:not-allowed}
 .op-upad-gap{border-radius:var(--radius-xs);background:repeating-linear-gradient(135deg,var(--surface) 0 4px,var(--surface-2) 4px 8px)}
 .op-look-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);flex:1 1 100%}
 .op-look-line>b{font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--ink-2);min-width:var(--w-sm)}
@@ -2108,7 +2108,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-look-digits input{width:var(--w-xs)}
 /* **効かない設定は薄くして理由を文で言う**（§4）。消してしまうと、
    ゼロ埋めを選んだときにどこへ桁数を入れるのか分からない。 */
-.op-look-digits.is-off{opacity:.45}
+.op-look-digits.is-off{opacity:var(--op-disabled)}
 
 /* ============================================================
    選択肢の値 — まとまり（親）とその中の値（子）の2階層（§9.221 ②）
@@ -2535,7 +2535,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);
   background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:pointer}
-.fb-axis>button:disabled{opacity:.45;cursor:not-allowed}
+.fb-axis>button:disabled{opacity:var(--op-disabled);cursor:not-allowed}
 /* 軸を落とす箱（§9.278、利用者の指示「軸単位のドラッグアンドドロップ」）。
    **箱は2つ**——「使わない」を作ると、その軸の値どうしが同じマスへ重なって
    どの値を出すのか決まらない。 */
@@ -2828,14 +2828,14 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
  border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-2);
  font-size:var(--fs-micro);font-weight:var(--fw-ui);line-height:1;cursor:pointer}
 .fb-step-btn:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
-.fb-step-btn:disabled{opacity:.4;cursor:not-allowed}
+.fb-step-btn:disabled{opacity:var(--op-disabled);cursor:not-allowed}
 .fb-step-val{min-width:1.4em;text-align:center;color:var(--teal-dark);
  font-size:var(--fs-micro);font-weight:var(--fw-ui)}
 .fb-cols-btn{width:1.6em;height:1.6em;padding:0;border:1px solid var(--line);
  border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-2);
  font-size:var(--fs-micro);font-weight:var(--fw-ui);line-height:1;cursor:pointer}
 .fb-cols-btn:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
-.fb-cols-btn:disabled{opacity:.4;cursor:not-allowed}
+.fb-cols-btn:disabled{opacity:var(--op-disabled);cursor:not-allowed}
 .fb-cols-val{min-width:1.4em;text-align:center;color:var(--teal-dark);
  font-size:var(--fs-badge);font-weight:var(--fw-ui)}
 /* 空きマスは**斜線の地**（§9.222 ③の空きマスと同じ見せ方にそろえる）。 */
@@ -2920,7 +2920,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
      1文字ずつ縦に並び、何のボタンか読めなくなる（実機のキャプチャで確認）。
      入らないぶんは帯そのものが折り返す（`flex-wrap`）。 */
   white-space:nowrap}
-.fb-table[disabled]{opacity:.5;cursor:not-allowed}
+.fb-table[disabled]{opacity:var(--op-disabled);cursor:not-allowed}
 
 /* ============================================================
    不要ファイルの掃除（§9.249 (1)）
@@ -3404,7 +3404,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
  font-size:var(--fs);font-weight:var(--fw-strong);cursor:pointer}
 .mm-step-btn:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
 /* **押せないことは見た目でも言う**（§4。理由は`title`が持つ）。 */
-.mm-step-btn:disabled{opacity:.4;cursor:not-allowed}
+.mm-step-btn:disabled{opacity:var(--op-disabled);cursor:not-allowed}
 .mm-step-val{min-width:var(--w-sm);padding:0 var(--space-2);text-align:center;
  color:var(--teal-dark);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
 .mm-step-sub{display:block;margin-top:var(--space-1);color:var(--muted);
@@ -3501,7 +3501,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .rly-row:nth-of-type(even){background:var(--surface-2)}
 /* **出していない塊は薄くする。ただし色だけで伝えない**（§CLAUDE 3）
    ——札の文字が「出さない」と言う。 */
-.rly-row.is-off{opacity:.62}
+.rly-row.is-off{opacity:var(--op-disabled)}
 .rly-cell{min-width:0;font-size:var(--fs-sm);color:var(--ink-2)}
 .rly-name{display:flex;flex-direction:column;gap:0;min-width:0}
 .rly-name>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;

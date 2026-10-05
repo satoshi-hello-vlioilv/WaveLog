@@ -568,7 +568,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .fp-io-foot button{height:var(--ctl-h-sm);padding:0 var(--space-3);border:1px solid var(--line);
  background:var(--surface);border-radius:var(--radius-xs);font-size:var(--fs-sm);cursor:pointer}
 .fp-io-foot .fp-io-run{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
-.fp-io-foot .fp-io-run[disabled]{opacity:.45;cursor:not-allowed}
+.fp-io-foot .fp-io-run[disabled]{opacity:var(--op-disabled);cursor:not-allowed}
 /* モーダル内オーバーレイ・ローディング（読込/削除など待ちのある操作） */
 .panel-loading{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .panel-loading[hidden]{display:none}

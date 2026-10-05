@@ -97,9 +97,10 @@
     同じ行の値(14px)から3段離れていた(§9.90)。 */
  font-size:var(--tbl-fs-mark);font-weight:var(--fw-ui);line-height:1.2;
 }
-/* 作業できない行は薄く。並べ替えや削除はできるので消しはしない。 */
+/* 作業できない行は字を補足の灰色に。並べ替えや削除はできるので消しはしない。
+   透明度（.55）だと字が地に対して 2.6〜3.6:1 まで落ちていた（§9.570）。--muted は白地で 4.5:1 以上（§9.564）。 */
 .sc-row-line.sc-row-not-workable .sc-row-title,
-.sc-row-line.sc-row-not-workable .sc-row-time{opacity:.55}
+.sc-row-line.sc-row-not-workable .sc-row-time{color:var(--muted)}
 .mm-imp-badge.orphan{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg)}
 .mm-imp-badge.has{background:var(--success-bg);border:1px solid var(--success-border);color:var(--success)}
 /* ---------- メインメニューの畳み込み(§9.58) ----------
