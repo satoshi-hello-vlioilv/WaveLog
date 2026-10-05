@@ -2550,82 +2550,63 @@ def item_rename_references(c, old, new, uid):
         return 0
 
 
-def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文字',
-                decimals=None, vmin=None, vmax=None, choice='', unit='',
-                required=False, note='', enabled=True, item_id=None,
-                place=None, span=None, fold=None, show_when=None, builtin=None,
-                widget=None, initial=None, free_text=None, step=None,
-                unit_place=None, align=None, value_format=None, digits=None,
-                role=None, look=None, layout=None, group_span=None, report=None,
-                dummy=None, no_blank=None, min_from=None, max_from=None,
-                source_note=None, auto_value=None, record_show=None,
-                choice_order=None, auto_formula=None, blank_tint=None,
-                round_mode=None, inline_add=None):
-    ensure_item_table(c)
-    name = str(name or '').strip()
-    if not name:
-        raise ValueError('項目名を入力してください。')
-    equipment = str(equipment or '').strip() or '*'
-    kind = normalize_item_type(kind)
-    cur = c.cursor()
-    # **組み込みの行は付け替えられない**（§9.216 ②）。組み込みキーは画面が
-    # 持っている入力欄そのものを指すので、後から書き換えると「どの欄の設定
-    # なのか」が決まらなくなる。既存行のキーはそのまま残す。
-    cur_builtin = ''
-    prev_name = ''
-    hit = ITEM_DEF.get(c, int(item_id)) if item_id is not None else None
-    if hit is not None:
-        cur_builtin = str(hit['組み込みキー'] or '').strip()
-        prev_name = str(hit['項目名'] or '').strip()
-        # **渡されなかったら今の値を保つ**（§9.212 ②「送った項目だけ書く」）
-        # ——設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
-        # 出どころ（§9.231 ②）・添え書きの置き場（§9.233 ⑤）・自動で入る値の鍵
-        # （§9.234 ②）・記録表示（§9.242 ④。**NULLは「出す」**）・選択肢の並び
-        # （§9.248 ⑤）・式（§9.256）・未入力の配色（§9.286 ⑥）・丸め方（§9.307）・
-        # 間接登録（§9.323 ①）も同じ約束——設定窓の他の段から保存したときに、
-        # 決めた値が黙って消えては困る（§9.223 ②と同じ形で7度踏んだ）。
-        if dummy is None:
-            dummy = bool(hit['ダミー'])
-        if no_blank is None:
-            no_blank = bool(hit['空欄なし'])
-        if min_from is None:
-            min_from = hit['最小の出どころ']
-        if max_from is None:
-            max_from = hit['最大の出どころ']
-        if source_note is None:
-            source_note = hit['出どころ表示']
-        if auto_value is None:
-            auto_value = hit['自動値']
-        if record_show is None:
-            record_show = True if hit['記録表示'] is None else bool(hit['記録表示'])
-        if choice_order is None:
-            choice_order = hit['選択肢の並び']
-        if auto_formula is None:
-            auto_formula = hit['自動計算式']
-        if blank_tint is None:
-            blank_tint = hit['未入力配色']
-        if round_mode is None:
-            round_mode = hit['丸め方']
-        if inline_add is None:
-            inline_add = bool(hit['手打ちを登録'])
-    if builtin is None:
-        builtin = cur_builtin
-    builtin = str(builtin or '').strip()
-    # **並び順を渡していないときは今の値を残す**（§9.212 ②と同じ約束）。
-    if order is None:
-        if item_id is not None:
-            order = hit['表示順'] if hit is not None else None
-        else:
-            cur.execute('SELECT [表示順] FROM [操業データ項目マスタ] '
-                        'WHERE [設備名]=? AND [項目名]=?', [equipment, name])
-            h = cur.fetchone()
-            if h:
-                order = h[0]
-    # 書く列は**この辞書の鍵だけ**（`ITEM_DEF`が知らない列は断る）。ここに無い
-    # 列（`[設備別レイアウト]`・`[記録群]`・`[記録順]`）は専用の口が書き、
-    # ここでは触らない——以前は`args`の44個を3本のSQLと**位置で**突き合わせて
-    # おり、列を1つ足すたびに「末尾へ足すこと」を4箇所で気を付けていた。
-    vals = {
+# **渡されなかったら今の値を保つ**列（§9.212 ②「送った項目だけ書く」）。
+# [引数名] → (列名, 読み方)。設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
+# 出どころ（§9.231 ②）・添え書きの置き場（§9.233 ⑤）・自動で入る値の鍵
+# （§9.234 ②）・記録表示（§9.242 ④。**NULLは「出す」**）・選択肢の並び
+# （§9.248 ⑤）・式（§9.256）・未入力の配色（§9.286 ⑥）・丸め方（§9.307）・
+# 間接登録（§9.323 ①）も同じ約束——設定窓の他の段から保存したときに、
+# 決めた値が黙って消えては困る（§9.223 ②と同じ形で7度踏んだ）。
+_KEEP_WHEN_UNSENT = {
+    'dummy': ('ダミー', bool),
+    'no_blank': ('空欄なし', bool),
+    'min_from': ('最小の出どころ', None),
+    'max_from': ('最大の出どころ', None),
+    'source_note': ('出どころ表示', None),
+    'auto_value': ('自動値', None),
+    'record_show': ('記録表示', lambda v: True if v is None else bool(v)),
+    'choice_order': ('選択肢の並び', None),
+    'auto_formula': ('自動計算式', None),
+    'blank_tint': ('未入力配色', None),
+    'round_mode': ('丸め方', None),
+    'inline_add': ('手打ちを登録', bool),
+}
+
+
+def _keep_unsent(hit, sent):
+    """送られなかった（`None`の）値を、いまの行の値で埋めて返す。新しい行（`hit`が無い）はそのまま。"""
+    if hit is None:
+        return sent
+    out = dict(sent)
+    for arg, (col, read) in _KEEP_WHEN_UNSENT.items():
+        if out[arg] is None:
+            out[arg] = read(hit[col]) if read else hit[col]
+    return out
+
+
+def _saved_order(cur, hit, item_id, equipment, name):
+    """並び順を渡していないときの今の値（§9.212 ②と同じ約束）。無ければ`None`。"""
+    if item_id is not None:
+        return hit['表示順'] if hit is not None else None
+    cur.execute('SELECT [表示順] FROM [操業データ項目マスタ] '
+                'WHERE [設備名]=? AND [項目名]=?', [equipment, name])
+    h = cur.fetchone()
+    return h[0] if h else None
+
+
+def _item_vals(*, equipment, group, name, order, kind, decimals, vmin, vmax, choice, unit,
+               required, note, enabled, builtin, place, span, fold, show_when, widget,
+               initial, free_text, step, unit_place, align, value_format, digits, role,
+               look, layout, group_span, dummy, no_blank, min_from, max_from, source_note,
+               auto_value, record_show, choice_order, auto_formula, blank_tint, round_mode,
+               inline_add):
+    """1行ぶんの書く値。書く列は**この辞書の鍵だけ**（`ITEM_DEF`が知らない列は断る）。
+
+    ここに無い列（`[設備別レイアウト]`・`[記録群]`・`[記録順]`）は専用の口が書き、
+    ここでは触らない——以前は`args`の44個を3本のSQLと**位置で**突き合わせて
+    おり、列を1つ足すたびに「末尾へ足すこと」を4箇所で気を付けていた。
+    """
+    return {
         '設備名': equipment, '群': str(group or '').strip(), '項目名': name,
         '表示順': order, '型': kind, '小数桁': decimals, '最小値': vmin, '最大値': vmax,
         '選択肢名': str(choice or '').strip(), '単位': str(unit or '').strip(),
@@ -2672,16 +2653,11 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         # §9.323 ① 測定画面からその場で選択肢マスタへ足せるか。
         '手打ちを登録': -1 if inline_add else 0,
     }
-    if item_id is not None:
-        ITEM_DEF.update(c, int(item_id), vals, uid)
-        # **名前で結び付いている設定も付け替える**（§9.226 ①）。
-        moved = item_rename_references(c, prev_name, name, uid)
-        if isinstance(report, dict):
-            report['oldName'] = prev_name
-            report['renamedRefs'] = moved
-        return int(item_id)
-    # 自然キーは(設備名,項目名)。同じ設備に同じ名前を2つ置かない
-    # ——値はこの名前を鍵にレコードへ入るので、2つあるとどちらの値か決まらない。
+
+
+def _insert_or_update_by_key(c, cur, uid, equipment, name, order, vals):
+    """IDを持たない保存。自然キーは(設備名,項目名)——同じ設備に同じ名前を2つ置かない
+    （値はこの名前を鍵にレコードへ入るので、2つあるとどちらの値か決まらない）。"""
     cur.execute('SELECT [項目ID] FROM [操業データ項目マスタ] WHERE [設備名]=? AND [項目名]=?',
                 [equipment, name])
     same = cur.fetchone()
@@ -2695,6 +2671,59 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         top = cur.fetchone()[0] or 0
         vals['表示順'] = int(top) + 10
     return ITEM_DEF.insert(c, vals, uid)
+
+
+def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文字',
+                decimals=None, vmin=None, vmax=None, choice='', unit='',
+                required=False, note='', enabled=True, item_id=None,
+                place=None, span=None, fold=None, show_when=None, builtin=None,
+                widget=None, initial=None, free_text=None, step=None,
+                unit_place=None, align=None, value_format=None, digits=None,
+                role=None, look=None, layout=None, group_span=None, report=None,
+                dummy=None, no_blank=None, min_from=None, max_from=None,
+                source_note=None, auto_value=None, record_show=None,
+                choice_order=None, auto_formula=None, blank_tint=None,
+                round_mode=None, inline_add=None):
+    ensure_item_table(c)
+    name = str(name or '').strip()
+    if not name:
+        raise ValueError('項目名を入力してください。')
+    equipment = str(equipment or '').strip() or '*'
+    kind = normalize_item_type(kind)
+    cur = c.cursor()
+    # **組み込みの行は付け替えられない**（§9.216 ②）。組み込みキーは画面が
+    # 持っている入力欄そのものを指すので、後から書き換えると「どの欄の設定
+    # なのか」が決まらなくなる。既存行のキーはそのまま残す。
+    hit = ITEM_DEF.get(c, int(item_id)) if item_id is not None else None
+    cur_builtin = str(hit['組み込みキー'] or '').strip() if hit is not None else ''
+    prev_name = str(hit['項目名'] or '').strip() if hit is not None else ''
+    kept = _keep_unsent(hit, dict(
+        dummy=dummy, no_blank=no_blank, min_from=min_from, max_from=max_from,
+        source_note=source_note, auto_value=auto_value, record_show=record_show,
+        choice_order=choice_order, auto_formula=auto_formula, blank_tint=blank_tint,
+        round_mode=round_mode, inline_add=inline_add))
+    if builtin is None:
+        builtin = cur_builtin
+    builtin = str(builtin or '').strip()
+    if order is None:
+        order = _saved_order(cur, hit, item_id, equipment, name)
+    vals = _item_vals(
+        equipment=equipment, group=group, name=name, order=order, kind=kind,
+        decimals=decimals, vmin=vmin, vmax=vmax, choice=choice, unit=unit,
+        required=required, note=note, enabled=enabled, builtin=builtin, place=place,
+        span=span, fold=fold, show_when=show_when, widget=widget, initial=initial,
+        free_text=free_text, step=step, unit_place=unit_place, align=align,
+        value_format=value_format, digits=digits, role=role, look=look, layout=layout,
+        group_span=group_span, **kept)
+    if item_id is None:
+        return _insert_or_update_by_key(c, cur, uid, equipment, name, order, vals)
+    ITEM_DEF.update(c, int(item_id), vals, uid)
+    # **名前で結び付いている設定も付け替える**（§9.226 ①）。
+    moved = item_rename_references(c, prev_name, name, uid)
+    if isinstance(report, dict):
+        report['oldName'] = prev_name
+        report['renamedRefs'] = moved
+    return int(item_id)
 
 
 def _same_as_common(key, value, common):

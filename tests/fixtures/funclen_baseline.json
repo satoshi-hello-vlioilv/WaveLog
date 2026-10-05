@@ -20,8 +20,8 @@
   12
  ],
  "backend/repositories/operation_repo.py": [
-  2,
-  87
+  1,
+  22
  ],
  "backend/repositories/report_block_repo.py": [
   3,
@@ -100,8 +100,8 @@
   9
  ],
  "static/js/master/master-opdata.js": [
-  5,
-  179
+  3,
+  51
  ],
  "static/js/master/master-report.js": [
   5,

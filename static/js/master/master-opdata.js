@@ -2881,6 +2881,7 @@
  }
  /* 窓の中の「押すと値を1つ当てる札」の表——[印, 押した札（と項目）から当てる値]。
     押せない札は何もしない。足すときは表へ1行。 */
+ /** @type {Array<[string,function(any,any):Object]>} */
  const OP_MODAL_PICKS=[
   ['data-op-place',b=>({place:b.dataset.opPlace})],
   ['data-op-span',b=>({span:Number(b.dataset.opSpan)})],
@@ -2926,6 +2927,7 @@
   }],
  ];
  /* 窓の中の入切（1つの欄が1つの値を反転する）。[欄のID, 押した時点の項目から当てる値]。 */
+ /** @type {Array<[string,function(any):Object]>} */
  const OP_MODAL_TOGGLES=[
   ['opdRequired',x=>({required:!x.required})],
   ['opdEnabled',x=>({enabled:x.enabled===false})],
