@@ -3157,16 +3157,14 @@
   {k:'dot',label:''},{k:'name',label:'区分の名称'},{k:'time',label:'時間帯'},
   {k:'next',label:'日跨ぎ'},{k:'dayoff',label:'日付の数え方'},{k:'act',label:''},
  ];
- function renderShiftPattern(){
-  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  const d=shiftState.draft||shiftDraftFrom(null);
-  const eqSelected=new Set((d.equipment||[]).map(String));
-  const eqItems=(WL.records.equipmentMasterState.items||[]);
+ /* 勤務体系の画面（§9.197）。組み立て（HTML）と配線を段ごとに分けた（§9.522 その7）。
+    呼ぶ順は元のまま——頭を描いて配線 → 本体を描いて配線 → 時間帯の合計。 */
+ function shiftEqChipsHtml(eqItems,eqSelected){
   /* 設備は**名前のタグの入切**で選ぶ(§9.197、利用者の指示「設備名のバッジを
      出して、配色のONOFF」)。名前そのものが押せる的なので、四角い枠と
      チェックの位置を目で往復しなくてよい。入は面の色で、**色だけで伝えない**
      ため上の要約が件数と名前を文字で言う。 */
-  const eqChips=eqItems.length
+  return eqItems.length
    ? eqItems.map(x=>{
       const on=eqSelected.has(x.name);
       return `<button type="button" class="shift-eq-tag${on?' is-on':''}" data-shift-eq="${esc(x.name)}"`
@@ -3174,14 +3172,17 @@
        +`<i aria-hidden="true">${on?'✓':'＋'}</i>${esc(x.name)}</button>`;
      }).join('')
    : '<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
-  const eqSummary=shiftEqSummaryHtml([...eqSelected],eqItems.length);
-  form.innerHTML=`<div class="mm-form-head">
+ }
+ function shiftFormHeadHtml(d){
+  return `<div class="mm-form-head">
     <span class="mm-mode-chip ${d.id?'editing':'new'}">${d.id?`編集中 <b>${esc(d.name||'')}</b>`:'新規の勤務体系'}</span>
     <button type="button" id="shiftNew" class="mm-btn-ghost sm">＋ 勤務体系を追加</button>
     <span class="mm-form-hint">テンプレート:</span>
     ${SHIFT_TEMPLATES.map((t,i)=>`<button type="button" class="mm-btn-ghost sm" data-shift-tmpl="${i}">${esc(t.label)}</button>`).join('')}
    </div>
    <p class="mm-def-hint">勤務体系(日勤・交替勤務など)の中に、各直の時間帯を並べます。作業スケジュールの「勤務」列は、予定の時刻が入る区分の名称を表示します。終了が開始以下の区分は翌日にまたがる勤務として扱い、<b>跨いだ後の時間帯は「日付の数え方」で決めた日付で数えます</b>（3直 23:00〜翌7:00 を1つの日としてまとめるための設定です）。適用設備を空欄にすると全設備の既定になり、設備を指定した体系があればそちらが優先されます。</p>`;
+ }
+ function wireShiftHead(form,d){
   form.onsubmit=ev=>ev.preventDefault();
   $('#shiftNew').onclick=()=>{shiftState.selectedId=null;shiftState.draft=shiftDraftFrom(null);renderShiftPattern()};
   form.querySelectorAll('[data-shift-tmpl]').forEach(b=>b.onclick=()=>{
@@ -3190,6 +3191,10 @@
    renderShiftPattern();
   });
 
+ }
+ function shiftEditorHtml(d,eqItems,eqSelected){
+  const eqChips=shiftEqChipsHtml(eqItems,eqSelected);
+  const eqSummary=shiftEqSummaryHtml([...eqSelected],eqItems.length);
   const bars=d.segments.map((seg,i)=>shiftBarPieces(seg).map(([left,w])=>
     `<span class="shift-bar-piece" data-i="${i%6}" style="left:${left}%;width:${w}%" title="${esc(seg.name)} ${esc(seg.start)}〜${esc(seg.end)}"></span>`).join('')).join('');
   const segHead=`<div class="shift-seg-head">${
@@ -3215,7 +3220,7 @@
       <button type="button" class="shift-seg-del" title="この区分を削除">×</button></span>
     </div>`;
   };
-  list.innerHTML=`<div class="shift-editor">
+  return `<div class="shift-editor">
     <aside class="shift-list">
      <div class="shift-list-head">登録済みの勤務体系</div>
      ${shiftState.patterns.length?shiftState.patterns.map(p=>`<button type="button" class="shift-list-item${p.id===d.id?' active':''}" data-shift-pattern="${p.id}">
@@ -3255,23 +3260,20 @@
     </section>
    </div>`;
 
-  list.querySelectorAll('[data-shift-pattern]').forEach(b=>b.onclick=()=>{
-   shiftState.selectedId=+b.dataset.shiftPattern;
-   shiftState.draft=shiftDraftFrom(shiftState.patterns.find(p=>p.id===shiftState.selectedId));
-   renderShiftPattern();
+ }
+ /* 画面の欄から下書きへ写す（押した操作の前に呼ぶ）。 */
+ function syncShiftDraft(list){
+  const dd=shiftState.draft;
+  dd.name=$('#shiftName').value;dd.equipment=selectedShiftEquipment();
+  dd.segments=[...list.querySelectorAll('.shift-seg')].map(el=>{
+   const off=el.querySelector('select.shift-seg-dayoff');
+   return {name:el.querySelector('.shift-seg-name').value,
+           start:el.querySelector('.shift-seg-start').value,
+           end:el.querySelector('.shift-seg-end').value,
+           dayOffset:off?Number(off.value):null};
   });
-  const sync=()=>{
-   const dd=shiftState.draft;
-   dd.name=$('#shiftName').value;dd.equipment=selectedShiftEquipment();
-   dd.segments=[...list.querySelectorAll('.shift-seg')].map(el=>{
-    const off=el.querySelector('select.shift-seg-dayoff');
-    return {name:el.querySelector('.shift-seg-name').value,
-            start:el.querySelector('.shift-seg-start').value,
-            end:el.querySelector('.shift-seg-end').value,
-            dayOffset:off?Number(off.value):null};
-   });
-  };
-  $('#shiftName').oninput=()=>{shiftState.draft.name=$('#shiftName').value};
+ }
+ function wireShiftEquipment(list){
   /* タグの入切。**押した瞬間にその場で切り替える**——画面を組み直すと器が
      スクロールごと巻き戻り、続けて選べない(§9.117と同じ罠)。 */
   $('#shiftEquipment')?.querySelectorAll('[data-shift-eq]').forEach(tag=>{
@@ -3287,22 +3289,24 @@
    };
   });
   const eqAll=$('#shiftEqAll');
-  if(eqAll)eqAll.onclick=()=>{sync();
+  if(eqAll)eqAll.onclick=()=>{syncShiftDraft(list);
    shiftState.draft.equipment=(WL.records.equipmentMasterState.items||[]).map(x=>x.name);renderShiftPattern()};
   const eqNone=$('#shiftEqNone');
-  if(eqNone)eqNone.onclick=()=>{sync();shiftState.draft.equipment=[];renderShiftPattern()};
+  if(eqNone)eqNone.onclick=()=>{syncShiftDraft(list);shiftState.draft.equipment=[];renderShiftPattern()};
+ }
+ function wireShiftSegments(list){
   list.querySelectorAll('.shift-seg').forEach(el=>{
    const i=+el.dataset.i;
    // 時刻・名称の変更はその場でバーへ反映する(保存前に結果が見える)。
-   el.querySelectorAll('input').forEach(inp=>inp.onchange=()=>{sync();renderShiftPattern()});
+   el.querySelectorAll('input').forEach(inp=>inp.onchange=()=>{syncShiftDraft(list);renderShiftPattern()});
    const off=el.querySelector('select.shift-seg-dayoff');
-   if(off)off.onchange=()=>{sync();renderShiftPattern()};
-   el.querySelector('.shift-seg-del').onclick=()=>{sync();shiftState.draft.segments.splice(i,1);renderShiftPattern()};
-   el.querySelector('.shift-seg-up').onclick=()=>{sync();if(i>0)shiftState.draft.segments.splice(i-1,0,shiftState.draft.segments.splice(i,1)[0]);renderShiftPattern()};
-   el.querySelector('.shift-seg-down').onclick=()=>{sync();const a=shiftState.draft.segments;if(i<a.length-1)a.splice(i+1,0,a.splice(i,1)[0]);renderShiftPattern()};
+   if(off)off.onchange=()=>{syncShiftDraft(list);renderShiftPattern()};
+   el.querySelector('.shift-seg-del').onclick=()=>{syncShiftDraft(list);shiftState.draft.segments.splice(i,1);renderShiftPattern()};
+   el.querySelector('.shift-seg-up').onclick=()=>{syncShiftDraft(list);if(i>0)shiftState.draft.segments.splice(i-1,0,shiftState.draft.segments.splice(i,1)[0]);renderShiftPattern()};
+   el.querySelector('.shift-seg-down').onclick=()=>{syncShiftDraft(list);const a=shiftState.draft.segments;if(i<a.length-1)a.splice(i+1,0,a.splice(i,1)[0]);renderShiftPattern()};
   });
   $('#shiftAddSeg').onclick=()=>{
-   sync();
+   syncShiftDraft(list);
    const segs=shiftState.draft.segments;
    const last=segs[segs.length-1];
    // 直前の区分の終了時刻を次の開始時刻の初期値にする(連続する直の入力が
@@ -3310,8 +3314,25 @@
    segs.push({name:`${segs.length+1}直`,start:last?last.end:'08:00',end:last?last.end:'17:00',dayOffset:null});
    renderShiftPattern();
   };
+ }
+ function renderShiftPattern(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  const d=shiftState.draft||shiftDraftFrom(null);
+  const eqSelected=new Set((d.equipment||[]).map(String));
+  const eqItems=(WL.records.equipmentMasterState.items||[]);
+  form.innerHTML=shiftFormHeadHtml(d);
+  wireShiftHead(form,d);
+  list.innerHTML=shiftEditorHtml(d,eqItems,eqSelected);
+  list.querySelectorAll('[data-shift-pattern]').forEach(b=>b.onclick=()=>{
+   shiftState.selectedId=+b.dataset.shiftPattern;
+   shiftState.draft=shiftDraftFrom(shiftState.patterns.find(p=>p.id===shiftState.selectedId));
+   renderShiftPattern();
+  });
+  $('#shiftName').oninput=()=>{shiftState.draft.name=$('#shiftName').value};
+  wireShiftEquipment(list);
+  wireShiftSegments(list);
   const del=$('#shiftDelete');if(del)del.onclick=()=>deleteShiftPattern(d);
-  $('#shiftSave').onclick=()=>{sync();saveShiftPattern()};
+  $('#shiftSave').onclick=()=>{syncShiftDraft(list);saveShiftPattern()};
   renderShiftCoverage(d);
  }
  function renderShiftCoverage(d){
