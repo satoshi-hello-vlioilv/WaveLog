@@ -112,7 +112,7 @@
 #lgMemo{width:100%;min-height:calc(var(--fs) * var(--lh) * 4 + var(--space-2) * 2);resize:vertical;
  padding:var(--space-2) var(--ctl-pad-x-sm);border:1px solid var(--line-mid);border-radius:var(--radius-sm);
  color:var(--ink);font:inherit;font-size:var(--fs);line-height:var(--lh);box-sizing:border-box}
-#lgMemo:focus{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px var(--pale)}
+#lgMemo:focus{outline:0;border-color:var(--teal);box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 .lg-flow-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline)}
 .lg-done{margin:0;min-height:calc(var(--fs-sm) * var(--lh));font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .lg-done.is-ok{color:var(--success)}

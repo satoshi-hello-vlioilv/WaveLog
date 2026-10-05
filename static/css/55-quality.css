@@ -9,7 +9,7 @@
    ============================================================ */
 @layer component {
 .qa-v7 .qa-acc-list{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:var(--space-2);padding-right:2px}
-.qa-v7 .qa-acc{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:#fff;box-shadow:0 1px 3px #0b2b330a;overflow:hidden;flex:0 0 auto}
+.qa-v7 .qa-acc{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:#fff;overflow:hidden;flex:0 0 auto}
 .qa-v7 .qa-acc-head{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:var(--ctl-h-lg);padding:0 var(--ctl-pad-x);border:0;background:#fff;cursor:pointer;text-align:left;box-shadow:none;border-radius:0}
 .qa-v7 .qa-acc-head:hover{background:var(--surface-2)}
 .qa-v7 .qa-step-num{display:grid;place-items:center;width:var(--ctl-h-xs);height:var(--ctl-h-xs);border-radius:var(--radius-sm);background:#dceff1;color:#0a6570;font-size:var(--fs-sm);font-weight:var(--fw-ui);flex:0 0 auto}
@@ -25,7 +25,7 @@
 .qa-v7 .qa-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)}
 .qa-v7 .qa-acc-body label{display:grid;gap:var(--space-1);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .qa-v7 .qa-acc-body select,.qa-v7 .qa-acc-body input{height:var(--ctl-h);width:100%;min-width:0;border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);padding:0 var(--ctl-pad-x-sm);box-sizing:border-box}
-.qa-v7 .qa-acc-body select:focus-visible,.qa-v7 .qa-acc-body input:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px #087c8926}
+.qa-v7 .qa-acc-body select:focus-visible,.qa-v7 .qa-acc-body input:focus-visible{outline:0;border-color:var(--teal);box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 .qa-v7 .qa-sub-inline{display:flex;align-items:center;gap:var(--space-2);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);flex-wrap:wrap}
 .qa-v7 .qa-hint{margin:0;padding:7px 9px;border-left:3px solid #9fd0cf;background:#eef8f9;color:var(--ink-2);line-height:1.5;border-radius:0 var(--radius-sm) var(--radius-sm) 0}
 /* セグメント（トグル） */
@@ -33,7 +33,7 @@
 .qa-v7 .qa-seg.qa-seg-wrap{flex-wrap:wrap}
 .qa-v7 .qa-seg button{flex:1 1 0;min-width:58px;border:0;background:transparent;color:var(--ink-2);font-weight:var(--fw-strong);cursor:pointer;white-space:nowrap;box-shadow:none}
 .qa-v7 .qa-seg button:hover{background:var(--surface-3)}
-.qa-v7 .qa-seg button.active{background:#fff;color:var(--teal);box-shadow:0 1px 4px #0b2b3322}
+.qa-v7 .qa-seg button.active{background:#fff;color:var(--teal);}
 .qa-v7 .qa-seg.qa-seg-sm{width:auto;display:inline-flex}
 .qa-v7 .qa-seg.qa-seg-sm button{min-width:42px;flex:0 0 auto}
 /* 固定フッター */
@@ -42,7 +42,7 @@
 .qa-v7 .qa-search-field input{height:var(--ctl-h);border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);padding:0 var(--ctl-pad-x-sm);box-sizing:border-box}
 .qa-v7 .qa-result-summary{display:flex;gap:var(--gap-inline);flex-wrap:wrap}
 .qa-v7 .qa-chip{border-radius:var(--radius-pill);background:#eaf6f7;border:1px solid #b9d5d9;color:#075e67;line-height:1.2}
-.qa-v7 .qa-primary-large{width:100%;border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:0 4px 12px #087c8940}
+.qa-v7 .qa-primary-large{width:100%;border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:var(--elev-pop)}
 .qa-v7 .qa-primary-large:hover{background:var(--teal-dark)}
 /* 右: グラフ */
 .qa-v7 .qa-chart-main{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:visible}

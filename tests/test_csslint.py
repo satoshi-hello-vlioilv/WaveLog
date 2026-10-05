@@ -408,6 +408,55 @@ _all_css = ''.join((CSS_DIR / _n).read_text(encoding='utf-8') for _n in CSS_ORDE
 _old = [t for t in ('var(--ink-3)', 'var(--ink-soft)') if t in re.sub(r'/\*[\s\S]*?\*/', '', _all_css)]
 rec('まとめた灰色のトークン（--ink-3／--ink-soft）を使っていない', not _old, str(_old))
 
+# ---- 影は役割のトークンから（§9.569）: 浮き＝--elev-*／焦点の輪＝二重の輪（--ring-gap・--ring-w）
+def _shadow_parts(v):
+    out, dep, cur = [], 0, ''
+    for ch in v:
+        dep += (ch == '(') - (ch == ')')
+        if ch == ',' and dep == 0:
+            out.append(cur.strip()); cur = ''
+        else:
+            cur += ch
+    return out + [cur.strip()]
+
+
+def _shadow_issues(src):
+    """浮きの影を字面で書いた所・焦点の輪が二重の輪でない所 → ['セレクタ 値']。@keyframes の中は絵なので見ない。"""
+    src = re.sub(r'/\*[\s\S]*?\*/', '', src)
+    src = re.sub(r'@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}', '', src)
+    out = []
+    for sel, body in re.findall(r'([^{}]+)\{([^{}]*)\}', src):
+        for v in re.findall(r'box-shadow:\s*([^;]+)', body):
+            for part in _shadow_parts(v):
+                if 'inset' in part or 'var(' in part.split(' ')[0]:
+                    continue
+                nums = re.findall(r'(-?[\d.]+)(?:px)?(?=[\s,]|$)', re.sub(r'rgba?\([^)]*\)|color-mix\(.*\)|#[0-9a-fA-F]+', '', part))
+                if len(nums) >= 3 and float(nums[2]) > 0:
+                    out.append(f'{sel.strip()[-40:]} 浮きの影を字面で: {part[:40]}')
+            if ':focus' in sel and re.match(r'\s*0 0 0 ', v) and 'var(--ring-w)' not in v:
+                out.append(f'{sel.strip()[-40:]} 焦点の輪が二重の輪でない: {v[:40]}')
+    return out
+_sh = [f'{_n}: {x}' for _n in CSS_ORDER for x in _shadow_issues((CSS_DIR / _n).read_text(encoding='utf-8'))]
+rec('影は役割のトークンから選ぶ（浮き＝--elev-*・焦点＝二重の輪・§9.569）', not _sh, '; '.join(_sh[:6]))
+rec('影の見張りは同じ形を注ぎ込むと数える',
+    len(_shadow_issues('.a{box-shadow:0 4px 12px #0003}.b:focus{box-shadow:0 0 0 2px #087c89}'
+                       '.c{box-shadow:var(--elev-pop)}.d:focus{box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}'
+                       '.e{box-shadow:inset 0 7px 9px -9px #0002}@keyframes k{0%{box-shadow:0 0 8px #f00}}')) == 2)
+
+
+# ---- 使っているトークンが定義されている（§9.569）: 定義の無い var(--x) は値ごと無効になり、黙って何も効かない。
+#      影のトークンの定義を落としたとき、影が全部消えたのに網はどれも通った（踏んだ）。代わりの値を持つ var(--x,…) は数えない。
+def _undefined_tokens(css, others=''):
+    css = re.sub(r'/\*[\s\S]*?\*/', '', css)
+    defined = set(re.findall(r'(--[\w-]+)\s*:', css + others)) | set(re.findall(r"setProperty\(\s*['\"`](--[\w-]+)", others))
+    return sorted(set(re.findall(r'var\(\s*(--[\w-]+)\s*\)', css)) - defined)
+_js_html = ''.join(p.read_text(encoding='utf-8') for d in ('static/js', 'templates') for p in (ROOT / d).rglob('*')
+                   if p.suffix in ('.js', '.html'))
+_und = _undefined_tokens(_all_css, _js_html)
+rec('CSS が使うトークンはどれも定義されている（定義の無い var() は黙って効かない）', not _und, str(_und[:10]))
+rec('トークンの見張りは同じ形を注ぎ込むと数える',
+    _undefined_tokens(':root{--a:1px}.x{width:var(--a);height:var(--b);top:var(--c,0)}') == ['--b'])
+
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')

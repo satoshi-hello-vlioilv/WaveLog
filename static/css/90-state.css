@@ -39,25 +39,25 @@ body.col-resizing .col-resize{opacity:1}
 .list-join-chip.is-warn{background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border)}
 /* 行選択(シングルクリック): ホバーやmeasurement-row(測定可)の目印と
    混同しないよう、色相の違う強調(青系の左ボーダー+淡い背景)にする。 */
-tbody tr.is-selected{background:#eef2ff;box-shadow:inset 4px 0 0 #2851d1}
+tbody tr.is-selected{background:#eef2ff;box-shadow:inset var(--bar-w) 0 0 #2851d1}
 tbody tr.is-selected:hover{background:#e3e9ff}
 /* 複数選択(§9.5、スケジュールへの一括投入)。単一行選択(is-selected、青系)
    とは意味が別のため、既存のスケジュール機能の色(teal)で区別する。 */
-tbody tr.is-plan-selected{background:var(--computed-bg);box-shadow:inset 4px 0 0 var(--teal)}
+tbody tr.is-plan-selected{background:var(--computed-bg);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .measure-grid-block input.auto-locked,.strip-row input.auto-locked{cursor:pointer;caret-color:transparent;user-select:none}
-.record-list-row.is-same-lot{box-shadow:inset 4px 0 0 var(--teal);background:#eafafa}
+.record-list-row.is-same-lot{box-shadow:inset var(--bar-w) 0 0 var(--teal);background:#eafafa}
 /* ---------- 14. 検証状態（空欄=橙 / 入力済=白 / 公差外=赤） ---------- *//* JSが実行時に付ける状態クラス。@layer state は component より後なので、
    詳細度で競り合わなくても部品側の面・枠線に必ず勝つ。 */
-.validation-required{background:var(--required-bg);border-color:var(--required);box-shadow:inset 4px 0 0 var(--required)}
+.validation-required{background:var(--required-bg);border-color:var(--required);box-shadow:inset var(--bar-w) 0 0 var(--required)}
 .validation-valid{background:var(--valid-bg);border-color:#aebdc2;box-shadow:none}
-.validation-ng{background:var(--invalid-bg);border-color:var(--invalid);box-shadow:inset 4px 0 0 var(--invalid);color:#7a0000;font-weight:var(--fw-strong)}
+.validation-ng{background:var(--invalid-bg);border-color:var(--invalid);box-shadow:inset var(--bar-w) 0 0 var(--invalid);color:#7a0000;font-weight:var(--fw-strong)}
 .work-time-item.validation-valid{background:#eefaf6;border-color:#62aa96;box-shadow:none}
 .validation-message{padding:var(--pad-card);margin:6px 0;border:1px solid var(--required);background:var(--required-bg);color:var(--warn-fg);font-weight:var(--fw-strong);border-radius:var(--radius-sm)}
 /* 検査員・作業人数・内径・スプール・板厚測定器・板幅測定器: 選択必須ではないが、
    「-」のまま未選択の間は目立たせ、何か選んだら白背景に戻す（確認漏れ防止の
    視覚的な合図。activeRequiredControlsの必須判定とは独立） *//* 面を淡くした分、左端のアクセントバーで「まだ選んでいない」を示す(.validation-requiredと同じ言語)。 */
-.choice-pending{background:var(--required-bg);border-color:var(--required);box-shadow:inset 3px 0 0 var(--required)}
+.choice-pending{background:var(--required-bg);border-color:var(--required);box-shadow:inset var(--bar-w) 0 0 var(--required)}
 .choice-made{background:#fff}
 /* ---------- 未入力・未選択の配色（§9.286 ⑥、利用者の指示） ----------
    項目ごとに色を選べる（操業データ項目マスタの`[未入力配色]`）。
@@ -75,7 +75,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .opf-host[data-op-blank-tint].is-blank .opf-face{
   background:var(--opb-bg);border-color:var(--opb-line);
   border-radius:var(--opf-radius,var(--radius-sm));
-  box-shadow:inset 4px 0 0 var(--opb-line);
+  box-shadow:inset var(--bar-w) 0 0 var(--opb-line);
 }
 /* **面の中で自前の地を持つ部分も一緒に塗る**（§9.288 ①、利用者の報告
    「UIによっては背景というか裏に色が回っていてUIの内部に着色されない
@@ -125,7 +125,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    要素の外側3pxへ描かれるため、器いっぱいに並ぶ一覧では**選んだ1つだけが
    カードの内側の縁を越えて**いた（実測2px。他の項目とも大きさが違って見える）。
    内側の枠なら箱の大きさは変わらず、どの状態色の上でも同じ強さで見える。 */
-.type-chip.is-current{outline:0;box-shadow:inset 0 0 0 2px var(--nav)}
+.type-chip.is-current{outline:0;box-shadow:inset 0 0 0 var(--edge-w) var(--nav)}
 .shift-seg-next.is-empty{background:transparent;border-color:transparent}
 /* 現場段取りの権限はあるが対象設備が未設定/不一致のとき(§9.44)。
    「可」と言い切ると、動かした瞬間にサーバーへ弾かれて食い違うため、
@@ -311,7 +311,7 @@ body.qa-mode #printCurrentView{display:none}
   padding:var(--space-2) var(--space-3);
   background:var(--nav);color:#eaf6f7;
   border:1px solid color-mix(in srgb,#ffffff 18%,transparent);
-  border-radius:var(--radius-sm);box-shadow:0 8px 24px rgba(0,0,0,.28);
+  border-radius:var(--radius-sm);box-shadow:var(--elev-pop);
   pointer-events:none;   /* 下の行き先を押せなくしない */
 }
 .nav-tip[hidden]{display:none}

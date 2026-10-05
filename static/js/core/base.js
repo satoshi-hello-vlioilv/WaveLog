@@ -1235,7 +1235,7 @@ const columnTint=(()=>{
     const p=PALETTE[cols[col]];if(!p)return;
     const at=`[data-col="${q(col)}"]`;
     out.push(`${sc.head}${at}{background:${p.bg};color:${p.ink};`
-             +`box-shadow:inset 0 -3px 0 ${p.line}}`);
+             +`box-shadow:inset 0 calc(var(--bar-w) * -1) 0 ${p.line}}`);
     out.push(`${sc.cell}${at}{background:color-mix(in srgb, ${p.bg} 55%, var(--surface))}`);
    });
   });

@@ -8,7 +8,7 @@
    レイヤの宣言とトークンは 00-base.css が持つ。
    ============================================================ */
 @layer component {
-.record-dialog{width:min(1480px,97vw);height:min(900px,94vh);background:var(--surface-2);border-radius:var(--radius-lg);box-shadow:0 20px 60px #0005;display:flex;flex-direction:column;overflow:hidden}
+.record-dialog{width:min(1480px,97vw);height:min(900px,94vh);background:var(--surface-2);border-radius:var(--radius-lg);box-shadow:var(--elev-modal);display:flex;flex-direction:column;overflow:hidden}
 /* データ一覧の見出しバンドは廃止(画面名はヘッダーの#fileNameが持つ)。
    絞り込み(.record-searchbar)はヘッダーの#headerViewBarへ移る。 */
 .record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:#fff}
@@ -126,7 +126,7 @@
    帯の高さは選ぶ前後で変えない（場所を動かさない・§9.397）。危ない操作（削除）は「⋯ その他」の中（§9.221 ⑤）。 */
 .rec-actbar{flex:none;display:flex;align-items:center;gap:var(--space-3);
   min-height:calc(var(--ctl-h) + var(--space-2) * 2 + 1px);padding:var(--space-2) var(--space-4);
-  border-top:1px solid var(--line);background:var(--surface);box-shadow:0 -4px 12px #17384214}
+  border-top:1px solid var(--line);background:var(--surface);box-shadow:var(--elev-pop)}
 .rec-actbar-hint{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
 .rec-actbar-what{flex:1;min-width:0;display:flex;align-items:baseline;gap:var(--space-3);white-space:nowrap;overflow:hidden}
 .rec-actbar-what b{font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink)}
@@ -140,13 +140,13 @@
 .rec-actbar .rec-more:hover{background:var(--surface-3);color:var(--ink)}
 .rec-actbar .rec-more[aria-expanded="true"]{background:var(--teal);color:#fff;border-color:var(--teal)}
 /* 選んだ行（1件）。色だけで言わない——帯が同じロット番号を名乗る（§CLAUDE 3）。 */
-.record-list-row.is-selected{background:#d8f1f2;box-shadow:inset 4px 0 0 var(--teal)}
+.record-list-row.is-selected{background:#d8f1f2;box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 .record-list-row.is-selected:hover{background:#cdeced}
 /* 器は`.wl-menu`。この面の値をここで宣言し直す（§9.449）。 */
 .rec-row-menu{
   --menu-w:calc(240px * var(--ui-scale));--menu-w-max:calc(340px * var(--ui-scale));
   --menu-max-h:none;--menu-overflow:visible;
-  --menu-shadow:0 10px 28px #0b2b3320;--menu-item-pad:var(--space-2);
+  --menu-shadow:var(--elev-pop);--menu-item-pad:var(--space-2);
   display:flex;flex-direction:column;gap:var(--space-1)}
 .rec-row-menu .rrm-head{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted);
   padding:var(--space-1) var(--space-2) 0}
@@ -201,7 +201,7 @@
    いちばん内側（本文）だけ**にする（§9.222 ⑤）。`max-height`は「これ以上
    大きくならない」なので、収まる窓の見え方は今までのまま。 */
 .settings-dialog{width:min(620px,94vw);max-height:92vh;display:flex;flex-direction:column;
-  background:#fff;border:2px solid var(--teal);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 28px 90px #0009}
+  background:#fff;border:2px solid var(--teal);border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--elev-modal)}
 .settings-dialog>header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:var(--pad-dialog);background:var(--nav);color:#fff}
 .settings-dialog h2{margin:2px 0}
 .settings-dialog small{color:#8fd4d4}
@@ -349,7 +349,7 @@
    2段階に統一しており、呼び出し側から3以上のstepは渡さない。 */
 .save-overlay{position:fixed;inset:0;z-index:var(--z-overlay);display:grid;place-items:center;background:#0d2b3199;backdrop-filter:blur(2px)}
 .save-overlay[hidden]{display:none}
-.save-overlay>div{min-width:340px;max-width:420px;padding:22px 26px;border-radius:var(--radius-lg);background:#fff;box-shadow:0 20px 60px #0d2b3140,0 2px 8px #0d2b3126;animation:waiting-card-in .22s ease-out}
+.save-overlay>div{min-width:340px;max-width:420px;padding:22px 26px;border-radius:var(--radius-lg);background:#fff;box-shadow:var(--elev-modal);animation:waiting-card-in .22s ease-out}
 @keyframes waiting-card-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
 .waiting-overlay>div{display:grid;grid-template-columns:40px minmax(260px,1fr);column-gap:14px;align-items:center;text-align:left}
 .waiting-overlay b,.waiting-overlay small,.waiting-progress,.waiting-steps{grid-column:2}
@@ -368,7 +368,7 @@
 .waiting-step{display:grid;place-items:center;width:20px;height:20px;border-radius:var(--radius-round);background:var(--bg);border:2px solid var(--line);color:var(--muted);font-size:var(--fs-badge);font-weight:var(--fw-ui);flex:none;transition:background .25s,border-color .25s,color .25s}
 .waiting-step i{display:block;width:6px;height:6px;border-radius:var(--radius-round);background:currentColor}
 .waiting-step::before{content:attr(data-step);display:none}
-.waiting-step.active{border-color:var(--teal);background:var(--teal);color:#fff;box-shadow:0 0 0 4px #087c8926}
+.waiting-step.active{border-color:var(--teal);background:var(--teal);color:#fff;box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 .waiting-step.active i{animation:waiting-pulse 1s ease-in-out infinite}
 .waiting-step.done{border-color:var(--teal);background:var(--teal);color:#fff}
 .waiting-step-line{flex:1 1 auto;height:2px;min-width:24px;background:var(--line);margin:0 4px;position:relative;overflow:hidden}
@@ -378,7 +378,7 @@
 .waiting-progress{margin-top:9px;padding-top:9px;border-top:1px solid #dce5e7;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.6}
 /* 通知バナーは右下に配置し、右からスライドイン／右へスライドアウトする */
 .toast-area{position:fixed;bottom:18px;right:22px;top:auto;z-index:var(--z-toast);display:grid;gap:var(--space-2);justify-items:end;pointer-events:none;width:min(420px,calc(100vw - 32px))}
-.toast{width:100%;padding:12px 14px;border:1px solid #55aeb5;border-left:6px solid var(--teal);border-radius:var(--radius-sm);background:#f4ffff;color:#173f45;box-shadow:0 8px 28px #001b2433;animation:toast-in .22s ease-out,toast-glow .7s ease-out .05s;will-change:transform,opacity}
+.toast{width:100%;padding:12px 14px;border:1px solid #55aeb5;border-left:6px solid var(--teal);border-radius:var(--radius-sm);background:#f4ffff;color:#173f45;box-shadow:var(--elev-pop);animation:toast-in .22s ease-out,toast-glow .7s ease-out .05s;will-change:transform,opacity}
 .toast b{display:block;margin-bottom:3px}
 .toast small{display:block;color:var(--muted)}
 .toast.out{opacity:0;transform:translateX(30px);transition:opacity .2s ease-in,transform .2s ease-in}
@@ -392,7 +392,7 @@
 @keyframes toast-in{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
 /* 到着直後だけ縁に淡いブランドカラーの光彩が広がって消える、瞬間的な
    「届いた」フィードバック(保存成功トーストの体感速度を上げる)。 */
-@keyframes toast-glow{0%{box-shadow:0 8px 28px #001b2433,0 0 0 0 #087c8959}100%{box-shadow:0 8px 28px #001b2433,0 0 0 10px #087c8900}}
+@keyframes toast-glow{0%{box-shadow:var(--elev-pop),0 0 0 0 #087c8959}100%{box-shadow:var(--elev-pop),0 0 0 10px #087c8900}}
 @media(prefers-reduced-motion:reduce){.toast{animation:none}.toast.out{transition:none}}
 .load-error{margin:30px;padding:18px;border:1px solid #d19a9a;border-radius:var(--radius-md);background:#fff1f1;color:#7c2323}
 .load-error b,.load-error span{display:block}

@@ -69,7 +69,7 @@
 }
 .tc-row.is-current{
   background-image:linear-gradient(#f39a1826,#f39a1826),var(--tc-band-img);
-  box-shadow:inset 0 0 0 1px #f39a1866;
+  box-shadow:inset 0 0 0 var(--edge-w) #f39a1866;
 }
 /* 子ロットの色帯（§9.151）。どの条がどの子ロットかを図だけで追える。色は
    測定表のロット列・条割の帯と同じ配色をJSがインラインで指定する。
@@ -162,7 +162,7 @@
    ぶんだけにする。余りは空白のまま（列を増やして詰めない・画面基準13）。 */
 .filter-token-input[hidden]{display:none}
 .filter-token-input{position:relative;flex:0 1 var(--w-xl);min-width:0;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;height:var(--lt-h);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--teal);border-radius:var(--radius-sm);background:#fff}
-.filter-token-input.focus-within{box-shadow:0 0 0 3px #087c8928}
+.filter-token-input.focus-within{box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 .filter-token-search{flex:1 0 160px;min-width:120px;height:var(--ctl-h-xs);font-size:var(--lt-fs);border:0;border-radius:0;padding:0 2px;background:transparent;box-shadow:none}
 .filter-token-search:focus-visible{outline:0;box-shadow:none}
 /* 右端の群＝**見せ方**（表示列・表の見せ方）。左の群＝絞り込む（§9.505）——2つの群は
@@ -286,7 +286,7 @@
 /* 器(.generic-filter-bar)は角丸のため overflow:hidden を持つので、中に
    absolute で置くと**開いても丸ごと切られる**(§9.81)。他のポップオーバーと
    同じく fixed にし、位置はJS(placeSuggest)が入力欄へ合わせる。 */
-.filter-suggest{position:fixed;z-index:var(--z-popover);max-height:340px;overflow:auto;background:#fff;border:1px solid #9fc3c8;border-radius:var(--radius-md);box-shadow:0 16px 42px #0b2b3322;padding:var(--space-2)}
+.filter-suggest{position:fixed;z-index:var(--z-popover);max-height:340px;overflow:auto;background:#fff;border:1px solid #9fc3c8;border-radius:var(--radius-md);box-shadow:var(--elev-modal);padding:var(--space-2)}
 .filter-suggest[hidden]{display:none}
 .filter-suggest-group+.filter-suggest-group{margin-top:4px;border-top:1px dashed #dbe7ea;padding-top:4px}
 .filter-suggest-head{display:flex;align-items:center;gap:var(--gap-inline);padding:4px 6px 3px;color:var(--ink-2);font-size:var(--fs-micro);font-weight:var(--fw-ui)}
@@ -350,7 +350,7 @@
 .lt-search{flex:0 1 var(--w-lg);min-width:var(--w-sm);display:inline-flex;align-items:center;gap:var(--gap-tight);
   height:var(--lt-h,var(--ctl-h-sm));font-size:var(--lt-fs,var(--fs-sm));border-radius:var(--radius-sm);
   padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-strong);background:var(--surface);cursor:text}
-.lt-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
+.lt-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 .lt-search>i{color:var(--muted);font-size:.9em}
 /* 中の欄は枠を持たない（器が枠）。ヘッダーに相乗りしたときの`.hd-viewbar input`（枠つき）より強く書く。 */
 label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;
@@ -380,7 +380,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .filter-inline-loading{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-inline);padding:2px 9px;border-radius:var(--radius-md);background:#e9f6f8;border:1px solid #9fc3c8;color:#0a6570;font-size:var(--fs-micro);font-weight:var(--fw-ui);white-space:nowrap}
 .filter-inline-loading[hidden]{display:none}
 /* 登録フィルタ一覧モーダル */
-.filter-preset-dialog{width:min(1040px,95vw);height:min(700px,90vh);background:var(--surface-2);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 20px 60px #0005;display:flex;flex-direction:column}
+.filter-preset-dialog{width:min(1040px,95vw);height:min(700px,90vh);background:var(--surface-2);border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--elev-modal);display:flex;flex-direction:column}
 .filter-preset-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:var(--pad-dialog);background:var(--nav);color:#fff}
 .filter-preset-dialog h2{margin:2px 0}
 .filter-preset-dialog small{color:#8fd4d4}
@@ -572,7 +572,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 /* モーダル内オーバーレイ・ローディング（読込/削除など待ちのある操作） */
 .panel-loading{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .panel-loading[hidden]{display:none}
-.panel-loading .pl-box{display:flex;align-items:center;gap:var(--gap-section);padding:var(--pad-dialog);border:1px solid #bcd9dd;border-radius:var(--radius-md);background:#fff;box-shadow:0 10px 30px #0b2b3322;color:#0a6570;font-weight:var(--fw-strong)}
+.panel-loading .pl-box{display:flex;align-items:center;gap:var(--gap-section);padding:var(--pad-dialog);border:1px solid #bcd9dd;border-radius:var(--radius-md);background:#fff;box-shadow:var(--elev-pop);color:#0a6570;font-weight:var(--fw-strong)}
 /* ============================================================
    Hotfix 2026-07-21: 指示値カード（ラテラルボー等 / ②）
    板厚・板幅以外の測定種で、指示値(例 2.0/2M)と評価単位を明示する。
@@ -621,7 +621,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
   background:var(--surface);color:var(--ink-2);cursor:pointer;
 }
 .nl-win .nl-choice:hover{border-color:var(--teal);background:var(--pale)}
-.nl-win .nl-choice.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 0 0 1px var(--teal)}
+.nl-win .nl-choice.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 0 0 var(--edge-w) var(--teal)}
 .nl-win .nl-choice>b{color:var(--ink);font-size:var(--fs);font-weight:var(--fw-strong)}
 .nl-win .nl-choice>small{color:var(--muted);font-size:var(--fs-sm);line-height:1.5;white-space:normal}
 .nl-win .nl-art{width:100%;height:var(--ctl-h-lg);border-radius:var(--radius-xs);background:var(--surface-2)}
