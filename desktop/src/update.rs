@@ -179,21 +179,45 @@ pub fn stage(src: &Path, stage: &Path, progress: &dyn Fn(&str)) -> Result<Vec<St
     Ok(payload)
 }
 
+/// 「使用中」で断られた名前の付け替えを待つ長さ（合計）。Windows は Python が終わった直後にもフォルダを掴んだままのことがある
+/// （ウイルス対策の検査・終わる途中のプロセス）。CI の 4回目で、Python の「終了」の記録の直後に`program`の付け替えが
+/// os error 32 で断られた（§9.568 の追補）。断りが続くなら本当に使われているので、待つのはこの長さまで。
+const BUSY_WAIT: Duration = Duration::from_millis(3000);
+const BUSY_STEP: Duration = Duration::from_millis(150);
+
+/// 名前の付け替え。「使用中」（32・33）と「拒否」（5）だけは`BUSY_WAIT`まで待ってやり直す。待った回数を返す。
+fn rename_patiently(from: &Path, to: &Path) -> std::io::Result<u32> {
+    let mut tries = 0u32;
+    loop {
+        match std::fs::rename(from, to) {
+            Ok(()) => return Ok(tries),
+            Err(e) if matches!(e.raw_os_error(), Some(5 | 32 | 33)) && BUSY_STEP * (tries + 1) <= BUSY_WAIT => {
+                tries += 1;
+                std::thread::sleep(BUSY_STEP);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 /// `payload` の項目を `stage` の物へ入れ替える。今の物は `old` へ。**途中で失敗したら全部戻す**。
-pub fn swap(app_root: &Path, stage: &Path, old: &Path, payload: &[String]) -> Result<(), String> {
+/// 返すのは「使用中」で待った回数（記録に残し、待ちが本当に効いているかを後から読めるように）。
+pub fn swap(app_root: &Path, stage: &Path, old: &Path, payload: &[String]) -> Result<u32, String> {
     let _ = std::fs::remove_dir_all(old);
     std::fs::create_dir_all(old).map_err(|e| format!("前の版の控えを作れません: {e}"))?;
     let mut done: Vec<(&String, bool)> = Vec::new(); // (項目, 前の物が在ったか)
+    let mut waited = 0u32;
     let result = (|| {
         for name in payload {
             let (cur, new, keep) = (app_root.join(name), stage.join(name), old.join(name));
             let had = cur.exists();
             if had {
-                std::fs::rename(&cur, &keep).map_err(|e| format!("入れ替えられません（{name} が使用中かもしれません）: {e}"))?;
+                waited += rename_patiently(&cur, &keep)
+                    .map_err(|e| format!("入れ替えられません（{name} が使用中かもしれません・{}秒待ちました）: {e}", BUSY_WAIT.as_secs()))?;
             }
             done.push((name, had));
             if new.exists() {
-                std::fs::rename(&new, &cur).map_err(|e| format!("新しい {name} を置けません: {e}"))?;
+                waited += rename_patiently(&new, &cur).map_err(|e| format!("新しい {name} を置けません: {e}"))?;
             }
         }
         Ok(())
@@ -210,7 +234,7 @@ pub fn swap(app_root: &Path, stage: &Path, old: &Path, payload: &[String]) -> Re
         }
         return Err(e);
     }
-    Ok(())
+    Ok(waited)
 }
 
 /// exe が変わったかは**中身**で見る（大きさ＋更新時刻だと、同じ大きさの exe が同じ秒に置かれたときに見落とす）。
@@ -273,9 +297,13 @@ pub fn apply(app_root: &Path, dir: &Path, have: &str, want: &str, log: &dyn Fn(&
         }
     };
     progress("入れ替えています");
-    if let Err(e) = swap(app_root, &stage_dir, &old, &payload) {
-        let _ = std::fs::remove_dir_all(&stage_dir);
-        return Outcome::Failed(e);
+    match swap(app_root, &stage_dir, &old, &payload) {
+        Ok(0) => {}
+        Ok(n) => log(&format!("UPDATE 使用中で {n} 回待ってから入れ替えました（{}ms ごと）", BUSY_STEP.as_millis())),
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&stage_dir);
+            return Outcome::Failed(e);
+        }
     }
     let _ = std::fs::remove_dir_all(&stage_dir);
     // 前の版の控えは1つだけ残す（直前の版。それより古い控えは消す）
@@ -422,6 +450,19 @@ pub(crate) mod tests {
         fs::create_dir_all(root.join(".git")).unwrap();
         assert!(matches!(check_and_apply(&root, &|_| {}, &|_| {}), Outcome::Skipped(e) if e.contains("開発")));
         assert!(within(Duration::from_millis(50), || std::thread::sleep(Duration::from_secs(2))).is_none(), "待ちは打ち切る");
+        let _ = fs::remove_dir_all(&t);
+    }
+
+    #[test]
+    fn rename_waits_only_for_busy() {
+        // 使用中でない失敗（元が無い）は待たずにすぐ返す——待つのは「使用中」「拒否」だけ
+        let t = tmp("busy");
+        let t0 = std::time::Instant::now();
+        assert!(rename_patiently(&t.join("none"), &t.join("x")).is_err());
+        assert!(t0.elapsed() < BUSY_STEP, "使用中でない失敗で待っている");
+        fs::create_dir_all(t.join("a")).unwrap();
+        assert_eq!(rename_patiently(&t.join("a"), &t.join("b")).unwrap(), 0);
+        assert!(t.join("b").exists());
         let _ = fs::remove_dir_all(&t);
     }
 
