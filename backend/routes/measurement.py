@@ -17,68 +17,138 @@ from ..repositories.master_repo import (read_equipment_max_strips, read_equipmen
                                         read_equipment_measure_items_off, MEASURE_ITEM_KEYS,
                                         STRIP_LIMIT, DEFAULT_MAX_STRIPS)
 from ..repositories.master_repo import choice_usage_for, choice_usage_bump
+from ..repositories import operation_repo as op
 from .. import records_export
 from ..logging_setup import app_logger
 from ..quiet import quiet
 
 bp=Blueprint('measurement',__name__)
 
+def _norm(v):return str(v or '').strip()
+
+def _matching_table(ts,aliases):
+ for a in aliases:
+  if a in ts:return a
+ for t in ts:
+  if any(a.lower() in t.lower() for a in aliases):return t
+ return None
+
+def _matching_col(cs,aliases):
+ for a in aliases:
+  if a in cs:return a
+ for c in cs:
+  if any(a.lower() in c.lower() for a in aliases):return c
+ return None
+
+def _context_skeleton():
+ """測定コンテキストの器。読めなかった段は空のまま返す（画面ごと落とさない）。"""
+ return {'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'max_strips':DEFAULT_MAX_STRIPS,'strip_limit':STRIP_LIMIT,'equipment_kind':'','measure_items_off':[],'measure_items':list(MEASURE_ITEM_KEYS),'diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':path_exists_safe(DBS['MASTER']['path']),'tables':[],'matches':{}}}
+
+def _read_quality(lot,result):
+ """品質情報（そのロットの異常・保留）。"""
+ # 品質データは役割で引く(§9.87)。キーの綴りで探すと、マスタでキーを
+ # 変えた端末で KeyError になり測定画面ごと開けなくなる。
+ # **`cfg()`で引くこと**（§9.317・§9.198）。`DBS`が持っているのは設定に
+ # 書いてある元のパス＝**共有そのもの**で、`cfg()`が`db_mirror`の写しへ
+ # 差し替える。ここが`DBS`のままだったため、**測定画面を開くたびに共有の
+ # 品質データを直接開いて**いた（一覧は`cfg()`を通るので、同じ端末でも
+ # 一覧は出るのに測定画面だけ開けない、という分かりにくい形になる）。
+ # **登録が消えていても測定画面ごと落とさない**（§9.87）——`cfg()`は
+ # 知らないキーで送出するので、`DBS`に居ることを先に見る。
+ qcfg=(cfg(QUALITY_DB_KEY) if (QUALITY_DB_KEY and QUALITY_DB_KEY in DBS) else {})
+ qpath=qcfg.get('path')
+ # **開く前に存在確認をしない**（§9.108・§9.317）。`Path.exists()`が
+ # 「無い」と読み替えるのは ENOENT/ENOTDIR/EBADF/ELOOP と WinError
+ # 21/123/1921 だけで、**WinError 5（アクセスが拒否されました）は送出する**。
+ # 読み取り専用の共有では、ファイルは読めるのに属性の問い合わせだけが5で
+ # 断られることがあり、**確認のつもりの1行が唯一の失敗原因**になっていた
+ # （実機で「測定画面を開けません: [WinError 5]」）。まず開き、失敗したら
+ # `connect()`が理由を切り分ける。**品質情報が読めなくても測定は続ける**
+ # ——公差もマスタもこの後ろにあるので、ここで諦めると画面ごと開けない。
+ if lot and qpath:
+  try:
+   with connect(qpath,True) as c:
+    ts=tables(c);t=_matching_table(ts,['仕掛','品質情報','品質','保留'])
+    if t:
+     cs=cols(c,t,source=qpath);lot_col=_matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
+     if lot_col:
+      cur=c.cursor()
+      cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(lot_col)})=? LIMIT 50',[lot])
+      rows=cur.fetchall()
+      for row in rows:
+       d=dict(zip(cs,row));result['quality'].append({k:_norm(d.get(_matching_col(cs,[k]) or k)) for k in ['発生設備','登録日時','異常内容','コメント','最終処置','保留設定日','保留解除']})
+  except Exception as qe:
+   # **品質情報が読めなくても測定は続ける**（§9.317）。公差もマスタも
+   # この後ろにあるので、ここで諦めると**測定画面ごと開けない**。
+   # 黙って0件にはせず、理由を診断へ残してログにも書く（§4）。
+   result['diagnostics']['quality_error']=str(qe)
+   result['diagnostics']['quality_path']=str(qpath)
+   app_logger().warning('品質情報を読めませんでした（測定は続けます）: %s (%s)',qpath,qe)
+
+def _read_choices(c,equipment,result):
+ """準備で選ぶ選択肢（オペレータ・測定器・内径・スプール・バリ揃え・コイル止め）。"""
+ # 読み取りはオペレータマスタ（有効・表示順）から行う。
+ # オペレータ欄のみ、対象設備（equipment）で作業可能設備によるフィルタをかける。
+ # 割当が1件もないオペレータは常に表示対象（互換ポリシー）。検査員・梱包員は従来通り全件。
+ # ---------- 選択肢は「まとまり名」で引く(§9.221 ③) ----------
+ # 以前はオペレータ／機器／内径／スプール／バリ揃え／コイル止めの6つが
+ # それぞれ専用の表と専用の読み取り関数を持っていた（同じことを6箇所）。
+ # いまは`操業データ選択肢マスタ`の**まとまり名が違うだけ**で、読み口は
+ # `op.choice_values()`の1本。設備の絞り込み（オペレータの作業可能設備）は
+ # `[対象設備]`が空＝すべて、という約束でそのまま引き継いでいる。
+ # **どのまとまりを見るかもマスタが決める**(§9.221 ③)。組み込みの欄の
+ # `[選択肢名]`が答えるので、現場が別のまとまりへ向け替えられる。
+ gname=lambda key:op.builtin_choice_name(c,key)
+ people=op.choice_values(c,gname('operator'))
+ people_for_equipment=(op.choice_values(c,gname('operator'),equipment=equipment)
+                       if equipment else people)
+ result['diagnostics']['matches']['操業データ選択肢マスタ']={
+   'table':op.CHOICE_TABLE,'オペレータ':len(people),
+   'filtered_by_equipment':equipment or '','filtered_count':len(people_for_equipment)}
+ result['operators']=people_for_equipment
+ # **検査員は設備で絞らない**（今までどおり全員）。
+ result['inspectors']=people;result['packers']=people
+ thickness_gauges=op.choice_values(c,gname('thicknessGauge'))
+ width_gauges=op.choice_values(c,gname('widthGauge'))
+ result['thickness_gauges']=thickness_gauges;result['width_gauges']=width_gauges
+ inners=op.choice_values(c,gname('innerDiameter'))
+ result['inner_diameters']=inners
+ spools=op.choice_values(c,gname('spool'))
+ result['spools']=spools
+ burrs=op.choice_values(c,gname('burr'));coil_stops=op.choice_values(c,gname('coilStop'))
+ result['diagnostics']['matches']['操業データ選択肢マスタ'].update({
+   '板厚測定器':len(thickness_gauges),'板幅測定器':len(width_gauges),
+   '内径':len(inners),'スプール':len(spools),
+   'バリ揃え':len(burrs),'コイル止め':len(coil_stops)})
+ result['burr_types']=burrs;result['coil_stops']=coil_stops
+
+def _read_equipment_facts(c,equipment,result):
+ """設備マスタが答える事実（最大条数・区分・使わない入力内容）と、選択肢の使用回数。"""
+ # この設備で割れる最大条数(設備マスタ。未登録なら既定)。分割の上限確認と
+ # 横割数の入力上限に使う。
+ result['max_strips']=read_equipment_max_strips(c,equipment)
+ result['diagnostics']['matches']['設備マスタ_最大条数']={'equipment':equipment,'value':result['max_strips'],'limit':STRIP_LIMIT}
+ # 設備の区分(コイル／板)。板丈の公差は板の設備でだけ意味を持つため
+ # (§9.157)。未設定は''で返し、画面側は「板」と決め付けない。
+ result['equipment_kind']=read_equipment_kind(c,equipment)
+ result['diagnostics']['matches']['設備マスタ_区分']={'equipment':equipment,'value':result['equipment_kind']}
+ # この設備で**使わない入力内容**(設備マスタ。§9.392)。**ここへ相乗りさせる**
+ # ——選択肢と同時に要るので、別のAPIにすると「一覧は出たが出し分けは
+ # 前のまま」という瞬間ができる(上の choice_usage と同じ理由)。
+ result['measure_items_off']=read_equipment_measure_items_off(c,equipment)
+ result['diagnostics']['matches']['設備マスタ_無効入力内容']={
+   'equipment':equipment,'value':result['measure_items_off']}
+ # 設備ごとの使用回数(§9.133)。**ここへ相乗りさせる**——選択肢を並べる
+ # ためだけに往復を増やさない(選択肢そのものと同時に要るデータなので、
+ # 別のAPIにすると「選択肢は出たが並びは前のまま」という瞬間ができる)。
+ result['choice_usage']=choice_usage_for(c,equipment)
+
 @bp.get('/api/measurement/context')
 def measurement_context():
  try:
   lot=request.args.get('lot','').strip();equipment=request.args.get('equipment','').strip()
-  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'max_strips':DEFAULT_MAX_STRIPS,'strip_limit':STRIP_LIMIT,'equipment_kind':'','measure_items_off':[],'measure_items':list(MEASURE_ITEM_KEYS),'diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':path_exists_safe(DBS['MASTER']['path']),'tables':[],'matches':{}}}
-  def norm(v):return str(v or '').strip()
-  def matching_table(ts,aliases):
-   for a in aliases:
-    if a in ts:return a
-   for t in ts:
-    if any(a.lower() in t.lower() for a in aliases):return t
-   return None
-  def matching_col(cs,aliases):
-   for a in aliases:
-    if a in cs:return a
-   for c in cs:
-    if any(a.lower() in c.lower() for a in aliases):return c
-   return None
-  # 品質データは役割で引く(§9.87)。キーの綴りで探すと、マスタでキーを
-  # 変えた端末で KeyError になり測定画面ごと開けなくなる。
-  # **`cfg()`で引くこと**（§9.317・§9.198）。`DBS`が持っているのは設定に
-  # 書いてある元のパス＝**共有そのもの**で、`cfg()`が`db_mirror`の写しへ
-  # 差し替える。ここが`DBS`のままだったため、**測定画面を開くたびに共有の
-  # 品質データを直接開いて**いた（一覧は`cfg()`を通るので、同じ端末でも
-  # 一覧は出るのに測定画面だけ開けない、という分かりにくい形になる）。
-  # **登録が消えていても測定画面ごと落とさない**（§9.87）——`cfg()`は
-  # 知らないキーで送出するので、`DBS`に居ることを先に見る。
-  qcfg=(cfg(QUALITY_DB_KEY) if (QUALITY_DB_KEY and QUALITY_DB_KEY in DBS) else {})
-  qpath=qcfg.get('path')
-  # **開く前に存在確認をしない**（§9.108・§9.317）。`Path.exists()`が
-  # 「無い」と読み替えるのは ENOENT/ENOTDIR/EBADF/ELOOP と WinError
-  # 21/123/1921 だけで、**WinError 5（アクセスが拒否されました）は送出する**。
-  # 読み取り専用の共有では、ファイルは読めるのに属性の問い合わせだけが5で
-  # 断られることがあり、**確認のつもりの1行が唯一の失敗原因**になっていた
-  # （実機で「測定画面を開けません: [WinError 5]」）。まず開き、失敗したら
-  # `connect()`が理由を切り分ける。**品質情報が読めなくても測定は続ける**
-  # ——公差もマスタもこの後ろにあるので、ここで諦めると画面ごと開けない。
-  if lot and qpath:
-   try:
-    with connect(qpath,True) as c:
-     ts=tables(c);t=matching_table(ts,['仕掛','品質情報','品質','保留'])
-     if t:
-      cs=cols(c,t,source=qpath);lot_col=matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
-      if lot_col:
-       cur=c.cursor()
-       cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(lot_col)})=? LIMIT 50',[lot])
-       rows=cur.fetchall()
-       for row in rows:
-        d=dict(zip(cs,row));result['quality'].append({k:norm(d.get(matching_col(cs,[k]) or k)) for k in ['発生設備','登録日時','異常内容','コメント','最終処置','保留設定日','保留解除']})
-   except Exception as qe:
-    # **品質情報が読めなくても測定は続ける**（§9.317）。公差もマスタも
-    # この後ろにあるので、ここで諦めると**測定画面ごと開けない**。
-    # 黙って0件にはせず、理由を診断へ残してログにも書く（§4）。
-    result['diagnostics']['quality_error']=str(qe)
-    result['diagnostics']['quality_path']=str(qpath)
-    app_logger().warning('品質情報を読めませんでした（測定は続けます）: %s (%s)',qpath,qe)
+  result=_context_skeleton()
+  _read_quality(lot,result)
   master=DBS['MASTER']['path']
   if path_exists_safe(master) is not False:
    # ---------- 移行済みの6マスタはもう用意しない（§9.255 ①、利用者の報告） ----------
@@ -100,84 +170,12 @@ def measurement_context():
    # **読むのは下の読み取り専用ブロック**なので、表と列をそろえ、6つの
    # マスタを1度だけ写すのはここ（上の`ensure_*`と同じ置き方）。
    try:
-    from ..repositories import operation_repo as op
     result['diagnostics']['operation_choices']=op.ensure_operation_choices(master)
    except Exception as _e:result['diagnostics']['operation_choices_error']=str(_e)
    with connect(master,True) as c:
-    ts=tables(c);result['diagnostics']['tables']=ts
-    def read_values(table_aliases,col_aliases,extra=None):
-     table=matching_table(ts,table_aliases)
-     if not table:return []
-     cs=cols(c,table,source=master);column=matching_col(cs,col_aliases)
-     result['diagnostics']['matches']['/'.join(table_aliases)]={'table':table,'column':column,'columns':cs}
-     if not column:return []
-     sql=f'SELECT DISTINCT {qi(column)} FROM {qi(table)}';params=[];where=[]
-     # VBAは設備=FaciNameだが、Webでは仕掛の設備文字列が複合値の場合があるため、完全一致で0件なら全件へフォールバック
-     if equipment:
-      equip_col=matching_col(cs,['設備','設備名','対象設備'])
-      if equip_col:where.append(f'(CStr({qi(equip_col)})=? OR CStr({qi(equip_col)}) LIKE ?)');params += [equipment,f'%{equipment}%']
-     if extra:
-      for aliases,value in extra:
-       col=matching_col(cs,aliases)
-       if col:where.append(f'CStr({qi(col)})=?');params.append(value)
-     cur=c.cursor()
-     query=sql+(' WHERE '+' AND '.join(where) if where else '')
-     cur.execute(query,params);values=[norm(r[0]) for r in cur.fetchall() if norm(r[0])]
-     if not values and where:cur.execute(sql);values=[norm(r[0]) for r in cur.fetchall() if norm(r[0])]
-     return sorted(set(values),key=str.casefold)
-    # 読み取りはオペレータマスタ（有効・表示順）から行う。
-    # オペレータ欄のみ、対象設備（equipment）で作業可能設備によるフィルタをかける。
-    # 割当が1件もないオペレータは常に表示対象（互換ポリシー）。検査員・梱包員は従来通り全件。
-    # ---------- 選択肢は「まとまり名」で引く(§9.221 ③) ----------
-    # 以前はオペレータ／機器／内径／スプール／バリ揃え／コイル止めの6つが
-    # それぞれ専用の表と専用の読み取り関数を持っていた（同じことを6箇所）。
-    # いまは`操業データ選択肢マスタ`の**まとまり名が違うだけ**で、読み口は
-    # `op.choice_values()`の1本。設備の絞り込み（オペレータの作業可能設備）は
-    # `[対象設備]`が空＝すべて、という約束でそのまま引き継いでいる。
-    from ..repositories import operation_repo as op
-    # **どのまとまりを見るかもマスタが決める**(§9.221 ③)。組み込みの欄の
-    # `[選択肢名]`が答えるので、現場が別のまとまりへ向け替えられる。
-    gname=lambda key:op.builtin_choice_name(c,key)
-    people=op.choice_values(c,gname('operator'))
-    people_for_equipment=(op.choice_values(c,gname('operator'),equipment=equipment)
-                          if equipment else people)
-    result['diagnostics']['matches']['操業データ選択肢マスタ']={
-      'table':op.CHOICE_TABLE,'オペレータ':len(people),
-      'filtered_by_equipment':equipment or '','filtered_count':len(people_for_equipment)}
-    result['operators']=people_for_equipment
-    # **検査員は設備で絞らない**（今までどおり全員）。
-    result['inspectors']=people;result['packers']=people
-    thickness_gauges=op.choice_values(c,gname('thicknessGauge'))
-    width_gauges=op.choice_values(c,gname('widthGauge'))
-    result['thickness_gauges']=thickness_gauges;result['width_gauges']=width_gauges
-    inners=op.choice_values(c,gname('innerDiameter'))
-    result['inner_diameters']=inners
-    spools=op.choice_values(c,gname('spool'))
-    result['spools']=spools
-    burrs=op.choice_values(c,gname('burr'));coil_stops=op.choice_values(c,gname('coilStop'))
-    result['diagnostics']['matches']['操業データ選択肢マスタ'].update({
-      '板厚測定器':len(thickness_gauges),'板幅測定器':len(width_gauges),
-      '内径':len(inners),'スプール':len(spools),
-      'バリ揃え':len(burrs),'コイル止め':len(coil_stops)})
-    result['burr_types']=burrs;result['coil_stops']=coil_stops
-    # この設備で割れる最大条数(設備マスタ。未登録なら既定)。分割の上限確認と
-    # 横割数の入力上限に使う。
-    result['max_strips']=read_equipment_max_strips(c,equipment)
-    result['diagnostics']['matches']['設備マスタ_最大条数']={'equipment':equipment,'value':result['max_strips'],'limit':STRIP_LIMIT}
-    # 設備の区分(コイル／板)。板丈の公差は板の設備でだけ意味を持つため
-    # (§9.157)。未設定は''で返し、画面側は「板」と決め付けない。
-    result['equipment_kind']=read_equipment_kind(c,equipment)
-    result['diagnostics']['matches']['設備マスタ_区分']={'equipment':equipment,'value':result['equipment_kind']}
-    # この設備で**使わない入力内容**(設備マスタ。§9.392)。**ここへ相乗りさせる**
-    # ——選択肢と同時に要るので、別のAPIにすると「一覧は出たが出し分けは
-    # 前のまま」という瞬間ができる(上の choice_usage と同じ理由)。
-    result['measure_items_off']=read_equipment_measure_items_off(c,equipment)
-    result['diagnostics']['matches']['設備マスタ_無効入力内容']={
-      'equipment':equipment,'value':result['measure_items_off']}
-    # 設備ごとの使用回数(§9.133)。**ここへ相乗りさせる**——選択肢を並べる
-    # ためだけに往復を増やさない(選択肢そのものと同時に要るデータなので、
-    # 別のAPIにすると「選択肢は出たが並びは前のまま」という瞬間ができる)。
-    result['choice_usage']=choice_usage_for(c,equipment)
+    result['diagnostics']['tables']=tables(c)
+    _read_choices(c,equipment,result)
+    _read_equipment_facts(c,equipment,result)
   return jsonify(result)
  except Exception as e:return jsonify(error=str(e)),500
 

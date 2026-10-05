@@ -2265,6 +2265,165 @@ def _widget_live(saved, fam):
     return w if w in WIDGET_FAMILIES[fam] else WIDGET_SELECT
 
 
+def _row_identity(d, builtin):
+    """見分ける欄（ID・設備・群・名前・型・上下限・単位・必須・有効・組み込みキー）。"""
+    return {
+        'id': d['項目ID'], 'equipment': str(d['設備名'] or '').strip(), 'group': str(d['群'] or '').strip(),
+        'name': str(d['項目名'] or '').strip(), 'order': d['表示順'],
+        'type': normalize_item_type(d['型']), 'decimals': d['小数桁'],
+        'min': d['最小値'], 'max': d['最大値'], 'choice': str(d['選択肢名'] or '').strip(),
+        'unit': str(d['単位'] or '').strip(),
+        'required': bool(d['必須']) if d['必須'] is not None else False,
+        'note': str(d['備考'] or ''), 'enabled': True if d['有効'] is None else bool(d['有効']),
+        # **組み込みの入力欄か**(§9.216 ②)。空なら自由項目（画面が作る）。
+        'builtin': builtin,}
+
+
+def _row_arrangement(d):
+    """置き方（置き場・幅・畳み・並べ方・群・③「記録した値」での並び）。"""
+    return {
+        # 設備ごとのレイアウトの上書き（§9.239 ②）。**列が無い古いDBでも動く**。
+        'overrides': _override_map(d['設備別レイアウト']),
+        'place': normalize_place(d['置き場']),
+        'span': normalize_span(d['列幅']),
+        'fold': bool(d['群折りたたみ']) if d['群折りたたみ'] is not None else False,
+        # 畳んだ群を自動で開く測定項目。空＝いつも畳んだまま。
+        'showWhen': [x for x in str(d['表示条件'] or '').replace('、', ',').split(',') if x.strip()],
+        # --- §9.226 ① ---
+        # 並べ方。**効かない入力方法では`自動`へ落とす**（判定はここ1箇所。
+        # 単位の`内部`と同じ作法で、保存値は残す＝入力方法を戻したら復活）。
+        'layout': (normalize_layout(d['並べ方'])
+            if layout_usable(normalize_widget(d['入力方法'])) else LAYOUT_AUTO),
+        'layoutSaved': normalize_layout(d['並べ方']),
+        # --- §9.226 ③ ---
+        # 群の幅（マス）。0＝横いっぱい。**群のものなので、群の中で
+        # 食い違ったときは「1つでも指定があればそれ」**（畳むと同じ読み方）。
+        'groupSpan': normalize_group_span(d['群幅']),
+        # --- §9.227 ③ ---
+        # ダミー（空き）の群かどうか。**群のものなので、群の中で
+        # 食い違ったときは「1つでも印があればダミー」**（畳むと同じ読み方）。
+        'dummy': bool(d['ダミー']),
+        # §9.242 ④。③「記録した値」のカードへ出すか。**列の無い古いDBでも
+        # 動く**（無い列は`None`で来る）。NULL＝まだ触っていない＝出す。
+        'recordShow': True if d['記録表示'] is None else bool(d['記録表示']),
+        # §9.243。カードの中の群と並び。**空＝この項目の群／表示順に従う**
+        # （盤で動かしていない項目は測定画面の並びへ追随し続ける）。
+        'recordGroup': str(d['記録群'] or '').strip(),
+        'recordOrder': (int(d['記録順']) if d['記録順'] is not None else None),}
+
+
+def _row_input(d, fam, free_live):
+    """入力のしかた（入力方法・初期値・手打ち・刻み・空欄・上下限の出どころ・並び・丸め・その場で足す）。"""
+    return {
+        # 選ばせ方(§9.218 ②／§9.219 ③)。**型ごとに効く物が違う**ので、
+        # 効かない設定は`widgetLive`で標準の欄へ潰す——保存値(`widget`)は
+        # 残す（型を戻したときに選び直させない）。仲間分けは
+        # `widget_family()`の1箇所が答える。
+        'widget': normalize_widget(d['入力方法']),
+        'widgetFamily': fam,
+        'widgetLive': _widget_live(d['入力方法'], fam),
+        # --- §9.220 ---
+        # ② 初期値。**組み込みの欄も持てる**（§9.229 ③、利用者の指示
+        #    「汎用設計にしているつもりなので」）。値の持ち方を変えないので、
+        #    型・上下限と違って画面の部品のままで成立する。内径のように
+        #    仕掛データから値が来る欄では**仕掛の値が勝つ**——決められない
+        #    のではなく、順番が決まっている（`applyInitials`が入れた値は
+        #    「まだ選んでいない」として扱う）。
+        'initial': str(d['初期値'] or ''),
+        # ③ 候補にない値も手で打てるか。**選択肢を持つ型だけ**に効く
+        #    ——自由記述はもともと手で打つので、印を出しても意味が無い（§4）。
+        #    **打ち込む席の無い形でも落とす**（§9.247 ①）——`入切`・`切替`は
+        #    スイッチ／ボタン1つなので打つ場所が出ない。保存値は
+        #    `freeTextSaved`に残す（形を戻したら復活する。§9.233 ④と同じ）。
+        'freeText': free_live,
+        'freeTextSaved': bool(d['手打ち可']) if d['手打ち可'] is not None else False,
+        # ⑤ ステッパー・スライダーの1回ぶん。**未設定(None)は小数桁から作る**
+        #    （今までの挙動）——0を「設定した」と読むと増減できなくなる。
+        'step': (float(d['ステップ量']) if d['ステップ量'] is not None and float(d['ステップ量']) > 0 else None),
+        # --- §9.228 ④ ---
+        # 「空欄（選ばない）」を並べないか。**選択肢を持つ欄だけの話**
+        # （自由記述や数値・自動で入る値には空の札が無いので、読む側で
+        # 倒しておく）。**判定は族**（§9.244、利用者の報告「空欄の札を
+        # 出さないに設定しても、自動の項目の場合それが有効にならない」）
+        # ——以前は`[型]`で見ていたので、**組み込みの選択欄が全部すり抜けて
+        # いた**。オペレータ・検査員・内径・バリ揃え・コイル止め等はどれも
+        # `[型]='文字'`で、選択肢は`[選択肢名]`のほうで結んである。
+        # 画面（`opIsChoiceLike()`）は既に族で見ており設定は保存されて
+        # いたので、**書けるのに読むと必ずfalse**という形で出ていた
+        # （押しても効かない設定・§4）。
+        'noBlank': bool(d['空欄なし']) and fam == 'choice',
+        # --- §9.231 ② ---
+        # 上下限の出どころ。空＝この行の数をそのまま使う。
+        'minFrom': normalize_limit_source(d['最小の出どころ']),
+        'maxFrom': normalize_limit_source(d['最大の出どころ']),
+        # §9.248 ⑤ 選択肢の並び。**列の無い古いDBでも動く**。
+        'choiceOrder': normalize_choice_order(d['選択肢の並び']),
+        # §9.307 入力値の丸めの向き（単位は`step`）。**空欄＝丸めない**。
+        'roundMode': normalize_round_mode(d['丸め方']),
+        # §9.323 ① 測定画面からその場で選択肢マスタへ足せるか。
+        # **既定は足せない**（NULL＝今までどおり。§9.132）。**保存値は
+        # 残す**（`inlineAddSaved`）——形や手打ちを戻したら復活させる
+        # （`freeText`／`freeTextSaved`とまったく同じ作法・§9.233 ④）。
+        'inlineAdd': (bool(d['手打ちを登録']) if d['手打ちを登録'] is not None else False)
+            and inline_add_usable(fam, free_live),
+        'inlineAddSaved': (bool(d['手打ちを登録']) if d['手打ちを登録'] is not None
+            else False)}
+
+
+def _row_display(d):
+    """見せ方（単位の置き場・寄せ・書式・桁・意匠・未入力の配色・添え書き）。"""
+    return {
+        # --- §9.221 ⑦ ---
+        # 単位の置き場。**重ねられない入力方法では外下左へ落とす**
+        # （判定はここ1箇所。画面へ同じ判定を書かない）。
+        'unitPlace': (UNIT_PLACE_DEFAULT
+            if (normalize_unit_place(d['単位位置']) == UNIT_PLACE_IN
+            and not unit_in_ok(normalize_widget(d['入力方法']), bool(d['手打ち可'])))
+            else normalize_unit_place(d['単位位置'])),
+        # 保存値そのもの（設定画面が「選んだが効いていない」を言うため）。
+        'unitPlaceSaved': normalize_unit_place(d['単位位置']),
+        'align': normalize_align(d['文字寄せ']),
+        'valueFormat': normalize_value_format(d['表示書式']),
+        'digits': normalize_digits(d['表示桁数']),
+        # --- §9.223 ③ ---
+        # 見た目。色・形・大きさの3つで、空＝既定（今までの見え方）。
+        'look': normalize_look(d['意匠']),
+        # §9.286 ⑥。空欄のときの配色。**古いDB（列が無い）でも動く**。
+        'blankTint': normalize_blank_tint(d['未入力配色']),
+        # --- §9.233 ⑤ ---
+        # 自動で入る値の添え書き（仕掛由来のプリセット等）をどこへ出すか。
+        # **添え書きを持たない項目では持っていても意味が無い**ので、
+        # 出どころのある項目（`SOURCE_NOTE_KEYS`）だけが読む。
+        'sourceNote': normalize_source_note(d['出どころ表示']),}
+
+
+def _row_role_auto(d, builtin, auto):
+    """役割と、自動で入る値（§9.223 ①・§9.234 ②・§9.256）。"""
+    auto_def = auto_value_def(auto)
+    return {
+        # --- §9.223 ① ---
+        # 役割。**保存値と、実際に担っている役割を分けて返す**——保存値が
+        # 空でも組み込みキーが役割になる行があるので、設定画面で「なぜ
+        # この欄が担っているのか」を言えるようにしておく。
+        'role': normalize_role(d['役割']),
+        'roleLive': role_of({'role': normalize_role(d['役割']), 'builtin': builtin}),
+        # 値がこの画面の外から入る欄か（''／computed／preset。§9.234 ⑦）。
+        # **派生値なので保存列は増やさない**——列を足すと、書き込み側の
+        # 明示ペイロードに1つ足し忘れた瞬間に黙って消える設定がまた増える
+        # （§9.113／§9.212 ②）。
+        'autoFill': auto_fill_of(normalize_item_type(d['型']), builtin, auto),
+        # --- §9.234 ② ---
+        # 自動で入る値。保存値・呼び名・群・説明・この版が引けるかを返す。
+        # **引けない鍵も返す**（画面が「引けません」と書けるように・§4）。
+        'autoValue': auto,
+        'autoValueKnown': auto_value_known(auto) if auto else True,
+        'autoValueLabel': (auto_def[1] if auto_def else auto),
+        'autoValueGroup': (auto_def[2] if auto_def else ''),
+        'autoValueNote': (auto_def[4] if auto_def else ''),
+        # §9.256 式で作る自動値。**列の無い古いDBでも動く**。
+        'autoFormula': str(d['自動計算式'] or '').strip(),}
+
+
 def _row_to_item(d):
     """`ITEM_DEF.fetch()`が返す**列名を鍵にした辞書**を画面の形へ。**位置では読まない**
     （§9.324 R1）——無い列は`None`で来るので、古いDBの守りは要らない。"""
@@ -2272,7 +2431,6 @@ def _row_to_item(d):
     # §9.234 ②。**族の判定より先に決める**——自動で入る値の行は`output`で、
     # 選ばせ方・初期値・手打ちが効かない（判定は`widget_family()`の1箇所）。
     auto = normalize_auto_value(d['自動値'])
-    auto_def = auto_value_def(auto)
     # その項目がどの入力方法の仲間か。**`[型]`で判定しないこと**
     # （§9.244、§9.229 ③と同じ罠）——組み込みの選択欄はどれも
     # `[型]='文字'`で、まとまり（`[選択肢名]`）のほうで選択肢に結んで
@@ -2283,140 +2441,8 @@ def _row_to_item(d):
     # もう片方だけが古い判定のまま残る（§9.163）。
     free_live = ((bool(d['手打ち可']) if d['手打ち可'] is not None else False)
                  and fam == 'choice' and free_text_ok(_widget_live(d['入力方法'], fam)))
-    # 設備ごとのレイアウトの上書き（§9.239 ②）。**列が無い古いDBでも動く**。
-    overrides = _override_map(d['設備別レイアウト'])
-    return {'overrides': overrides,
-            'id': d['項目ID'], 'equipment': str(d['設備名'] or '').strip(), 'group': str(d['群'] or '').strip(),
-            'name': str(d['項目名'] or '').strip(), 'order': d['表示順'],
-            'type': normalize_item_type(d['型']), 'decimals': d['小数桁'],
-            'min': d['最小値'], 'max': d['最大値'], 'choice': str(d['選択肢名'] or '').strip(),
-            'unit': str(d['単位'] or '').strip(),
-            'required': bool(d['必須']) if d['必須'] is not None else False,
-            'note': str(d['備考'] or ''), 'enabled': True if d['有効'] is None else bool(d['有効']),
-            # **組み込みの入力欄か**(§9.216 ②)。空なら自由項目（画面が作る）。
-            'builtin': builtin,
-            'place': normalize_place(d['置き場']),
-            'span': normalize_span(d['列幅']),
-            'fold': bool(d['群折りたたみ']) if d['群折りたたみ'] is not None else False,
-            # 畳んだ群を自動で開く測定項目。空＝いつも畳んだまま。
-            'showWhen': [x for x in str(d['表示条件'] or '').replace('、', ',').split(',') if x.strip()],
-            # 選ばせ方(§9.218 ②／§9.219 ③)。**型ごとに効く物が違う**ので、
-            # 効かない設定は`widgetLive`で標準の欄へ潰す——保存値(`widget`)は
-            # 残す（型を戻したときに選び直させない）。仲間分けは
-            # `widget_family()`の1箇所が答える。
-            'widget': normalize_widget(d['入力方法']),
-            'widgetFamily': fam,
-            'widgetLive': _widget_live(d['入力方法'], fam),
-            # --- §9.220 ---
-            # ② 初期値。**組み込みの欄も持てる**（§9.229 ③、利用者の指示
-            #    「汎用設計にしているつもりなので」）。値の持ち方を変えないので、
-            #    型・上下限と違って画面の部品のままで成立する。内径のように
-            #    仕掛データから値が来る欄では**仕掛の値が勝つ**——決められない
-            #    のではなく、順番が決まっている（`applyInitials`が入れた値は
-            #    「まだ選んでいない」として扱う）。
-            'initial': str(d['初期値'] or ''),
-            # ③ 候補にない値も手で打てるか。**選択肢を持つ型だけ**に効く
-            #    ——自由記述はもともと手で打つので、印を出しても意味が無い（§4）。
-            #    **打ち込む席の無い形でも落とす**（§9.247 ①）——`入切`・`切替`は
-            #    スイッチ／ボタン1つなので打つ場所が出ない。保存値は
-            #    `freeTextSaved`に残す（形を戻したら復活する。§9.233 ④と同じ）。
-            'freeText': free_live,
-            'freeTextSaved': bool(d['手打ち可']) if d['手打ち可'] is not None else False,
-            # ⑤ ステッパー・スライダーの1回ぶん。**未設定(None)は小数桁から作る**
-            #    （今までの挙動）——0を「設定した」と読むと増減できなくなる。
-            'step': (float(d['ステップ量']) if d['ステップ量'] is not None and float(d['ステップ量']) > 0 else None),
-            # --- §9.221 ⑦ ---
-            # 単位の置き場。**重ねられない入力方法では外下左へ落とす**
-            # （判定はここ1箇所。画面へ同じ判定を書かない）。
-            'unitPlace': (UNIT_PLACE_DEFAULT
-                          if (normalize_unit_place(d['単位位置']) == UNIT_PLACE_IN
-                              and not unit_in_ok(normalize_widget(d['入力方法']), bool(d['手打ち可'])))
-                          else normalize_unit_place(d['単位位置'])),
-            # 保存値そのもの（設定画面が「選んだが効いていない」を言うため）。
-            'unitPlaceSaved': normalize_unit_place(d['単位位置']),
-            'align': normalize_align(d['文字寄せ']),
-            'valueFormat': normalize_value_format(d['表示書式']),
-            'digits': normalize_digits(d['表示桁数']),
-            # --- §9.223 ① ---
-            # 役割。**保存値と、実際に担っている役割を分けて返す**——保存値が
-            # 空でも組み込みキーが役割になる行があるので、設定画面で「なぜ
-            # この欄が担っているのか」を言えるようにしておく。
-            'role': normalize_role(d['役割']),
-            'roleLive': role_of({'role': normalize_role(d['役割']), 'builtin': builtin}),
-            # --- §9.223 ③ ---
-            # 見た目。色・形・大きさの3つで、空＝既定（今までの見え方）。
-            'look': normalize_look(d['意匠']),
-            # --- §9.226 ① ---
-            # 並べ方。**効かない入力方法では`自動`へ落とす**（判定はここ1箇所。
-            # 単位の`内部`と同じ作法で、保存値は残す＝入力方法を戻したら復活）。
-            'layout': (normalize_layout(d['並べ方'])
-                       if layout_usable(normalize_widget(d['入力方法'])) else LAYOUT_AUTO),
-            'layoutSaved': normalize_layout(d['並べ方']),
-            # --- §9.226 ③ ---
-            # 群の幅（マス）。0＝横いっぱい。**群のものなので、群の中で
-            # 食い違ったときは「1つでも指定があればそれ」**（畳むと同じ読み方）。
-            'groupSpan': normalize_group_span(d['群幅']),
-            # --- §9.227 ③ ---
-            # ダミー（空き）の群かどうか。**群のものなので、群の中で
-            # 食い違ったときは「1つでも印があればダミー」**（畳むと同じ読み方）。
-            'dummy': bool(d['ダミー']),
-            # --- §9.228 ④ ---
-            # 「空欄（選ばない）」を並べないか。**選択肢を持つ欄だけの話**
-            # （自由記述や数値・自動で入る値には空の札が無いので、読む側で
-            # 倒しておく）。**判定は族**（§9.244、利用者の報告「空欄の札を
-            # 出さないに設定しても、自動の項目の場合それが有効にならない」）
-            # ——以前は`[型]`で見ていたので、**組み込みの選択欄が全部すり抜けて
-            # いた**。オペレータ・検査員・内径・バリ揃え・コイル止め等はどれも
-            # `[型]='文字'`で、選択肢は`[選択肢名]`のほうで結んである。
-            # 画面（`opIsChoiceLike()`）は既に族で見ており設定は保存されて
-            # いたので、**書けるのに読むと必ずfalse**という形で出ていた
-            # （押しても効かない設定・§4）。
-            'noBlank': bool(d['空欄なし']) and fam == 'choice',
-            # --- §9.231 ② ---
-            # 上下限の出どころ。空＝この行の数をそのまま使う。
-            'minFrom': normalize_limit_source(d['最小の出どころ']),
-            'maxFrom': normalize_limit_source(d['最大の出どころ']),
-            # --- §9.233 ⑤ ---
-            # 自動で入る値の添え書き（仕掛由来のプリセット等）をどこへ出すか。
-            # **添え書きを持たない項目では持っていても意味が無い**ので、
-            # 出どころのある項目（`SOURCE_NOTE_KEYS`）だけが読む。
-            'sourceNote': normalize_source_note(d['出どころ表示']),
-            # 値がこの画面の外から入る欄か（''／computed／preset。§9.234 ⑦）。
-            # **派生値なので保存列は増やさない**——列を足すと、書き込み側の
-            # 明示ペイロードに1つ足し忘れた瞬間に黙って消える設定がまた増える
-            # （§9.113／§9.212 ②）。
-            'autoFill': auto_fill_of(normalize_item_type(d['型']), builtin, auto),
-            # --- §9.234 ② ---
-            # 自動で入る値。保存値・呼び名・群・説明・この版が引けるかを返す。
-            # **引けない鍵も返す**（画面が「引けません」と書けるように・§4）。
-            'autoValue': auto,
-            'autoValueKnown': auto_value_known(auto) if auto else True,
-            'autoValueLabel': (auto_def[1] if auto_def else auto),
-            'autoValueGroup': (auto_def[2] if auto_def else ''),
-            'autoValueNote': (auto_def[4] if auto_def else ''),
-            # §9.242 ④。③「記録した値」のカードへ出すか。**列の無い古いDBでも
-            # 動く**（無い列は`None`で来る）。NULL＝まだ触っていない＝出す。
-            'recordShow': True if d['記録表示'] is None else bool(d['記録表示']),
-            # §9.243。カードの中の群と並び。**空＝この項目の群／表示順に従う**
-            # （盤で動かしていない項目は測定画面の並びへ追随し続ける）。
-            'recordGroup': str(d['記録群'] or '').strip(),
-            'recordOrder': (int(d['記録順']) if d['記録順'] is not None else None),
-            # §9.248 ⑤ 選択肢の並び。**列の無い古いDBでも動く**。
-            'choiceOrder': normalize_choice_order(d['選択肢の並び']),
-            # §9.256 式で作る自動値。**列の無い古いDBでも動く**。
-            'autoFormula': str(d['自動計算式'] or '').strip(),
-            # §9.286 ⑥。空欄のときの配色。**古いDB（列が無い）でも動く**。
-            # §9.307 入力値の丸めの向き（単位は`step`）。**空欄＝丸めない**。
-            'roundMode': normalize_round_mode(d['丸め方']),
-            'blankTint': normalize_blank_tint(d['未入力配色']),
-            # §9.323 ① 測定画面からその場で選択肢マスタへ足せるか。
-            # **既定は足せない**（NULL＝今までどおり。§9.132）。**保存値は
-            # 残す**（`inlineAddSaved`）——形や手打ちを戻したら復活させる
-            # （`freeText`／`freeTextSaved`とまったく同じ作法・§9.233 ④）。
-            'inlineAdd': (bool(d['手打ちを登録']) if d['手打ちを登録'] is not None else False)
-                         and inline_add_usable(fam, free_live),
-            'inlineAddSaved': (bool(d['手打ちを登録']) if d['手打ちを登録'] is not None
-                               else False)}
+    return {**_row_identity(d, builtin), **_row_arrangement(d), **_row_input(d, fam, free_live),
+            **_row_display(d), **_row_role_auto(d, builtin, auto)}
 
 
 def item_rows(c, include_disabled=False):
