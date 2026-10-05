@@ -190,7 +190,7 @@ body.bs-mode .bs-shell{display:flex}
   padding:var(--space-1) var(--space-3)}
 .bs-back[hidden]{display:none}
 .bs-back:hover{border-color:var(--teal);color:var(--teal-dark)}
-.bs-back i{font-style:normal;font-weight:var(--fw-strong);font-size:var(--fs-base)}
+.bs-back i{font-style:normal;font-weight:var(--fw-strong);font-size:var(--fs)}
 .bs-back span{display:flex;flex-direction:column;line-height:1.15;min-width:0}
 .bs-back s{text-decoration:none;font-size:var(--fs-micro)}
 .bs-back b{color:var(--ink);overflow:hidden;text-overflow:ellipsis}
@@ -203,7 +203,7 @@ body.bs-mode .bs-shell{display:flex}
 /* ---------- 手順のポップオーバー ---------- */
 .bs-pop{position:absolute;inset-inline-start:0;top:calc(100% + var(--space-1));
   z-index:var(--z-popover);width:min(28rem,92vw);background:var(--valid-bg);
-  border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-pop);
+  border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--elev-pop);
   padding:var(--space-3);display:none;max-height:calc(100vh - 9rem);overflow:auto}
 .bs-step.is-open .bs-pop{display:block}
 .bs-pop h3{font-size:var(--fs-title);margin:0 0 var(--space-1)}
@@ -372,7 +372,7 @@ body.bs-mode .bs-shell{display:flex}
 /* OS・DS の札は**重ねる的**（§9.463）。端の区間と右の端部の表が一緒に光る。
    押す操作は持たない（指は出さない・§9.385）——重ねている間だけの合図。 */
 .bs-t3.is-os,.bs-t3.is-ds{pointer-events:auto}
-.bs-t3.is-os.is-pick,.bs-t3.is-ds.is-pick{box-shadow:0 0 0 2px var(--teal)}
+.bs-t3.is-os.is-pick,.bs-t3.is-ds.is-pick{box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 /* 板の札（§9.413 追補）。模式図と**同じ言葉**（条の番号・耳）で、値を下へ添える。
    条と耳屑は図の中で色が違うので、札の色もそれに合わせる。
    **枠は持たない**（§9.417、利用者の指示「断面3Dのラベルの付け方は2Dを参考に
@@ -428,7 +428,7 @@ body.bs-mode .bs-shell{display:flex}
 /* 重ねたときは**色を変えない**（§9.455、利用者の指摘「マウスオーバーでまた色の
    変化もあり、さらにわかりにくく」）。大きさと、同じ色の外輪で言う。 */
 .bs-t3b.is-pick{transform:translate(-50%,-50%) scale(1.14);
-  box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--bs-bc,var(--bs-fig-badge))}
+  box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--bs-bc,var(--bs-fig-badge))}
 /* 寸法の突き合わせ（§9.418 追補）。図の読み方（`bs-o3`）と同じ見た目で、
    段だけ分ける——どちらも図の上に載る添え書き。 */
 .bs-len3[hidden]{display:none}
@@ -484,7 +484,7 @@ body.bs-mode .bs-shell{display:flex}
 .bs-hlp:hover,.bs-hlp[aria-expanded="true"]{color:var(--teal-dark);border-color:var(--teal)}
 .bs-hpop{position:absolute;right:0;top:30px;width:21rem;max-width:70vw;background:var(--valid-bg);
   border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3);
-  box-shadow:var(--shadow-pop);font-size:var(--fs-micro);line-height:1.65;color:var(--muted);
+  box-shadow:var(--elev-pop);font-size:var(--fs-micro);line-height:1.65;color:var(--muted);
   text-align:start;z-index:1}
 .bs-hpop[hidden]{display:none}
 .bs-hpop dt{font-weight:var(--fw-ui);color:var(--teal-dark);font-size:var(--fs-tiny);
@@ -691,7 +691,7 @@ body.bs-mode .bs-shell{display:flex}
 .bs-ehit.is-pick .bs-zhit{fill-opacity:.16;stroke-width:1.6}
 /* 右の端部の表も同じ合図で光る（どの端に重ねたかを表の側でも言う）。 */
 .bs-side{border-radius:var(--radius-sm);transition:box-shadow .12s,background-color .12s}
-.bs-side.is-pick{background:color-mix(in srgb,var(--teal) 8%,transparent);box-shadow:0 0 0 2px var(--teal)}
+.bs-side.is-pick{background:color-mix(in srgb,var(--teal) 8%,transparent);box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 .bs-bdgr{fill:var(--bs-bc,var(--bs-fig-badge));transition:transform .12s;
   transform-box:fill-box;transform-origin:center}
 /* 重ねても**塗りは変えない**（§9.455）。大きさで言う（断面図の札と同じ）。 */
@@ -703,8 +703,8 @@ body.bs-mode .bs-shell{display:flex}
    記号そのものの色は**変えない**（§9.455）——文字ごとの色が「どの組み方か」を
    言っているので、重ねたことは同じ色の外輪で言う。 */
 .bs-g tr[data-badge]:hover>td{background:var(--pale)}
-.bs-g tr.is-pick>td.bs-bd{box-shadow:inset 3px 0 0 var(--bs-bc,var(--teal-dark))}
-.bs-g tr.is-pick .bs-bdg{box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--bs-bc,var(--bs-fig-badge))}
+.bs-g tr.is-pick>td.bs-bd{box-shadow:inset var(--bar-w) 0 0 var(--bs-bc,var(--teal-dark))}
+.bs-g tr.is-pick .bs-bdg{box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--bs-bc,var(--bs-fig-badge))}
 .bs-bdg{display:inline-grid;place-items:center;min-width:1.5em;padding:0 3px;
   border-radius:var(--radius-xs);background:var(--bs-bc,var(--bs-fig-badge));color:#fff;font-weight:var(--fw-strong)}
 /* 記号の色の番号（§9.455）。**付ける先は記号を名乗る器**（`data-bc`）で、中の札も
@@ -823,14 +823,14 @@ body.bs-mode .bs-shell{display:flex}
 .bs-zoom{position:absolute;inset-block-start:var(--bs-zoom-y,var(--space-2));
   inset-inline-start:var(--bs-zoom-x,0);width:min(760px,100%);z-index:var(--z-popover);
   background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);
-  box-shadow:var(--shadow-pop);padding:var(--space-2);display:flex;flex-direction:column;
+  box-shadow:var(--elev-pop);padding:var(--space-2);display:flex;flex-direction:column;
   gap:var(--space-1)}
 .bs-zoom[hidden]{display:none}
 /* 見出しの帯は取っ手（§9.437）。`touch-action:none` が無いと、掴んだ指が
    器のスクロールに取られる。 */
 .bs-zoom-hd{display:flex;align-items:center;gap:var(--space-2);
   cursor:move;touch-action:none;user-select:none}
-.bs-zoom.is-dragging{box-shadow:var(--shadow-pop),0 0 0 2px var(--teal)}
+.bs-zoom.is-dragging{box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal),var(--elev-pop)}
 .bs-zoom-bd{display:inline-grid;place-items:center;min-width:1.8em;height:1.8em;padding:0 4px;
   border-radius:var(--radius-xs);background:var(--bs-bc,var(--bs-fig-badge));color:#fff;
   font-size:var(--fs-title);font-weight:var(--fw-strong)}
@@ -898,7 +898,7 @@ body.bs-mode .bs-shell{display:flex}
  width:100%;padding:var(--space-1) var(--space-2);border:1px solid transparent;border-radius:var(--radius-sm);
  background:transparent;font:inherit;text-align:left;color:var(--ink);cursor:pointer}
 .bk-item:hover{background:var(--pale)}
-.bk-item.is-on{background:var(--pale);border-color:var(--teal);box-shadow:inset 3px 0 0 var(--teal)}
+.bk-item.is-on{background:var(--pale);border-color:var(--teal);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 .bk-item.is-near .bk-mark{box-shadow:0 0 0 2px var(--warn-fg);border-radius:var(--radius-round)}
 .bk-item.is-hard .bk-mark{box-shadow:0 0 0 2px var(--danger);border-radius:var(--radius-round)}
 .bk-mark{display:inline-flex}
@@ -1013,7 +1013,7 @@ body.bs-mode .bs-shell{display:flex}
 .bb-stk{display:flex;height:18px;border-radius:var(--radius-xs);overflow:hidden;border:1px solid var(--line)}
 .bb-stk-p{display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:0;border-inline-end:2px solid var(--surface);
  border-radius:0;overflow:hidden;white-space:nowrap;font-size:var(--fs-tiny);font-weight:var(--fw-ui);color:var(--surface);background:var(--look-blue);cursor:pointer}
-.bb-stk-p.is-special{background:var(--surface);color:var(--look-blue-dark);box-shadow:inset 0 0 0 2px var(--look-blue)}
+.bb-stk-p.is-special{background:var(--surface);color:var(--look-blue-dark);box-shadow:inset 0 0 0 var(--edge-w) var(--look-blue)}
 .bb-stk-p.is-grind{background:repeating-linear-gradient(45deg,var(--surface-2) 0 5px,var(--warn-border) 5px 7px);color:var(--warn-fg)}
 .bb-stk-p.is-off{background:var(--surface-2);color:var(--muted)}
 .bb-stk-p.is-on{outline:3px solid var(--teal-dark);outline-offset:-3px}
@@ -1080,10 +1080,10 @@ body.bs-mode .bs-shell{display:flex}
 .rt-grip:hover,.rt-grip:focus-visible{background:var(--pale);color:var(--teal-dark);outline:none}
 .rt-grip:active{cursor:grabbing}
 .rt-table .rt-row.is-dragging,.rt-table .rt-col.is-dragging{opacity:.45}
-.rt-table .rt-row.is-drop-before>*{box-shadow:inset 0 2px 0 var(--teal)}
-.rt-table .rt-row.is-drop-after>*{box-shadow:inset 0 -2px 0 var(--teal)}
-.rt-table .rt-col.is-drop-before{box-shadow:inset 2px 0 0 var(--teal)}
-.rt-table .rt-col.is-drop-after{box-shadow:inset -2px 0 0 var(--teal)}
+.rt-table .rt-row.is-drop-before>*{box-shadow:inset 0 var(--bar-w) 0 var(--teal)}
+.rt-table .rt-row.is-drop-after>*{box-shadow:inset 0 calc(var(--bar-w) * -1) 0 var(--teal)}
+.rt-table .rt-col.is-drop-before{box-shadow:inset var(--bar-w) 0 0 var(--teal)}
+.rt-table .rt-col.is-drop-after{box-shadow:inset calc(var(--bar-w) * -1) 0 0 var(--teal)}
 .rt-table input,.rt-table select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
 .rt-cell{position:relative;min-width:8em}
 .rt-cell input,.rt-try input,.rt-try select{width:100%;min-width:7em}
@@ -1102,7 +1102,7 @@ body.bs-mode .bs-shell{display:flex}
 .rt-note input{width:100%;min-width:8em}
 .rt-ops{width:1%}
 .rt-row.is-won th,.rt-row.is-won td{background:var(--teal-soft)}
-.rt-table .rt-row.is-won th.rt-no{box-shadow:inset 3px 0 0 var(--teal);color:var(--teal-dark);font-weight:var(--fw-strong)}
+.rt-table .rt-row.is-won th.rt-no{box-shadow:inset var(--bar-w) 0 0 var(--teal);color:var(--teal-dark);font-weight:var(--fw-strong)}
 .rt-row.is-default th,.rt-row.is-default td{background:var(--surface-2)}
 .rt-row.is-default.is-won th,.rt-row.is-default.is-won td{background:var(--teal-soft)}
 .rt-any{color:var(--ink-2);font-weight:var(--fw-strong)}
@@ -1213,7 +1213,7 @@ body.bs-mode .bs-shell{display:flex}
  text-align:left;font:inherit;color:inherit;cursor:pointer;padding:var(--space-2) var(--space-3);
  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);transition:transform .12s,background .12s}
 .bk-sv:hover{background:var(--pale);transform:translateY(-1px)}
-.bk-sv.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 -3px 0 var(--teal)}
+.bk-sv.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 calc(var(--bar-w) * -1) 0 var(--teal)}
 .bk-sv s{grid-column:1;text-decoration:none;font-size:var(--fs-sm);color:var(--muted)}
 .bk-sv b{grid-column:1;font-size:var(--fs-lg);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bk-sv b small{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--muted)}
@@ -1222,7 +1222,7 @@ body.bs-mode .bs-shell{display:flex}
 .bk-split{display:flex;width:100%;min-width:96px;height:12px;background:var(--surface-2);border-radius:var(--radius-xs);overflow:hidden}
 .bk-split i,.bk-lenbar i{display:block;height:100%}
 .bk-split .is-busy,.bk-lenbar .is-busy,.bk-hist .is-busy,.bk-key.is-busy{background:var(--look-slate)}
-.bk-split .is-car,.bk-hist .is-car,.bk-key.is-car{background:var(--look-slate-pale);box-shadow:inset 0 0 0 1px var(--look-slate)}
+.bk-split .is-car,.bk-hist .is-car,.bk-key.is-car{background:var(--look-slate-pale);box-shadow:inset 0 0 0 var(--edge-w) var(--look-slate)}
 .bk-split .is-shelf,.bk-lenbar .is-shelf,.bk-hist .is-shelf,.bk-key.is-shelf{background:var(--look-green)}
 .bk-mini{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));grid-auto-rows:7px;gap:1px}
 .bk-mini i,.bk-fc{background:color-mix(in srgb,var(--look-blue) var(--k,0%),var(--surface))}
@@ -1230,7 +1230,7 @@ body.bs-mode .bs-shell{display:flex}
 .bk-mini i.is-zero,.bk-fc.is-zero,.bk-key.is-zero{background:var(--look-red)}
 .bk-key{display:inline-block;width:.9em;height:.9em;border-radius:var(--radius-xs);vertical-align:-1px;margin:0 var(--space-1) 0 var(--space-3)}
 .bk-key:first-child{margin-left:0}
-.bk-key.is-fc{background:linear-gradient(90deg,var(--surface),var(--look-blue));box-shadow:inset 0 0 0 1px var(--line)}
+.bk-key.is-fc{background:linear-gradient(90deg,var(--surface),var(--look-blue));box-shadow:inset 0 0 0 var(--edge-w) var(--line)}
 .bk-legend{margin:0 0 var(--space-2);font-size:var(--fs-sm);color:var(--muted);line-height:1.7}
 /* 端数の地図（10×4）。全幅ではマスを押せる（`button`）。浮く図ではマスは押せない（`span`）。 */
 .bk-frac{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:3px;margin:0 0 var(--space-2)}
@@ -1261,7 +1261,7 @@ body.bs-mode .bs-shell{display:flex}
 .bk-svview h4{margin:0 0 var(--space-2);font-size:var(--fs-base-sm)}
 .bk-fine{display:grid;grid-template-columns:5em minmax(0,1fr) 11em;gap:var(--space-1) var(--space-2);align-items:center;font-size:var(--fs-sm)}
 .bk-fine-s{text-align:right;font-weight:var(--fw-strong);font-variant-numeric:tabular-nums;padding-right:var(--space-1)}
-.bk-fine-s.is-on{background:var(--pale);box-shadow:inset 3px 0 0 var(--teal)}
+.bk-fine-s.is-on{background:var(--pale);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 .bk-fine span:last-child{color:var(--muted);font-variant-numeric:tabular-nums}
 .bk-fine span:last-child b{color:var(--ink)}
 .bk-len{display:grid;grid-template-columns:7em minmax(0,1fr) 11em;gap:var(--space-3) var(--space-2);align-items:center;margin:var(--space-6) 0 var(--space-2);font-size:var(--fs-sm)}
@@ -1287,7 +1287,7 @@ body.bs-mode .bs-shell{display:flex}
 .sb-fig{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2);padding:var(--space-2)}
 .sb-fig:empty{display:none}
 .sb-rows{display:flex;flex-direction:column}
-.sb-row.is-on{background:var(--pale);box-shadow:inset 3px 0 0 var(--teal)}
+.sb-row.is-on{background:var(--pale);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 /* 図の部品。色は刃組図のトークン（ガイダンスの図と同じ物が同じ色）。光るのは`is-on`の1つ。 */
 .sf{width:100%;height:auto;display:block;max-height:300px}
 .sf-t{font-size:var(--fs-sm);fill:var(--bs-fig-label)}

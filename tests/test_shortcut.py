@@ -11,7 +11,6 @@
   4. アイコンの指定は**読めないものを黙って既定へ落とさない**（§9.231）
 """
 import inspect
-import re
 import struct
 import sys
 from pathlib import Path
@@ -154,9 +153,8 @@ rec('画面へ出す名前は「空なら既定へ倒した結果」と別の鍵
 rec('create() は作れたら名前と絵を残す（画面の保存ボタンに頼らない）',
     'remember(' in src, 'remember を呼んでいる' if 'remember(' in src else src[-120:])
 rsrc = inspect.getsource(desktop_shortcut.remember)
-rec('残すのは shortcut_name / shortcut_icon の2鍵だけ（置き場・読み込み先は触らない）',
-    sorted(re.findall(r"set_path_config\(c,'([a-z_]+)'", rsrc)) == ['shortcut_icon', 'shortcut_name'],
-    str(re.findall(r"set_path_config\(c,'([a-z_]+)'", rsrc)))
+rec('名前と絵は**この PC の控え**へ残す（共有のマスタへは書かない・§9.568）',
+    'runtime_dir()/LOCAL_FILE' in rsrc and 'set_path_config' not in rsrc, rsrc[:200])
 rec('残せなくても作成そのものは失敗にしない（黙って捨てない・§9.328）',
     'quiet(' in rsrc and 'except' in rsrc)
 
@@ -382,7 +380,9 @@ try:
     _os.environ['WAVELOG_SHELL'] = 'desktop'
     base_st = {'supported': True, 'link': r'C:\Users\u\Desktop\測定伝送システム.lnk', 'exists': False}
     rec('窓の中・作れる・アイコンが無い・断っていない → 聞く', desktop_shortcut.offer(dict(base_st)) is True)
-    rec('アイコンが在れば聞かない', desktop_shortcut.offer(dict(base_st, exists=True)) is False)
+    rec('このアプリの起動アイコンが在れば聞かない', desktop_shortcut.offer(dict(base_st, exists=True, mine=True)) is False)
+    rec('同じ名前の別の物（行き先が違う）だけなら聞く（空いている名前で作る・§9.568）',
+        desktop_shortcut.offer(dict(base_st, exists=True, mine=False)) is True)
     rec('作れない端末では聞かない（理由は「表示」が言う）', desktop_shortcut.offer(dict(base_st, supported=False)) is False)
     _os.environ['WAVELOG_SHELL'] = ''
     rec('窓の外（開発・網）では聞かない', desktop_shortcut.offer(dict(base_st)) is False)
@@ -396,6 +396,61 @@ finally:
         _os.environ.pop('WAVELOG_SHELL', None)
     else:
         _os.environ['WAVELOG_SHELL'] = _keep_shell
+# ---- 「作成済みか」は名前ではなく行き先で見る（§9.568、利用者の報告「実際にショートカットが存在するかどうかを
+#      確認していないためか、作成済みで2回目に起動したときにも同じ選択肢が出てきて困ります」） ----
+# .lnk の代わりに行き先を1行書いた字のファイルを置き、窓の読み取り（read／list）を差し替えて status()→offer() を本物で通す。
+_t = Path(_tf.mkdtemp())
+_entry = _t / 'entry' / 'WaveLog.exe'
+_entry.parent.mkdir()
+_entry.write_text('x')
+_keep2 = {k: getattr(desktop_shortcut, k) for k in
+          ('desktop_dir', 'public_desktop_dir', 'supported', 'link_target', '_list_links', 'saved', 'declined')}
+_keep_env = {k: _os.environ.get(k) for k in ('WAVELOG_SHELL', 'WAVELOG_SHELL_ENTRY', 'WAVELOG_SELFTEST')}
+
+
+def _scene(i, saved_name, mine_files=(), public=(), other=()):
+    d, p = _t / f'd{i}', _t / f'p{i}'
+    d.mkdir()
+    p.mkdir()
+    for n in mine_files:
+        (d / f'{n}.lnk').write_text(str(_entry))
+    for n in public:
+        (p / f'{n}.lnk').write_text(str(_entry))
+    for n in other:
+        (d / f'{n}.lnk').write_text(str(_t / 'other.exe'))
+    desktop_shortcut.desktop_dir = lambda: d
+    desktop_shortcut.public_desktop_dir = lambda: p
+    desktop_shortcut.saved = lambda k: saved_name if k == 'shortcut_name' else ''
+    return desktop_shortcut.offer(desktop_shortcut.status())
+
+
+try:
+    _os.environ.update(WAVELOG_SHELL='desktop', WAVELOG_SHELL_ENTRY=str(_entry))
+    _os.environ.pop('WAVELOG_SELFTEST', None)
+    desktop_shortcut.supported = lambda: (True, '')
+    desktop_shortcut.link_target = lambda x: Path(x).read_text() if Path(x).exists() else ''
+    desktop_shortcut._list_links = lambda f: [{'path': str(x), 'target': x.read_text()} for x in Path(f).glob('*.lnk')]
+    desktop_shortcut.declined = lambda: ''
+    DN = desktop_shortcut.DEFAULT_NAME
+    rec('既定の名前で作った → 聞かない', _scene(1, '', [DN]) is False)
+    rec('作ったあと、マスタが替わって別の名前が残っていても聞かない（利用者の報告の形）', _scene(2, 'WaveLog 測定', [DN]) is False)
+    rec('デスクトップで名前を変えても聞かない', _scene(3, '', ['測定アプリ']) is False)
+    rec('みんなのデスクトップに在れば聞かない', _scene(4, '', public=[DN]) is False)
+    rec('何も無ければ聞く', _scene(5, '') is True)
+    rec('別の名前で作ったあと、名前の控えが空でも聞かない', _scene(6, '', ['WaveLog 測定']) is False)
+    rec('同じ名前の別の物だけなら聞き、作る先は空いている名前', _scene(7, '', other=[DN]) is True
+        and desktop_shortcut.status()['createAt'].endswith(f'{DN}（2）.lnk'), desktop_shortcut.status().get('createAt'))
+finally:
+    for k, v in _keep2.items():
+        setattr(desktop_shortcut, k, v)
+    for k, v in _keep_env.items():
+        if v is None:
+            _os.environ.pop(k, None)
+        else:
+            _os.environ[k] = v
+_LNK = (ROOT / 'desktop' / 'src' / 'lnk.rs').read_text(encoding='utf-8')
+rec('窓の副コマンドに一覧（list）がある（行き先で探す口・比べるのは Python の1か所）',
+    '"list" => Ok(json!({"ok": true, "links": list(' in _LNK)
 _ACC = (ROOT / 'backend' / 'access_mode.py').read_text(encoding='utf-8')
 rec('断る口もどのモードからでも通す（この端末の控えにしか触らない）',
     "'core.app_shortcut_decline':{'edit','view','schedule'}" in _ACC)

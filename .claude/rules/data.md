@@ -19,7 +19,7 @@
 | 届かなかった理由は**元の名前とOSの答え**まで残す。早めるのは**自動・届かなくなった最初の1回**だけ（`next_wait_sec()`・`fails`） | `test_dbmirror.py` | [§9.495](../../docs/decisions/9.495.md) |
 | 写し直しは1本ずつ（錠）。起動は最初の周回を待って読む。更新は`update_mode()`（auto／manual） | `test_dbmirror.py` | [§9.463](../../docs/decisions/9.463.md) |
 | 再読込は`force`で写し直し、押した直後に知らせ・結果を字で。画面は写しの更新に気づいて読み直す | `test_listcache.js` | [§9.463](../../docs/decisions/9.463.md) |
-| ショートカットの名前と絵は`パス設定マスタ`へ残す。鍵は**保存の受け側にも**足す | `test_shortcut.py` | [§9.433](../../docs/decisions/9.433.md) |
+| 【§9.568で改めた】ショートカットの名前と絵は**この PC の控え**（`runtime_dir()/shortcut.json`）。共有のマスタへ置かない | `test_shortcut.py` | [§9.568](../../docs/decisions/9.568.md) |
 | 起動ショートカットの設定を書くのは`desktop_shortcut.remember()`の1箇所（作れたときだけ・鍵は2つだけ） | `test_shortcut.py` | [§9.445](../../docs/decisions/9.445.md) |
 | 同じ名前のショートカットは上書きする。**自分が作った物**（行き先が`Start.vbs`）以外は`overwrite`が真のときだけ | `test_shortcut.py`・`test_uisize.js` | [§9.446](../../docs/decisions/9.446.md) |
 | 名前を変えたら前の物を片付ける（`rename_from()`の1箇所・消すのは自分が作った物だけ） | `test_shortcut.py` | [§9.446](../../docs/decisions/9.446.md) |

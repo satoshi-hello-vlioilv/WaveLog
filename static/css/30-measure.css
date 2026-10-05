@@ -319,7 +319,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .shade{position:absolute;inset:0;background:#071c2280}
 .measure-shell{
   position:absolute;inset:.5vh .35vw;
-  background:#f5f5f3;border-radius:var(--radius-md);box-shadow:0 20px 70px #0005;
+  background:#f5f5f3;border-radius:var(--radius-md);box-shadow:var(--elev-modal);
   display:grid;
   /* **測定画面専用のヘッダーは廃した**(§9.134・A案)。題字は操作レール
      （＝この画面の左メニュー）の上端に置き、他画面の`aside .brand`と
@@ -1098,7 +1098,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .fc-alert-pop{
   position:fixed;z-index:var(--z-popover);min-width:16rem;max-width:22rem;
   padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-card);
-  background:var(--surface);box-shadow:0 12px 28px rgba(23,56,66,.22);
+  background:var(--surface);box-shadow:var(--elev-pop);
 }
 .fc-alert-pop-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
 .fc-alert-pop-head b{flex:1;min-width:0;font-size:var(--fs-sm)}
@@ -1119,7 +1119,7 @@ th.col-sorted:hover{background:#c7e7ea}
   white-space:nowrap;
 }
 .fc-alert-color{background:var(--sw-bg);border-color:var(--sw-line);color:var(--sw-ink)}
-.fc-alert-color.is-on{box-shadow:inset 0 0 0 2px var(--sw-line);font-weight:var(--fw-strong)}
+.fc-alert-color.is-on{box-shadow:inset 0 0 0 var(--edge-w) var(--sw-line);font-weight:var(--fw-strong)}
 .fc-alert-note{margin:0;color:var(--muted);font-size:var(--fs-sm)}
 /* ---------- 「NGが発生した」（§9.242 ⑥） ----------
    行の中の最後の段。**押せないときは理由を文字で出す**（§4）——灰色に
@@ -1371,7 +1371,7 @@ th.col-sorted:hover{background:#c7e7ea}
    共通のモダンなチップ状デザインに統一する(枠線+淡色背景+丸角、下線なし)。
    ホバーで塗りつぶし、押下でわずかに沈む触感を付ける。 */
 .lot-dsp-link{display:block;width:100%;border:1px solid #a9d6cf;background:#eafaf7;color:#0b5e68;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:var(--fw-strong);text-decoration:none;transition:background .15s,border-color .15s,box-shadow .15s,transform .05s}
-.lot-dsp-link:hover{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 2px 8px rgba(11,94,104,.28)}
+.lot-dsp-link:hover{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:var(--elev-pop)}
 .lot-dsp-link:active{transform:translateY(1px);box-shadow:none}
 .lot-dsp-link:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 /* 行の見出し列は**文字から決める**（§9.129）。54pxの直値では「オーダー」
@@ -1599,7 +1599,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .tol-cards{list-style:none;margin:0;padding:0}
 .tol-card{
   display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 var(--space-2);
-  padding:var(--pad-cell);border-bottom:1px solid var(--line-soft);
+  padding:var(--pad-row);border-bottom:1px solid var(--line-soft);
 }
 .tol-card-name{color:var(--ink);font-size:var(--fs);font-weight:var(--fw-strong);white-space:nowrap}
 .tol-card-range{
@@ -2421,7 +2421,7 @@ th.col-sorted:hover{background:#c7e7ea}
    .qa-v7専用の見た目調整が多く絡むため、そちらは触れずこちらは独立させる。
    qa-accと異なり単独開閉(1つ開くと他が閉じる、ではなく各項目が独立)とし、
    既定はopenのまま(情報を不意に隠さない)。 */
-.disclosure{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:#fff;box-shadow:0 1px 3px #0b2b330a;overflow:hidden}
+.disclosure{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:#fff;overflow:hidden}
 .disclosure+.disclosure{margin-top:var(--space-2)}
 .disclosure-head{display:flex;align-items:center;gap:var(--gap-section);width:100%;padding:9px 12px;border:0;background:#fff;cursor:pointer;text-align:left;box-shadow:none;border-radius:0}
 .disclosure-head:hover{background:var(--surface-2)}
@@ -2992,7 +2992,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   display:flex;flex-direction:column;gap:var(--gap-inline);
   width:min(520px,92vw);max-height:min(70vh,640px);
   padding:var(--space-3);border:1px solid var(--line);border-radius:var(--radius-card);
-  background:var(--surface);box-shadow:0 24px 60px #00000055;
+  background:var(--surface);box-shadow:var(--elev-modal);
 }
 .opf-picker-box>header{display:flex;align-items:center;gap:var(--gap-inline)}
 .opf-picker-box>header>b{flex:1 1 auto;color:var(--teal);font-size:var(--fs-title);font-weight:var(--fw-strong)}
@@ -3247,7 +3247,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   border:1px solid var(--line-mid);
   /* 器は札より**1段深い角丸**（同じ値だと角で線が二重に見える）。 */
   border-radius:calc(var(--opf-radius,var(--radius-sm)) + 4px);
-  background:var(--surface);box-shadow:0 12px 32px #00000033;
+  background:var(--surface);box-shadow:var(--elev-pop);
 }
 .opf-menu-pop[hidden]{display:none}
 .opf-menu-list{display:flex;flex-direction:column;gap:1px;min-height:0;overflow:auto}
@@ -3576,7 +3576,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-switch-knob{
   position:absolute;top:2px;left:2px;width:calc(1.4em - 4px);height:calc(1.4em - 4px);
   border-radius:var(--radius-round);background:var(--surface);
-  box-shadow:0 1px 2px rgba(15,32,39,.28);transition:left .15s;
+  box-shadow:var(--elev-1);transition:left .15s;
 }
 .opf-switch-btn.is-on{border-color:var(--opf-hue,var(--teal));color:var(--ink)}
 .opf-switch-btn.is-on .opf-switch-track{background:var(--opf-hue,var(--teal))}
@@ -3877,7 +3877,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .rv-conf-pop{position:fixed;z-index:var(--z-popover);min-width:16em;
   display:flex;flex-direction:column;gap:var(--space-2);
   padding:var(--space-3);border:1px solid var(--line-mid);border-radius:var(--radius-sm);
-  background:var(--surface);box-shadow:0 12px 28px rgba(23,56,66,.22)}
+  background:var(--surface);box-shadow:var(--elev-pop)}
 .rv-conf-pop>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
 .rv-conf-pop>small{color:var(--muted);font-size:var(--fs-sm)}
 .rv-conf-row{display:flex;align-items:center;gap:var(--gap-inline)}
@@ -3940,7 +3940,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    **淡さが命**（9%）——濃くすると「選ばれている」と誤読され、選択中の枠と競う。
    色は必ずトークンから作る（`color-mix`。`rgba()`のリテラルを増やさない）。 */
 .mt-rail .type-chip:hover{transform:translateY(-1px);
-  box-shadow:0 2px 5px color-mix(in srgb,var(--nav) 20%,transparent)}
+  box-shadow:var(--elev-1)}
 .mt-ug:hover{background:color-mix(in srgb,var(--teal) 9%,transparent);
   box-shadow:0 0 0 5px color-mix(in srgb,var(--teal) 9%,transparent)}
 .mt-ug:hover .mt-unit b{color:var(--teal)}

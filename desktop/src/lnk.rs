@@ -11,6 +11,8 @@
 //!
 //!   `WaveLog.exe --lnk` ← `{"op":"make","path":…,"target":…,"args":…,"workdir":…,"icon":…,"iconIndex":0,"description":…}`
 //!                       ← `{"op":"read","path":…}` → `{"ok":true,"target":…}`（無いファイルは空の行き先）
+//!                       ← `{"op":"list","path":<フォルダ>}` → `{"ok":true,"links":[{"path":…,"target":…},…]}`
+//!                         （フォルダの直下の`.lnk`を全部・読めない物は行き先を空で。比べるのは Python の`_same_path()`の1か所）
 
 use serde_json::{json, Value};
 use std::io::Read;
@@ -56,6 +58,7 @@ pub fn handle(req: &Value) -> Result<Value, String> {
     }
     match text("op") {
         "read" => imp::read(path).map(|t| json!({"ok": true, "target": t})),
+        "list" => Ok(json!({"ok": true, "links": list(std::path::Path::new(path))})),
         "make" => {
             if text("target").is_empty() {
                 return Err("行き先（target）がありません".into());
@@ -71,8 +74,25 @@ pub fn handle(req: &Value) -> Result<Value, String> {
             };
             imp::make(&m).map(|_| json!({"ok": true}))
         }
-        other => Err(format!("知らない頼みです（op={other:?}。make／read のどちらか）")),
+        other => Err(format!("知らない頼みです（op={other:?}。make／read／list のどれか）")),
     }
+}
+
+/// フォルダの直下の`.lnk`と、それぞれの行き先（§9.568）。**名前ではなく行き先で**「このアプリの起動アイコンが在るか」を
+/// 確かめるために要る（利用者が名前を変えても・別の名前で作っても見つかる）。無いフォルダは空、読めない1件は行き先を空にする。
+fn list(dir: &std::path::Path) -> Vec<Value> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return vec![] };
+    let mut out: Vec<Value> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|x| x.to_str()).is_some_and(|x| x.eq_ignore_ascii_case("lnk")))
+        .map(|p| {
+            let path = p.display().to_string();
+            json!({"path": path, "target": imp::read(&path).unwrap_or_default()})
+        })
+        .collect();
+    out.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
+    out
 }
 
 #[cfg(windows)]
@@ -145,7 +165,13 @@ mod tests {
     fn bad_request_says_why() {
         assert!(handle(&json!({"op": "make"})).unwrap_err().contains("path"));
         assert!(handle(&json!({"op": "make", "path": "x.lnk"})).unwrap_err().contains("target"));
-        assert!(handle(&json!({"op": "zap", "path": "x.lnk"})).unwrap_err().contains("make／read"));
+        assert!(handle(&json!({"op": "zap", "path": "x.lnk"})).unwrap_err().contains("make／read／list"));
+    }
+
+    #[test]
+    fn list_of_missing_folder_is_empty() {
+        let got = handle(&json!({"op": "list", "path": "/無いフォルダ/wl"})).unwrap();
+        assert_eq!(got["links"].as_array().unwrap().len(), 0);
     }
 
     #[cfg(windows)]
@@ -163,6 +189,12 @@ mod tests {
         let real = |p: &str| std::fs::canonicalize(p).unwrap();
         assert_eq!(real(got["target"].as_str().unwrap()), real(&t));
         assert_eq!(handle(&json!({"op": "read", "path": dir.join("無い.lnk")})).unwrap()["target"], "");
+        // 一覧は名前ではなく行き先を返す（名前を変えても見つかる・§9.568）
+        let renamed = dir.join("名前を変えた.lnk");
+        std::fs::rename(&link, &renamed).unwrap();
+        let links = handle(&json!({"op": "list", "path": dir})).unwrap()["links"].as_array().unwrap().clone();
+        assert_eq!(links.len(), 1);
+        assert_eq!(real(links[0]["target"].as_str().unwrap()), real(&t));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

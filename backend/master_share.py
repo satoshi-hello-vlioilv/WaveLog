@@ -97,7 +97,7 @@ def _mode_setting():
     置き場を決める設定なので鶏と卵**——`config/local.json` の
     `master_share_mode` だけで上書きできる。"""
     try:
-        v = str(paths.load_local_config().get('master_share_mode') or '').strip().lower()
+        v = str(paths.setting('master_share_mode')[0] or '').strip().lower()   # 共有から渡された値も見る（§9.568）
     except Exception as _e:
         quiet('共有の設定を読めない（自動判定で続ける）',_e)
         v = ''

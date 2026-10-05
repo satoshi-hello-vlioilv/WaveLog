@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend import app_update  # noqa: E402
+from backend import app_update, paths  # noqa: E402
 from backend.repositories.master_repo import ROLES, ROLE_DEVELOPER, ROLE_MAINTAINER, role_can  # noqa: E402
 
 R = []
@@ -272,24 +272,31 @@ rec('この網を回しても、UNC の字のフォルダが作業フォルダ�
 base9 = Path(tempfile.mkdtemp()) / 'share'
 app_update.publish_zip(make_zip('9.20.0', extra={'program/WaveLog.exe': 'MZ v20'}), 'a.zip', 't', base9)
 app_update.publish_zip(make_zip('9.21.0', extra={'program/WaveLog.exe': 'MZ v21'}), 'b.zip', 't', base9)
-orig_local = app_update.load_local_config
+orig_local, orig_plocal = app_update.load_local_config, paths.load_local_config
+
+
+def _local(d):
+    # この PC の設定は`paths.setting()`の1か所が読む（§9.568）。どちらの読み口も同じ値にする
+    app_update.load_local_config = paths.load_local_config = (lambda: dict(d))
+
+
 try:
-    app_update.load_local_config = lambda: {}
+    _local({})
     r = app_update.set_release('9.20.0', 't', base9)
     entry = base9 / app_update.ENTRY_EXE
     rec('配る版を決めると、置き場の直下にその版の exe（配る入口）を置く',
         r.get('ok') and entry.read_text(encoding='utf-8') == 'MZ v20', entry.read_text(encoding='utf-8') if entry.exists() else '無い')
     rec('この PC が共有のマスタの置き場を持たないときは、渡す設定を書かずに理由を言う',
         not (base9 / app_update.SEED).exists() and any('master_db_path' in x for x in r.get('notes', [])), str(r.get('notes')))
-    app_update.load_local_config = lambda: {'master_db_path': r'\\srv\Records\master.sqlite3', 'master_share_mode': 'auto',
-                                            'db_dir': r'D:\mine', 'records_db_path': r'D:\mine\r.sqlite3'}
+    _local({'master_db_path': r'\\srv\Records\master.sqlite3', 'master_share_mode': 'auto',
+            'db_dir': r'D:\mine', 'records_db_path': r'D:\mine\r.sqlite3'})
     r = app_update.set_release('9.21.0', 't', base9)
     seed = json.loads((base9 / app_update.SEED).read_text(encoding='utf-8'))
     rec('配る版を選び直すと入口もその版になる', entry.read_text(encoding='utf-8') == 'MZ v21')
     rec('渡す設定は共有のマスタの置き場だけ（db_dir・records_db_path はその PC の物）',
         seed == {'master_db_path': r'\\srv\Records\master.sqlite3', 'master_share_mode': 'auto'}, str(seed))
     rec('置けたら注意は無い', r.get('notes') == [], str(r.get('notes')))
-    app_update.load_local_config = lambda: {}
+    _local({})
     app_update.set_release('9.20.0', 't', base9)
     rec('共有のマスタの置き場を持たない PC が配っても、前の控えを空で消さない',
         json.loads((base9 / app_update.SEED).read_text(encoding='utf-8')).get('master_db_path') == r'\\srv\Records\master.sqlite3')
@@ -297,8 +304,48 @@ try:
     rec('画面へ渡す形: 入口のアドレスと渡す設定', info['exists'] and info['path'] == str(entry)
         and info['seed'].get('master_db_path'), str(info))
 finally:
-    app_update.load_local_config = orig_local
-INS = (ROOT / 'desktop' / 'src' / 'install.rs').read_text(encoding='utf-8')
+    app_update.load_local_config, paths.load_local_config = orig_local, orig_plocal
+
+# ---- 9b) 初回起動でマスタを掴む（§9.568、利用者の報告「初回起動時にマスタをつかみに行ってくれないので、
+#      まっさらな状態になってしまいます」）。決め方は paths.setting() の1か所 ----
+SHARED_M = r'\\nlmsrvngy03\工場内共有\検査データ\Masters\master.sqlite3'
+rec('既定の共有のマスタの置き場は利用者の指定どおり', paths.DEFAULT_MASTER_PATH == SHARED_M, paths.DEFAULT_MASTER_PATH)
+_root9 = Path(tempfile.mkdtemp())
+(_root9 / 'config').mkdir()
+_keep_root, _keep_lcp = paths.APP_ROOT, paths.local_config_path
+
+
+def _master(local=None, seed='none'):
+    """local=その PC の local.json（None=無い）・seed=窓が写した install.json（'none'=写しが無い＝共有から入れていない）"""
+    for f in ('local.json', 'install.json'):
+        (_root9 / 'config' / f).unlink(missing_ok=True)
+    if local is not None:
+        (_root9 / 'config' / 'local.json').write_text(json.dumps(local), encoding='utf-8')
+    if seed != 'none':
+        (_root9 / 'config' / 'install.json').write_text(json.dumps(seed), encoding='utf-8')
+    return paths.setting('master_db_path')
+
+
+try:
+    paths.APP_ROOT, paths.local_config_path = _root9, (lambda: _root9 / 'config' / 'local.json')
+    rec('共有から入れた PC: 置き場から渡された値を使う', _master(seed={'master_db_path': r'\\srv\m.sqlite3'}) == (r'\\srv\m.sqlite3', 'seed'))
+    rec('配る人が渡す設定を置き忘れても、既定の共有の置き場を使う（まっさらで始めない）', _master(seed={}) == (SHARED_M, 'default'))
+    rec('local.json があってもマスタの置き場が無ければ、渡された値を使う（前は local.json が在ると写さなかった）',
+        _master(local={'db_dir': 'C:\\x'}, seed={'master_db_path': r'\\srv\m.sqlite3'})[0] == r'\\srv\m.sqlite3')
+    rec('その PC で決めた置き場が先', _master(local={'master_db_path': 'D:\\own.sqlite3'}, seed={'master_db_path': r'\\srv\m.sqlite3'})
+        == ('D:\\own.sqlite3', 'local'))
+    rec('共有から入れていない（開発・網）PC は既定へ倒さない（手元の db のまま）', _master() == (None, ''))
+    rec('書込サイクルも渡された値を読む', (_master(seed={'master_share_mode': 'on'}) and paths.setting('master_share_mode')) == ('on', 'seed'))
+finally:
+    paths.APP_ROOT, paths.local_config_path = _keep_root, _keep_lcp
+rec('渡す鍵の顔ぶれは paths の1か所（配る側も同じ定義を読む）', app_update.SEED_KEYS is paths.SEED_KEYS)
+_INS = (ROOT / 'desktop' / 'src' / 'install.rs').read_text(encoding='utf-8')
+rec('窓は local.json を書かない（書き手は Python・渡す設定は config/install.json へ写す）',
+    'join("local.json")' not in _INS.split('#[cfg(test)]')[0], 'install.rs に local.json を書く所が残っている')
+rec('置き場に届いた起動のたびに写し直す（update::peek）・共有の入口からは Python の前に写す',
+    'install::mirror_seed(' in (ROOT / 'desktop' / 'src' / 'update.rs').read_text(encoding='utf-8')
+    and 'mirror_seed(&app.join("config"), from)' in _INS)
+INS =(ROOT / 'desktop' / 'src' / 'install.rs').read_text(encoding='utf-8')
 rec('入口と渡す設定の名前・鍵は窓（install.rs）と同じ字',
     f'pub const ENTRY: &str = "{app_update.ENTRY_EXE}";' in INS and f'pub const SEED: &str = "{app_update.SEED}";' in INS
     and 'pub const SEED_KEYS: [&str; 2] = [%s];' % ', '.join('"%s"' % k for k in app_update.SEED_KEYS) in INS)

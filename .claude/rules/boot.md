@@ -17,8 +17,8 @@
 | 置き場は見るだけで作らない（作るのは版を置くとき）。網は一時の置き場を渡す | `test_appupdate.py` | [§9.557](../../docs/decisions/9.557.md) |
 | 新しい PC には共有の**配る入口**（`<置き場>\WaveLog.exe`）のアドレスだけ渡す。入口と渡す設定（`install.json`）は配る版を決めたときに置く | `test_appupdate.py`・`test_appupdateui.js` | [§9.559](../../docs/decisions/9.559.md) |
 | 共有の入口から起こされたら手元の写しへ渡し、アプリが無ければ`%USERPROFILE%\WaveLog`へ配る版を写す（`install::run()`＝更新と同じ道） | `test_appupdate.py` | [§9.559](../../docs/decisions/9.559.md) |
-| 新しい PC へ渡す設定は共有のマスタの置き場だけ（`SEED_KEYS`）。在る`local.json`は触らない・持たない PC は前の控えを消さない | `test_appupdate.py` | [§9.559](../../docs/decisions/9.559.md) |
-| 起動アイコンが無ければ作るか聞く。答えは`desktop_shortcut.offer()`の1箇所（窓の中・作れる・無い・断っていない） | `test_shortcut.py` | [§9.559](../../docs/decisions/9.559.md) |
+| 渡す設定は窓が`config/install.json`へ写す（`local.json`は書かない）。マスタの置き場は`paths.setting()`の1か所 | `test_appupdate.py` | [§9.568](../../docs/decisions/9.568.md) |
+| 起動アイコンが無ければ作るか聞く。答えは`desktop_shortcut.offer()`の1箇所。在るかは**行き先**で見る（名前で見ない・みんなのデスクトップも） | `test_shortcut.py` | [§9.559](../../docs/decisions/9.559.md)・[§9.568](../../docs/decisions/9.568.md) |
 | 外した入口（Start.vbs・update.bat・setup_app.py）は`RETIRED_DESKTOP`。`.git`のある作業ツリーは触らない | `test_faststart.py` | [§9.559](../../docs/decisions/9.559.md) |
 | 更新の置き場と配る版は`app_update.py`、各PCをそろえるのは窓の`update::check_and_apply()`の1箇所 | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |
 | そろえるのは Python を起こす前。届かなければ3秒で打ち切りいまの版で起動。sha256 を全部確かめ、途中で失敗したら全部戻す | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |

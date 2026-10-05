@@ -2246,8 +2246,8 @@
   catch(e){WL.quiet.note('起動アイコンの状態を読めない（聞かずに続ける）',e);return}
   if(!info||!info.offer)return;
   const ok=await confirmModal({title:'デスクトップに起動アイコンを作りますか？',
-   message:`次からは、デスクトップの「${info.name||info.defaultName}」から開けます（この PC へ写したアプリが開きます。共有の置き場を通しません）。\n`
-     +`作る場所: ${info.link}\n\n作らない場合も、あとでヘッダーの「表示」から作れます。`,
+   message:`次からは、デスクトップの起動アイコンから開けます（この PC へ写したアプリが開きます。共有の置き場を通しません）。\n`
+     +`作る場所: ${info.createAt||info.link}\n\n作らない場合も、あとでヘッダーの「表示」から作れます。`,
    confirmLabel:'作る',cancelLabel:'作らない'});
   try{
    if(!ok){

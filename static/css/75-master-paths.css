@@ -187,7 +187,7 @@
 /* 札が1つも出ていないときは帯ごと伏せる（§9.556 B8。中身の無い灰色の帯が図とタブのあいだに残っていた） */
 .pc-rail:not(:has(>:not([hidden]))){display:none}
 /* 飛んだ先が一瞬だけ分かるようにする（どこへ来たのかを推測させない）。 */
-.mm-set-group.is-jumped{box-shadow:0 0 0 2px var(--teal)}
+.mm-set-group.is-jumped{box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 
 /* ---- この端末 ---- */
 .pc-who{display:flex;flex-wrap:wrap;gap:var(--gap-section)}
@@ -254,7 +254,7 @@
 /* 使用中は**枠の色と字の両方**で言う（色だけで言わない・§CLAUDE 3）。
    字は絶対配置なので、選び直しても札の寸法は1pxも動かない（§9.227）。 */
 .pc-ld-card.is-current{border-color:var(--teal);background:var(--pale);
-  box-shadow:inset 0 0 0 1px var(--teal)}
+  box-shadow:inset 0 0 0 var(--edge-w) var(--teal)}
 .pc-ld-on{position:absolute;top:var(--space-1);right:var(--space-1);
   display:none;padding:0 var(--space-1);border-radius:var(--radius-xs);
   background:var(--teal);color:var(--card-bg);

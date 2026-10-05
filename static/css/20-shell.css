@@ -85,7 +85,7 @@
   border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);
   color:var(--ink-2);font:inherit;cursor:pointer}
 .cl-rail-row:hover{background:var(--surface-3)}
-.cl-rail-row.is-active{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-mid);
+.cl-rail-row.is-active{background:var(--surface);box-shadow:inset 0 0 0 var(--edge-w) var(--line-mid);
   color:var(--ink)}
 .cl-rail-row b{display:block;font-size:var(--fs-sm);color:var(--ink)}
 .cl-rail-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -189,7 +189,7 @@
    `nav-item--view`にした。 */
 /* 表示切替（メイン画面の表示内容を切り替える＝排他選択） */
 .nav-item--view{border-color:#2c4750}
-.nav-item--view.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:var(--fw-strong);box-shadow:inset 3px 0 0 #6be0d6}
+.nav-item--view.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:var(--fw-strong);box-shadow:inset var(--bar-w) 0 0 #6be0d6}
 .nav-item--view.active .nav-icon{opacity:1}
 .nav-item--view.active:hover{background:var(--teal)}
 /* 管理（低頻度操作。視覚的に控えめにして主要導線と区別する） */
@@ -199,7 +199,7 @@
 /* 選択中(現在地)の見た目は種類を問わず揃える。以前は nav-item--view だけに
    .active の指定があり、データ一覧(primary)とマスタ一覧(admin)は選択中でも
    見た目が変わらず「今どこにいるか」が分からなかった。 */
-.nav-item.active{box-shadow:inset 3px 0 0 #6be0d6}
+.nav-item.active{box-shadow:inset var(--bar-w) 0 0 #6be0d6}
 .nav-item--admin.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 .nav-item--admin.active .nav-icon{opacity:1}
 #nav{margin-top:0}
@@ -351,7 +351,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   --menu-max-h:70vh;             /* 高さの上限 */
   --menu-overflow:auto;          /* 溢れたとき */
   --menu-pad:var(--space-1);     /* 器の内余白 */
-  --menu-shadow:0 10px 28px rgba(0,0,0,.18);
+  --menu-shadow:var(--elev-pop);
   --menu-fs:var(--fs-sm);        /* 項目の字 */
   --menu-item-pad:var(--space-1) var(--space-2);
   --menu-item-hover:var(--surface-2);
@@ -372,7 +372,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    これを土台にする。札は「名前＋その下に一言」の縦積み。 */
 .access-mode-menu{
   --menu-w:190px;--menu-w-max:none;--menu-max-h:none;--menu-overflow:visible;
-  --menu-pad:var(--space-2);--menu-shadow:0 8px 24px rgba(0,0,0,.16);
+  --menu-pad:var(--space-2);--menu-shadow:var(--elev-pop);
   --menu-fs:var(--fs-base-sm);--menu-item-pad:var(--pad-card);
   --menu-item-hover:var(--bg)}
 .access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;
@@ -579,7 +579,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  justify-content:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x);
  text-align:center}
 .ui-size-menu .lnk .mm-btn-primary{background:var(--teal);color:#fff;
- box-shadow:0 4px 12px #087c8940}
+ box-shadow:var(--elev-pop)}
 .ui-size-menu .lnk .mm-btn-primary:hover{background:var(--teal-dark)}
 .ui-size-menu .lnk .mm-path-browse{border:1px solid var(--line);
  background:var(--pale);color:var(--ink);font-size:var(--fs-sm)}
@@ -665,7 +665,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .list-sort-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--z-popover);
   min-width:calc(280px * var(--ui-scale));max-width:calc(420px * var(--ui-scale));
   background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);
-  box-shadow:0 10px 30px #0002;padding:var(--pad-card);
+  box-shadow:var(--elev-pop);padding:var(--pad-card);
   display:flex;flex-direction:column;gap:var(--gap-inline)}
  .list-sort-menu[hidden]{display:none}
  .lsm-now{font-size:var(--fs-sm);color:var(--muted);display:flex;flex-direction:column;
@@ -745,7 +745,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     (§9.112)。ゴーストは掴んだ元より上に出る必要がある。 */
  .lc-ghost{position:fixed;z-index:var(--z-drag);pointer-events:none;
   background:var(--surface);border:1px solid var(--teal);border-left:3px solid var(--teal);
-  border-radius:var(--radius-xs);box-shadow:0 10px 24px rgba(23,56,66,.34);
+  border-radius:var(--radius-xs);box-shadow:var(--elev-pop);
   padding:var(--space-1) var(--space-2);opacity:.96;
   /* 掴んでいる手応え。少し傾けて浮かせると「持ち上げている」ことが
      形で分かる(スケジュールの移動と同じ見え方に揃える)。 */
@@ -1172,8 +1172,8 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  padding:var(--space-1) var(--space-2);z-index:var(--z-popover);pointer-events:none;
  /* `--shadow-sm`は`:root`に無い（参照しても効かず、実際に当たるのは
     フォールバックのリテラル影。§9.127の`--ctl-h-md`と同じ罠）。
-    影のトークンは無いので、既にあるモーダルの影と同じ書き方に揃える。 */
- box-shadow:0 6px 18px rgba(20,40,45,.22)}
+    影は役割のトークン（§9.569）の「浮き」。定義の無いトークンは`test_csslint`が数える。 */
+ box-shadow:var(--elev-pop)}
 @media (prefers-reduced-motion:reduce){
  .wl-modal-nudge{animation:none;box-shadow:0 0 0 3px var(--teal)}
 }

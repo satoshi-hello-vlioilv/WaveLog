@@ -369,10 +369,14 @@
      作られていると下敷きになり、削除ボタンを押せなかった(§9.80)。
      部品の内部だけで完結する重なり(表のヘッダ・図の点など)はここでは
      扱わない——あれは局所的な前後関係で、画面全体の層とは別の話。 */
-  /* 浮いた器の影（§9.377）。**リテラルを画面ごとに書かない**——既に
-     `0 8px 24px` `0 10px 28px` `0 12px 28px` と3通りが散っており、新しい
-     画面がそれを増やさないための1つ。色は既存の浮きメニューに合わせてある。 */
-  --shadow-pop:0 10px 28px #0000002e;
+  /* 影は役割の5つ（§9.569・案F）。**リテラルを画面ごとに書かない**——前は浮きの影だけで41通り散っていた。
+     浮き＝面（メニュー・ポップオーバー）と窓の2段／持ち上げ＝つまみ・乗せたとき／輪＝焦点・選択（地の輪で切り離す
+     二重の輪・濃い左メニューの上でも見える）／縁＝内側の線／帯＝色の帯。図の形（点・印・ランプ）は役割の外。 */
+  --elev-1:0 1px 2px rgba(23,39,45,.16);
+  --elev-pop:0 4px 14px rgba(23,39,45,.14);
+  --elev-modal:0 18px 48px rgba(23,39,45,.20);
+  --ring-gap:2px;--ring-w:4px;
+  --edge-w:1.5px;--bar-w:3px;
   --z-overlay:1100;    /* 保存中などの待ち表示 */
   --z-modal:1500;      /* 通常のモーダル(.record-modal) */
   --z-popover:1600;    /* サジェスト・浮遊ウィンドウ(モーダルの上に出す) */
@@ -477,11 +481,10 @@ button,select,input{
   background:#fff;
   transition:border-color .15s,box-shadow .15s,background-color .15s;
 }
-button{box-shadow:0 1px 2px #102a3314}
 button:hover{border-color:#6da6ad;background:var(--surface-2)}
 button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{
   outline:0;
-  box-shadow:0 0 0 3px #087c8928;
+  box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal);
   border-color:var(--focus);
 }
 }

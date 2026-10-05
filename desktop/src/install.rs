@@ -98,35 +98,46 @@ pub fn handoff_from_share(log: &dyn Fn(&str)) -> FromShare {
     }
 }
 
-/// 新しい PC へ渡す設定を`config`へ写す。**すでに在る`local.json`は触らない**（その PC の設定が先）。
+/// 共有の置き場の「新しい PC へ渡す設定」（`<置き場>\install.json`）を、この PC の`config\install.json`へ写す（§9.568）。
+/// **写しの書き手は窓だけ**・`config\local.json`は書かない（その PC が決めた値の書き手は Python の1言語・§9.563）。
+/// 置き場に`install.json`が無ければ空の`{}`を置く——「共有の置き場から入れた PC」の印になり、Python はマスタの置き場を
+/// 既定（利用者の指定の共有の場所）で決める（`paths.seed_value()`）。届かなければ前の写しのまま（触らない）。
 /// 置き場が既定でなければ、置き場の控え（`config\update.json`）へ**入れた元**として印（`from: install`）を付けて書く。
-/// Python は共有の設定が決まればそれで書き直し、空のあいだはこの控えを消さない（`app_update.remember()`・§9.561）。
 pub fn seed_config(app: &Path, from: &Path) -> Vec<String> {
     let mut said = vec![];
     let conf = app.join("config");
     let _ = std::fs::create_dir_all(&conf);
-    let local = conf.join("local.json");
-    if !local.exists() {
-        let seed: Value = std::fs::read(from.join(SEED))
-            .ok()
-            .and_then(|b| serde_json::from_slice(b.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&b)).ok())
-            .unwrap_or(Value::Null);
-        let vals: Map<String, Value> = SEED_KEYS
-            .iter()
-            .filter_map(|k| seed[*k].as_str().filter(|s| !s.trim().is_empty()).map(|s| (k.to_string(), Value::from(s.trim()))))
-            .collect();
-        if vals.is_empty() {
-            said.push("共有のマスタの置き場を渡されていません（この PC だけのマスタで起動します。共通設定で直せます）".into());
-        } else if std::fs::write(&local, serde_json::to_string_pretty(&Value::Object(vals)).unwrap_or_default()).is_ok() {
-            said.push(format!("共有のマスタの置き場を写しました（{}）", local.display()));
-        }
-    }
+    said.extend(mirror_seed(&conf, from));
     let mirror = conf.join(update::MIRROR);
     if from != Path::new(update::DEFAULT_DIR) && !mirror.exists() {
         let text = serde_json::json!({ update::CONFIG_KEY: from.display().to_string(), "from": "install" }).to_string();
         let _ = std::fs::write(&mirror, text);
     }
     said
+}
+
+/// `<置き場>\install.json` → `config\install.json`（渡す鍵だけ・`SEED_KEYS`）。届いたときだけ書く。→ 言うこと。
+pub fn mirror_seed(conf: &Path, from: &Path) -> Vec<String> {
+    let src = from.join(SEED);
+    let seed: Value = match std::fs::read(&src) {
+        Ok(b) => serde_json::from_slice(b.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&b)).unwrap_or(Value::Null),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && from.is_dir() => Value::Null,
+        Err(_) => return vec![], // 届かない——前の写しのまま
+    };
+    let vals: Map<String, Value> = SEED_KEYS
+        .iter()
+        .filter_map(|k| seed[*k].as_str().filter(|s| !s.trim().is_empty()).map(|s| (k.to_string(), Value::from(s.trim()))))
+        .collect();
+    let text = serde_json::to_string_pretty(&Value::Object(vals.clone())).unwrap_or_default();
+    let dst = conf.join(SEED);
+    if std::fs::read_to_string(&dst).ok().as_deref() == Some(text.as_str()) {
+        return vec![];
+    }
+    match std::fs::write(&dst, &text) {
+        Ok(_) if vals.is_empty() => vec!["共有の置き場に新しい PC へ渡す設定がありません（マスタは既定の共有の場所を使います）".into()],
+        Ok(_) => vec![format!("共有の置き場から渡す設定を写しました（{}）", dst.display())],
+        Err(e) => vec![format!("渡す設定を写せません（{}）: {e}", dst.display())],
+    }
 }
 
 /// この PC へ配る版を写す（手順の2・中身が無いときだけ）。→ 使う program フォルダ。
@@ -153,6 +164,13 @@ pub fn run(app: &Path, from: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str))
 /// 使う program フォルダを決める（`--install-from`のとき）。前に使ったフォルダが在ればそれ、無ければ`home_app()`へ写す。
 pub fn program_for(from: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Result<PathBuf, String> {
     if let Ok(p) = locate::program_dir() {
+        // 前に入れた PC でも、共有の入口から起こされたら**Python を起こす前に**渡す設定を写す（§9.568。
+        // 起動のたびの写し（`update::peek()`）は Python と並んで走るので、その回の起動に間に合わないことがある）
+        if let Some(app) = p.parent() {
+            for s in mirror_seed(&app.join("config"), from) {
+                log(&format!("INSTALL {s}"));
+            }
+        }
         return Ok(p);
     }
     let program = run(&home_app(), from, log, progress)?;
@@ -195,20 +213,32 @@ mod tests {
         fs::create_dir_all(&share).unwrap();
         fs::write(share.join(SEED), r#"{"master_db_path":"\\\\srv\\Records\\master.sqlite3","master_share_mode":"auto","db_dir":"C:\\x"}"#)
             .unwrap();
+        fs::create_dir_all(app.join("config")).unwrap();
+        fs::write(app.join("config/local.json"), r#"{"master_db_path":"mine"}"#).unwrap();
         seed_config(&app, &share);
-        let v: Value = serde_json::from_slice(&fs::read(app.join("config/local.json")).unwrap()).unwrap();
-        assert_eq!(v["master_db_path"], r"\\srv\Records\master.sqlite3", "共有のマスタの置き場を写す");
+        let v: Value = serde_json::from_slice(&fs::read(app.join("config").join(SEED)).unwrap()).unwrap();
+        assert_eq!(v["master_db_path"], r"\\srv\Records\master.sqlite3", "共有のマスタの置き場を写しへ");
         assert!(v.get("db_dir").is_none(), "その PC の物（db_dir）は渡さない");
+        assert_eq!(fs::read_to_string(app.join("config/local.json")).unwrap(), r#"{"master_db_path":"mine"}"#, "local.json は書かない（書き手は Python）");
         let mirror: Value = serde_json::from_slice(&fs::read(app.join("config").join(update::MIRROR)).unwrap()).unwrap();
         assert_eq!(mirror[update::CONFIG_KEY], share.display().to_string(), "既定でない置き場から入れたら控える");
         assert_eq!(mirror["from"], "install", "入れた元の印（Python が共有の設定の空で消さない・§9.561）");
-        fs::write(app.join("config/local.json"), r#"{"master_db_path":"mine"}"#).unwrap();
-        seed_config(&app, &share);
-        assert_eq!(
-            fs::read_to_string(app.join("config/local.json")).unwrap(),
-            r#"{"master_db_path":"mine"}"#,
-            "在る local.json は触らない"
-        );
+        let _ = fs::remove_dir_all(&t);
+    }
+
+    #[test]
+    fn seed_mirror_is_empty_when_the_share_has_none_and_kept_when_unreachable() {
+        let t = tmp("seed0");
+        let (conf, share) = (t.join("conf"), t.join("share"));
+        fs::create_dir_all(&conf).unwrap();
+        fs::create_dir_all(&share).unwrap();
+        mirror_seed(&conf, &share);
+        assert_eq!(fs::read_to_string(conf.join(SEED)).unwrap(), "{}", "置き場に無ければ空（共有から入れた印）");
+        fs::write(share.join(SEED), r#"{"master_db_path":"\\\\srv\\m.sqlite3"}"#).unwrap();
+        mirror_seed(&conf, &share);
+        assert!(fs::read_to_string(conf.join(SEED)).unwrap().contains("m.sqlite3"), "置き場が変われば写し直す");
+        mirror_seed(&conf, &t.join("届かない"));
+        assert!(fs::read_to_string(conf.join(SEED)).unwrap().contains("m.sqlite3"), "届かなければ前の写しのまま");
         let _ = fs::remove_dir_all(&t);
     }
 
@@ -223,7 +253,8 @@ mod tests {
         assert_eq!(out, Ok(app.join("program")), "写して program フォルダを返す");
         assert_eq!(update::local_version(&app).as_deref(), Some("2.446.0"), "配る版を写した");
         assert_eq!(fs::read_to_string(app.join("backend/a.py")).unwrap(), "new");
-        assert!(app.join("config/local.json").is_file(), "共有のマスタの置き場も写した");
+        assert!(app.join("config").join(SEED).is_file(), "共有のマスタの置き場も写した");
+        assert!(!app.join("config/local.json").exists(), "local.json は書かない（書き手は Python・§9.568）");
         assert!(!app.join("db").exists(), "データは作らない（起動した中身が作る）");
         assert!(!app.join(update::WORK).join("2.446.0.stage").exists(), "途中の物を残さない");
         let _ = fs::remove_dir_all(&t);

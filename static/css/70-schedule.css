@@ -175,7 +175,7 @@
    --------------------------------------------------------------- */
 .sc-float-win{
  position:fixed;z-index:var(--z-popover);background:#fff;border:1px solid var(--teal);border-radius:var(--radius-md);
- box-shadow:0 20px 60px #00000040;display:flex;flex-direction:column;overflow:hidden;
+ box-shadow:var(--elev-modal);display:flex;flex-direction:column;overflow:hidden;
 }
 .sc-float-header{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:8px 12px;background:var(--nav);color:#fff;cursor:move;flex-shrink:0;user-select:none}
 .sc-float-header h2{margin:1px 0 0;font-size:var(--fs-title)}
@@ -444,7 +444,7 @@
 /* まとめて動かすために選んだ列(§9.177)。**色だけで伝えない**——件数は
    見出しの帯(#scColPickHint)が文字で出す。 */
 .sc-row-title-head.is-picked{background:var(--pale);color:var(--teal-dark);
- box-shadow:inset 0 0 0 1px var(--teal)}
+ box-shadow:inset 0 0 0 var(--edge-w) var(--teal)}
 /* 列幅の取っ手。**掴める幅は一覧・データ一覧と同じ**にする(§9.197)——
    ここだけ6pxで、実機で「うまく掴めない」と報告された。取っ手そのものは
    細い線1本で、掴める帯は線より広く取る。 */
@@ -495,7 +495,7 @@
 .sc-row-line>*:not(:first-child):not(:nth-child(2)){box-shadow:-3px 0 0 -2px var(--line-soft)}
 .sc-row-head>*:not(:first-child):not(:nth-child(2)){box-shadow:-3px 0 0 -2px var(--line-mid)}
 /* 選んでいる列(§9.177)は自前の影を持つので、区切りより優先される。 */
-.sc-row-head>.sc-row-title-head.is-picked{box-shadow:inset 0 0 0 1px var(--teal)}
+.sc-row-head>.sc-row-title-head.is-picked{box-shadow:inset 0 0 0 var(--edge-w) var(--teal)}
 /* 中身がはみ出しても行を押し広げない。grid の子は既定で min-height:auto に
    なるため、これが無いと内容の高いセルが行の高さを決めてしまう。 */
 .sc-row-line>*{min-height:0;max-height:100%;overflow:hidden}
@@ -603,7 +603,7 @@
 .sc-sc{display:grid;gap:var(--gap-tight);padding:var(--space-2) var(--space-3);
  border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--pale)}
 .sc-sc-row{display:flex;align-items:center;gap:var(--space-2);min-width:0;
- min-height:var(--ctl-h-md)}
+ min-height:var(--ctl-h)}
 .sc-sc-k{flex:none;width:4.2em;text-align:right;white-space:nowrap;
  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .sc-sc-what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -617,7 +617,7 @@
    「いつも同じ場所にある」ことが効く——手応えは「いま入れた」の列が返す。 */
 .sc-sc-go{flex:none;height:36px;padding:0 var(--space-3);
  border:1px solid var(--teal-dark);border-radius:var(--radius-sm);background:var(--teal-dark);
- color:var(--surface);font-size:var(--fs-base);font-weight:var(--fw-strong);cursor:pointer;
+ color:var(--surface);font-size:var(--fs);font-weight:var(--fw-strong);cursor:pointer;
  white-space:nowrap;max-width:var(--w-xl);overflow:hidden;text-overflow:ellipsis}
 .sc-sc-go:disabled{border-color:var(--line-mid);background:var(--surface-2);
  color:var(--muted);cursor:not-allowed}
@@ -661,7 +661,7 @@
 .sc-sc-tick.is-free span{font-style:italic}
 .sc-sc-thumb{position:absolute;top:-11px;left:50%;width:18px;height:18px;margin-left:-9px;
  border:3px solid var(--teal-dark);border-radius:var(--radius-pill);background:var(--surface);
- box-shadow:0 1px 3px color-mix(in srgb,var(--nav) 30%,transparent);pointer-events:none}
+ box-shadow:var(--elev-1);pointer-events:none}
 .sc-sc-none{flex:1;min-width:0;font-size:var(--fs-micro);color:var(--muted)}
 /* ---------- 右下の列（内訳／どこへ入るか／いま入れた・§9.402） ---------- */
 .sc-stop-cols{flex:1 1 auto;min-height:0;display:grid;gap:var(--space-2);min-width:0;
@@ -845,7 +845,7 @@
 .sc-layout-pop{position:absolute;top:var(--space-2);right:var(--space-4);z-index:var(--z-popover);
  width:calc(340px * var(--ui-scale));padding:var(--space-3);
  border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:#fff;
- box-shadow:0 12px 28px rgba(23,56,66,.22)}
+ box-shadow:var(--elev-pop)}
 .sc-layout-sec{margin-bottom:var(--space-3)}
 .sc-layout-sec>b{display:block;margin-bottom:var(--space-1);color:var(--teal-dark);font-size:var(--fs-sm)}
 .sc-layout-sec label{display:flex;align-items:flex-start;gap:var(--gap-inline);
@@ -912,7 +912,7 @@
  padding:0 var(--space-2);
  border:1px solid var(--teal);border-radius:var(--radius-xs);
  background:var(--pale);color:var(--teal-dark);
- box-shadow:0 2px 6px rgba(16,44,52,.18)}
+ box-shadow:var(--elev-pop)}
 /* 位置を決めたあと(§9.179改訂)。**塗りを変えて「決まっている」と示す**——
    同じ見た目のままだと、まだ選べるのか決まったのかが分からない。 */
 .sc-insert-ghost.is-pinned .sc-insert-line::before{background:var(--success)}
@@ -1047,7 +1047,7 @@
  position:fixed; inset:0 0 auto 0; z-index:var(--z-alert);
  display:flex; align-items:center; gap:var(--gap-section);
  padding:var(--pad-card); background:var(--invalid); color:#fff;
- font-size:var(--fs); box-shadow:0 2px 10px rgba(0,0,0,.22);
+ font-size:var(--fs); box-shadow:var(--elev-pop);
 }
 .connection-lost-bar[hidden]{display:none}
 .connection-lost-bar svg{flex:0 0 auto}
@@ -1622,7 +1622,7 @@
 .sp-preview[hidden]{display:none}
 .sp-pv-box{display:flex;flex-direction:column;width:min(1440px,96vw);height:min(920px,94vh);
   border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);
-  box-shadow:0 20px 60px #00000040;overflow:hidden}
+  box-shadow:var(--elev-modal);overflow:hidden}
 .sp-pv-head{display:flex;align-items:flex-start;gap:var(--gap-inline);padding:var(--pad-card);
   border-bottom:1px solid var(--line-soft);background:var(--surface-2)}
 .sp-pv-head>div{flex:1;min-width:0}
@@ -1697,7 +1697,7 @@
 .sp-seg-btn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .sp-seg-btn:hover{color:var(--ink)}
 .sp-seg-btn.is-on{background:var(--surface);color:var(--computed-fg);
- box-shadow:0 1px 2px rgba(23,56,66,.18)}
+ }
 /* 余白の3つの軸（§9.294 ②③）。**ラベル列は固定幅**（§CLAUDE 画面基準 9）
    ——`auto`だと「左右」「行間（上下）」「区切りの行間」で帯の左端がずれ、
    3本が別々のものに見える。 */
@@ -1872,7 +1872,7 @@
  background:var(--rs-bg,var(--surface-2));color:var(--rs-fg,var(--ink))}
 .sp-c-nonwork[data-nw-look="帯"]{
  background:var(--rs-bg,var(--surface-2));color:var(--rs-fg,var(--ink));
- box-shadow:inset 0 0 0 0.15mm var(--rs-line,var(--line-mid))}
+ box-shadow:inset 0 0 0 var(--edge-w) var(--rs-line,var(--line-mid))}
 /* 札／帯にした行は地を塗らない。`tr[class*="sc-rs-"] td`（§9.237 ⑥）より
    **詳細度を1つ上げる**——同点だと書き順に頼ることになる。 */
 .sp-table tbody tr.sp-row-nw-face[class*="sc-rs-"] td{background:var(--surface)}
@@ -2067,7 +2067,7 @@
  min-height:var(--ctl-h-lg);padding:var(--space-1) var(--space-3);
  border:2px dashed var(--danger-border);border-radius:var(--radius-md);
  background:var(--surface);color:var(--danger);
- box-shadow:0 6px 18px rgba(23,56,66,.18);
+ box-shadow:var(--elev-pop);
  pointer-events:auto;
 }
 .sc-drop-remove.is-over{background:var(--danger-bg);border-style:solid}
@@ -2265,7 +2265,7 @@
 .sc-icon-win{
  display:flex;flex-direction:column;width:min(780px,94vw);max-height:84vh;
  border:1px solid var(--line-mid);border-radius:var(--radius-lg);background:var(--surface);
- box-shadow:0 18px 48px rgba(23,56,66,.28);overflow:hidden;
+ box-shadow:var(--elev-modal);overflow:hidden;
 }
 .sc-icon-win-head{
  display:flex;align-items:baseline;gap:var(--space-2);
@@ -2561,7 +2561,7 @@ div.sc-view-row{cursor:default}
  width:min(760px,94vw);max-height:78vh;overflow:auto;
  padding:var(--space-3);
  border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
- box-shadow:0 12px 28px rgba(23,56,66,.22);
+ box-shadow:var(--elev-pop);
 }
 .sc-view-pop[hidden]{display:none}
 .sc-view-pop-head{display:flex;flex-direction:column;gap:2px;margin-bottom:var(--space-2)}
