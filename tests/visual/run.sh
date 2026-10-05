@@ -32,10 +32,15 @@ esac
 mode(){ curl -s -X POST $API/api/access-mode -H 'Content-Type: application/json' -d "{\"mode\":\"$1\"}" >/dev/null; }
 server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
 reap_browsers(){ pkill -f -- '--user-data-dir=/tmp/playwright_chromiumdev_profile' >/dev/null 2>&1; true; }
+# 止め方・起こし方は run_all.sh と同じ（開発と網の入口 program/app.py・§9.548。止めるのは /api/shutdown）。
+stop_server(){
+  curl -s -m 3 -X POST "$API/api/shutdown" >/dev/null 2>&1
+  for _ in $(seq 1 20); do server_up || return 0; sleep 0.5; done
+  pkill -f -- 'program/app.py' >/dev/null 2>&1; sleep 1; true
+}
 restart_server(){
-  ( cd "$ROOT" && python3 program/process_manager.py stop >/dev/null 2>&1 )
-  sleep 1
-  ( cd "$ROOT" && nohup python3 -u program/start_app.py >"$ROOT/tests/server.log" 2>&1 & )
+  stop_server
+  ( cd "$ROOT" || exit 1; nohup python3 -u program/app.py >"$ROOT/tests/server.log" 2>&1 & )
   for _ in $(seq 1 30); do server_up && return 0; sleep 1; done
   echo "!! サーバーを起動できませんでした ($ROOT/tests/server.log)" >&2
   return 1
