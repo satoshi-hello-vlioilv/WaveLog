@@ -309,7 +309,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 }
 .hd-actions .hd-btn{font-weight:var(--fw-strong);color:var(--ink-2);cursor:pointer;
  display:inline-flex;align-items:center;gap:var(--gap-inline);transition:border-color .12s,background .12s}
-.hd-actions .hd-btn:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.hd-actions .hd-btn:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
 .hd-btn-icon{padding:0 var(--ctl-pad-x)}
 /* 「表示」バッジの印（§9.341）。以前は`A`の字だったが、いまは文字の
    大きさと時間の書き方の2つが入るので、片方だけを指す字はやめた。 */
@@ -319,14 +319,14 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 /* quality-analysis.jsが後から差し込む「画面を印刷」も同じ見た目へ揃える */
 .hd-actions #printCurrentView{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
  border-radius:var(--radius-sm);background:#fff;font-size:var(--fs);font-weight:var(--fw-strong);color:var(--ink-2);cursor:pointer}
-.hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
 @media screen and (max-width:1180px){   /* 画面だけ（刷るときの紙の幅で畳まない・§9.525） */
  .hd-context #fileName{max-width:22vw}
  /* 狭い窓では札の名前を畳み、値だけにする（名前は`title`が持つ・§9.508）。1行の「名前 値」は2段組より
     横に広いので、畳まないと1100pxで題が札の下へはみ出して重なった（実測 最大76px）。 */
  .hd-chip-key{display:none}
 }
-.equipment-header-button{display:flex;align-items:center;gap:var(--gap-inline);min-width:150px;border:1px solid var(--teal);background:#eafafa;color:#164e55}
+.equipment-header-button{display:flex;align-items:center;gap:var(--gap-inline);min-width:150px;border:1px solid var(--teal);background:var(--teal-tint);color:#164e55}
 .equipment-header-button span{font-size:var(--fs-micro)}
 .equipment-header-button b{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 編集可能モード/閲覧モード/スケジュールモードの表示・切替(access-mode.js)。
@@ -478,7 +478,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .lc-step-fx .lc-fx-help dd{margin:0 0 0 var(--space-3);color:var(--muted)}
 .lc-step-fx .lc-fx-note{margin:var(--space-2) 0 0;font-size:var(--fs-micro);
   line-height:1.6;color:var(--ink-2)}
-.lc-step-fx .lc-fx-del{margin-top:var(--space-2);color:var(--danger,#9d2020)}
+.lc-step-fx .lc-fx-del{margin-top:var(--space-2);color:var(--danger,var(--danger))}
 /* 選択肢の添え字。**11px を下限にする**（§9.444）——ここを下げると、
    選ぶ前に「何が起きるか」を読む字がいちばん小さくなる。 */
 .access-mode-menu button small{font-weight:var(--fw-body);color:var(--muted);font-size:var(--fs-micro)}
@@ -912,7 +912,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
   font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
  .lc-align:hover{border-color:var(--teal);background:var(--surface-2)}
- .lc-align.is-on{background:var(--pale);border-color:var(--teal);color:var(--computed-fg);font-weight:var(--fw-strong)}
+ .lc-align.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-ink);font-weight:var(--fw-strong)}
  .lc-align input{accent-color:var(--teal)}
  .lc-alignbox .lc-hint{margin:0}
  .lc-vis{display:inline-flex;align-items:center;justify-content:center}
@@ -928,7 +928,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface)}
  .lc-kind:hover{border-color:var(--teal);background:var(--surface-2)}
- .lc-kind:has(input:checked){background:var(--pale);border-color:var(--teal);color:var(--computed-fg);font-weight:var(--fw-strong)}
+ .lc-kind:has(input:checked){background:var(--pale);border-color:var(--teal);color:var(--teal-ink);font-weight:var(--fw-strong)}
  .lc-kind input{accent-color:var(--teal)}
  .lc-sub{display:flex;flex-direction:column;gap:var(--gap-inline);
   margin-left:calc(64px * var(--ui-scale));padding-left:var(--space-2);
@@ -948,7 +948,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   background:var(--surface-2)}
  .lc-flow-step{padding:var(--pad-chip);border-radius:var(--radius-sm);background:var(--surface);
   border:1px solid var(--line-soft);font-size:var(--fs-micro);color:var(--ink-2)}
- .lc-flow-step.is-sort{background:var(--pale);border-color:var(--teal);color:var(--computed-fg);font-weight:var(--fw-strong)}
+ .lc-flow-step.is-sort{background:var(--pale);border-color:var(--teal);color:var(--teal-ink);font-weight:var(--fw-strong)}
  .lc-flow-arrow{color:var(--muted);font-size:var(--fs-micro)}
  /* 塊の順番。**番号を付ける**——矢印だけだと、どれが1番目か数え直すことになる。*/
  .lc-buckets{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-hair)}

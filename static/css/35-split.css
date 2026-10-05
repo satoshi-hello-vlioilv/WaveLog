@@ -38,9 +38,9 @@
 /* 子ロット候補カード。凡例として割当条数・確認済み数・幅・公差を表示し、
    クリックすると視覚図内の該当する条を一時的に光らせる(位置特定用)。 */
 .split-candidates{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-2);padding-right:2px}
-.split-candidate{display:flex;align-items:flex-start;gap:var(--gap-section);padding:var(--pad-card);background:#fff;border:2px solid #dbe4e6;border-radius:var(--radius-md);cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .12s}
+.split-candidate{display:flex;align-items:flex-start;gap:var(--gap-section);padding:var(--pad-card);background:#fff;border:2px solid var(--line-soft);border-radius:var(--radius-md);cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .12s}
 .split-candidate:hover{border-color:#9fd4d8;box-shadow:var(--elev-pop)}
-.split-candidate.active{border-color:var(--teal);background:#eafafa;box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
+.split-candidate.active{border-color:var(--teal);background:var(--teal-tint);box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 .split-candidate-swatch{width:14px;height:14px;margin-top:3px;border-radius:var(--radius-xs);flex:0 0 auto;box-shadow:inset 0 0 0 var(--edge-w) #00000022}
 .split-candidate-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--gap-tight)}
 .split-candidate-head{display:flex;align-items:center;gap:var(--space-2)}
@@ -51,7 +51,7 @@
 /* 条割結果プレビュー(#splitResult)。左端に視覚図/候補カードと同じ色の
    アクセントを付け、対応関係を示す。 */
 .split-result{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--gap-inline)}
-.split-result-row{display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:var(--gap-section);padding:9px 12px;background:#fff;border:1px solid #dbe4e6;border-left-width:5px;border-left-style:solid;border-radius:var(--radius-sm);font-size:var(--fs-base-sm)}
+.split-result-row{display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:var(--gap-section);padding:9px 12px;background:#fff;border:1px solid var(--line-soft);border-left-width:5px;border-left-style:solid;border-radius:var(--radius-sm);font-size:var(--fs-base-sm)}
 .split-result-index{color:var(--muted);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
 .split-result-lot{font-weight:var(--fw-strong);color:var(--ink)}
 .split-result-count{color:var(--ink-2);font-weight:var(--fw-strong)}
@@ -118,7 +118,7 @@
    帯が実際より太く出ていた（そのぶん条の束が痩せて「図が崩れる」）。
    基は0で、伸びる量だけをJSが`flex-grow`で渡す。入らない文字は
    `fitScrapLabels()`が段階的に落とす（値は状態帯と`title`に残る）。 */
-.split-visual-scrap{flex:0 1 0;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:repeating-linear-gradient(135deg,#dde3e5 0 7px,#d1d8da 7px 14px);color:var(--muted);cursor:default}
+.split-visual-scrap{flex:0 1 0;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);background:repeating-linear-gradient(135deg,var(--line-soft) 0 7px,#d1d8da 7px 14px);color:var(--muted);cursor:default}
 .split-visual-scrap[hidden]{display:none}
 .split-visual-scrap.os{margin-right:3px}
 .split-visual-scrap.ds{margin-left:3px}

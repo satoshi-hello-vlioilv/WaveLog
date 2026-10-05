@@ -171,8 +171,12 @@
   --card-border:#b8c9cd;
   --header-bar-bg:var(--pale);
   --header-bar-fg:var(--ink);   /* 淡い帯の上の字＝本文の濃さ（§9.564。前は --nav で本文と別の濃さだった） */
-  --computed-bg:#e6f6f4;
-  --computed-fg:#075e67;
+  /* 淡い地の上の teal の字・いちばん淡い teal の地（乗せた・選んだ・入の札と行。§9.572）。
+     自動で入る欄（--computed-*）も同じ色を指す——役割が違うので名前を分けた（値は1か所）。 */
+  --teal-ink:#075e67;
+  --teal-tint:#e6f6f4;
+  --computed-bg:var(--teal-tint);
+  --computed-fg:var(--teal-ink);
 
   /* 角丸のスケール(§9.71)。意味は**入れ子の深さ**——外側の器ほど大きく、
      中に入る小さな部品ほど小さく丸める。実測では28種類の角丸が使われて
