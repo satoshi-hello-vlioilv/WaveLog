@@ -30,7 +30,7 @@ sha2 = "0.10"
 # ショートカット（.lnk）を Windows の部品（IShellLinkW）で直に作る・読む（src/lnk.rs・§9.552）。
 # 版は Tauri が使っているものに合わせる（同じ crate を2つ持たない）
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_System_Com", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_RestartManager"] }
 
 [profile.release]
 opt-level = 3
