@@ -1337,57 +1337,7 @@
   if(el)return el;
   el=document.createElement('div');
   el.className='sp-preview';el.id=PREVIEW_ID;el.hidden=true;
-  el.innerHTML=`
-   <div class="sp-pv-box" role="dialog" aria-modal="true" aria-labelledby="spPvTitle">
-    <header class="sp-pv-head">
-     <div><span class="sp-pv-eyebrow">PRINT PREVIEW</span>
-      <h2 id="spPvTitle">作業予定表</h2>
-      <small id="spPvSub"></small></div>
-     <button type="button" id="spPvClose" title="閉じる（刷りません）">×</button>
-    </header>
-    <div class="sp-pv-body">
-     <!-- 設定は段（タブ）で階層化する(§9.293 ③)。**段の見出しにいまの値**を
-          出すので、開かないと分からない段を作らない。刷り上がり（枚数）と
-          「既定へ戻す」は**段の外**（どの段からでも読める・触れる）。
-          **この中にバッククォートを書かないこと**(§9.211 ③)——ここは
-          テンプレートリテラルの中なので、コメントの中でも文字列が閉じ、
-          以降がJSとして解釈されて画面が組み上がらない(node --check は
-          通るので構文検査では捕まらない。実際にここで踏んだ)。 -->
-     <aside class="sp-pv-side">
-      <div class="sp-pv-tabs" id="spPvTabs" role="tablist"></div>
-      <div class="sp-pv-panes" id="spPvPanes">
-       <section class="sp-pv-pane" data-pane="load">
-        <div class="sp-options" id="spPvOptions"></div>
-       </section>
-       <section class="sp-pv-pane" data-pane="look" hidden>
-        <div class="sp-options" id="spPvLook"></div>
-       </section>
-       <section class="sp-pv-pane" data-pane="paper" hidden>
-        <!-- 大きさと向きは別の欄(§9.252)。器は見せ方と同じ sp-options に
-             する——中に「大きさ」「向き」の2つの群が入るので、sp-pats を
-             直に置くと群の見出しが札と同じ並びに混ざる。 -->
-        <div class="sp-options" id="spPvSize"></div>
-       </section>
-      </div>
-      <div class="sp-pv-sum">
-       <p class="sp-pv-facts" id="spPvFacts"></p>
-       <button type="button" id="spPvReset" class="sp-pv-reset"
-        title="この画面の設定（載せるもの・見せ方・用紙）を、はじめの形へ戻します。表示倍率は変えません">設定を既定へ戻す</button>
-      </div>
-     </aside>
-     <div class="sp-pv-view">
-      <!-- 表示倍率と紙送り(§9.238 ③)。**刷り上がりの設定とは分けて紙の側へ
-           置く**——左の欄に混ぜると「100%で刷られる」と読まれる。 -->
-      <div class="sp-pv-zoom" id="spPvZoom"></div>
-      <div class="sp-pv-paper" id="spPvPaper"></div>
-     </div>
-    </div>
-    <footer class="sp-pv-foot">
-     <span class="sp-pv-hint">設定を変えると、右のプレビューがその場で変わります。倍率は見え方だけで、紙は変わりません。</span>
-     <button type="button" id="spPvCancel">閉じる</button>
-     <button type="button" class="sp-pv-print" id="spPvPrint">印刷する</button>
-    </footer>
-   </div>`;
+  el.replaceChildren(WL.template('print-preview'));
   document.body.appendChild(el);
   el.querySelector('#spPvClose').onclick=closePreview;
   el.querySelector('#spPvCancel').onclick=closePreview;

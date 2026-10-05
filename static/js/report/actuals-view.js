@@ -270,34 +270,7 @@
   let panel=$id('actualsPanel');if(panel)return panel;
   panel=document.createElement('section');
   panel.className='ac-panel';panel.id='actualsPanel';panel.hidden=true;
-  panel.innerHTML=`
-   <div class="ac-head" id="acHead">
-    <label class="ac-field">設備<select id="acEquipment" title="実績が記録されている設備から選びます"></select></label>
-    <label class="ac-field">期間<input type="date" id="acFrom" title="この日から（現場日で数えます）"></label>
-    <label class="ac-field">〜<input type="date" id="acTo" title="この日まで（現場日で数えます）"></label>
-    <span class="ac-presets" id="acPresets"></span>
-    <!-- 名前は**何の**基準かを言う（§9.507。「基準」だけでは何を切り替えるのか読めない）。 -->
-    <label class="ac-field">日付<select id="acBasis" title="日付をどちらで数えるか。現場歴は勤務区分マスタの日付補正が効きます">
-      <option value="work">現場歴</option><option value="cal">太陽暦</option></select></label>
-    <!-- 検索欄は仕掛一覧・データ一覧と同じ部品（§9.507）。 -->
-    <label class="lt-search" title="ロット番号・検査番号の字で絞り込みます（打つとすぐ効きます）"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" id="acSearch" placeholder="ロット・検査番号で絞り込む" autocomplete="off" aria-label="ロット・検査番号で絞り込む"></label>
-    <button type="button" id="acReload" class="ac-btn">再読込</button>
-    <!-- 1行／2段組（§9.553）。2段組は操業データ表と**同じ配置の盤**を読む（紙で見たとおりに画面でも読める）。
-         1つだけ選ぶ切り替えなので、期間の札と同じ部品（§9.507）。 -->
-    <span class="ac-presets ac-view" id="acView" role="radiogroup" aria-label="一覧の見せ方">
-     <button type="button" class="ac-chip" role="radio" data-view="line" title="1件を1行で出します（表示列の設定）">1行</button>
-     <button type="button" class="ac-chip" role="radio" data-view="stack" title="1件を操業データ表と同じ段組で出します（既定は2段・配置の盤で段・位置・幅を決める）">段組</button></span>
-    <!-- 表示列の入口は**どの画面でも同じ印**（§9.476・fa-table-columns。スケジュール表・仕掛一覧と同じ）。
-         2段組のときは**配置の盤**を開く（1行の表示列を変えても2段組は変わらない——押して何も起きない物を残さない）。 -->
-    <button type="button" id="acColumns" class="ac-btn" title="この一覧に出す列・並び・幅・書式を決めます"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> <span id="acColumnsWord">表示列</span></button>
-    <button type="button" id="acSheet" class="ac-btn ac-btn--primary" title="いま出ている実績を、日＋直ごとに1枚の操業データ表として刷ります">操業データ表</button>
-    <!-- 押すと何が起きるか（刷る）を印で、何を刷るか（選んだ行の帳票）を字で言う（§9.507。旧「選択した帳票」）。 -->
-    <button type="button" id="acReport" class="ac-btn" title="選んだ行の測定帳票をまとめて刷ります" disabled><i class="fa-solid fa-print" aria-hidden="true"></i> 選んだ行の帳票 (<span id="acReportCount">0</span>)</button>
-   </div>
-   <div class="ac-body">
-    <div class="ac-note" id="acNote" hidden></div>
-    <div class="ac-list" id="acList"></div>
-   </div>`;
+  panel.replaceChildren(WL.template('actuals-panel'));
   const grid=$id('grid');grid?.parentNode?.insertBefore(panel,grid);
   bindHead();
   return panel;

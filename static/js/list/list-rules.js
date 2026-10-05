@@ -66,48 +66,7 @@
   if(el)return el;
   el=document.createElement('div');
   el.className='sc-float-win';el.id=PANEL_ID;el.hidden=true;
-  el.innerHTML=`
-   <div class="sc-float-header"><div><h2 id="lrTitle">表示ルール</h2>
-     <small class="lr-usage" id="lrUsage"></small></div>
-    <button type="button" id="lrClose" title="閉じる">×</button></div>
-   <!-- **2ペイン**（§9.474、利用者の指示「試した結果の表示は…表示位置が悪く見えづらいです。左の3割くらいに
-        配置し、2ペインレイアウトに」）。左＝試した結果（書いたそばから変わる・いつも見えている）、
-        右＝決めること（列の値 → 行 → 足す → 式にする）。 -->
-   <div class="sc-float-body lr-body">
-    <aside class="lr-try" id="lrTry" aria-label="試した結果"></aside>
-    <div class="lr-main">
-     <div class="lr-head">
-      <p class="lr-lead">上から順に見て、<b>最初に当てはまったもの</b>を表示します。</p>
-      <!-- 条件が見る列の値（§9.474、利用者の指示「データをもとのまま使うか、設定範囲内で変換された
-           データを使うか選べるように」）。**ルールごと**・この列も他の列も同じ。 -->
-      <div class="lr-mode" role="radiogroup" aria-label="条件が見る列の値">
-       <span class="lr-mode-cap">列の値</span>
-       <span class="lr-seg">
-        <button type="button" data-mode="raw" role="radio">元のデータ</button>
-        <button type="button" data-mode="shown" role="radio">表示の値</button>
-       </span>
-       <small class="lr-mode-note" id="lrModeNote"></small>
-      </div>
-     </div>
-     <div class="lr-rows" id="lrRows"></div>
-     <div class="lr-adds">
-      <button type="button" id="lrAddRow" class="lr-add">＋ 行を追加</button>
-      <button type="button" id="lrAddDefault" class="lr-add">＋ どれにも当てはまらないとき</button>
-      <button type="button" id="lrToFormula" class="lr-add lr-tofx" aria-expanded="false"
-       title="このルールと同じ意味の式を作ります。「この列の作り方」の入力欄へそのまま入れられます">
-       <i class="fa-solid fa-code" aria-hidden="true"></i> 式にする</button>
-     </div>
-     <div class="lr-fx" id="lrFx" hidden></div>
-    </div>
-   </div>
-   <div class="sc-float-foot">
-    <button type="button" id="lrDelete" class="lr-delete">このルールを削除</button>
-    <div class="sc-content-foot-actions">
-     <button type="button" id="lrCancel">やめる</button>
-     <button type="button" id="lrSave" class="sc-column-save">保存</button>
-    </div>
-   </div>
-   <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div>`;
+  el.replaceChildren(WL.template('rule-panel'));
   document.body.appendChild(el);
   el.querySelector('#lrClose').onclick=close;
   el.querySelector('#lrCancel').onclick=close;
