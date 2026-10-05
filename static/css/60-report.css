@@ -50,7 +50,7 @@
   background:rgba(255,255,255,.12);color:#fff;cursor:pointer;transition:background .15s;
 }
 .rp-icon-btn:hover:not(:disabled){background:rgba(255,255,255,.26)}
-.rp-icon-btn:disabled{opacity:.35;cursor:not-allowed}
+.rp-icon-btn:disabled{opacity:var(--op-disabled);cursor:not-allowed}
 .rp-icon-btn--primary{background:var(--teal);border-color:var(--teal)}
 .rp-icon-btn--primary:hover:not(:disabled){background:#0a95a4;border-color:#0a95a4}
 .rp-icon-btn.active{background:#fff;border-color:#fff;color:#0d4650}
@@ -96,7 +96,7 @@
 .rp-foot-btn.active{background:#eafafa;border-color:var(--teal);color:#075e67}
 .rp-foot-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff}
 .rp-foot-btn--primary:hover:not(:disabled){background:var(--teal-dark)}
-.rp-foot-btn--primary:disabled{opacity:.45;cursor:not-allowed}
+.rp-foot-btn--primary:disabled{opacity:var(--op-disabled);cursor:not-allowed}
 /* 帳票の一括印刷: 全選択チェック＋件数ボタン。 */
 /* 表示切替が2つ以上並ぶ行。1行に詰めると両方が省略記号で切れて何のトグルか
    読めなくなるため、見出しを縦に通してボタンを1つずつ積む。 */
@@ -296,7 +296,7 @@
 }
 .rp-blocks.is-arranging .rp-block{outline:1px dashed #9bb3ba;outline-offset:1px;position:relative;
   background:#fff}
-.rp-blocks.is-arranging .rp-block.is-off{opacity:.4}
+.rp-blocks.is-arranging .rp-block.is-off{opacity:var(--op-disabled)}
 .rp-blocks.is-arranging .rp-block.is-empty{outline-color:#d0b48a}
 .rp-block.is-dragging{opacity:.45}
 /* 空いているマス（§9.218 ⑥）。**器の上へ重ねる層**で、グリッドの並びには
@@ -994,7 +994,7 @@
 .rp-btn-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
 .rp-btn-primary:active{background:#06565f;border-color:#06565f}
 .rp-btn-primary:disabled,.rp-btn-secondary:disabled{
- opacity:.45;cursor:not-allowed;background:var(--bg);border-color:var(--line-soft);color:#93a5ab}
+ opacity:var(--op-disabled);cursor:not-allowed;background:var(--bg);border-color:var(--line-soft);color:#93a5ab}
 .rp-btn-icon{width:var(--ctl-h);padding:0;font-size:var(--fs-title);line-height:1}
 .db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 .db-layout{flex:1;min-height:0;display:grid;grid-template-columns:calc(260px * var(--ui-scale)) minmax(0,1fr);overflow:hidden}

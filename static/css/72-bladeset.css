@@ -610,7 +610,7 @@ body.bs-mode .bs-shell{display:flex}
 .bs-chip{border:1px solid var(--line);background:var(--valid-bg);border-radius:var(--radius-sm);
   padding:2px var(--space-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
 .bs-chip:hover{border-color:var(--teal)}
-.bs-chip:disabled{opacity:.5;cursor:default}
+.bs-chip:disabled{opacity:var(--op-disabled);cursor:default}
 .bs-btn{border:1px solid var(--line);background:var(--valid-bg);border-radius:var(--radius-sm);
   padding:var(--ctl-pad-y-sm) var(--ctl-pad-x-sm);font-size:var(--fs-base-sm);font-weight:var(--fw-ui);
   cursor:pointer;white-space:nowrap}
@@ -988,7 +988,7 @@ body.bs-mode .bs-shell{display:flex}
  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);font-size:var(--fs-sm);cursor:pointer}
 .bb-card:hover{background:var(--pale);transform:translateY(-1px)}
 .bb-card.is-on{border-color:var(--teal);box-shadow:0 0 0 2px var(--teal-soft);background:var(--pale)}
-.bb-card.is-off{opacity:.6}
+.bb-card.is-off{opacity:var(--op-disabled)}
 .bb-card-h{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap;justify-content:center}
 .bb-card-h .bb-tile{width:1.6em;height:1.6em;font-size:var(--fs-sm)}
 .bb-card small{color:var(--muted);font-size:var(--fs-sm)}

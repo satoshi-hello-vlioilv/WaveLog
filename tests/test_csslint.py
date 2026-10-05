@@ -457,6 +457,27 @@ rec('CSS が使うトークンはどれも定義されている（定義の無�
 rec('トークンの見張りは同じ形を注ぎ込むと数える',
     _undefined_tokens(':root{--a:1px}.x{width:var(--a);height:var(--b);top:var(--c,0)}') == ['--b'])
 
+# ---- 使えない・外した物の薄さは --op-disabled の1つ（§9.570）
+_OFF_SEL = re.compile(r':disabled|\[disabled\]|aria-disabled="true"|\.is-off\b|\.is-disabled\b|-dead\b|-locked\b|view-mode')
+def _opacity_issues(src):
+    """使えない・外した物の透明度を字面で書いた所 → ['セレクタ 値']。動き（@keyframes）・掴んでいる物は見ない。"""
+    src = re.sub(r'/\*[\s\S]*?\*/', '', src)
+    src = re.sub(r'@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}', '', src)
+    out = []
+    for sel, body in re.findall(r'([^{}]+)\{([^{}]*)\}', src):
+        sel = ' '.join(sel.split())
+        if not _OFF_SEL.search(sel) or re.search(r'drag|ghost|col-resize', sel):
+            continue
+        for v in re.findall(r'(?<![\w-])opacity:\s*([^;]+)', body):
+            if v.strip() not in ('0', '1', 'var(--op-disabled)'):
+                out.append(f'{sel[-50:]} {v.strip()}')
+    return out
+_op = [f'{_n}: {x}' for _n in CSS_ORDER for x in _opacity_issues((CSS_DIR / _n).read_text(encoding='utf-8'))]
+rec('使えない・外した物の薄さは --op-disabled の1つ（§9.570）', not _op, '; '.join(_op[:6]))
+rec('薄さの見張りは同じ形を注ぎ込むと数える',
+    _opacity_issues('.a:disabled{opacity:.4}.b.is-off{opacity:var(--op-disabled)}.c.is-dragging{opacity:.4}'
+                    '.d:hover{opacity:.7}.e[disabled]{opacity:0}') == ['.a:disabled .4'])
+
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')

@@ -555,6 +555,6 @@
 .record-scope-btn>b{font-weight:var(--fw-strong);max-width:12em;overflow:hidden;text-overflow:ellipsis}
 .record-scope-btn>i{font-style:normal;font-weight:var(--fw-body);color:var(--ink-2)}
 .record-scope-btn:hover:not(:disabled){border-color:var(--teal)}
-.record-scope-btn:disabled{opacity:.55;cursor:default}
+.record-scope-btn:disabled{opacity:var(--op-disabled);cursor:default}
 
 }

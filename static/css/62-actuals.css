@@ -34,7 +34,7 @@ body.ac-mode .pager{display:none}
  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);
  font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
 .ac-btn:hover{background:var(--surface-2)}
-.ac-btn[disabled]{opacity:.5;cursor:default}
+.ac-btn[disabled]{opacity:var(--op-disabled);cursor:default}
 .ac-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff}
 .ac-btn--primary:hover{background:var(--teal-dark)}
 .ac-btn--primary[disabled]{background:var(--muted);border-color:var(--muted)}

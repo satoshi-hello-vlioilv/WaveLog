@@ -377,6 +377,8 @@
   --elev-modal:0 18px 48px rgba(23,39,45,.20);
   --ring-gap:2px;--ring-w:4px;
   --edge-w:1.5px;--bar-w:3px;
+  /* 使えない・外した物の薄さ（§9.570・案F）。前は .35〜.72 の9通り。字を控えめにするのは透明度でなく灰色の3段（§9.564）。 */
+  --op-disabled:.5;
   --z-overlay:1100;    /* 保存中などの待ち表示 */
   --z-modal:1500;      /* 通常のモーダル(.record-modal) */
   --z-popover:1600;    /* サジェスト・浮遊ウィンドウ(モーダルの上に出す) */
@@ -458,7 +460,7 @@
       位置合わせしている部品の配置を壊すため。filterなら配置に影響しない。
    3. キーボード操作でも今どこにいるか分かる(focus-visible)。 */
 button{cursor:pointer}
-button:disabled,button[aria-disabled="true"]{cursor:not-allowed;opacity:.5}
+button:disabled,button[aria-disabled="true"]{cursor:not-allowed;opacity:var(--op-disabled)}
 button:not(:disabled):not([aria-disabled="true"]):active{filter:brightness(.92)}
 button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 html,body{height:100%}

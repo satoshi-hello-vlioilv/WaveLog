@@ -161,7 +161,7 @@
  border-radius:var(--radius-xs);font-size:var(--fs-sm);cursor:pointer}
 .sc-stop-new-cancel{border:1px solid var(--line);background:var(--surface);color:var(--ink-2)}
 .sc-stop-new-save{border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
-.sc-stop-new-save:disabled{opacity:.55;cursor:default}
+.sc-stop-new-save:disabled{opacity:var(--op-disabled);cursor:default}
 @media(max-width:1000px){.sc-body{flex-direction:column}.sc-side{width:auto;border-left:0;border-top:1px solid var(--line)}}
 /* ---------------------------------------------------------------
    フローティングウィンドウ(§9.13・§9.14・§9.16新設): 仕掛一覧・設備停止を、
@@ -354,7 +354,7 @@
 .sc-content-ord{flex:none;display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);background:var(--teal);color:#fff;font-size:var(--fs-tiny);font-weight:var(--fw-ui)}
 .sc-content-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .sc-content-item button{flex:none;width:22px;height:22px;padding:0;border:1px solid var(--line);border-radius:var(--radius-xs);background:#fff;font-size:var(--fs-tiny);line-height:1;cursor:pointer;color:var(--muted)}
-.sc-content-item button:disabled{opacity:.35;cursor:default}
+.sc-content-item button:disabled{opacity:var(--op-disabled);cursor:default}
 .sc-content-add{width:100%;text-align:left;padding:3px 6px;border:1px dashed var(--line);border-radius:var(--radius-sm);background:#fff;font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
 .sc-content-add:hover{border-style:solid;border-color:var(--teal);background:var(--surface-2)}
 .sc-split-toggle{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted)}
@@ -1277,7 +1277,7 @@
   border:none;background:none;height:auto}
 .shift-seg-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
 .shift-seg button{flex:none;width:26px;border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:var(--muted)}
-.shift-seg button:disabled{opacity:.35;cursor:default}
+.shift-seg button:disabled{opacity:var(--op-disabled);cursor:default}
 .shift-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 .shift-actions-tail{margin-left:auto;display:flex;gap:var(--space-2)}
 .shift-cov-ok{color:var(--success);font-weight:var(--fw-strong)}
@@ -1717,7 +1717,7 @@
 /* いま効かない設定は**押せなくして理由を書く**(§9.238 ④・CLAUDE.md §4)。
    薄くするだけにしないこと——薄いだけでは「押せるのに反応しない」と読まれる。 */
 .sp-opt.is-off,.sp-pat.is-off{cursor:not-allowed}
-.sp-opt.is-off input,.sp-pat.is-off input{cursor:not-allowed;opacity:.5}
+.sp-opt.is-off input,.sp-pat.is-off input{cursor:not-allowed;opacity:var(--op-disabled)}
 /* **理由の文までは薄くしない**——読ませたい文なので、落とすのは名前と印だけ。 */
 .sp-opt.is-off b,.sp-pat.is-off b,.sp-pat.is-off small{color:var(--muted)}
 .sp-opt-why{font-size:var(--fs-micro);color:var(--danger);font-weight:var(--fw-ui)}
@@ -1738,7 +1738,7 @@
   padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .sp-zoom-btn:hover:not(:disabled),.sp-zoom-step:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
-.sp-zoom-step:disabled{opacity:.45;cursor:not-allowed}
+.sp-zoom-step:disabled{opacity:var(--op-disabled);cursor:not-allowed}
 .sp-zoom-now{min-width:var(--w-xs);text-align:center;font-size:var(--fs-sm);
   font-weight:var(--fw-ui);color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
 .sp-zoom-gap{flex:1 1 auto}
@@ -1757,7 +1757,7 @@
 .sp-pv-foot button{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
   border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font-size:var(--fs);font-weight:var(--fw-strong)}
 .sp-pv-foot .sp-pv-print{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
-.sp-pv-foot .sp-pv-print:disabled{opacity:.5}
+.sp-pv-foot .sp-pv-print:disabled{opacity:var(--op-disabled)}
 /* **`font-size`は必ずセレクタと同じ行に書くこと。** リテラルpxの見張り
    (`tests/test_csslint.py`)は行単位で「その行に紙のセレクタがあるか」を見る
    ので、次の行へ送ると紙の例外だと分かってもらえず落ちる。 */
@@ -2100,7 +2100,7 @@
  border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2);cursor:pointer;white-space:nowrap}
 .sc-pick-all:hover:not(:disabled){border-color:var(--teal);color:var(--nav)}
-.sc-pick-all:disabled{cursor:not-allowed;opacity:.45}
+.sc-pick-all:disabled{cursor:not-allowed;opacity:var(--op-disabled)}
 .sc-row-line.is-picked{background:var(--pale)}
 .sc-row-line.is-picked:hover{background:var(--pale)}
 /* 選択バー。仕掛一覧の plan-select-bar と同じ見た目・同じ並び順にする。 */
@@ -2336,7 +2336,7 @@
  font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--ink-2);
 }
 .sc-rs-reset:hover:not([disabled]){border-color:var(--teal);background:var(--pale);color:var(--ink)}
-.sc-rs-reset[disabled]{opacity:.4;cursor:default}
+.sc-rs-reset[disabled]{opacity:var(--op-disabled);cursor:default}
 /* 見本は残り幅。**切れる前に省略記号**（黙って切り落とさない）。 */
 .sc-rs-sample>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 /* ---- 操作の塊(§9.198) ---- */
@@ -2371,7 +2371,7 @@ div.sc-view-row{cursor:default}
 .sc-subtotal-opts{display:flex;flex-wrap:wrap;gap:2px}
 .sc-subtotal-opt{display:inline-flex;align-items:center;gap:var(--space-1)}
 .sc-subtotal-opt>small{color:var(--muted);font-variant-numeric:tabular-nums}
-.sc-subtotal-opt:disabled{cursor:not-allowed;opacity:.5}
+.sc-subtotal-opt:disabled{cursor:not-allowed;opacity:var(--op-disabled)}
 .sc-st-pop{padding:0 0 var(--space-3) calc(var(--fs-base-sm) + var(--space-2))}
 .sc-st-pop[hidden]{display:none}
 .sc-st-steps{counter-reset:sc-st-step;display:flex;flex-direction:column}
@@ -2821,7 +2821,7 @@ div.sc-view-row{cursor:default}
   border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
 .sh-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
-.sh-btn:disabled{opacity:.45;cursor:default}
+.sh-btn:disabled{opacity:var(--op-disabled);cursor:default}
 /* 手で入れた時刻を直す（§9.514）。記録の字のすぐ後ろに小さく。 */
 .sh-fix{margin-left:var(--space-2);height:var(--ctl-h-xs)}
 .sh-btn.sh-ico{width:var(--ctl-h-sm);justify-content:center;padding:0}
