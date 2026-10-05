@@ -200,6 +200,13 @@ fn rename_patiently(from: &Path, to: &Path) -> std::io::Result<u32> {
     }
 }
 
+/// 入れ替えを断られた理由。**誰が掴んでいるか**を Windows に聞いて添える（§9.571・推して埋めない）。
+fn busy_message(name: &str, cur: &Path, e: &std::io::Error) -> String {
+    let who = crate::proc::holders(&crate::proc::files_under(cur, 500));
+    let who = if who.is_empty() { "掴んでいるプロセスは分かりませんでした".to_string() } else { format!("掴んでいるプロセス: {}", who.join("・")) };
+    format!("入れ替えられません（{name} が使用中・{}秒待ちました・{who}）: {e}", BUSY_WAIT.as_secs())
+}
+
 /// `payload` の項目を `stage` の物へ入れ替える。今の物は `old` へ。**途中で失敗したら全部戻す**。
 /// 返すのは「使用中」で待った回数（記録に残し、待ちが本当に効いているかを後から読めるように）。
 pub fn swap(app_root: &Path, stage: &Path, old: &Path, payload: &[String]) -> Result<u32, String> {
@@ -212,8 +219,7 @@ pub fn swap(app_root: &Path, stage: &Path, old: &Path, payload: &[String]) -> Re
             let (cur, new, keep) = (app_root.join(name), stage.join(name), old.join(name));
             let had = cur.exists();
             if had {
-                waited += rename_patiently(&cur, &keep)
-                    .map_err(|e| format!("入れ替えられません（{name} が使用中かもしれません・{}秒待ちました）: {e}", BUSY_WAIT.as_secs()))?;
+                waited += rename_patiently(&cur, &keep).map_err(|e| busy_message(name, &cur, &e))?;
             }
             done.push((name, had));
             if new.exists() {

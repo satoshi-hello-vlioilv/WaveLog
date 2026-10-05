@@ -40,6 +40,8 @@ pub const PROTOCOL: u64 = 1;
 /// 片付け（書込役・編集セッション・在席）に Python が使う持ち時間は3秒（watchdog.TEARDOWN_BUDGET_SEC）。
 /// 入力を閉じてからこれだけ待ち、終わらなければ止める（片付けの途中で止めない）。
 const STOP_WAIT: Duration = Duration::from_millis(5000);
+/// 止めたあと、本当に終わったと見えるまで待つ長さ（その間に入れ替えを始めない）。
+const KILL_WAIT: Duration = Duration::from_millis(3000);
 
 /// 起動の途中の知らせ（起動前の確認の進み具合）を受ける係。
 pub type Progress = Arc<dyn Fn(&Value) + Send + Sync>;
@@ -187,22 +189,42 @@ impl Sidecar {
     }
 }
 
+impl Sidecar {
+    /// 起こしたプロセスの PID と、本当に動いている Python の PID（起動の合図の`pid`）。違えば入口（別名）を通っている（§9.571）。
+    pub fn pids(&self) -> (u32, Option<u32>) {
+        let spawned = self.child.lock().unwrap().id();
+        let real = self.ready["pid"].as_u64().map(|p| p as u32).filter(|p| *p != spawned);
+        (spawned, real)
+    }
+}
+
 impl Drop for Sidecar {
     /// 入力を閉じて自分で終わる（片付けてから）のを待ち、終わらなければ止める。
+    /// **本物の Python が終わるまで**見る（§9.571）——入口（`WindowsApps\python.exe`）だけを見て止めると、本物が残って
+    /// `program`を掴み、版の入れ替えが断られる。
     fn drop(&mut self) {
         if let Ok(mut w) = self.stdin.lock() {
             drop(w.take()); // 出し切ってから閉じる
         }
+        let (_, real) = self.pids();
         let mut child = self.child.lock().unwrap();
         let end = Instant::now() + STOP_WAIT;
+        let mut child_done = false;
         while Instant::now() < end {
-            if let Ok(Some(_)) = child.try_wait() {
+            child_done = child_done || matches!(child.try_wait(), Ok(Some(_)));
+            if child_done && real.is_none_or(|p| !crate::proc::alive(p)) {
                 return;
             }
             std::thread::sleep(Duration::from_millis(30));
         }
-        let _ = child.kill();
-        let _ = child.wait();
+        if !child_done {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        if let Some(p) = real.filter(|p| crate::proc::alive(*p)) {
+            crate::proc::kill(p);
+            let _ = crate::proc::wait_gone(p, KILL_WAIT);
+        }
     }
 }
 

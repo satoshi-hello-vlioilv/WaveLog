@@ -18,6 +18,7 @@ mod install;
 mod launch;
 mod lnk;
 mod locate;
+mod proc;
 mod router;
 mod sidecar;
 mod update;
@@ -418,7 +419,13 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>, fr
     log(&format!("TIMING 版の確かめ {}ms・中身の起動 {}ms（同時に進めた）", peek_took.as_millis(), py_took.as_millis()));
     let Some(started) = settle_update(&app, &root, peek, &sup, started, &splash) else { return };
     let ready = match started {
-        Ok(s) => s.ready.clone(),
+        Ok(s) => {
+            // 起こした物と本物が違えば、入口（別名の python.exe）を通っている（§9.571・止めるときは本物を待つ）
+            if let (spawned, Some(real)) = s.pids() {
+                log(&format!("PID 起こした {spawned}・本物の Python {real}（入口を通っている。止めるときは本物を待つ）"));
+            }
+            s.ready.clone()
+        }
         Err(e) => {
             splash.step(&app, "backend", "bad", "起動できません");
             return splash.fail(&app, "アプリの中身（Python）が起動できません", &e);
