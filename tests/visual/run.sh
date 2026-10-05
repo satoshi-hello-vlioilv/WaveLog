@@ -109,6 +109,9 @@ if p.exists():
         except Exception:pass
     c.commit();c.close()
 PY
+#  3) 端末の控え（§9.545 の terminal_store）も空にする。測った記録とこの端末の設定（メニューの畳み等）を
+#     持っていて、空にしないと前回の撮影の最後の状態（メニュー畳み込み）から次が始まる（実測で54枚すべて相違）。
+python3 "$ROOT/tests/reset_terminal.py" >/dev/null
 WORK="$FIXTURE/work"
 rm -rf "$WORK"; mkdir -p "$WORK"
 cp "$FIXTURE/share/schedule.sqlite3" "$WORK/schedule.sqlite3"
