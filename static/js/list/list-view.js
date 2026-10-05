@@ -484,8 +484,15 @@ function bindColumnWidthGrip(grip,o){
 }
 WL.columnWidthGrip=bindColumnWidthGrip;
 
-function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
- if(!target)return;
+/* 「知らない列はその場に残す」並び（§9.216 ②・§9.248 ③）。保存済みの並び（重複を除く）の後ろへ、
+   いま在るのに並びに無い列を足す。**答えはここ1箇所**——見出しのドラッグ・列幅（`headerLayoutOps`）と
+   右クリックのメニュー（`headMenuPersist`）が同じ式を別々に持っていて、片方だけ直った時期があった（§9.248 ③）。 */
+function keepOrderWith(stored,all){
+ const kept=stored.filter((c,i)=>stored.indexOf(c)===i);
+ return [...kept,...all.filter(c=>!kept.includes(c))];
+}
+/* 見出しの操作が共有する3つ（控えの取り直し・全部の並び・触った項目だけの保存）。 */
+function headerLayoutOps(target,allColumns){
  /* ---------- 控えは束縛しない（§9.211 ①、利用者の指摘） ----------
     `save()`はキャッシュを**新しいオブジェクトへ差し替える**（§9.113）ので、
     ここで`const layout=...`と束縛すると、**1回保存した時点で写しは
@@ -494,18 +501,6 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
     設定パネル・プリセットの取り込み）で変えた設定が黙って戻る。
     **毎回`live()`で取り直すこと。** 束縛を復活させない。 */
  const live=()=>WL.columnLayout.get(target);
- /* ---------- 掴む対象は「1本の並びの全部」（§9.239 ⑤-1、利用者の指摘
-    「この『分割』カラムについては幅変更ができません」） ----------
-    以前はここが`th[data-sort-col]`で、**データ列にしか付いていない属性**を
-    見ていた。番号・ボタンの列（`#`/`分割`/`測定`/`予定`/選択）は
-    §9.106で「データ列と同じ1本の並び」に載り、§9.105で「出す/出さない」を
-    持ち、右クリックのメニュー（`th[data-col]`で配線）も**幅の3つの状態を
-    出していた**のに、**取っ手だけが無かった**——押せるのに何も起きない
-    メニューが残っていた（§4）。並びに載っているものは全部掴める。
-    **並べ替え（クリックで昇降順）だけは`th[data-sort-col]`のまま**
-    ——番号・ボタンの列は値を持たないので、並べ替えの対象にならない。 */
- const heads=[...table.querySelectorAll('th[data-col]')];
-
  /* 覚えている並びを、許可された全列に対して作り直す。
 
     **数えるのは`listColumnKeys()`の1本の並び(§9.106)**——`allColumns`は
@@ -527,9 +522,7 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
      という形で、**触っていない設定が黙って戻る**。並べ替えに要るのは
      「掴んだ列を動かす」ことだけなので、知らない列はその場に残しておけばよい
      ——実際に描くときは`healedColumnOrder()`が今ある列へ当てはめ直す。 */
-  const stored=(live().order||[]);
-  const kept=stored.filter((c,i)=>stored.indexOf(c)===i);
-  return [...kept,...all.filter(c=>!kept.includes(c))];
+  return keepOrderWith(live().order||[],all);
  };
  /* **触った項目だけを送る**(§9.212 ②③)。以前は全置換だったので、
     「触っていない設定も一緒に送る」必要があり、**1つでも書き漏らすと
@@ -549,6 +542,9 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
   }catch(e){showToast&&showToast('並びを保存できませんでした',e.message,5000)}
  };
 
+ return {live,fullOrder,persist};
+}
+function bindHeaderDrag(heads,target,{fullOrder,persist}){
  // ---- 並べ替え(ヘッダーを掴んで左右へ) ----
  let dragCol=null;
  heads.forEach(th=>{
@@ -586,7 +582,8 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
    renderGrid();
   });
  });
-
+}
+function bindHeaderResize(heads,table,target,{live,fullOrder,persist}){
  // ---- 列幅(右端の取っ手を引く。手順はWL.columnWidthGripが持つ) ----
  heads.forEach(th=>{
   const grip=th.querySelector('.col-resize');if(!grip)return;
@@ -639,7 +636,8 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
               persist(fullOrder(),widths).finally(()=>{WL.columnLayout.release(target);renderGrid()})},
   });
  });
-
+}
+function bindHeaderMenu(table,target,allColumns){
  // ---- 右クリックで出す小さなメニュー(§9.110) ----
  /* 列を1つ隠すためだけに設定パネルを開かせない。**押した列がそこにある**
     ので、「この列を隠す」は迷いようがない。戻す操作も同じ場所へ置く
@@ -651,6 +649,24 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
    openColumnHeaderMenu(e,th.dataset.col,target,allColumns);
   });
  });
+}
+function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
+ if(!target)return;
+ const ops=headerLayoutOps(target,allColumns);
+ /* ---------- 掴む対象は「1本の並びの全部」（§9.239 ⑤-1、利用者の指摘
+    「この『分割』カラムについては幅変更ができません」） ----------
+    以前はここが`th[data-sort-col]`で、**データ列にしか付いていない属性**を
+    見ていた。番号・ボタンの列（`#`/`分割`/`測定`/`予定`/選択）は
+    §9.106で「データ列と同じ1本の並び」に載り、§9.105で「出す/出さない」を
+    持ち、右クリックのメニュー（`th[data-col]`で配線）も**幅の3つの状態を
+    出していた**のに、**取っ手だけが無かった**——押せるのに何も起きない
+    メニューが残っていた（§4）。並びに載っているものは全部掴める。
+    **並べ替え（クリックで昇降順）だけは`th[data-sort-col]`のまま**
+    ——番号・ボタンの列は値を持たないので、並べ替えの対象にならない。 */
+ const heads=[...table.querySelectorAll('th[data-col]')];
+ bindHeaderDrag(heads,target,ops);
+ bindHeaderResize(heads,table,target,ops);
+ bindHeaderMenu(table,target,allColumns);
 }
 WL.bindColumnHeaderTools=bindColumnHeaderTools;
 
@@ -718,27 +734,14 @@ function tintSectionHtml(target,col){
   +(now?`<button type="button" class="chm-tint-off">この列の色を外す</button>`:'')
   +(total?`<button type="button" class="chm-tint-clear">すべての色を外す（${total}列）</button>`:'');
 }
-function openColumnHeaderMenu(ev,col,target,allColumns,src){
- closeColumnHeaderMenu();
- if(!target||!col)return;
- const S2=headMenuSource(target,allColumns,src);
- /* 戻せる列は**列の並び順**で出す（§9.216 ①）。`hiddenOf()`が返す順は
-    保存された配列の順（＝隠した順でも並び順でもない）なので、既定で
-    畳んでいる列が多い表（データ一覧は29列）では、**いま隠した列が
-    どこにあるか分からない**。並び順なら「元あった場所のあたり」を
-    探せばよく、上限で切っても先頭の列から順に並ぶ。 */
- const hiddenAll=S2.hiddenOf(),hiddenSet=new Set(hiddenAll),ordered=S2.keys();
- const hidden=[...ordered.filter(k=>hiddenSet.has(k)),
-               ...hiddenAll.filter(k=>!ordered.includes(k))];
- const nameOf=k=>S2.label(k);
- const menu=document.createElement('div');
- menu.className='wl-menu col-head-menu';
+/* 右クリックのメニュー（§9.110）。中身（HTML）・保存の作り方・押したときの配線を分けた（§9.522 その8）。 */
+function columnHeaderMenuHtml(col,target,hidden,nameOf){
  const item=(label,cls)=>`<button type="button" class="${cls||''}">${esc(label)}</button>`;
  /* 隠している列は**この場で戻せる**。多いときは全部は並べない
     (メニューが画面を覆うと、それ自体が操作の邪魔になる)。 */
  const RESTORE_MAX=10;
  const shown=hidden.slice(0,RESTORE_MAX);
- menu.innerHTML=
+ return (
   `<div class="chm-head" title="${esc(col)}">${esc(nameOf(col))}</div>`
   +item('この列を隠す','chm-hide')
   /* 幅の3つの状態(§9.119)。**いまどれなのかを文で出す**——「自動に戻す」が
@@ -758,19 +761,16 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
     +shown.map(k=>`<button type="button" class="chm-show" data-key="${esc(k)}">${esc(nameOf(k))}</button>`).join('')
     +(hidden.length>shown.length?`<div class="chm-more">ほか${hidden.length-shown.length}件は「表示列」から</div>`:'')
     +item('すべての列を表示','chm-all'):'')
-  +`<div class="chm-sep"></div>`+item('表示列の設定を開く…','chm-panel');
- document.body.appendChild(menu);
- /* 置き場所・外クリック・Esc・矢印キー・`role`は`WL.popMenu`の1箇所（§9.448）。 */
- WL.popMenu.open(menu,{at:{x:ev.clientX,y:ev.clientY},owner:target,
-   onClose:()=>{document.querySelector('.col-head-menu')?.remove()}});
-
+  +`<div class="chm-sep"></div>`+item('表示列の設定を開く…','chm-panel'));
+}
+function headMenuPersist(S2,target){
  /* **触った項目だけを送る**(§9.212 ②③)。材料は保存済みから取る
     ——`get()`は列の設定パネルの未保存の下書きを含むので、そこから作ると
     パネルで触っただけの内容までマスタへ入る。
     `hidden`は**口が答える「いま隠している列」**(§9.197)。保存値だけを
     見ると、既定で畳んでいる列が幅を1回変えた拍子に出てしまうので、
     並び・非表示は毎回こちらで作り直して送る。 */
- const persist=async patch=>{
+ return async patch=>{
   if(S2.persist){await S2.persist(patch);S2.refresh();return}
   const v=WL.columnLayout.saved(target);
   const all=S2.keys();
@@ -787,12 +787,13 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
      直してあったが、**こちらの経路（右クリックのメニュー）は直っていなかった**。
      並べ替えに要るのは「触った列を動かす」ことだけなので、知らない列は
      その場に残す——実際に描くときは`S2.keys()`側が今ある列へ当てはめ直す。 */
-  const stored=(v.order||[]);
-  const kept=stored.filter((c,i)=>stored.indexOf(c)===i);
-  await WL.columnLayout.patch(target,{order:[...kept,...all.filter(c=>!kept.includes(c))],
+  await WL.columnLayout.patch(target,{order:keepOrderWith(v.order||[],all),
                                       hidden:S2.hiddenOf(),...patch});
   S2.refresh();
  };
+}
+function wireColumnHeaderMenu(menu,col,target,S2,nameOf){
+ const persist=headMenuPersist(S2,target);
  menu.querySelector('.chm-hide').onclick=async()=>{
   closeColumnHeaderMenu();
   const next=[...new Set([...S2.hiddenOf(),col])];
@@ -862,6 +863,28 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
   closeColumnHeaderMenu();
   S2.openPanel();
  };
+}
+function openColumnHeaderMenu(ev,col,target,allColumns,src){
+ closeColumnHeaderMenu();
+ if(!target||!col)return;
+ const S2=headMenuSource(target,allColumns,src);
+ /* 戻せる列は**列の並び順**で出す（§9.216 ①）。`hiddenOf()`が返す順は
+    保存された配列の順（＝隠した順でも並び順でもない）なので、既定で
+    畳んでいる列が多い表（データ一覧は29列）では、**いま隠した列が
+    どこにあるか分からない**。並び順なら「元あった場所のあたり」を
+    探せばよく、上限で切っても先頭の列から順に並ぶ。 */
+ const hiddenAll=S2.hiddenOf(),hiddenSet=new Set(hiddenAll),ordered=S2.keys();
+ const hidden=[...ordered.filter(k=>hiddenSet.has(k)),
+               ...hiddenAll.filter(k=>!ordered.includes(k))];
+ const nameOf=k=>S2.label(k);
+ const menu=document.createElement('div');
+ menu.className='wl-menu col-head-menu';
+ menu.innerHTML=columnHeaderMenuHtml(col,target,hidden,nameOf);
+ document.body.appendChild(menu);
+ /* 置き場所・外クリック・Esc・矢印キー・`role`は`WL.popMenu`の1箇所（§9.448）。 */
+ WL.popMenu.open(menu,{at:{x:ev.clientX,y:ev.clientY},owner:target,
+   onClose:()=>{document.querySelector('.col-head-menu')?.remove()}});
+ wireColumnHeaderMenu(menu,col,target,S2,nameOf);
 }
 WL.openColumnHeaderMenu=openColumnHeaderMenu;
 
