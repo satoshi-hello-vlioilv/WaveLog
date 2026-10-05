@@ -5,6 +5,7 @@
 （`<置き場>\\WaveLog.exe`）と目録（sha256）も本物と同じにできる。exe は作業ツリーの`program/WaveLog.exe`
 （CI が作った物を先に置いておく）。
 `--bump`を付けると、同じ中身で版の字だけ`-ci`を足した版を置いて配る（4回目＝起動のときに配る版へそろえる道・§9.561）。
+`--bump=ci2`のように字を渡すと`-ci2`（5回目＝入口役の python.exe を挟んで入れ替える道・§9.571。同じ版の置き直しは断られるので字を変える）。
 """
 import io
 import json
@@ -17,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 from backend import app_update  # noqa: E402
 
 
-def main(share, bump=False):
+def main(share, bump=''):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
         for top in app_update.PAYLOAD:
@@ -28,7 +29,7 @@ def main(share, bump=False):
                 if bump and rel == 'backend/changelog_data.py':
                     text = p.read_text(encoding='utf-8')
                     z.writestr('WaveLog-main/' + rel, text.replace(
-                        "APP_VERSION='%s'" % app_update.APP_VERSION, "APP_VERSION='%s-ci'" % app_update.APP_VERSION, 1))
+                        "APP_VERSION='%s'" % app_update.APP_VERSION, "APP_VERSION='%s-%s'" % (app_update.APP_VERSION, bump), 1))
                     continue
                 z.write(p, 'WaveLog-main/' + rel)
     base = Path(share)
@@ -48,4 +49,6 @@ def main(share, bump=False):
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1], '--bump' in sys.argv[2:]))
+    flags = sys.argv[2:]
+    tag = next((a.split('=', 1)[1] for a in flags if a.startswith('--bump=')), 'ci' if '--bump' in flags else '')
+    sys.exit(main(sys.argv[1], tag))
