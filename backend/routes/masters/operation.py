@@ -12,6 +12,7 @@ from ...access_mode import request_user_id
 from ..body import body, any_
 from ...quiet import quiet
 from ._base import bp, _op_read
+from ...repositories import operation_repo as op
 
 
 # ========================================================================
@@ -21,12 +22,118 @@ from ._base import bp, _op_read
 # 値そのものは測定レコード(settings.opData)に入る。マスタへは入れない
 # ——1ロット1枚の記録なので、レコードと一緒に運ばれるのが正しい(§9.91)。
 # ========================================================================
+def _item_layout_vocab():
+ """置き方・見せ方の語彙（型・置き場・幅・丸め・単位・寄せ・書式・並べ方・意匠）。"""
+ return {
+  'types':list(op.ITEM_TYPES),
+  # 画面が「どこへ出すか」「何列ぶんか」を選ばせるための一覧(§9.216 ②)。
+  # **画面へ書き写さない**——増減したときに2箇所を直すことになる。
+  'places':list(op.PLACES),'spans':list(op.SPANS),'gridCols':op.GRID_COLS,
+  'spanUnit':op.SPAN_UNIT,
+  # §9.307 入力値の丸めの向き。**サーバーが答える**——
+  # 画面へ写すと、増やしたときに2箇所直すことになる。
+  'roundModes':list(op.ROUND_MODES),
+  # 見せ方の選択肢(§9.221 ⑦)。**画面へ書き写さない**——増減したときに
+  # 2箇所を直すことになり、片方だけ直った状態が作れる。
+  'unitPlaces':list(op.UNIT_PLACES),'aligns':list(op.ALIGNS),
+  'valueFormats':list(op.VALUE_FORMATS),
+  # 並べ方(§9.226 ①)。**効く入力方法もサーバーが答える**——画面へ
+  # 写すと、並べても何も起きない設定を選ばせることになる（§4）。
+  'layouts':list(op.LAYOUTS),'layoutWidgets':list(op.LAYOUT_WIDGETS),
+  # --- §9.223 ③（見た目の軸）---
+  'lookColors':list(op.LOOK_COLORS),'lookShapes':list(op.LOOK_SHAPES),
+  'lookSizes':list(op.LOOK_SIZES),
+  'lookSlugs':{'color':dict(op.LOOK_COLOR_SLUG),'shape':dict(op.LOOK_SHAPE_SLUG),
+     'size':dict(op.LOOK_SIZE_SLUG)}}
+
+def _item_widget_vocab():
+ """入力方法と型の語彙（効く・効かないの規則はサーバーが持ち、画面は一覧を引くだけ）。"""
+ return {
+  'widgets':list(op.WIDGETS),
+  # 単位を重ねられない入力方法（箱が1つではない）。画面は理由を
+  # 文字で出すのに使う（§4）。
+  'unitInBlocked':list(op.UNIT_IN_BLOCKED_WIDGETS),
+  # 手打ちを許すと重ねられなくなる入力方法（§9.233 ④）。プルダウンは
+  # 手打ちにすると`<select>`が器の裏へ回って1pxになるので、その隣へ
+  # 重ねた単位は一度も見えない。**規則はサーバーの`unit_in_ok()`が
+  # 持ち、画面は一覧を引くだけ**（判定を2つ持たない）。
+  'unitInFreeTextBlocked':list(op.UNIT_IN_FREE_TEXT_BLOCKED),
+  # 手打ちの席が無い入力方法（§9.247 ①）。`入切`はスイッチ1つ、
+  # `切替`は押すたびに次へ進むボタン1つなので、**打ち込む場所が
+  # 出せない**。設定窓はここを見て欄ごと押せなくし、理由を書く（§4）。
+  # **規則はサーバーの`free_text_ok()`が持ち、画面は一覧を引くだけ。**
+  'freeTextBlocked':list(op.FREE_TEXT_BLOCKED_WIDGETS),
+  # §9.248 ⑤ 選択肢の並びの語彙と、それが効く入力方法。
+  # **効くのは「押すと新しい面が開く」形だけ**——札を並べる形で
+  # 順番が変わると、同じ欄なのに押す場所が毎回動く（§4）。
+  'choiceOrders':list(op.CHOICE_ORDERS),
+  'choiceOrderWidgets':list(op.CHOICE_ORDER_WIDGETS),
+  # §9.323 ① 測定画面からの間接登録は**入切の1つ**なので、語彙は
+  # 出さない（`choiceOrder`のような綴りの一覧を持たない）。
+  # **読まれない鍵をAPIへ置かないこと**——契約が在るように見えて
+  # 誰も使っていない面が増える。効く欄かどうかは行ごとの
+  # `inlineAdd`／`inlineAddSaved`が言う。
+  # §9.248 ① 選ばせ方のまとまり（盤の見出しと並び）。**サーバーが
+  # 答える**——画面へ写すと、種類を足したときに2箇所直すことになる。
+  'widgetGroups':[{'label':l,'note':n,'items':list(i)}
+     for l,n,i in op.WIDGET_GROUPS],
+  # 型ごとに効く入力方法(§9.219 ③)。**判定はサーバーの1箇所**
+  # （画面へ写すと、効く物の一覧が2つになる）。
+  'widgetFamilies':{k:list(v) for k,v in op.WIDGET_FAMILIES.items()},
+  # 型・組み込みキーがどの仲間かの**対応表**。画面は引くだけで、
+  # 規則そのものは持たない（設定窓は型を切り替えた瞬間に効く物を
+  # 出し分けるので、行の`widgetFamily`だけでは足りない）。
+  'typeFamilies':{t:op.widget_family(t) for t in op.ITEM_TYPES},
+  'builtinFamilies':dict(op.BUILTIN_FAMILIES),
+  'choiceTypes':list(op.CHOICE_TYPES),
+  'numberTypes':list(op.NUMBER_TYPES),
+  'builtinKeys':list(op.BUILTIN_KEYS),}
+
+def _item_value_vocab():
+ """値の出どころの語彙（未入力の配色・添え書き・自動で入る値・役割）。"""
+ return {
+  # §9.286 ⑥ 未入力・未選択のときの配色。**語彙はサーバーが答える**
+  # ——色の鍵は`WL.columnTint.PALETTE`と揃える約束なので、画面へ
+  # 書き写すと片方だけ増えた状態が作れる（§9.163）。
+  'blankTints':list(op.BLANK_TINTS),
+  'blankTintNone':op.BLANK_TINT_NONE,
+  # §9.233 ⑤ 自動で入る値の添え書きの置き場と、添え書きを持つ
+  # 項目の役割。**サーバーが答える**——「どの項目が添え書きを
+  # 出すのか」は仕掛からの読み込みを持っている側しか知らない。
+  'sourceNotePlaces':list(op.SOURCE_NOTE_PLACES),
+  'sourceNoteKeys':list(op.SOURCE_NOTE_KEYS),
+  # 値がこの画面の外から入る欄の分類（§9.234 ⑦、利用者の指示
+  # 「自動に入力されるものについては配色してほしい」）。
+  # **呼び名と説明もサーバーが答える**——画面へ写すと、増やしたときに
+  # 2箇所直すことになる（§9.163）。
+  'autoFills':[{'key':k,'label':l,'note':n} for k,l,n in op.AUTO_FILLS],
+  # 自動で入る値・計算値の**語彙**（§9.234 ②、利用者の指示「自動で
+  # 入る値、計算値についても、現在使っているものは、そのリストから
+  # 選んで表示設定できるように」）。**サーバーが答える**——鍵の綴りを
+  # 画面へ写すと、増やしたときに2箇所直すことになる（§9.163）。
+  # 値の**引き方**は測定画面が持つ（出どころは開いているレコード）。
+  'autoValues':[{'key':k,'label':l,'group':g,'unit':u,'note':n}
+     for k,l,g,u,n in op.AUTO_VALUES],
+  # §9.256。式で作る自動値の鍵。**画面へ綴りを書き写さない**
+  # （`tests/test_opauto.js`が機械で見張っている）。
+  'autoFormulaKey':op.AUTO_FORMULA_KEY,
+  # --- §9.223 ①（役割と構成チェック）---
+  # **必須はカードではなく構成が持つ**。役割の一覧と、いま誰が担って
+  # いるか・足りない役割・二重の役割をサーバーが答える（画面に同じ
+  # 判定を書かない——2つの答えが出る）。
+  'roles':[{'key':k,'label':lb,'note':nt,'required':rq,'choice':gr}
+     for k,lb,nt,rq,gr in op.ROLE_SEEDS],}
+
+def _item_vocabulary():
+ """操業データ項目マスタの語彙。**画面へ書き写さない**（増減したときに2箇所直すことになる）。"""
+ return {**_item_layout_vocab(),**_item_widget_vocab(),**_item_value_vocab()}
+
+
 @bp.get('/api/operation-item-master')
 def operation_item_list():
  """`equipment`を付けると**その設備で使う項目だけ**返す（`*`＝全設備の行も
     含む）。付けなければマスタ管理の一覧用に全部返す。"""
  try:
-  from ...repositories import operation_repo as op
   eq=str(request.args.get('equipment') or '').strip()
   def fn(c):
    # **「出さない」にした項目も返す**（§9.219 ③）。落とすと盤から消えて
@@ -57,14 +164,7 @@ def operation_item_list():
       if vals:
        src=dict(it);src['choices']=vals
     it['sample']=rb.sample_for(path,src)
-   return {'items':items,'types':list(op.ITEM_TYPES),'choiceNames':op.choice_names(c),
-           # 画面が「どこへ出すか」「何列ぶんか」を選ばせるための一覧(§9.216 ②)。
-           # **画面へ書き写さない**——増減したときに2箇所を直すことになる。
-           'places':list(op.PLACES),'spans':list(op.SPANS),'gridCols':op.GRID_COLS,
-           'spanUnit':op.SPAN_UNIT,'widgets':list(op.WIDGETS),
-           # §9.307 入力値の丸めの向き。**サーバーが答える**——
-           # 画面へ写すと、増やしたときに2箇所直すことになる。
-           'roundModes':list(op.ROUND_MODES),
+   return {'items':items,'choiceNames':op.choice_names(c),
            # §9.231 ② 上下限の出どころの語彙。**サーバーが答える**
            # ——画面へ書き写すと、増やしたときに2箇所直すことになる。
            # **いまの値も一緒に返す**（§CLAUDE 6「出どころ・単位・根拠を
@@ -72,78 +172,8 @@ def operation_item_list():
            # 出せないと、選んでも効いているのか分からない。設備を選んで
            # いないときは`None`＝「まだ引けない」で、**0にしないこと**。
            'limitSources':[{'key':k,'label':l,'unit':u,
-                            'value':(op.resolve_limit(c,k,eq) if eq and eq!='*' else None)}
-                           for k,l,u in op.LIMIT_SOURCES],
-           # 見せ方の選択肢(§9.221 ⑦)。**画面へ書き写さない**——増減したときに
-           # 2箇所を直すことになり、片方だけ直った状態が作れる。
-           'unitPlaces':list(op.UNIT_PLACES),'aligns':list(op.ALIGNS),
-           'valueFormats':list(op.VALUE_FORMATS),
-           # 単位を重ねられない入力方法（箱が1つではない）。画面は理由を
-           # 文字で出すのに使う（§4）。
-           'unitInBlocked':list(op.UNIT_IN_BLOCKED_WIDGETS),
-           # 手打ちを許すと重ねられなくなる入力方法（§9.233 ④）。プルダウンは
-           # 手打ちにすると`<select>`が器の裏へ回って1pxになるので、その隣へ
-           # 重ねた単位は一度も見えない。**規則はサーバーの`unit_in_ok()`が
-           # 持ち、画面は一覧を引くだけ**（判定を2つ持たない）。
-           'unitInFreeTextBlocked':list(op.UNIT_IN_FREE_TEXT_BLOCKED),
-           # 手打ちの席が無い入力方法（§9.247 ①）。`入切`はスイッチ1つ、
-           # `切替`は押すたびに次へ進むボタン1つなので、**打ち込む場所が
-           # 出せない**。設定窓はここを見て欄ごと押せなくし、理由を書く（§4）。
-           # **規則はサーバーの`free_text_ok()`が持ち、画面は一覧を引くだけ。**
-           'freeTextBlocked':list(op.FREE_TEXT_BLOCKED_WIDGETS),
-           # §9.248 ⑤ 選択肢の並びの語彙と、それが効く入力方法。
-           # **効くのは「押すと新しい面が開く」形だけ**——札を並べる形で
-           # 順番が変わると、同じ欄なのに押す場所が毎回動く（§4）。
-           'choiceOrders':list(op.CHOICE_ORDERS),
-           'choiceOrderWidgets':list(op.CHOICE_ORDER_WIDGETS),
-           # §9.286 ⑥ 未入力・未選択のときの配色。**語彙はサーバーが答える**
-           # ——色の鍵は`WL.columnTint.PALETTE`と揃える約束なので、画面へ
-           # 書き写すと片方だけ増えた状態が作れる（§9.163）。
-           'blankTints':list(op.BLANK_TINTS),
-           'blankTintNone':op.BLANK_TINT_NONE,
-           # §9.323 ① 測定画面からの間接登録は**入切の1つ**なので、語彙は
-           # 出さない（`choiceOrder`のような綴りの一覧を持たない）。
-           # **読まれない鍵をAPIへ置かないこと**——契約が在るように見えて
-           # 誰も使っていない面が増える。効く欄かどうかは行ごとの
-           # `inlineAdd`／`inlineAddSaved`が言う。
-           # §9.248 ① 選ばせ方のまとまり（盤の見出しと並び）。**サーバーが
-           # 答える**——画面へ写すと、種類を足したときに2箇所直すことになる。
-           'widgetGroups':[{'label':l,'note':n,'items':list(i)}
-                           for l,n,i in op.WIDGET_GROUPS],
-           # §9.233 ⑤ 自動で入る値の添え書きの置き場と、添え書きを持つ
-           # 項目の役割。**サーバーが答える**——「どの項目が添え書きを
-           # 出すのか」は仕掛からの読み込みを持っている側しか知らない。
-           'sourceNotePlaces':list(op.SOURCE_NOTE_PLACES),
-           'sourceNoteKeys':list(op.SOURCE_NOTE_KEYS),
-           # 値がこの画面の外から入る欄の分類（§9.234 ⑦、利用者の指示
-           # 「自動に入力されるものについては配色してほしい」）。
-           # **呼び名と説明もサーバーが答える**——画面へ写すと、増やしたときに
-           # 2箇所直すことになる（§9.163）。
-           'autoFills':[{'key':k,'label':l,'note':n} for k,l,n in op.AUTO_FILLS],
-           # 自動で入る値・計算値の**語彙**（§9.234 ②、利用者の指示「自動で
-           # 入る値、計算値についても、現在使っているものは、そのリストから
-           # 選んで表示設定できるように」）。**サーバーが答える**——鍵の綴りを
-           # 画面へ写すと、増やしたときに2箇所直すことになる（§9.163）。
-           # 値の**引き方**は測定画面が持つ（出どころは開いているレコード）。
-           'autoValues':[{'key':k,'label':l,'group':g,'unit':u,'note':n}
-                         for k,l,g,u,n in op.AUTO_VALUES],
-           # §9.256。式で作る自動値の鍵。**画面へ綴りを書き写さない**
-           # （`tests/test_opauto.js`が機械で見張っている）。
-           'autoFormulaKey':op.AUTO_FORMULA_KEY,
-           # 並べ方(§9.226 ①)。**効く入力方法もサーバーが答える**——画面へ
-           # 写すと、並べても何も起きない設定を選ばせることになる（§4）。
-           'layouts':list(op.LAYOUTS),'layoutWidgets':list(op.LAYOUT_WIDGETS),
-           # 型ごとに効く入力方法(§9.219 ③)。**判定はサーバーの1箇所**
-           # （画面へ写すと、効く物の一覧が2つになる）。
-           'widgetFamilies':{k:list(v) for k,v in op.WIDGET_FAMILIES.items()},
-           # 型・組み込みキーがどの仲間かの**対応表**。画面は引くだけで、
-           # 規則そのものは持たない（設定窓は型を切り替えた瞬間に効く物を
-           # 出し分けるので、行の`widgetFamily`だけでは足りない）。
-           'typeFamilies':{t:op.widget_family(t) for t in op.ITEM_TYPES},
-           'builtinFamilies':dict(op.BUILTIN_FAMILIES),
-           'choiceTypes':list(op.CHOICE_TYPES),
-           'numberTypes':list(op.NUMBER_TYPES),
-           'builtinKeys':list(op.BUILTIN_KEYS),
+              'value':(op.resolve_limit(c,k,eq) if eq and eq!='*' else None)}
+              for k,l,u in op.LIMIT_SOURCES],
            'choiceNotes':op.choice_notes(c),
            # **読めなかった(None)は空の辞書として渡す**——画面は「使っている
            # 項目の一覧」を出すだけなので出せないものは出さないが、削除の
@@ -153,25 +183,14 @@ def operation_item_list():
            # サーバーが持つ**——「同じ群が使っている」「名前が似ている」は
            # 判定であって表示ではないので、画面へ写すと答えが2つになる。
            'choiceHints':op.choice_hints(c),
-           # --- §9.223 ①（役割と構成チェック）---
-           # **必須はカードではなく構成が持つ**。役割の一覧と、いま誰が担って
-           # いるか・足りない役割・二重の役割をサーバーが答える（画面に同じ
-           # 判定を書かない——2つの答えが出る）。
-           'roles':[{'key':k,'label':lb,'note':nt,'required':rq,'choice':gr}
-                    for k,lb,nt,rq,gr in op.ROLE_SEEDS],
            'roleReport':op.role_report(items),
-           # --- §9.223 ③（見た目の軸）---
-           'lookColors':list(op.LOOK_COLORS),'lookShapes':list(op.LOOK_SHAPES),
-           'lookSizes':list(op.LOOK_SIZES),
-           'lookSlugs':{'color':dict(op.LOOK_COLOR_SLUG),'shape':dict(op.LOOK_SHAPE_SLUG),
-                        'size':dict(op.LOOK_SIZE_SLUG)}}
+           **_item_vocabulary()}
   d=_op_read(fn)
   return jsonify(ok=True,equipment=eq,**d)
  except Exception as e:return jsonify(error=f'操業データ項目マスタの読込に失敗しました: {e}'),500
 
 @api_guard('操業データ項目マスタの保存に失敗しました',bad=ValueError)
 def _operation_item_save(x):
- from ...repositories import operation_repo as op
  uid=request_user_id(x)
  name=x.text('name')
  if not name:return jsonify(error='項目名を入力してください。'),400
@@ -281,7 +300,6 @@ def operation_item_layout():
  """並び・群・列幅・置き場・必須・出す/出さないを**まとめて1回で**書く
     (§9.216 ②)。D&Dで組み替える画面なので、1行ずつ送ると往復が増え、
     途中で切れると並びが半分だけ変わった状態が残る。"""
- from ...repositories import operation_repo as op
  x=body({'equipment': any_, 'items': any_})
  rows=x.get('items')
  if not isinstance(rows,list):return jsonify(error='items（並び）がありません。'),400
@@ -301,7 +319,6 @@ def operation_item_record_layout():
     並びが半分だけ変わった状態が残る（`layout`と同じ理由）。
     書くのは`[記録表示]`／`[記録群]`／`[記録順]`の3つだけで、
     型・選択肢・役割・意匠には触らない。"""
- from ...repositories import operation_repo as op
  x=body({'items': any_})
  rows=x.get('items')
  if not isinstance(rows,list):return jsonify(error='items（配置）がありません。'),400
@@ -313,7 +330,6 @@ def operation_item_record_layout():
 def operation_item_group():
  """群のふるまい（畳む・開く条件）だけをまとめて書く(§9.216 ④)。
     `layout`で代用すると、直前に1件だけ更新した内容を古い写しで上書きする。"""
- from ...repositories import operation_repo as op
  x=body({'dummy': any_, 'equipment': any_, 'fold': any_, 'group': any_, 'groupSpan': any_, 
           'place': any_, 'showWhen': any_})
  g=x.text('group')
@@ -331,7 +347,6 @@ def operation_item_group():
 @bp.post('/api/operation-item-master/delete')
 @api_guard('操業データ項目マスタの削除に失敗しました')
 def operation_item_delete():
- from ...repositories import operation_repo as op
  x=body({'id': any_})
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
  n=_op_read(lambda c:op.item_delete(c,x['id'],request_user_id(x)))
@@ -340,7 +355,6 @@ def operation_item_delete():
 @bp.get('/api/operation-choice-master')
 def operation_choice_list():
  try:
-  from ...repositories import operation_repo as op
   def fn(c):
    # **6つのマスタの移行はここでも1度だけ通す**(§9.221 ③)。測定画面を
    # 開く前にマスタ管理を開いた端末では、まだ写していない状態で一覧が
@@ -389,7 +403,6 @@ def operation_choice_list():
 
 @api_guard('操業データ選択肢マスタの保存に失敗しました',bad=ValueError)
 def _operation_choice_save(x):
- from ...repositories import operation_repo as op
  uid=request_user_id(x)
  iv=lambda v:(None if v in (None,'') else int(v))
  def fn(c):
@@ -425,7 +438,6 @@ def operation_choice_rename_group():
  """まとまりの名前を変える(§9.221 ②)。**参照している項目の`[選択肢名]`も
     一緒に書き換える**——名前で結んでいるので(§9.215)、片方だけ変えると
     その項目の選択肢が黙って消える。"""
- from ...repositories import operation_repo as op
  x=body({'from': any_, 'to': any_})
  src=x.text('from');dst=x.text('to')
  if not src or not dst:return jsonify(error='まとまり名を入力してください。'),400
@@ -439,7 +451,6 @@ def operation_choice_delete_group():
  """まとまりごと消す(§9.221 ②)。**使っている項目があれば断る**——消すと
     その項目は黙って空の欄になる（§9.216 ④で「使い道の見えない選択肢は
     消してよいのか判断できない」と書いた、その裏返し）。"""
- from ...repositories import operation_repo as op
  x=body({'name': any_})
  nm=x.text('name')
  if not nm:return jsonify(error='まとまり名がありません。'),400
@@ -452,7 +463,6 @@ def operation_choice_reorder():
  """1つのまとまりの中の並びをまとめて書く(§9.221 ②)。D&Dで並べ替える
     画面なので、1行ずつ送ると往復が増え、途中で切れると半分だけ動いた
     並びが残る（項目マスタの`layout`と同じ作法）。"""
- from ...repositories import operation_repo as op
  x=body({'ids': any_})
  ids=x.get('ids')
  if not isinstance(ids,list):return jsonify(error='ids（並び）がありません。'),400
@@ -471,7 +481,6 @@ def operation_choice_used():
  **書き込みだが、閲覧モードからも通す**——数えているのは「選ばれた」と
  いう事実だけで、現場の設定は1つも変わらない。ここを塞ぐと、閲覧モードの
  端末で測った回数だけが数えられず、並びが端末によって食い違う。"""
- from ...repositories import operation_repo as op
  x=body({'name': any_, 'value': any_})
  # `_op_read`は名前に反して**書ける接続**（`connect(path,False)`）を開く
  # だけの道具で、他の保存経路も同じものを通っている。
@@ -481,7 +490,6 @@ def operation_choice_used():
 @bp.post('/api/operation-choice-master/delete')
 @api_guard('操業データ選択肢マスタの削除に失敗しました')
 def operation_choice_delete():
- from ...repositories import operation_repo as op
  x=body({'id': any_})
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
  n=_op_read(lambda c:op.choice_delete(c,x['id'],request_user_id(x)))
@@ -494,7 +502,6 @@ def operation_form():
     返す**——2度目の問い合わせを画面にさせない。読めなくても測定は開けるよう、
     失敗しても項目0件で返す(fail-open)。"""
  try:
-  from ...repositories import operation_repo as op
   eq=str(request.args.get('equipment') or '').strip()
   return jsonify(ok=True,equipment=eq,**_op_read(lambda c:op.form_for_equipment(c,eq)))
  except Exception as e:
