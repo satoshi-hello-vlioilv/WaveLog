@@ -83,10 +83,6 @@
   2,
   82
  ],
- "static/js/list/list-columns.js": [
-  1,
-  46
- ],
  "static/js/list/list-formula.js": [
   1,
   4
@@ -94,10 +90,6 @@
  "static/js/list/list-view.js": [
   3,
   196
- ],
- "static/js/list/quality-analysis.js": [
-  1,
-  39
  ],
  "static/js/master/master-data.js": [
   6,

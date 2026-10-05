@@ -9019,33 +9019,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      ・**分類はチップで絞る**。分類が1種類しか無い設備ではチップを出さない。
      狭い器（側パネル）では`@container`で一覧を1列へ落とす（帯はもともと
      折り返す横並びなので、幅が足りなければ自分で段になる）。 */
-  box.innerHTML=`
-   <div class="sc-stop-main">
-    <div class="sc-stop-left">
-     <div class="sc-stop-lh">停止内容<em id="scStopLeftCount"></em></div>
-     <input type="search" class="sc-stop-search" id="scStopSearch" autocomplete="off"
-      placeholder="名称・分類で絞り込み">
-     <div class="sc-stop-list" id="scStopList"></div>
-    </div>
-    <div class="sc-stop-right">
-     <div class="sc-stop-card" id="scStopCard"></div>
-     <div class="sc-stop-cols" id="scStopCols"></div>
-    </div>
-   </div>
-   <div class="sc-stop-new">
-    <button type="button" class="sc-stop-new-toggle" id="scStopNewToggle"
-     title="この設備の設備停止マスタへ、新しい停止理由を登録します">＋ 停止理由を登録</button>
-    <div class="sc-stop-new-form" id="scStopNewForm" hidden>
-     <label><span>名称</span><input type="text" id="scStopNewName" maxlength="60" placeholder="例: 定期メンテナンス"></label>
-     <label><span>分類</span><select id="scStopNewCat"></select></label>
-     <label><span>標準所要分</span><input type="text" id="scStopNewMin" inputmode="numeric" autocomplete="off" placeholder="任意"></label>
-     <p class="sc-stop-new-note" id="scStopNewNote"></p>
-     <div class="sc-stop-new-actions">
-      <button type="button" class="sc-stop-new-cancel" id="scStopNewCancel">やめる</button>
-      <button type="button" class="sc-stop-new-save" id="scStopNewSave">登録して使う</button>
-     </div>
-    </div>
-   </div>`;
+  box.replaceChildren(WL.template('stop-box'));
   const search=box.querySelector('#scStopSearch');
   search.addEventListener('input',()=>{stopFilter=search.value.trim();renderStopList()});
   box.querySelector('#scStopNewToggle').onclick=()=>toggleStopNewForm();

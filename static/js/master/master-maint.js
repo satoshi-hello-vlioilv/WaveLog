@@ -222,47 +222,7 @@
   /* 見出しの帯は持たない。画面名と説明はヘッダー(#fileName)が、更新者IDは
      ヘッダーの操作列(#headerViewBar)が受け持つ。「×」も置かない——他の画面に
      無く、左のメニューから移れば閉じるため、この画面だけ閉じ方が違っていた。 */
-  panel.innerHTML=`<div class="mm-dialog">
-   <div class="mm-head" id="mmHead">
-    <!-- 上部の操作は3つだけ（§9.266、利用者の指示「アイコンなども活用し…
-         1行に収める」）。**アイコンだけにしない**——何の欄かはツールチップでは
-         読めない（§4）ので、更新者IDは印と短い名前、再読込は印とaria-labelにする。
-         絞り込み（§9.266）は§9.556で外した（利用者の指示「最上部の絞り込みの検索バーも
-         あまり意味がないので基本的に削除」）。並べ替えと群の開閉は表の見出しが持つ。
-         **この中にバッククォートを書かないこと**（§9.211 ③。テンプレート
-         リテラルがそこで閉じ、以降がJSとして解釈されて画面が組み上がらない）。 -->
-    <button type="button" id="masterUserId" class="mm-head-user"
-     title="この端末のログインIDです。マスタを更新した人として記録します（書き換えられません）。押すと「接続状況」を開きます">
-     <span class="mm-head-ico" aria-hidden="true">👤</span>
-     <b id="masterUserName">—</b></button>
-    ${hintBadgeHtml()}
-    <button id="reloadMasterMaint" type="button" class="mm-btn-ghost mm-head-icobtn"
-     title="マスタを読み直します" aria-label="再読込"><span aria-hidden="true">↻</span></button>
-   </div>
-   <div class="mm-body">
-    <nav class="mm-nav" id="masterMaintNav" aria-label="マスタ種別"></nav>
-    <section class="mm-main">
-     <!-- 見出しだけを残す。再読込は**操作**なのでヘッダーの
-          操作列(#mmHead → #headerViewBar)が持つ(§9.100)。ここに残すと、
-          この画面だけ操作の置き場が2段になる。 -->
-     <div class="mm-toolbar">
-      <div class="mm-toolbar-left"><b id="masterMaintTitle">オペレータ</b><span class="mm-count" id="masterMaintCount"></span>
-       <!-- マスタ編集の段（§9.322）。**書けないときだけ出す**——器は常に
-            置いておき、中身の出し入れだけで済ませる（出入りで見出しの行が
-            跳ねないように・§9.227 ②）。専用の画面（共通設定・データ接続など）は
-            自前で欄を組み立てるので、断るのはサーバーだけ——**先に読める形で
-            言う**のがこの帯の役目（§4）。 -->
-       <span class="mm-mode-chip" id="masterMaintLevel" hidden></span></div>
-      <!-- 束ねた見出しの開閉（§9.241 ①）。**群を持つマスタのときだけ**中身が
-           入る（renderMaintList が出し入れする。押せるのに何も起きない
-           ボタンを置かない・§CLAUDE 4）。 -->
-      <div class="mm-fold" id="masterMaintFold" hidden></div>
-     </div>
-     <form class="mm-form" id="masterMaintForm"></form>
-     <div class="mm-list-wrap"><div class="mm-list" id="masterMaintList"></div></div>
-    </section>
-   </div>
-  </div>`;
+  panel.replaceChildren(WL.template('maint-panel',{'hint':hintBadgeHtml()}));
   const grid=$('#grid');grid?.parentNode?.insertBefore(panel,grid);
   /* ---------- 更新者IDは名乗るだけ（§9.276 ③、利用者の指示） ----------
      「ユーザーIDを表示する上部のメニュー部分は、IDを書き換えられないように

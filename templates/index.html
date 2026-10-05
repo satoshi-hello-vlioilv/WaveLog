@@ -803,4 +803,365 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
         </div>
         <p class="filter-builder-note" id="filterBuilderNote">「適用」は今だけ効かせる／「登録」は次回も使えるように保存する。両方押せます。</p>
       </div></template>
+<template id="tpl-column-panel">
+   <div class="sc-float-header lc-header">
+    <div class="lc-title">
+     <small class="lc-eyebrow" id="lcEyebrow">一覧の見せ方</small>
+     <h2 id="lcTitle">列の設定</h2>
+    </div>
+    <p class="lc-lead" id="lcLead">左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。
+     触った結果はすぐ後ろの一覧に出ます（<b>保存するまでは元に戻せます</b>）。</p>
+    <!-- この一覧の列を「みんなと同じ」で持つか「自分だけ」で持つか(§9.259)。
+         **いまどちらかを必ず文字で出す**(§3)——黙って個人の並びを出すと、
+         自分にだけ違って見える理由が画面のどこにも無くなる。 -->
+    <div class="lc-scope" id="lcScope" hidden>
+     <span class="lc-scope-now" id="lcScopeNow"></span>
+     <button type="button" id="lcScopeBtn" class="lc-side-btn"></button>
+     <small class="lc-scope-note" id="lcScopeNote"></small>
+    </div>
+    <button type="button" id="lcClose" class="lc-close" title="閉じる（保存していない変更は元に戻ります）">×</button></div>
+   <div class="sc-float-body lc-body">
+    <div class="lc-side">
+     <div class="lc-side-head">
+      <input type="search" id="lcFilter" class="lc-filter" placeholder="列名で絞り込み" autocomplete="off">
+      <button type="button" id="lcAddCol" class="lc-side-btn"
+       title="いまある列から式で新しい列を作ります（元の列が無くても足せます）">＋ 列を作る</button>
+      <button type="button" id="lcAutoFit" class="lc-side-btn"
+       title="列の幅を、見出しと実データの長さに合わせて決め直します（手で決めた幅は消えます）">幅を内容に合わせる</button>
+     </div>
+     <div class="lc-origins" id="lcOrigins" role="group" aria-label="出どころで絞り込む"></div>
+     <!-- 「出す」の見出しに全選択チェックを置く(§9.106)。**押す場所と効く
+          場所を同じ列に置く**——離れたボタンだと、どの列に効くのかを
+          読んで確かめる必要がある。効くのは絞り込んで見えている列だけ。 -->
+     <div class="lc-list-head">
+      <label class="lc-vis lc-vis-all" title="いま見えている列をまとめて出す/隠す">
+       <input type="checkbox" id="lcAllVis"></label>
+      <span title="行のどこを掴んでも並べ替えられます。Ctrl（⌘）クリックで1つずつ、Shiftクリックで範囲を選ぶと、選んだぶんをまとめて動かせます。">列（上下にドラッグで並べ替え・Ctrl/Shiftクリックでまとめて選ぶ）</span>
+      <span>この列の見え方（実データ1件）</span></div>
+     <div class="lc-list" id="lcList"></div>
+    </div>
+    <div class="lc-detail" id="lcDetail"></div>
+   </div>
+   <!-- 名前を付けて覚えさせる(§9.111)。**マスタへ置くので他のPCからも
+        呼び出せる**——これが要望の主目的。ファイルへの書き出し/読み込みは
+        その場のバックアップと持ち出し用で、同じ中身をそのまま扱う。 -->
+   <div class="lc-presets">
+    <label class="lc-preset-pick">
+     <span>保存した設定</span>
+     <select id="lcPresetSel"><option value="">（選ぶと読み込みます）</option></select>
+    </label>
+    <button type="button" id="lcPresetSave" class="lc-side-btn"
+     title="今の設定に名前を付けてマスタへ登録します（他のPCからも読み出せます）">名前を付けて登録</button>
+    <button type="button" id="lcPresetDel" class="lc-side-btn" disabled
+     title="選んでいる設定をマスタから削除します">削除</button>
+    <span class="lc-preset-sep"></span>
+    <button type="button" id="lcExport" class="lc-side-btn"
+     title="列の設定をファイル(JSON)に書き出します。この一覧だけ／すべての一覧を選べます">書き出し…</button>
+    <button type="button" id="lcImport" class="lc-side-btn"
+     title="書き出したファイル(JSON)から列の設定を取り込みます">読み込み…</button>
+    <input type="file" id="lcImportFile" accept="application/json,.json" hidden>
+   </div>
+   <!-- 列の設定の持ち出し・取り込み(§9.178)。**このパネルの中に置く**
+        ——モーダルを増やさず、実物の一覧を見たまま「何が出て行くのか」を
+        確かめられるのが値打ち(フィルタの入出力・§9.171と同じ作法)。 -->
+   <div class="lc-io" id="lcIo" hidden>
+    <div class="lc-io-head">
+     <b id="lcIoTitle">列の設定を書き出す</b>
+     <button type="button" id="lcIoClose" class="lc-side-btn" title="閉じる">×</button>
+    </div>
+    <div class="lc-io-body" id="lcIoBody"></div>
+    <div class="lc-io-foot">
+     <span class="lc-io-note" id="lcIoNote"></span>
+     <button type="button" id="lcIoRun" class="lc-btn-primary">実行</button>
+    </div>
+   </div>
+   <div class="sc-float-foot lc-foot">
+    <span class="lc-count" id="lcCount"></span>
+    <span class="lc-foot-note" id="lcFootNote"></span>
+    <div class="sc-content-foot-actions">
+     <button type="button" id="lcReset" class="lc-btn-ghost">既定に戻す</button>
+     <button type="button" id="lcSave" class="sc-column-save lc-btn-primary">保存</button>
+    </div>
+   </div>
+   <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div></template>
+<template id="tpl-print-preview">
+   <div class="sp-pv-box" role="dialog" aria-modal="true" aria-labelledby="spPvTitle">
+    <header class="sp-pv-head">
+     <div><span class="sp-pv-eyebrow">PRINT PREVIEW</span>
+      <h2 id="spPvTitle">作業予定表</h2>
+      <small id="spPvSub"></small></div>
+     <button type="button" id="spPvClose" title="閉じる（刷りません）">×</button>
+    </header>
+    <div class="sp-pv-body">
+     <!-- 設定は段（タブ）で階層化する(§9.293 ③)。**段の見出しにいまの値**を
+          出すので、開かないと分からない段を作らない。刷り上がり（枚数）と
+          「既定へ戻す」は**段の外**（どの段からでも読める・触れる）。
+          **この中にバッククォートを書かないこと**(§9.211 ③)——ここは
+          テンプレートリテラルの中なので、コメントの中でも文字列が閉じ、
+          以降がJSとして解釈されて画面が組み上がらない(node --check は
+          通るので構文検査では捕まらない。実際にここで踏んだ)。 -->
+     <aside class="sp-pv-side">
+      <div class="sp-pv-tabs" id="spPvTabs" role="tablist"></div>
+      <div class="sp-pv-panes" id="spPvPanes">
+       <section class="sp-pv-pane" data-pane="load">
+        <div class="sp-options" id="spPvOptions"></div>
+       </section>
+       <section class="sp-pv-pane" data-pane="look" hidden>
+        <div class="sp-options" id="spPvLook"></div>
+       </section>
+       <section class="sp-pv-pane" data-pane="paper" hidden>
+        <!-- 大きさと向きは別の欄(§9.252)。器は見せ方と同じ sp-options に
+             する——中に「大きさ」「向き」の2つの群が入るので、sp-pats を
+             直に置くと群の見出しが札と同じ並びに混ざる。 -->
+        <div class="sp-options" id="spPvSize"></div>
+       </section>
+      </div>
+      <div class="sp-pv-sum">
+       <p class="sp-pv-facts" id="spPvFacts"></p>
+       <button type="button" id="spPvReset" class="sp-pv-reset"
+        title="この画面の設定（載せるもの・見せ方・用紙）を、はじめの形へ戻します。表示倍率は変えません">設定を既定へ戻す</button>
+      </div>
+     </aside>
+     <div class="sp-pv-view">
+      <!-- 表示倍率と紙送り(§9.238 ③)。**刷り上がりの設定とは分けて紙の側へ
+           置く**——左の欄に混ぜると「100%で刷られる」と読まれる。 -->
+      <div class="sp-pv-zoom" id="spPvZoom"></div>
+      <div class="sp-pv-paper" id="spPvPaper"></div>
+     </div>
+    </div>
+    <footer class="sp-pv-foot">
+     <span class="sp-pv-hint">設定を変えると、右のプレビューがその場で変わります。倍率は見え方だけで、紙は変わりません。</span>
+     <button type="button" id="spPvCancel">閉じる</button>
+     <button type="button" class="sp-pv-print" id="spPvPrint">印刷する</button>
+    </footer>
+   </div></template>
+<template id="tpl-rule-panel">
+   <div class="sc-float-header"><div><h2 id="lrTitle">表示ルール</h2>
+     <small class="lr-usage" id="lrUsage"></small></div>
+    <button type="button" id="lrClose" title="閉じる">×</button></div>
+   <!-- **2ペイン**（§9.474、利用者の指示「試した結果の表示は…表示位置が悪く見えづらいです。左の3割くらいに
+        配置し、2ペインレイアウトに」）。左＝試した結果（書いたそばから変わる・いつも見えている）、
+        右＝決めること（列の値 → 行 → 足す → 式にする）。 -->
+   <div class="sc-float-body lr-body">
+    <aside class="lr-try" id="lrTry" aria-label="試した結果"></aside>
+    <div class="lr-main">
+     <div class="lr-head">
+      <p class="lr-lead">上から順に見て、<b>最初に当てはまったもの</b>を表示します。</p>
+      <!-- 条件が見る列の値（§9.474、利用者の指示「データをもとのまま使うか、設定範囲内で変換された
+           データを使うか選べるように」）。**ルールごと**・この列も他の列も同じ。 -->
+      <div class="lr-mode" role="radiogroup" aria-label="条件が見る列の値">
+       <span class="lr-mode-cap">列の値</span>
+       <span class="lr-seg">
+        <button type="button" data-mode="raw" role="radio">元のデータ</button>
+        <button type="button" data-mode="shown" role="radio">表示の値</button>
+       </span>
+       <small class="lr-mode-note" id="lrModeNote"></small>
+      </div>
+     </div>
+     <div class="lr-rows" id="lrRows"></div>
+     <div class="lr-adds">
+      <button type="button" id="lrAddRow" class="lr-add">＋ 行を追加</button>
+      <button type="button" id="lrAddDefault" class="lr-add">＋ どれにも当てはまらないとき</button>
+      <button type="button" id="lrToFormula" class="lr-add lr-tofx" aria-expanded="false"
+       title="このルールと同じ意味の式を作ります。「この列の作り方」の入力欄へそのまま入れられます">
+       <i class="fa-solid fa-code" aria-hidden="true"></i> 式にする</button>
+     </div>
+     <div class="lr-fx" id="lrFx" hidden></div>
+    </div>
+   </div>
+   <div class="sc-float-foot">
+    <button type="button" id="lrDelete" class="lr-delete">このルールを削除</button>
+    <div class="sc-content-foot-actions">
+     <button type="button" id="lrCancel">やめる</button>
+     <button type="button" id="lrSave" class="sc-column-save">保存</button>
+    </div>
+   </div>
+   <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div></template>
+<template id="tpl-actuals-panel">
+   <div class="ac-head" id="acHead">
+    <label class="ac-field">設備<select id="acEquipment" title="実績が記録されている設備から選びます"></select></label>
+    <label class="ac-field">期間<input type="date" id="acFrom" title="この日から（現場日で数えます）"></label>
+    <label class="ac-field">〜<input type="date" id="acTo" title="この日まで（現場日で数えます）"></label>
+    <span class="ac-presets" id="acPresets"></span>
+    <!-- 名前は**何の**基準かを言う（§9.507。「基準」だけでは何を切り替えるのか読めない）。 -->
+    <label class="ac-field">日付<select id="acBasis" title="日付をどちらで数えるか。現場歴は勤務区分マスタの日付補正が効きます">
+      <option value="work">現場歴</option><option value="cal">太陽暦</option></select></label>
+    <!-- 検索欄は仕掛一覧・データ一覧と同じ部品（§9.507）。 -->
+    <label class="lt-search" title="ロット番号・検査番号の字で絞り込みます（打つとすぐ効きます）"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" id="acSearch" placeholder="ロット・検査番号で絞り込む" autocomplete="off" aria-label="ロット・検査番号で絞り込む"></label>
+    <button type="button" id="acReload" class="ac-btn">再読込</button>
+    <!-- 1行／2段組（§9.553）。2段組は操業データ表と**同じ配置の盤**を読む（紙で見たとおりに画面でも読める）。
+         1つだけ選ぶ切り替えなので、期間の札と同じ部品（§9.507）。 -->
+    <span class="ac-presets ac-view" id="acView" role="radiogroup" aria-label="一覧の見せ方">
+     <button type="button" class="ac-chip" role="radio" data-view="line" title="1件を1行で出します（表示列の設定）">1行</button>
+     <button type="button" class="ac-chip" role="radio" data-view="stack" title="1件を操業データ表と同じ段組で出します（既定は2段・配置の盤で段・位置・幅を決める）">段組</button></span>
+    <!-- 表示列の入口は**どの画面でも同じ印**（§9.476・fa-table-columns。スケジュール表・仕掛一覧と同じ）。
+         2段組のときは**配置の盤**を開く（1行の表示列を変えても2段組は変わらない——押して何も起きない物を残さない）。 -->
+    <button type="button" id="acColumns" class="ac-btn" title="この一覧に出す列・並び・幅・書式を決めます"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> <span id="acColumnsWord">表示列</span></button>
+    <button type="button" id="acSheet" class="ac-btn ac-btn--primary" title="いま出ている実績を、日＋直ごとに1枚の操業データ表として刷ります">操業データ表</button>
+    <!-- 押すと何が起きるか（刷る）を印で、何を刷るか（選んだ行の帳票）を字で言う（§9.507。旧「選択した帳票」）。 -->
+    <button type="button" id="acReport" class="ac-btn" title="選んだ行の測定帳票をまとめて刷ります" disabled><i class="fa-solid fa-print" aria-hidden="true"></i> 選んだ行の帳票 (<span id="acReportCount">0</span>)</button>
+   </div>
+   <div class="ac-body">
+    <div class="ac-note" id="acNote" hidden></div>
+    <div class="ac-list" id="acList"></div>
+   </div></template>
+<template id="tpl-stop-box">
+   <div class="sc-stop-main">
+    <div class="sc-stop-left">
+     <div class="sc-stop-lh">停止内容<em id="scStopLeftCount"></em></div>
+     <input type="search" class="sc-stop-search" id="scStopSearch" autocomplete="off"
+      placeholder="名称・分類で絞り込み">
+     <div class="sc-stop-list" id="scStopList"></div>
+    </div>
+    <div class="sc-stop-right">
+     <div class="sc-stop-card" id="scStopCard"></div>
+     <div class="sc-stop-cols" id="scStopCols"></div>
+    </div>
+   </div>
+   <div class="sc-stop-new">
+    <button type="button" class="sc-stop-new-toggle" id="scStopNewToggle"
+     title="この設備の設備停止マスタへ、新しい停止理由を登録します">＋ 停止理由を登録</button>
+    <div class="sc-stop-new-form" id="scStopNewForm" hidden>
+     <label><span>名称</span><input type="text" id="scStopNewName" maxlength="60" placeholder="例: 定期メンテナンス"></label>
+     <label><span>分類</span><select id="scStopNewCat"></select></label>
+     <label><span>標準所要分</span><input type="text" id="scStopNewMin" inputmode="numeric" autocomplete="off" placeholder="任意"></label>
+     <p class="sc-stop-new-note" id="scStopNewNote"></p>
+     <div class="sc-stop-new-actions">
+      <button type="button" class="sc-stop-new-cancel" id="scStopNewCancel">やめる</button>
+      <button type="button" class="sc-stop-new-save" id="scStopNewSave">登録して使う</button>
+     </div>
+    </div>
+   </div></template>
+<template id="tpl-maint-panel"><div class="mm-dialog">
+   <div class="mm-head" id="mmHead">
+    <!-- 上部の操作は3つだけ（§9.266、利用者の指示「アイコンなども活用し…
+         1行に収める」）。**アイコンだけにしない**——何の欄かはツールチップでは
+         読めない（§4）ので、更新者IDは印と短い名前、再読込は印とaria-labelにする。
+         絞り込み（§9.266）は§9.556で外した（利用者の指示「最上部の絞り込みの検索バーも
+         あまり意味がないので基本的に削除」）。並べ替えと群の開閉は表の見出しが持つ。
+         **この中にバッククォートを書かないこと**（§9.211 ③。テンプレート
+         リテラルがそこで閉じ、以降がJSとして解釈されて画面が組み上がらない）。 -->
+    <button type="button" id="masterUserId" class="mm-head-user"
+     title="この端末のログインIDです。マスタを更新した人として記録します（書き換えられません）。押すと「接続状況」を開きます">
+     <span class="mm-head-ico" aria-hidden="true">👤</span>
+     <b id="masterUserName">—</b></button>
+    <i data-tpl-slot="hint"></i>
+    <button id="reloadMasterMaint" type="button" class="mm-btn-ghost mm-head-icobtn"
+     title="マスタを読み直します" aria-label="再読込"><span aria-hidden="true">↻</span></button>
+   </div>
+   <div class="mm-body">
+    <nav class="mm-nav" id="masterMaintNav" aria-label="マスタ種別"></nav>
+    <section class="mm-main">
+     <!-- 見出しだけを残す。再読込は**操作**なのでヘッダーの
+          操作列(#mmHead → #headerViewBar)が持つ(§9.100)。ここに残すと、
+          この画面だけ操作の置き場が2段になる。 -->
+     <div class="mm-toolbar">
+      <div class="mm-toolbar-left"><b id="masterMaintTitle">オペレータ</b><span class="mm-count" id="masterMaintCount"></span>
+       <!-- マスタ編集の段（§9.322）。**書けないときだけ出す**——器は常に
+            置いておき、中身の出し入れだけで済ませる（出入りで見出しの行が
+            跳ねないように・§9.227 ②）。専用の画面（共通設定・データ接続など）は
+            自前で欄を組み立てるので、断るのはサーバーだけ——**先に読める形で
+            言う**のがこの帯の役目（§4）。 -->
+       <span class="mm-mode-chip" id="masterMaintLevel" hidden></span></div>
+      <!-- 束ねた見出しの開閉（§9.241 ①）。**群を持つマスタのときだけ**中身が
+           入る（renderMaintList が出し入れする。押せるのに何も起きない
+           ボタンを置かない・§CLAUDE 4）。 -->
+      <div class="mm-fold" id="masterMaintFold" hidden></div>
+     </div>
+     <form class="mm-form" id="masterMaintForm"></form>
+     <div class="mm-list-wrap"><div class="mm-list" id="masterMaintList"></div></div>
+    </section>
+   </div>
+  </div></template>
+<template id="tpl-quality-panel">
+   <div class="qa-head">
+    <div class="qa-tab-title"><b>品質データ分析</b><small>元データを確認し、グラフタブで 軸・値・凡例 を指定してグラフ化できます。</small></div>
+    <div class="qa-actions"><button type="button" id="qaRefresh" class="qa-primary">グラフを作成／更新</button><button type="button" id="qaPrint" class="qa-secondary">印刷</button><button type="button" id="qaFold" class="qa-secondary" title="このカードを畳んで、下の一覧を広く使います">▲ 畳む</button></div>
+   </div>
+   <div class="qa-step-tabs">
+    <button type="button" class="active" data-qa-tab="raw">元データ</button>
+    <button type="button" data-qa-tab="graph">グラフ</button>
+    <button type="button" data-qa-tab="list">対象データ一覧</button>
+   </div>
+   <div class="qa-body">
+    <section class="qa-step-pane" data-qa-pane="graph" hidden>
+     <div class="qa-design-pane">
+      <aside class="qa-recipe">
+       <div class="qa-acc-list">
+
+        <div class="qa-acc open" data-acc="period">
+         <button type="button" class="qa-acc-head"><span class="qa-step-num">期</span><span class="qa-acc-title">期間</span><span class="qa-acc-sum" id="sumPeriod">今月</span><span class="qa-acc-chev"></span></button>
+         <div class="qa-acc-body">
+          <input type="hidden" id="qaPeriodKind" value="thisMonth">
+          <div class="qa-seg qa-seg-wrap" data-seg="qaPeriodSeg">
+           <button type="button" data-val="7d">直近7日</button><button type="button" data-val="30d">直近30日</button><button type="button" data-val="90d">直近90日</button>
+           <button type="button" data-val="thisMonth" class="active">今月</button><button type="button" data-val="lastMonth">先月</button><button type="button" data-val="ytd">今年</button>
+          </div>
+          <div class="qa-field-grid" style="margin-top:8px"><label>開始<input id="qaStart" type="datetime-local"></label><label>終了<input id="qaEnd" type="datetime-local"></label></div>
+         </div>
+        </div>
+
+        <div class="qa-acc" data-acc="axis">
+         <button type="button" class="qa-acc-head"><span class="qa-step-num">軸</span><span class="qa-acc-title">軸（X）</span><span class="qa-acc-sum" id="sumX">分類別</span><span class="qa-acc-chev"></span></button>
+         <div class="qa-acc-body">
+          <div class="qa-seg" data-seg="qaXseg"><button type="button" data-val="category" class="active">分類別</button><button type="button" data-val="time">時系列</button></div>
+          <input type="hidden" id="qaDimension" value="category">
+          <label id="qaGroupWrap" class="qa-sub">分類する列<select id="qaGroupCol"></select></label>
+          <div id="qaTimeWrap" class="qa-sub" hidden>
+           <label>日付の列<select id="qaDateCol"></select></label>
+           <div class="qa-sub-inline">集計単位<div class="qa-seg qa-seg-sm" data-seg="qaBucketSeg"><button type="button" data-val="day" class="active">日</button><button type="button" data-val="month">月</button><button type="button" data-val="year">年</button></div></div>
+           <input type="hidden" id="qaBucket" value="day">
+          </div>
+         </div>
+        </div>
+
+        <div class="qa-acc" data-acc="value">
+         <button type="button" class="qa-acc-head"><span class="qa-step-num">値</span><span class="qa-acc-title">値（Y）</span><span class="qa-acc-sum" id="sumY">件数</span><span class="qa-acc-chev"></span></button>
+         <div class="qa-acc-body">
+          <div class="qa-seg" data-seg="qaYseg"><button type="button" data-val="count" class="active">件数をかぞえる</button><button type="button" data-val="sum">数量を合計する</button></div>
+          <input type="hidden" id="qaMetric" value="count">
+          <label id="qaValueWrap" class="qa-sub" hidden>合計する列（廃棄重量など）<select id="qaValueCol"></select></label>
+         </div>
+        </div>
+
+        <div class="qa-acc" data-acc="series">
+         <button type="button" class="qa-acc-head"><span class="qa-step-num">凡</span><span class="qa-acc-title">凡例（系列）</span><span class="qa-acc-sum" id="sumSeries">なし</span><span class="qa-acc-chev"></span></button>
+         <div class="qa-acc-body">
+          <label>系列で分ける列（積み上げ・集合・多系列で使用）<select id="qaSeriesCol"></select></label>
+          <p class="qa-hint">例: 軸「発生設備」×凡例「異常内容」で、設備ごとの異常内容の内訳を表現します。凡例なしでも棒・折れ線は作成できます。</p>
+         </div>
+        </div>
+
+       </div>
+
+       <div class="qa-recipe-foot">
+        <label class="qa-search-field">絞り込み検索<input id="qaSearch" type="search" placeholder="設備・異常内容・コメントなど"></label>
+        <div class="qa-result-summary" id="qaSummary"><span class="qa-chip">未集計</span></div>
+        <button type="button" id="qaRunLarge" class="qa-primary-large">この条件でグラフを作成</button>
+       </div>
+      </aside>
+
+      <main class="qa-chart-main">
+       <div class="qa-chart-toolbar">
+        <div class="qa-chart-options">
+         <label class="qa-opt"><span>種類</span><select id="qaChartType"></select></label>
+         <label class="qa-opt" id="qaBarWidthOpt"><span>棒の太さ</span><select id="qaBarWidth"><option value="narrow">細い</option><option value="normal" selected>標準</option><option value="wide">太い</option></select></label>
+         <label class="qa-opt qa-combo-opt" id="qaBarMetricOpt" hidden><span>棒の値</span><select id="qaBarMetric"><option value="count">件数</option><option value="sum">合計</option></select></label>
+         <label class="qa-opt qa-combo-opt" id="qaLineMetricOpt" hidden><span>折れ線の値</span><select id="qaLineMetric"><option value="count">件数</option><option value="sum" selected>合計</option></select></label>
+         <label class="qa-opt"><span>並び順</span><select id="qaSort"><option value="value-desc">値の多い順</option><option value="value-asc">値の少ない順</option><option value="label-asc">項目名の順</option></select></label>
+         <label class="qa-opt"><span>表示件数</span><select id="qaLimit"><option value="10">上位10</option><option value="15">上位15</option><option value="20" selected>上位20</option><option value="30">上位30</option><option value="50">上位50</option><option value="all">すべて</option></select></label>
+         <label class="qa-opt"><span>カラー</span><span class="qa-color-inline"><select id="qaColor"></select><span class="qa-color-dot" id="qaColorDot"></span></span></label>
+         <label class="qa-opt qa-check"><input type="checkbox" id="qaShowValues" checked><span>数値ラベル</span></label>
+        </div>
+        <div class="qa-legend" id="qaLegend">グラフ未作成</div>
+       </div>
+       <div class="qa-graph-stage" id="qaChart"><div class="qa-empty">軸・値を選び、「この条件でグラフを作成」を押してください。</div></div>
+      </main>
+     </div>
+    </section>
+    <section class="qa-step-pane" data-qa-pane="list" hidden>
+     <div class="qa-list" id="qaList"><div class="qa-empty">グラフ作成後、対象データの一覧を表示します。</div></div>
+     <div class="qa-list-status" id="qaListStatus"></div>
+    </section>
+   </div></template>
 </body></html>
