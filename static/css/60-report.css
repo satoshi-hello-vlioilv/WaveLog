@@ -26,7 +26,7 @@
 .rp-bar-actions{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
 .rp-zoom-seg{display:flex;gap:2px;background:rgba(255,255,255,.14);border-radius:var(--radius-sm);padding:2px}
 .rp-zoom-seg button{
-  padding:5px 9px;border:0;border-radius:var(--radius-xs);background:transparent;color:#dbeaed;
+  padding:5px 9px;border:0;border-radius:var(--radius-xs);background:transparent;color:var(--pale);
   font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;
 }
 .rp-zoom-seg button:hover{background:rgba(255,255,255,.12)}
@@ -55,7 +55,7 @@
 .rp-icon-btn--primary:hover:not(:disabled){background:#0a95a4;border-color:#0a95a4}
 .rp-icon-btn.active{background:#fff;border-color:#fff;color:#0d4650}
 .rp-body{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr)}
-.rp-nav{display:flex;flex-direction:column;min-height:0;background:#e7eff1;border-right:1px solid var(--line)}
+.rp-nav{display:flex;flex-direction:column;min-height:0;background:var(--surface-3);border-right:1px solid var(--line)}
 /* 検索と並び順は横1列。縦2段(102px)だった分をロット一覧の表示に回す。 */
 .rp-nav-toolbar{display:flex;align-items:center;gap:6px;padding:7px 8px}
 .rp-search{position:relative;display:flex;align-items:center;flex:1;min-width:0}
@@ -68,7 +68,7 @@
    行自体はdiv、チェックボックスとボタンを横並びにする。 */
 .rp-lot-row{display:flex;align-items:stretch;gap:0;padding:0;border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:#fff;overflow:hidden}
 .rp-lot-row:hover{border-color:#9fc3c8;background:var(--surface-2)}
-.rp-lot-row.active{border-color:var(--teal);background:#eafafa;box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
+.rp-lot-row.active{border-color:var(--teal);background:var(--teal-tint);box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
 .rp-lot-row.checked{border-color:#0a8993}
 .rp-lot-check{display:flex;align-items:center;padding:0 3px 0 9px;cursor:pointer;flex:none}
 .rp-lot-check input{margin:0;cursor:pointer}
@@ -93,7 +93,7 @@
 .rp-foot-btn{flex:1;min-width:0;border:1px solid #9fb9b2;
   background:#fff;color:var(--ink-2);cursor:pointer;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-foot-btn.active{background:#eafafa;border-color:var(--teal);color:#075e67}
+.rp-foot-btn.active{background:var(--teal-tint);border-color:var(--teal);color:var(--teal-ink)}
 .rp-foot-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff}
 .rp-foot-btn--primary:hover:not(:disabled){background:var(--teal-dark)}
 .rp-foot-btn--primary:disabled{opacity:var(--op-disabled);cursor:not-allowed}
@@ -112,7 +112,7 @@
    (既存の単一プレビュー#reportContentの状態は一切崩さない)。 */
 .rp-bulk-print-area{display:none}
 .rp-main{display:flex;flex-direction:column;min-width:0;min-height:0}
-.rp-scroll{flex:1;min-height:0;overflow:auto;padding:var(--space-2);background:#dbe4e6;display:flex;justify-content:center;align-items:flex-start}
+.rp-scroll{flex:1;min-height:0;overflow:auto;padding:var(--space-2);background:var(--line-soft);display:flex;justify-content:center;align-items:flex-start}
 /* 拡大率はJSが --rp-scale / --rp-box-w / --rp-box-h をインラインで渡す。
    値だけを受け取り、どう使うかはここで決める(印刷時に等倍へ戻せる)。
    transform/width をJSが直接書くと、インラインはどのレイヤより強いので
@@ -264,7 +264,7 @@
 .rp-ghost{display:flex;flex-direction:column;align-items:center;justify-content:center;
   text-align:center;pointer-events:none;gap:1px}
 .rp-ghost{min-height:24px;border:2px dashed var(--teal);border-radius:3px}
-.rp-ghost{background:rgba(8,124,137,.09);color:#087c89;font-size:9px;font-weight:var(--fw-strong)}
+.rp-ghost{background:rgba(8,124,137,.09);color:var(--teal);font-size:9px;font-weight:var(--fw-strong)}
 /* **置けないマスは赤で断る**（§9.221 ⑨）。落としてから断られるのでは、
    掴んだ手間が無駄になる（§4／§9.116と同じ約束）。 */
 .rp-ghost.is-blocked{border-color:var(--danger);background:rgba(176,42,42,.10);color:var(--danger)}
@@ -288,7 +288,7 @@
   position:relative;
   background-image:
     linear-gradient(to right,#c9d8dc 1px,transparent 1px),
-    linear-gradient(to bottom,#e2ebee 1px,transparent 1px);
+    linear-gradient(to bottom,var(--surface-3) 1px,transparent 1px);
   background-size:
     calc((100% + var(--space-1)) / var(--rp-grid,12)) 100%,
     100% calc(var(--rp-row) + var(--space-1));
@@ -310,7 +310,7 @@
    **塗ってあるところ＝置ける場所**と一目で分かるようにする。色は空きを
    「悪いこと」に見せないよう寒色の弱い彩度で、重なりの赤とは別系統。 */
 .rp-free{position:absolute;display:block;border:1px dashed #8fb4bd;border-radius:var(--radius-xs);
-  background-color:#eaf2f4;
+  background-color:var(--bg);
   background-image:repeating-linear-gradient(135deg,rgba(8,124,137,.10) 0 3px,transparent 3px 8px)}
 .rp-free[data-rp-free]::after{content:attr(data-rp-free);position:absolute;left:3px;top:1px;color:#46707a;font-size:8px;font-weight:var(--fw-strong);font-style:normal}
 /* **重なっているマスは赤い網**（§9.223 ③）。塊の縁（`is-overlap`）は「どの
@@ -858,7 +858,7 @@
    ここでは中身だけを整える。**見切れの元は「幅方向に合わせた高さ」**だった
    ので、塊を分けた時点で構造としては解けている。 */
 .rp-defect-roll .rp-defect-facts{margin-top:1px}
-.rp-defect-roll-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding:1px 3px;border-radius:3px;background:#eef5f6;font-size:8.5px}
+.rp-defect-roll-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding:1px 3px;border-radius:3px;background:var(--bg);font-size:8.5px}
 .rp-defect-roll-answer>b{color:var(--ink);font-weight:var(--fw-strong)}
 .rp-defect-roll-answer>span{color:var(--muted)}
 .rp-defect-roll-answer.is-empty{background:#f6f2ea}
@@ -934,7 +934,7 @@
 .rp-defect-spot-at{color:var(--muted);font-weight:var(--fw-strong)}
 /* 何か所目かは**小さな番号**で（図の旗と対応が読める）。色だけで伝えない（§3）。 */
 .rp-defect-spot>i{display:inline-block;font-size:7.5px;border-radius:2px;min-width:8px;
- padding:0 2px;background:#dfe9ec;color:var(--ink-2);font-style:normal;font-weight:var(--fw-strong);text-align:center}
+ padding:0 2px;background:var(--surface-3);color:var(--ink-2);font-style:normal;font-weight:var(--fw-strong);text-align:center}
 .rp-defect-facts.is-compact{gap:0 4px}
 .rp-defect-facts.is-compact .rp-defect-fact{padding:0 2px}
 
@@ -988,7 +988,7 @@
  display:inline-flex;align-items:center;justify-content:center;gap:6px;
  transition:background .12s,border-color .12s,color .12s}
 .rp-btn-secondary{background:#fff;color:var(--ink-2)}
-.rp-btn-secondary:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.rp-btn-secondary:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
 .rp-btn-secondary:active{background:var(--teal);border-color:var(--teal);color:#fff}
 .rp-btn-primary{background:var(--teal);border-color:var(--teal);color:#fff}
 .rp-btn-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
@@ -998,7 +998,7 @@
 .rp-btn-icon{width:var(--ctl-h);padding:0;font-size:var(--fs-title);line-height:1}
 .db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 .db-layout{flex:1;min-height:0;display:grid;grid-template-columns:calc(260px * var(--ui-scale)) minmax(0,1fr);overflow:hidden}
-.db-controls{display:flex;flex-direction:column;gap:var(--gap-section);padding:var(--space-4);background:#e7eff1;border-right:1px solid var(--line);overflow-y:auto}
+.db-controls{display:flex;flex-direction:column;gap:var(--gap-section);padding:var(--space-4);background:var(--surface-3);border-right:1px solid var(--line);overflow-y:auto}
 .db-presets{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
 .db-presets button{padding:6px 10px;border:1px solid #9fb9b2;border-radius:var(--radius-lg);background:#fff;color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-sm);cursor:pointer}
 .db-ctl-group{display:flex;flex-direction:column;gap:var(--gap-inline)}
@@ -1029,7 +1029,7 @@
 .db-axis{stroke:#8299a0;stroke-width:1}
 .db-gridline{stroke:var(--surface-3);stroke-width:1}
 .db-label{font-size:var(--fs-micro);fill:var(--ink-2)}
-.db-value{font-size:var(--fs-micro);fill:#075e67;font-weight:var(--fw-ui)}
+.db-value{font-size:var(--fs-micro);fill:var(--teal-ink);font-weight:var(--fw-ui)}
 .db-chart-title{font-size:var(--fs-title);font-weight:var(--fw-strong);fill:var(--ink)}
 .db-chart-subtitle{font-size:var(--fs-micro);font-weight:var(--fw-ui);fill:var(--muted)}
 .db-axis-title{font-size:var(--fs-micro);font-weight:var(--fw-ui);fill:#40606a}

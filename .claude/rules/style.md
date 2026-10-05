@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（70件）
+# 見た目（CSS・寸法・色）（71件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| トークンと見分けられない色（ΔE<2）はトークンで書く。淡い teal の字と地は`--teal-ink`／`--teal-tint` | `test_csslint.py` | [§9.572](../../docs/decisions/9.572.md) |
 | 使えない・外した物の薄さは`--op-disabled`の1つ。字を控えめにするのは透明度でなく灰色の3段 | `test_csslint.py` | [§9.570](../../docs/decisions/9.570.md) |
 | 影は役割のトークン（浮き`--elev-*`・二重の輪`--ring-*`・縁・帯）。浮きの影と焦点の輪を字面で書かない | `test_csslint.py`・`test_theme.js` | [§9.569](../../docs/decisions/9.569.md) |
 | CSS が使うトークンは必ずどこかで定義する（定義の無い`var(--x)`は宣言ごと黙って効かない） | `test_csslint.py` | [§9.569](../../docs/decisions/9.569.md) |

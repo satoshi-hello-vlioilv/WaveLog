@@ -255,8 +255,8 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
  height:var(--row-ctl-h);margin-right:var(--gap-tight);padding:0 var(--ctl-pad-x-xs);
  border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
  color:var(--ink-2);font-size:var(--tbl-fs-mark);font-weight:var(--fw-ui);cursor:pointer}
-.grid-child-toggle:hover{border-color:var(--teal);background:var(--pale);color:var(--computed-fg)}
-.grid-child-toggle[aria-expanded="true"]{background:var(--pale);border-color:var(--teal);color:var(--computed-fg)}
+.grid-child-toggle:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
+.grid-child-toggle[aria-expanded="true"]{background:var(--pale);border-color:var(--teal);color:var(--teal-ink)}
 .measurement-action-head{text-align:center;background:#cde5e7}
 .measurement-action-cell{text-align:center;background:inherit}
 .measurement-action-button{border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong);white-space:nowrap}
@@ -282,7 +282,7 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .plan-select-bar{display:flex;align-items:center;gap:var(--gap-section);margin:0 0 8px;padding:6px 12px;background:var(--computed-bg);border:1px solid var(--teal-soft);border-radius:var(--radius-sm);font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--computed-fg)}
 .plan-select-add{border:0;background:var(--teal);color:#fff;font-weight:var(--fw-strong);cursor:pointer;margin-left:auto}
 .plan-select-add:hover{background:var(--teal-dark)}
-.plan-select-clear{border:1px solid var(--teal);background:#fff;color:#0c5d67;font-weight:var(--fw-strong);cursor:pointer}
+.plan-select-clear{border:1px solid var(--teal);background:#fff;color:var(--teal-ink);font-weight:var(--fw-strong);cursor:pointer}
 /* フィルタ適用中の列見出し: どの列が絞り込まれているか一目で分かるよう、
    ホバー等とは異なる暖色(アンバー)でヘッダーだけを強調する。 */
 th.col-filtered{background:#ffe6ac;color:#6b4a00}
@@ -294,7 +294,7 @@ th.col-filtered{background:#ffe6ac;color:#6b4a00}
 th.sortable-col{cursor:pointer;user-select:none}
 th.sortable-col:hover{background:#e5f2f3}
 th.sortable-col:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
-th.col-sorted{background:#d7eff1;color:#075e67}
+th.col-sorted{background:#d7eff1;color:var(--teal-ink)}
 th.col-sorted:hover{background:#c7e7ea}
 /* 数値の書式を当てた列(§9.88 段3)。桁を縦に揃えて読めるように右づめ＋
    等幅数字にする。列ごとの指定なので、数値として読めない値が混ざっても
@@ -1370,7 +1370,7 @@ th.col-sorted:hover{background:#c7e7ea}
 /* ロット問い合わせボタン: グリッド・編集中/完了一覧・測定パネルの3箇所で
    共通のモダンなチップ状デザインに統一する(枠線+淡色背景+丸角、下線なし)。
    ホバーで塗りつぶし、押下でわずかに沈む触感を付ける。 */
-.lot-dsp-link{display:block;width:100%;border:1px solid #a9d6cf;background:#eafaf7;color:#0b5e68;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:var(--fw-strong);text-decoration:none;transition:background .15s,border-color .15s,box-shadow .15s,transform .05s}
+.lot-dsp-link{display:block;width:100%;border:1px solid #a9d6cf;background:var(--teal-tint);color:var(--teal-ink);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:var(--fw-strong);text-decoration:none;transition:background .15s,border-color .15s,box-shadow .15s,transform .05s}
 .lot-dsp-link:hover{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:var(--elev-pop)}
 .lot-dsp-link:active{transform:translateY(1px);box-shadow:none}
 .lot-dsp-link:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
@@ -1670,7 +1670,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .input-status{
   display:inline-flex;align-items:center;gap:var(--gap-inline);flex:0 0 auto;
   height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);
-  border:1px solid #a8d9c8;border-radius:var(--radius-pill);background:#e8f8f2;
+  border:1px solid #a8d9c8;border-radius:var(--radius-pill);background:var(--success-bg);
   white-space:nowrap;
 }
 .input-status[hidden]{display:none}
@@ -1679,7 +1679,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .input-status.not-ready-state{border-color:#b2bdc1;background:var(--bg)}
 .receive-state{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
 .receive-state>div{display:none}
-.auto-mode-label{font-weight:var(--fw-strong);color:#0b5e68;letter-spacing:.02em}
+.auto-mode-label{font-weight:var(--fw-strong);color:var(--teal-ink);letter-spacing:.02em}
 .manual-state .auto-mode-label{color:var(--warn-fg)}
 .not-ready-state .auto-mode-label{color:var(--muted)}
 .state-lamp{width:8px;height:8px;border-radius:var(--radius-round);background:#16a273}
@@ -2163,7 +2163,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .tol-line{display:flex;align-items:center;min-width:0;max-width:100%;min-height:25px;white-space:nowrap}
 .tol-line-base{justify-content:space-between;gap:var(--gap-inline)}
 .compact-tol-source{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-sm);background:var(--teal);color:#fff;font-weight:var(--fw-strong);white-space:nowrap}
-.tol-line-plusminus{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap-inline);padding-top:2px;border-top:1px solid #e0e7e9}
+.tol-line-plusminus{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap-inline);padding-top:2px;border-top:1px solid var(--surface-3)}
 .tol-value-pair{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-1);min-width:0;white-space:nowrap}
 .tol-line-plusminus .tol-value-pair+.tol-value-pair{padding-left:7px;border-left:1px solid var(--line-soft)}
 .tol-value-pair small,.tol-line-range small{flex:0 0 auto;color:var(--muted);font-size:var(--fs-micro)}
@@ -2348,8 +2348,8 @@ th.col-sorted:hover{background:#c7e7ea}
 .measure-grid-block input.complete,.measure-matrix input.complete{background:#bdece5}
 .measure-grid-block input.ng,.measure-matrix input.ng{background:#ff9e9e;color:#7a0000;font-weight:var(--fw-strong)}
 .device-ok{background:#dff7ee}
-.device-error{background:#ffd8d8}
-.device-detect{outline:3px solid #087c89;outline-offset:-2px}
+.device-error{background:var(--invalid-bg)}
+.device-detect{outline:3px solid var(--teal);outline-offset:-2px}
 /* ---------- 9. 母材 / 製品 / 品質 パネル ----------
    以前は母材カード内だけでも桃色(材料枠)・青(自動値)・薄緑(注記)の3系統が
    同居し、他パネルの見出しバーも黄・水色・灰とばらばらだった。
@@ -2404,12 +2404,12 @@ th.col-sorted:hover{background:#c7e7ea}
 /* 自動で出る値は**1行にまとめる**（§9.160）。手で入れる欄と同じ行に混ざると、
    どこまで埋めれば終わりなのかが読み取れない。幅は規格へそろえる（§9.131）
    ——3枚とも同じ幅にすると右端がそろい、値の位置が列として読める。 */
-.mother-auto-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);padding:2px 4px}
+.mother-auto-field{background:var(--computed-bg);border:1px solid var(--teal-soft);border-radius:var(--radius-sm);padding:2px 4px}
 .mother-auto-field output{background:#fff;color:var(--computed-fg)}
 .mother-auto-field output.scrap-width-warn{background:var(--invalid-bg);color:var(--invalid);font-weight:var(--fw-strong)}
 /* 作業スケジュールとの連携(docs/SCHEDULE_MODE_DESIGN.md §9.7)。基本情報タブに
    出す「予定 2番目 / 予定開始 11:44 / 見積2時間32分」の1行。 */
-.schedule-info-field{background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm);padding:2px 4px}
+.schedule-info-field{background:var(--computed-bg);border:1px solid var(--teal-soft);border-radius:var(--radius-sm);padding:2px 4px}
 .schedule-info-field output{background:#fff;color:var(--computed-fg);font-weight:var(--fw-strong)}
 /* **高さはpxで決めない**（§9.130）。読み取り専用の表示欄なので、行数
    （`rows`）と最長行から`fitTextBox()`が決める。280px固定だったころは
@@ -2425,7 +2425,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .disclosure+.disclosure{margin-top:var(--space-2)}
 .disclosure-head{display:flex;align-items:center;gap:var(--gap-section);width:100%;padding:9px 12px;border:0;background:#fff;cursor:pointer;text-align:left;box-shadow:none;border-radius:0}
 .disclosure-head:hover{background:var(--surface-2)}
-.disclosure-num{display:grid;place-items:center;width:22px;height:22px;border-radius:var(--radius-sm);background:#dceff1;color:#0a6570;font-size:var(--fs-micro);font-weight:var(--fw-ui);flex:0 0 auto}
+.disclosure-num{display:grid;place-items:center;width:22px;height:22px;border-radius:var(--radius-sm);background:var(--pale);color:#0a6570;font-size:var(--fs-micro);font-weight:var(--fw-ui);flex:0 0 auto}
 .disclosure.open .disclosure-num{background:var(--teal);color:#fff}
 .disclosure-title{flex:0 0 auto}
 .disclosure-sum{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:#0a6570}

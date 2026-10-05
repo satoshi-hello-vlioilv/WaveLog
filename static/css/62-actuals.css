@@ -47,7 +47,7 @@ body.ac-mode .pager{display:none}
 .ac-note[hidden]{display:none}
 .ac-note-line{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
 .ac-note-line b{font-weight:var(--fw-strong);color:var(--ink)}
-.ac-note-line .ac-bad{color:var(--danger-fg,#9d2020)}
+.ac-note-line .ac-bad{color:var(--danger-fg,var(--danger))}
 .ac-note-line span{color:var(--ink-2)}
 
 /* 一覧は器の側で行の寸法を定義し直す（§9.161。カスタムプロパティは
@@ -126,13 +126,13 @@ body.ac-mode .pager{display:none}
  font-size:calc(1em * var(--os-fit,1))}
 .os-table th,.os-table td{border:0.15mm solid #666;padding:0.3mm 0.6mm;
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
-.os-table th{background:#eceff1;font-weight:var(--fw-strong);text-align:center}
-.os-table .os-head-sub th{background:#f4f6f7;font-weight:var(--fw-strong)}
+.os-table th{background:var(--bg);font-weight:var(--fw-strong);text-align:center}
+.os-table .os-head-sub th{background:var(--surface-2);font-weight:var(--fw-strong)}
 .os-num{text-align:right;font-variant-numeric:tabular-nums}
 /* 段組（§9.553・2〜4段で1件）。**1件が何段かであることを見た目で言う**——段の下罫線は
    薄くし、件と件のあいだ（最後の段の下＝`os-rec-end`）に太い線を引く。 */
 .os-table tbody tr>td{border-bottom-color:#c8ced1}
-.os-table tbody tr.os-rec-end>td{border-bottom:0.35mm solid #111;background:#fafbfc}
+.os-table tbody tr.os-rec-end>td{border-bottom:0.35mm solid #111;background:var(--card-bg)}
 .os-table .os-gap{background:#fff}
 /* 値の無いセル（空の段・空いたマス）も1行ぶんの高さを持つ——潰れると段の数が読めない。
    1枚に入る件数は実測で決める（`splitToSheets`）ので、高さを足しても紙からはみ出さない。 */
@@ -142,8 +142,8 @@ body.ac-mode .pager{display:none}
    ないので、太い黒枠だけを外して極細の薄い区切りにとどめる。 */
 .os-page[data-borders="off"] .os-table-wrap{border:0}
 .os-page[data-borders="off"] .os-table th,
-.os-page[data-borders="off"] .os-table td{border:0;border-bottom:0.1mm solid #d8dde0}
-.os-page[data-borders="off"] .os-table th{background:#f5f7f8}
+.os-page[data-borders="off"] .os-table td{border:0;border-bottom:0.1mm solid var(--line-soft)}
+.os-page[data-borders="off"] .os-table th{background:var(--surface-2)}
 .os-page[data-borders="off"] .os-table tbody tr.os-rec-end>td{border-bottom:0.2mm solid #b9c0c4}
 .os-page[data-borders="off"] .os-head{border-bottom:0.2mm solid #999}
 

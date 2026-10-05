@@ -12,7 +12,7 @@
 .qa-v7 .qa-acc{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:#fff;overflow:hidden;flex:0 0 auto}
 .qa-v7 .qa-acc-head{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:var(--ctl-h-lg);padding:0 var(--ctl-pad-x);border:0;background:#fff;cursor:pointer;text-align:left;box-shadow:none;border-radius:0}
 .qa-v7 .qa-acc-head:hover{background:var(--surface-2)}
-.qa-v7 .qa-step-num{display:grid;place-items:center;width:var(--ctl-h-xs);height:var(--ctl-h-xs);border-radius:var(--radius-sm);background:#dceff1;color:#0a6570;font-size:var(--fs-sm);font-weight:var(--fw-ui);flex:0 0 auto}
+.qa-v7 .qa-step-num{display:grid;place-items:center;width:var(--ctl-h-xs);height:var(--ctl-h-xs);border-radius:var(--radius-sm);background:var(--pale);color:#0a6570;font-size:var(--fs-sm);font-weight:var(--fw-ui);flex:0 0 auto}
 .qa-v7 .qa-acc.open .qa-step-num{background:var(--teal);color:#fff}
 .qa-v7 .qa-acc-title{color:var(--ink);flex:0 0 auto}
 .qa-v7 .qa-acc-sum{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:#0a6570}
@@ -41,7 +41,7 @@
 .qa-v7 .qa-search-field{display:grid;gap:var(--gap-tight);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .qa-v7 .qa-search-field input{height:var(--ctl-h);border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);padding:0 var(--ctl-pad-x-sm);box-sizing:border-box}
 .qa-v7 .qa-result-summary{display:flex;gap:var(--gap-inline);flex-wrap:wrap}
-.qa-v7 .qa-chip{border-radius:var(--radius-pill);background:#eaf6f7;border:1px solid #b9d5d9;color:#075e67;line-height:1.2}
+.qa-v7 .qa-chip{border-radius:var(--radius-pill);background:#eaf6f7;border:1px solid #b9d5d9;color:var(--teal-ink);line-height:1.2}
 .qa-v7 .qa-primary-large{width:100%;border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:var(--elev-pop)}
 .qa-v7 .qa-primary-large:hover{background:var(--teal-dark)}
 /* 右: グラフ */
@@ -75,7 +75,7 @@
 .qa-v7 .qa-gridline{stroke:var(--surface-3);stroke-width:1}
 .qa-v7 .qa-label{font-size:var(--fs-micro);fill:var(--ink-2)}
 .qa-v7 .qa-raxis{fill:#6d8990}
-.qa-v7 .qa-value{font-size:var(--fs-micro);fill:#075e67;font-weight:var(--fw-ui)}
+.qa-v7 .qa-value{font-size:var(--fs-micro);fill:var(--teal-ink);font-weight:var(--fw-ui)}
 .qa-v7 .qa-line{fill:none;stroke-width:3;stroke-linejoin:round;stroke-linecap:round}
 .qa-v7 .qa-point{stroke:#fff;stroke-width:2}
 .qa-v7 .qa-pie-label{font-size:var(--fs-sm);font-weight:var(--fw-ui);fill:#fff}

@@ -34,7 +34,7 @@ body.col-resizing .col-resize{opacity:1}
 .equipment-header-button.is-unset{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
 .access-mode-badge.is-view{border-color:#e5b3b3;background:#fff5f5;color:#8a2323}
 .access-mode-badge.is-schedule{border-color:#b9c4f0;background:#f2f4ff;color:#333e8a}
-.access-mode-menu button.is-current{background:#eafafa;color:#164e55}
+.access-mode-menu button.is-current{background:var(--teal-tint);color:#164e55}
 .list-join-chip.is-ok{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
 .list-join-chip.is-warn{background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border)}
 /* 行選択(シングルクリック): ホバーやmeasurement-row(測定可)の目印と
@@ -43,10 +43,10 @@ tbody tr.is-selected{background:#eef2ff;box-shadow:inset var(--bar-w) 0 0 #2851d
 tbody tr.is-selected:hover{background:#e3e9ff}
 /* 複数選択(§9.5、スケジュールへの一括投入)。単一行選択(is-selected、青系)
    とは意味が別のため、既存のスケジュール機能の色(teal)で区別する。 */
-tbody tr.is-plan-selected{background:var(--computed-bg);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
+tbody tr.is-plan-selected{background:var(--teal-tint);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .measure-grid-block input.auto-locked,.strip-row input.auto-locked{cursor:pointer;caret-color:transparent;user-select:none}
-.record-list-row.is-same-lot{box-shadow:inset var(--bar-w) 0 0 var(--teal);background:#eafafa}
+.record-list-row.is-same-lot{box-shadow:inset var(--bar-w) 0 0 var(--teal);background:var(--teal-tint)}
 /* ---------- 14. 検証状態（空欄=橙 / 入力済=白 / 公差外=赤） ---------- *//* JSが実行時に付ける状態クラス。@layer state は component より後なので、
    詳細度で競り合わなくても部品側の面・枠線に必ず勝つ。 */
 .validation-required{background:var(--required-bg);border-color:var(--required);box-shadow:inset var(--bar-w) 0 0 var(--required)}
@@ -147,7 +147,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .sc-row-workable.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .sc-row-workable.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
 .sc-row-workable.is-unknown{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
-.sc-row-workable.is-na{color:#b6c3c7}
+.sc-row-workable.is-na{color:var(--line)}
 /* データ引継ぎ: 端末内に対応の無いバックアップ行(§9.52)。データ一覧には
    出ないのに作業スケジュールの実績には効くため、色で気付けるようにする。 */
 .mm-row.is-orphan{background:var(--warn-bg)}

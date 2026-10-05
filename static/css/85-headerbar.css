@@ -99,7 +99,7 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar select,.hd-viewbar input{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink-2);font-size:var(--fs-sm)}
 .hd-viewbar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-sm);border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;
   color:var(--ink-2);font-weight:var(--fw-ui);cursor:pointer}
-.hd-viewbar button:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
+.hd-viewbar button:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
 .hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle,.hd-viewbar .sc-board-window,.hd-viewbar .ac-presets,.hd-viewbar .lg-steps{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
 .hd-viewbar .db-viewtabs button{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
 /* 作業スケジュールの切り替え（段・24／48時間）は**ダッシュボードの切り替えと同じ1つの部品**（§9.506）——
@@ -122,7 +122,7 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 /* 件数は帯の字と同じ大きさ（§9.507。前は11px）。仕掛一覧の「全 N件」と同じ顔。 */
 .hd-viewbar .record-search-result{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2);white-space:nowrap;
   font-variant-numeric:tabular-nums}
-.hd-viewbar .sc-refresh,.hd-viewbar .rp-btn-secondary{border-color:var(--teal);color:#0c5d67}
+.hd-viewbar .sc-refresh,.hd-viewbar .rp-btn-secondary{border-color:var(--teal);color:var(--teal-ink)}
 /* 実績カレンダー: 月送り・今月と、指標/対象ステータスの2択(.db-seg)。 */
 .hd-viewbar .cal-nav,.hd-viewbar .cal-toolbar-right{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
 .hd-viewbar .cal-toolbar-right{margin-left:auto}
@@ -138,7 +138,7 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar .sc-mode-toggle-btn:hover:not(.active),
 .hd-viewbar .sc-board-window-btn:hover:not(.active),
 .hd-viewbar .lg-step:hover:not(.active),
-.hd-viewbar .ac-chip:hover:not(.is-on){background:#fff;border-color:var(--teal);color:#0c5d67}
+.hd-viewbar .ac-chip:hover:not(.is-on){background:#fff;border-color:var(--teal);color:var(--teal-ink)}
 /* マスタ管理: 更新者IDだけを残す(説明はヘッダーの副題、閉じるは左メニュー)。 */
 .hd-viewbar .mm-head-user{display:inline-flex;align-items:center;gap:var(--space-2);margin:0;
   color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}

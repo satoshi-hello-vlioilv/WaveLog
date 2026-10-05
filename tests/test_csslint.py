@@ -310,6 +310,49 @@ rec('トークンが自分自身を参照していない（--x:var(--x) は循�
 rec('色の見張りは同じ形を注ぎ込むと数える（トークン行・白・コメントは数えない）',
     _color_literals('.a{color:#60747b;--x:#173842;background:#fff;border:1px solid rgba(0,0,0,.2)}')==2)
 
+# ---- 11b) 役割のトークンと見分けられない色をリテラルで書かない（§9.572、REVIEW 3-18） ----
+# 同じ役目に「ほとんど同じ別の色」（#075e67／#0c5d67／#0b5e68…）が散ると、1つ直しても残りがずれる。
+# 色差 ΔE（CIE76）が 2 未満＝並べても見分けられない色は、役割を持つ汎用のトークンで書く。
+# 対象は役割の決まった汎用のトークンだけ（行の色 --rs-*・意匠の --look-*・出どころ --origin-* などは
+# 色が近くても意味が違うので寄せない）。透明度つきの色は数えない。
+_GENERAL=('--surface-2','--surface-3','--bg','--card-bg','--card-border','--line','--line-soft','--line-mid',
+  '--line-strong','--ink','--ink-2','--muted','--teal','--teal-dark','--teal-soft','--pale','--teal-ink','--teal-tint',
+  '--danger','--danger-bg','--danger-border','--invalid','--invalid-bg','--success','--success-bg','--success-border',
+  '--warn-bg','--warn-fg','--warn-border')
+def _hex_rgb(c):
+    h=c.lstrip('#').lower()
+    if len(h)==3: h=''.join(x*2 for x in h)
+    return tuple(int(h[i:i+2],16) for i in (0,2,4)) if len(h)==6 else None
+def _lab(r):
+    f=lambda u:((u/255+.055)/1.055)**2.4 if u/255>.04045 else u/255/12.92
+    R,G,B=map(f,r); g=lambda t:t**(1/3) if t>.008856 else 7.787*t+16/116
+    X,Y,Z=(R*.4124+G*.3576+B*.1805)/.95047,R*.2126+G*.7152+B*.0722,(R*.0193+G*.1192+B*.9505)/1.08883
+    return (116*g(Y)-16,500*(g(X)-g(Y)),200*(g(Y)-g(Z)))
+_BASE_CODE=re.sub(r'/\*[\s\S]*?\*/','',(CSS_DIR/'00-base.css').read_text(encoding='utf-8'))
+_TOK={}
+for _m in re.finditer(r'(--[a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{3,6})\b',_BASE_CODE): _TOK.setdefault(_m.group(1),_hex_rgb(_m.group(2)))
+_TOKLAB={t:_lab(_TOK[t]) for t in _GENERAL if _TOK.get(t)}
+def _near_token(code):
+    """トークン定義でない宣言の、汎用のトークンと ΔE<2 の色リテラル（不透明の #hex）。"""
+    out=[]
+    for m in re.finditer(r'#[0-9a-fA-F]{3,6}\b',code):
+        if m.group(0).lower() in ('#fff','#ffffff'): continue
+        j=max(code.rfind(';',0,m.start()),code.rfind('{',0,m.start()),code.rfind('}',0,m.start()))
+        seg=code[j+1:m.start()]; k=seg.find(':')
+        if k>=0 and seg[:k].strip().startswith('--'): continue
+        r=_hex_rgb(m.group(0))
+        if not r: continue
+        L=_lab(r)
+        d,t=min((sum((a-b)**2 for a,b in zip(L,v))**.5,t) for t,v in _TOKLAB.items())
+        if d<2: out.append(f'{m.group(0)}≈{t}（ΔE{d:.1f}）')
+    return out
+rec('汎用のトークンが揃っている（見張りの物差し）',len(_TOKLAB)==len(_GENERAL),
+    ', '.join(t for t in _GENERAL if t not in _TOKLAB))
+_near=[f'{n}: {x}' for n in CSS_ORDER for x in _near_token(re.sub(r'/\*[\s\S]*?\*/','',(CSS_DIR/n).read_text(encoding='utf-8')))]
+rec('役割のトークンと見分けられない色（ΔE<2）をリテラルで書いていない（§9.572）',not _near,'; '.join(_near[:6]))
+rec('見分けられない色の見張りは同じ形を注ぎ込むと数える（定義行・白・遠い色は数えない）',
+    len(_near_token('.a{color:#0c5d67;--x:#075e67;background:#fff;border-color:#ff00ff}'))==1)
+
 # ---- 12) 選ばれた札の見た目は1箇所（§9.353、REVIEW 3-19） ----
 # 「選んだ札のほうが濃い」（§9.229 ③）を、以前は**同じ3行を23族が各自書いて**いた
 # （実測: 選択中の規則168・族110・宣言セット109）。1つ直すと残りとずれる。
