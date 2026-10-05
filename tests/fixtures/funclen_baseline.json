@@ -92,8 +92,8 @@
   196
  ],
  "static/js/master/master-data.js": [
-  6,
-  275
+  5,
+  198
  ],
  "static/js/master/master-maint.js": [
   1,
@@ -120,12 +120,12 @@
   25
  ],
  "static/js/measure/measure-opdata.js": [
-  4,
-  163
+  3,
+  90
  ],
  "static/js/measure/measure-view.js": [
-  3,
-  147
+  1,
+  41
  ],
  "static/js/measure/records-store.js": [
   1,

@@ -1140,17 +1140,18 @@
  function pickValue(sel,v){userPicking++;try{setValue(sel,v)}finally{userPicking--}}
  /* いま選ばれているものに印を付け直す。**作り直さない**——押すたびに
     組み直すと、キーボードで辿っている途中でフォーカスが飛ぶ。 */
- function syncWidget(host){
-  const sel=valueEl(host);
-  const box=host.querySelector(':scope>.opf-widget');
-  if(!sel||!box)return;
-  const v=String(sel.value==null?'':sel.value);
+ /* 値を選ばせ方の部品へ写す（§9.219 ③）。部品の種類ごとの写し方は`WIDGET_SYNCERS`の表——
+    種類を足すときは表へ1つ足す（§9.522 その7）。**順番は元のまま**（後の写し方が前の結果を読むことはないが、
+    並びを変える理由も無い）。どれも`(器, 値の欄, 値)`を受け、その種類の部品が無ければ何もしない。 */
+ function syncTextIn(box,sel,v){
   /* 数値・自由記述の器（§9.219 ③）。**作り直さずに値だけ合わせる**
      ——打っている最中に部品が入れ替わると、カーソルが飛ぶ。 */
   const rg=box.querySelector('.opf-range-in');
   if(rg&&rg.value!==v)rg.value=v;
   const ta=box.querySelector('.opf-memo-in');
   if(ta&&ta.value!==v)ta.value=v;
+ }
+ function syncSteps(box,sel,v){
   const steps=box.querySelectorAll('[data-opstep]');
   if(steps.length){
    const lo=(sel.min===''||sel.min==null)?null:Number(sel.min);
@@ -1161,12 +1162,16 @@
     b.disabled=!!(Number.isFinite(n)&&((d<0&&lo!==null&&n<=lo)||(d>0&&hi!==null&&n>=hi)));
    });
   }
+ }
+ function syncChips(box,sel,v){
   box.querySelectorAll('[data-opv]').forEach(b=>{
    const on=b.dataset.opv===v;
    b.classList.toggle('is-on',on);
    b.setAttribute('aria-checked',on?'true':'false');
    b.tabIndex=on?0:-1;
   });
+ }
+ function syncPickNow(box,sel,v){
   const cur=box.querySelector('.opf-pick-now');
   if(cur){
    /* **空の札は「選んでいない」**（§9.287-I）。以前は`hit.text`をそのまま
@@ -1178,6 +1183,8 @@
    cur.textContent=blank?'選ぶ':((hit?hit.text:v)||'選ぶ');
    cur.classList.toggle('is-empty',!!blank);
   }
+ }
+ function syncFree(box,sel,v){
   /* ---- 手打ち（§9.226 ①、利用者の指示） ----
      「選択肢から選べるタイプの例外処理の候補にない値を入力するパターンは、
       外観のデザインを損なった設計になっているので、スマートに選択肢を出す
@@ -1204,6 +1211,8 @@
    const ob=box.querySelector('.opf-other-btn');
    if(ob){ob.classList.toggle('is-on',free);ob.setAttribute('aria-checked',free?'true':'false')}
   }
+ }
+ function syncStage(box,sel,v){
   /* 段階（§9.226 ①）。**選んだところまで塗る**——順番に意味がある選択肢
      なので、1つだけ光らせると「何段目か」を数えることになる。 */
   /* **「その他」の席を段として数えないこと**（§9.226 ①）。手打ちの席は
@@ -1216,6 +1225,8 @@
    const now=box.querySelector('.opf-stage-now');
    if(now)now.textContent=at>=0?`${at+1}/${stage.length}`:'—';
   }
+ }
+ function syncCycle(box,sel,v){
   /* 切替（§9.247 ①）。**いま何番目か・次が何か**を文字で出す——押した先が
      見えないと、目当ての値まで何回押すのか数えることになる（§2）。 */
   const cyNow=box.querySelector('.opf-cycle-now');
@@ -1235,6 +1246,8 @@
     nx.textContent=to?`次 ${to}`:'';
    }
   }
+ }
+ function syncDial(box,sel,v){
   /* ダイヤル（§9.288 ③）。**前後を必ず文字で出す**——回した先が見えないと
      `切替`と同じ「押すまで分からない」に戻る。**端では前後を空にする**
      （一巡しないので、無い方向を書くと押せるように読める・§4）。 */
@@ -1252,6 +1265,8 @@
     b.disabled=!arr.length||(at>=0&&((d<0&&at===0)||(d>0&&at===arr.length-1)));
    });
   }
+ }
+ function syncSwitch(box,sel,v){
   /* 入切（§9.226 ①）。**入＝先頭の値／切＝空**の1つのスイッチ。 */
   const sw=box.querySelector('.opf-switch-btn');
   if(sw){
@@ -1261,6 +1276,8 @@
    const t=sw.querySelector('.opf-switch-text');
    if(t)t.textContent=on?(sw.dataset.opOnLabel||'入'):(sw.dataset.opOffLabel||'切');
   }
+ }
+ function syncWords(box,sel,v){
   /* 定型文（§9.226 ①）。**いま文の中にある語句に印を付ける**——押した
      ことが分からないと、2度押して同じ語句を並べてしまう。 */
   const words=[...box.querySelectorAll('[data-opw]')];
@@ -1268,6 +1285,8 @@
    const t=String(v||'');
    words.forEach(b=>b.classList.toggle('is-on',!!b.dataset.opw&&t.indexOf(b.dataset.opw)>=0));
   }
+ }
+ function syncNumRail(box,sel,v){
   /* 底の帯（§9.250 ⑧）。メーターとスライダーが**同じ1本**を使う——
      どちらも「上下限のどこに居るか」を言う道具で、違うのは引けるかどうか
      だけ。**行を増やさない**ので、位置は`.opf-num-rail`の中の塗りだけで
@@ -1292,6 +1311,15 @@
       :'')+`${lo}〜${hi}`+(Number.isFinite(n)?`（いま ${v}${out?'・範囲の外':''}）`:'');
    }
   }
+ 
+ }
+ const WIDGET_SYNCERS=[syncTextIn,syncSteps,syncChips,syncPickNow,syncFree,syncStage,syncCycle,syncDial,syncSwitch,syncWords,syncNumRail];
+ function syncWidget(host){
+  const sel=valueEl(host);
+  const box=host.querySelector(':scope>.opf-widget');
+  if(!sel||!box)return;
+  const v=String(sel.value==null?'':sel.value);
+  WIDGET_SYNCERS.forEach(f=>f(box,sel,v));
  }
  /* ============================================================
     数値の器（§9.250 ⑧、利用者の指示）
