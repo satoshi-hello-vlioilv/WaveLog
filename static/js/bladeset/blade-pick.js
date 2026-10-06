@@ -39,43 +39,26 @@
  function makeTable(key,o){
   return WL.ruleTable.create(Object.assign({
    key,host:()=>document.querySelector(`#masterMaintList [data-table="${key}"]`),
-   fields:()=>defOf(key).fields,groups:()=>ps.groups,sourceCols:()=>ps.sourceCols,valuesOf:f=>valuesOf(f),
+   fields:()=>defOf(key).fields,groups:()=>ps.groups,sourceCols:()=>ps.sourceCols,samples:()=>ps.samples,
    probe:ps.probe,onProbe:()=>render(),onChange:quiet=>{if(!quiet)paintTry()},
    blankRow:()=>({answer:'',group:''}),rowOut:r=>({answer:r.answer||'',group:r.group||''}),
-   save:async(rows,cols)=>{
-    const uid=WL.mm.requireMaintUser();if(uid===null)throw new Error('更新者IDが決まっていません');
-    const r=await K().post('/api/bladeset/blade-pick',{equipment:ps.equipment,table:key,rows,cols,user_id:uid});
-    await load(true);
-    showToast&&showToast(r.message||'保存しました',ps.equipment,2600);
-   },
-   reset:async()=>{
-    const uid=WL.mm.requireMaintUser();if(uid===null)return;
-    await K().post('/api/bladeset/blade-pick',{equipment:ps.equipment,table:key,reset:true,user_id:uid});
-    await load(true);
-   },
+   endpoint:'/api/bladeset/blade-pick',payload:()=>({equipment:ps.equipment,table:key}),reload:()=>load(true,true),
   },o));
  }
  const T={
-  category:makeTable('category',{label:'刃のカテゴリ',answerHead:'刃のカテゴリ',defaultCols:['hold','thickness'],
+  category:makeTable('category',{label:'刃のカテゴリ',answerHead:'刃のカテゴリ',
    seedNote:'すべて通常刃（今までの選び方）',
    lead:'通常刃か専用刃かを決めます。専用刃は<b>セットまで選べます</b>（「どれでも」なら使用中の専用刃のセットを A から順に）。研磨中のセットは選ばれません（「刃」で切り替え）。',
    answers:catChoices,answerOf:r=>`${r.answer||normal()}|${r.group||''}`,answerLabel:catLabel,
    setAnswer:(r,v)=>{const [a,g]=v.split('|');Object.assign(r,{answer:a,group:a===special()?(g||''):''})},
    blankRow:()=>({answer:special(),group:''})}),
-  thickness:makeTable('thickness',{label:'刃厚',answerHead:'刃厚',defaultCols:['category','thickness'],
+  thickness:makeTable('thickness',{label:'刃厚',answerHead:'刃厚',
    seedNote:'いちばん厚い刃（今までの選び方）',
    lead:'刃のカテゴリの表で決まったセットから、<b>どの刃厚の刃を使うか</b>を決めます。答えは「刃」に登録している刃厚です。',
    answers:thChoices,answerOf:r=>String(r.answer||''),answerLabel:thLabel,
    setAnswer:(r,v)=>{r.answer=v},
    blankRow:()=>({answer:String(ps.thicknesses[0]||''),group:''})}),
  };
- function valuesOf(f){
-  if(String(f).startsWith('source.'))return ps.samples[f.slice(7)]||[];
-  const fd=(defOf('thickness').fields||[]).find(x=>x.field===f);
-  if(!fd||fd.group!=='material')return [];
-  return Object.entries(ps.samples).filter(([n])=>n.includes(fd.label)).flatMap(([,v])=>v);
- }
-
  /* ---------- 頭と「試す」の帯 ---------- */
  const dirty=()=>T.category.dirty||T.thickness.dirty;
  function renderHead(){
@@ -108,20 +91,20 @@
   T.category.render();T.thickness.render();paintTry();
  }
 
- async function load(force){
+ /* `keep`＝保存のあとの読み直し: もう1つの表に保存していない変更があれば、その表は読み直さない（捨てない）。 */
+ async function load(force,keep){
   const box=document.getElementById('masterMaintList');if(!box)return;
   ps.loaded=false;renderHead();
   if(!await K().prologue(ps,force))return;
   await K().loading(async()=>{
    const q=encodeURIComponent(ps.equipment);
    const [c,sets,src]=await Promise.all([api('/api/bladeset/blade-pick?equipment='+q),api('/api/bladeset/blade-sets?equipment='+q),
-                                       WL.holdPick.loadSource()]);
+                                       WL.ruleTable.loadSource()]);
    const tk=[...new Set((sets.items||[]).flatMap(x=>x.thicknesses||[]))].sort((a,b)=>b-a);
    Object.assign(ps,{defs:c.defs||[],groups:c.groups||[],sets:(sets.items||[]).filter(x=>x.group),thicknesses:tk,
                      categories:sets.categories||['通常刃','専用刃'],sourceCols:src.columns,samples:src.samples,loaded:true});
    const tb=c.tables||{};
-   T.category.setData((tb.category||{}).rows,(tb.category||{}).stored,(tb.category||{}).cols);
-   T.thickness.setData((tb.thickness||{}).rows,(tb.thickness||{}).stored,(tb.thickness||{}).cols);
+   Object.entries(T).forEach(([k,t])=>{if(!(keep&&t.dirty))t.setData((tb[k]||{}).rows,(tb[k]||{}).stored,(tb[k]||{}).cols)});
    box.innerHTML='';
    render();
   });

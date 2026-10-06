@@ -1058,7 +1058,36 @@ body.bs-mode .bs-shell{display:flex}
 .rt-state{font-size:var(--fs-sm);color:var(--muted)}
 .rt-state.is-dirty{color:var(--warn-fg);font-weight:var(--fw-strong)}
 .rt-acts{margin-inline-start:auto;display:flex;align-items:center;gap:var(--space-2)}
-.rt-addcol{height:var(--ctl-h-sm);max-width:var(--w-lg);font-size:var(--fs-sm)}
+/* 列を足す・決まりを足すは**表の中の、足される場所**に置く（§9.574・H1）。点線の札＝まだ無い物の置き場。 */
+.rt-ghost{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px dashed var(--teal);border-radius:var(--radius-sm);
+ background:var(--teal-tint);color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;cursor:pointer}
+.rt-ghost:hover,.rt-ghost:focus-visible{border-style:solid;background:var(--teal-soft)}
+.rt-table .rt-addc{width:1%}
+.rt-addr th,.rt-addr td{background:var(--surface)}
+/* 空の表の道しるべ（いまの段だけ濃く、後の段は薄い番号）。 */
+.rt-empty td{padding:var(--space-3) var(--space-3) var(--space-2);white-space:normal;background:var(--surface)}
+.rt-steps{margin:0;padding:0;list-style:none;counter-reset:rt-step;display:flex;flex-direction:column;gap:var(--space-2)}
+.rt-steps li{counter-increment:rt-step;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);
+ padding-left:calc(22px + var(--space-2));position:relative;color:var(--muted)}
+.rt-steps li::before{content:counter(rt-step);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:var(--radius-round);
+ display:grid;place-items:center;background:var(--line-mid);color:var(--surface);font-size:var(--fs-sm);font-weight:var(--fw-strong)}
+.rt-steps li.is-now{color:var(--ink)}
+.rt-steps li.is-now::before{background:var(--teal)}
+.rt-steps small{font-size:var(--fs-sm);color:var(--muted)}
+.rt-chips{flex-basis:100%;display:flex;flex-wrap:wrap;gap:var(--space-1)}
+.rt-chip{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--teal);border-radius:var(--radius-sm);
+ background:var(--teal-tint);color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
+.rt-chip:hover,.rt-chip:focus-visible{background:var(--teal-soft)}
+/* 列を足す面（`.wl-menu`の値を宣言し直す・§9.449）。項目は「名前＋その下に何の値か」。 */
+/* 高さは**ボタンの下に収まる量**（60vh だと下に入らず上へ返り、ボタンを覆って頭が切れた・実測）。探す欄は上に残す。 */
+.wl-menu.rt-colmenu{--menu-w:340px;--menu-w-max:400px;--menu-max-h:min(420px,50vh);--menu-item-pad:var(--space-1) var(--space-2)}
+.rt-colmenu .rt-cm-q{position:sticky;top:calc(var(--menu-pad) * -1);z-index:1;width:100%;height:var(--ctl-h-sm);margin-bottom:var(--space-1);
+ font-size:var(--fs-sm);box-sizing:border-box;background:var(--surface)}
+.rt-colmenu h4{margin:var(--space-2) var(--space-2) var(--gap-hair);font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted)}
+.rt-colmenu button b{display:block;font-weight:var(--fw-strong)}
+.rt-colmenu button small{display:block;font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2);white-space:normal}
+.rt-colmenu .rt-cm-g[hidden],.rt-colmenu button[hidden],.rt-cm-none[hidden]{display:none}
+.rt-cm-none{margin:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
 .rt-lead{margin:0;font-size:var(--fs-sm);color:var(--muted);line-height:1.6}
 .rt-lead b{color:var(--ink-2)}
 .rt-wrap{overflow:auto;max-width:100%;border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg)}

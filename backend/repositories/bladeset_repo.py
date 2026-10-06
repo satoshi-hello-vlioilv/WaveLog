@@ -249,8 +249,8 @@ def ring_color_of(od):
 # 4 フィンガーマスタ（板押さえ）
 # ---------------------------------------------------------------------------
 # 板が薄いとゴムリングでは保持できない。そのときは板押さえ（フィンガー）で
-# 保持し、軸はスペーサーだけで構成する。**適用板厚上限**が空の行は
-# 基準値の`フィンガー切替板厚`に従う（行ごとに違う上限を持てるようにしてある）。
+# 保持し、軸はスペーサーだけで構成する。**適用板厚上限**は図面の値として持つだけで、
+# 判定には使わない（フィンガーにするかは「保持方式」の表が決める・§9.524／§9.574）。
 #
 # **形は図面 N2-10689-1 / DK4-0300 LS-4（布入ベークライト）**（§9.379、利用者の
 # 添付）。1本ぶんの寸法は4つで決まる:
@@ -339,7 +339,7 @@ STANDARD_DEFAULTS = {
     # **空（None）なら、その設備でいちばん大きい現状径を満タンにする**——新品の径は聞いていないので
     # 勝手な数で埋めない（§9.231）。どちらで描いたかは画面が字で言う。
     'newDia': None,
-    'fingerMax': 0.6, 'gapMax': 5.0,
+    'gapMax': 5.0,
     'pushTarget': 0.5, 'pushMin': 0.4, 'pushMax': 0.9,
     'pushHardMin': 0.3, 'pushHardMax': 1.0,
     'nipMin': 0.5, 'nipMax': 1.0, 'nipHardMin': 0.3, 'nipHardMax': 1.3,
@@ -388,7 +388,9 @@ _STANDARD_MAP = (
     ('スペーサー外径', 'spacerOD', 'num'), ('リング内径', 'ringBore', 'num'),
     ('刃使用限界径', 'minDia', 'num'), ('研磨周期日', 'grindCycleDays', 'int'),
     ('刃新品径', 'newDia', 'num'),
-    ('フィンガー切替板厚', 'fingerMax', 'num'), ('刃間隙間上限', 'gapMax', 'num'),
+    # `フィンガー切替板厚`（fingerMax）は§9.574で外した（保持方式の表が空から始まり、使う所が無い）。
+    # DBの列は古い版のために残し、読まない・書かない（§9.539の下限と同じ）。
+    ('刃間隙間上限', 'gapMax', 'num'),
     ('押上目標', 'pushTarget', 'num'), ('押上下限', 'pushMin', 'num'),
     ('押上上限', 'pushMax', 'num'), ('押上不適下限', 'pushHardMin', 'num'),
     ('押上不適上限', 'pushHardMax', 'num'),
@@ -496,6 +498,21 @@ PICK_FIELDS = (
     ('temper', '調質', 'text', 'material', 0),
     ('lotNo', 'ロット番号', 'text', 'material', 0),
 )
+# 項目の説明（§9.574、利用者の指摘「説明が不十分なところがあります」）。列を足す一覧・列の見出し・試す欄が
+# 「何の値か（単位・出どころ）」をこの1行で言う。値の作り方は`blade-core.js`の`pickCtx()`／`bladeChoice()`。
+PICK_FIELD_DESC = {
+    'hold': '「保持方式」の表の答え（フィンガー・ゴムリング・スペーサー一体型）',
+    'fingerMaterial': '「保持方式」の表で決まったフィンガーの材質',
+    'category': '「刃のカテゴリ」の表の答え（通常刃・専用刃）',
+    'thickness': '材料の板厚（mm）',
+    'coilWidth': '1本目のコイルの元板巾（mm）',
+    'strips': '割り付けた条の数',
+    'minWidth': 'いちばん狭い条の幅（mm）',
+    'maxWidth': 'いちばん広い条の幅（mm）',
+    'material': '1本目のコイルの製造材質（無ければオーダー材質）',
+    'temper': '1本目のコイルの製造調質（無ければオーダー調質）',
+    'lotNo': '1本目のコイルのロット番号',
+}
 # 計算値（保持方式の表が前から使っていた列・§9.524）。
 CALC_FIELDS = tuple((f, l, k) for f, l, k, g, _s in PICK_FIELDS if g == 'calc')
 _FIELD_KIND = {f: k for f, _l, k, _g, _s in PICK_FIELDS}
@@ -526,7 +543,7 @@ def is_source_field(field):
 
 def pick_fields_for(order):
     """`order`番目の表で使える項目（前の表の答え＋材料）。画面の「列を足す」の候補。"""
-    return [{'field': f, 'label': l, 'kind': k, 'group': g,
+    return [{'field': f, 'label': l, 'kind': k, 'group': g, 'desc': PICK_FIELD_DESC.get(f, ''),
              **({'options': list(_FIELD_OPTIONS[f])} if f in _FIELD_OPTIONS else {})}
             for f, l, k, g, st in PICK_FIELDS if st < order]
 
@@ -822,9 +839,9 @@ HISTORY_KEEP = 20        # 1設備あたり残す件数（古いものから捨�
 # （刃選択マスタと同じ作法・同じ条件の語彙）。**条件の無い行＝既定行**で、
 # 表の最後に必ず1つ置く（`hold_replace()`が整える）——保持方式が決まらない
 # 作業を作らない。
-# **登録が無い設備は、今までの決め方をそのまま表にした「種」を返す**
-# （板厚 < 刃組基準値のフィンガー切替板厚 → フィンガー／既定 → ゴムリング）。
-# 表を1度も触っていない設備の動きは変わらない。
+# **登録が無い設備の表は空**（既定行＝ゴムリングだけ・§9.574、利用者の選択「表も判定も空」）。
+# 前は刃組基準値のフィンガー切替板厚から「板厚 < 切替板厚 → フィンガー」の行を作って返していたが、
+# 利用者が決めていない条件が最初から入っていて、表を空から組めなかった。
 HOLDPICK_TABLE = '保持方式マスタ'
 HOLDPICK_COLUMNS = (
     ('設備名', 'TEXT'), ('条件JSON', 'TEXT'), ('保持方式', 'TEXT'),
@@ -864,15 +881,9 @@ def _hold_row(d):
             'enabled': _alive(d['有効'])}
 
 
-def hold_seed(finger_max):
-    """登録の無い設備の表。**今までの決め方（切替板厚）をそのまま表にしたもの**。"""
-    fm = _num(finger_max)
-    rows = []
-    if fm is not None and fm > 0:
-        rows.append({'conditions': [{'field': 'thickness', 'op': 'lt', 'value': ('%g' % fm)}],
-                     'hold': HOLD_FINGER, 'note': '', 'material': ''})
-    rows.append({'conditions': [], 'hold': HOLD_RING, 'note': '', 'material': ''})
-    return rows
+def hold_seed():
+    """登録の無い設備の表。**空**——既定行（ゴムリング）だけ（§9.574）。"""
+    return [{'conditions': [], 'hold': HOLD_RING, 'note': '', 'material': ''}]
 
 
 def hold_rows(c, equipment):
@@ -885,7 +896,7 @@ def hold_rows(c, equipment):
     if rows:
         tidy = _hold_tidy(rows)
         return {'rows': tidy, 'stored': True, 'cols': table_cols(rows[0]['cols'], tidy, HOLD_ORDER)}
-    seed = hold_seed(standard_for(c, eq)['values'].get('fingerMax'))
+    seed = hold_seed()
     return {'rows': seed, 'stored': False, 'cols': table_cols([], seed, HOLD_ORDER)}
 
 
@@ -919,7 +930,7 @@ def _hold_tidy(rows):
 
 
 def hold_reset(c, equipment):
-    """その設備の登録を消して**未登録へ戻す**（表は切替板厚から作る種になる）。
+    """その設備の登録を消して**未登録へ戻す**（表は空＝既定行だけになる）。
     「既定へ戻す」は本当に空へ帰す（§9.243）——種を行として保存しない。"""
     eq = _txt(equipment)
     if not eq:
@@ -2007,6 +2018,10 @@ SEED_FINGERS = (
 )
 
 
+# 初期セットのフィンガーの「適用板厚上限」（図面の値）。保持方式の判定には使わない（§9.574）。
+SEED_FINGER_MAX_THICK = 0.6
+
+
 def seed_standard_parts(c, uid, equipment, replace=False):
     """その設備へ「図面どおりの1式」を登録する。
 
@@ -2076,7 +2091,7 @@ def seed_standard_parts(c, uid, equipment, replace=False):
                 '設備名': eq, '名称': finger_label(FINGER_MATERIAL_DEFAULT, width),
                 'フィンガー材質': FINGER_MATERIAL_DEFAULT, '幅': float(width),
                 '保有本数': int(qty),
-                '適用板厚上限': float(STANDARD_DEFAULTS['fingerMax']),
+                '適用板厚上限': SEED_FINGER_MAX_THICK,
                 '全長': FINGER_SHAPE['length'], '厚み': FINGER_SHAPE['thickness'],
                 '研削長': FINGER_SHAPE['grindRun'], '研削量': FINGER_SHAPE['grindDrop'],
                 '表示順': order, '有効': -1}, uid)

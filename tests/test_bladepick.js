@@ -10,7 +10,7 @@
    前（実測・VER2.415.0）: 表は1つ（専用刃の決まりのカード）・刃厚は選べない（いつもいちばん厚い刃）・
    条件は4項目の窓で「項目→比べ方→値」を1つずつ選ぶ・候補なし。
    固定するのは7つ:
-    ① 盤: ② 刃のカテゴリ・③ 刃厚の2つの判定表（保持方式と同じ部品）。未登録は今までの選び方
+    ① 盤: ② 刃のカテゴリ・③ 刃厚の2つの判定表（保持方式と同じ部品）。未登録は今までの選び方（§9.574 で列なしの空の表）
     ② 列: 前の表の答え（板押さえ方式）と材料を足せる。刃厚の表だけが「刃のカテゴリ」を足せる
     ③ 候補: セルに入ると「この列の値」と「書き方」が出る。打ち終えた条件は Tab で離れても置き換わらない
     ④ 読む: 表の下の1行が決まりを文で言う／「試す」は2つの表で共有し、上の帯が「→ カテゴリ → 刃厚」を言う
@@ -24,6 +24,15 @@ const B = H.B;
 const EQ = 'テスト設備A';
 const api = (p, o) => fetch(B + p, o).then(r => r.json());
 const post = (p, body) => api(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+/* 列を足す（§9.574・人と同じ道）: 空の表なら道しるべの札、列があれば見出しの「＋ 条件の列」の一覧から。 */
+const addCol = async (page, scope, f) => {
+ /* 前に足した列のセルの候補が開いていれば閉じる（浮いた候補は下の札を覆う——人も打つか Esc で閉じてから押す）。 */
+ if (await page.$('.fx-suggest:not([hidden])')) await page.keyboard.press('Escape');
+ const chip = `${scope} .rt-chip[data-addcol="${f}"]`;
+ if (await page.$(chip)) await page.click(chip);
+ else { await page.click(`${scope} .rt-addc [data-rt="addcol"]`); await page.click(`.rt-colmenu [data-addcol="${f}"]`); }
+ await W.until(page, ([s, f]) => !!document.querySelector(`${s} .rt-col[data-f="${f}"]`), [scope, f], { ms: 5000, what: f + 'の列' });
+};
 const reset = async () => {
  for (const table of ['category', 'thickness']) await post('/api/bladeset/blade-pick', { equipment: EQ, table, reset: true, user_id: 'test' });
 };
@@ -57,21 +66,36 @@ H.run('test_bladepick: 刃選択の2つの判定表（§9.529）', async ({ page
       s0b.map(x => x.title).join('/') === '刃のカテゴリ/刃厚', JSON.stringify(s0b));
   rec('① 未登録の表は今までの選び方（既定の行＝通常刃／いちばん厚い刃）を「未登録」と言う',
       /未登録/.test(s0b[0].state) && s0b[0].def === '通常刃' && /未登録/.test(s0b[1].state) && s0b[1].def === 'いちばん厚い刃', JSON.stringify(s0b));
+  const cols0 = await page.evaluate(() => document.querySelectorAll('#masterMaintList .rt-table .rt-col').length);
+  rec('① §9.574 未登録の表は列なし（既定で板厚などの列を入れない）', cols0 === 0, String(cols0));
 
   /* ---- ② 列（前の表の答えと材料） ---- */
-  const addable = await page.evaluate(() => ['category', 'thickness'].map(k => {
-   const s = document.querySelector(`#masterMaintList [data-table="${k}"] .rt-addcol`);
-   return [...s.querySelectorAll('optgroup')].map(g => g.label + ':' + [...g.querySelectorAll('option')].map(o => o.value).join(',')).join(' | ');
-  }));
-  rec('② カテゴリの表に足せる列: ほかのマスタの答え（フィンガー材質）・材料（板厚以外の計算値・材質・調質…）',
-      /ほかのマスタの答え:fingerMaterial/.test(addable[0]) && /材料から計算した値:coilWidth/.test(addable[0]) && /1本目のコイル（仕掛）:material,temper/.test(addable[0])
-      && !/category/.test(addable[0]), addable[0]);
+  /* 足せる列は「＋ 条件の列」の一覧（群の見出し＋項目）。項目は名前と**何の値か**を言う（§9.574）。 */
+  const addable = [];
+  for (const k of ['category', 'thickness']) {
+   await page.click(`#masterMaintList [data-table="${k}"] .rt-addc [data-rt="addcol"]`);
+   await page.waitForSelector('.rt-colmenu');
+   addable.push(await page.evaluate(() => [...document.querySelectorAll('.rt-colmenu .rt-cm-g')].map(g => g.querySelector('h4').textContent + ':'
+     + [...g.querySelectorAll('[data-addcol]')].map(b => b.dataset.addcol).join(',')).join(' | ')));
+   const desc = await page.evaluate(() => [...document.querySelectorAll('.rt-colmenu [data-addcol]')].filter(b => !b.querySelector('small')?.textContent.trim()).length);
+   rec(`② ${k} の列の一覧はどの項目も何の値かを言う（説明の無い項目 0）`, desc === 0, String(desc));
+   await page.keyboard.press('Escape');
+   await W.until(page, () => !document.querySelector('.rt-colmenu'), null, { ms: 4000, what: '一覧を閉じる' });
+  }
+  rec('② カテゴリの表に足せる列: ほかのマスタの答え（板押さえ方式・フィンガー材質）・材料（板厚・計算値・材質・調質…）',
+      /ほかのマスタの答え:hold,fingerMaterial/.test(addable[0]) && /材料から計算した値:thickness,coilWidth/.test(addable[0]) && /1本目のコイル（仕掛）:material,temper/.test(addable[0])
+      && !/category/.test(addable[0]) && /ほかのマスタの答え:hold,fingerMaterial,category/.test(addable[1]), addable.join(' ／ '));
+  /* 列は人が足す（§9.574）。カテゴリの表＝板押さえ方式・板厚、刃厚の表＝刃のカテゴリ・板厚。 */
+  for (const [k, fs] of [['category', ['hold', 'thickness']], ['thickness', ['category', 'thickness']]]) {
+   for (const f of fs) await addCol(page, `#masterMaintList [data-table="${k}"]`, f);
+  }
+  if (await page.$('.fx-suggest:not([hidden])')) await page.keyboard.press('Escape');
   const heads = await page.evaluate(() => [...document.querySelectorAll('#masterMaintList [data-table="thickness"] .rt-col')].map(th => th.querySelector('b').textContent + th.querySelector('small').textContent));
   rec('② 刃厚の表は「刃のカテゴリ」（前の表の答え）を列に持ち、見出しは名前の下に出どころを言う',
       heads.join('/') === '刃のカテゴリほかのマスタの答え/板厚材料から計算した値', heads.join('/'));
 
   /* ---- ③ 候補 ---- */
-  await page.click(`${T('category')} [data-rt="addrow"]`);
+  /* 最初の列を足したときに決まりの行が1つできている（§9.574）。 */
   await W.until(page, () => document.querySelectorAll('#masterMaintList [data-table="category"] .rt-row').length === 2, null, { ms: 5000, what: '決まりの行' });
   const cell = (k, f, r = 0) => `${T(k)} .rt-c[data-r="${r}"][data-f="${f}"]`;
   await page.click(cell('category', 'thickness'));
@@ -120,7 +144,11 @@ H.run('test_bladepick: 刃選択の2つの判定表（§9.529）', async ({ page
   rec('⑤ カテゴリの答えは通常刃／専用刃（どれでも）／専用刃（セット ○）', catOpts[0] === '通常刃' && /どれでも/.test(catOpts[1]) && catOpts.some(t => t.startsWith(`専用刃（セット ${gS}）`)), catOpts.join('/'));
   await page.click(`${T('category')} [data-rt="save"]`);
   await W.until(page, () => /登録済み/.test(document.querySelector('#masterMaintList [data-table="category"] .rt-state')?.textContent || ''), null, { ms: 10000, what: 'カテゴリの表を保存' });
-  await page.click(`${T('thickness')} [data-rt="addrow"]`);
+  /* §9.574 片方の表を保存しても、もう片方の保存していない変更（足した列）は読み直しで捨てない。
+     前（実測）: 刃のカテゴリを保存すると刃厚の表が読み直され、足したばかりの列が2つとも消えた。 */
+  const keep = await page.evaluate(() => ({ cols: [...document.querySelectorAll('#masterMaintList [data-table="thickness"] .rt-col')].map(th => th.dataset.f).join(','),
+   state: document.querySelector('#masterMaintList [data-table="thickness"] .rt-state')?.textContent || '' }));
+  rec('⑤ カテゴリの表を保存しても、刃厚の表の保存していない列は残る（変更ありのまま）', keep.cols === 'category,thickness' && /保存していない/.test(keep.state), JSON.stringify(keep));
   await page.fill(cell('thickness', 'category'), '専用刃'); await page.press(cell('thickness', 'category'), 'Tab');
   await page.selectOption(`${T('thickness')} .rt-row[data-r="0"] .rt-ansel`, String(thks[thks.length - 1]));
   await page.click(`${T('thickness')} [data-rt="save"]`);
@@ -156,7 +184,7 @@ H.run('test_bladepick: 刃選択の2つの判定表（§9.529）', async ({ page
   await page.selectOption(`${T('thickness')} .rt-p[data-p="category"]`, '専用刃');
   await W.until(page, () => !!document.querySelector('#masterMaintList [data-table="thickness"] .rt-row[data-r="0"].is-won'), null, { ms: 5000, what: '「専用*」の行が当たる' });
   rec('⑦ 選択肢の列に「専用*」（で始まる）と書け、試すと当たる', true);
-  await page.selectOption(`${T('thickness')} .rt-addcol`, 'material');
+  await addCol(page, T('thickness'), 'material');
   await W.until(page, () => !!document.querySelector('#masterMaintList [data-table="thickness"] .rt-p[data-p="material"]'), null, { ms: 5000, what: '材質の列が足される' });
   const cdp = await page.context().newCDPSession(page);
   await page.focus(`${T('thickness')} .rt-p[data-p="material"]`);

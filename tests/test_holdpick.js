@@ -5,11 +5,11 @@
    利用者の選択: 列＝計算値＋仕掛の列／表の形＝列がデータの判定表／当たらないときは最後の既定行。
 
    固定するのは5つ:
-    ① **登録が無い設備は今までと同じ**（板厚 < フィンガー切替板厚 → フィンガー）
+    ① **登録が無い設備は既定の行だけ**（どの板厚でもゴムリング・§9.574 で切替板厚の種をやめた）
     ② 表の決まり（条数・仕掛の列・板厚の範囲）で方式が決まる。**上から最初に当たった行**
     ③ 刃選択の「材質」条件が当たる（前は`st.material`を誰も入れておらず1度も当たらなかった）
     ④ 盤: セルの書き方を読む／読めない字は理由を出して残し保存させない／試す行で当たる行が光る／
-       保存すると登録・「未登録に戻す」で種へ戻る
+       保存すると登録・「未登録に戻す」で空の表へ戻る
     ⑤ 刃組ガイダンスが表に従い、説明文が「何行目に当たったか」を言う
     ⑥ 行と列を後から並べ替えられる（掴む札・キー）・列の並びは保存する（§9.530）
     ⑧ 当たり得ない条件を見分け、図・保存したらどうなるか・直す案を出す（§9.534）
@@ -26,6 +26,15 @@ const EQ = 'テスト設備A';
 const post = (p, body) => fetch(B + p, { method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body) }).then(r => r.json());
 const reset = () => post('/api/bladeset/hold-pick', { equipment: EQ, reset: true, user_id: 'test' });
+/* 列を足す（§9.574・人と同じ道）: 空の表なら道しるべの札、列があれば見出しの「＋ 条件の列」の一覧から。 */
+const addCol = async (page, scope, f) => {
+ /* 前に足した列のセルの候補が開いていれば閉じる（浮いた候補は下の札を覆う——人も打つか Esc で閉じてから押す）。 */
+ if (await page.$('.fx-suggest:not([hidden])')) await page.keyboard.press('Escape');
+ const chip = `${scope} .rt-chip[data-addcol="${f}"]`;
+ if (await page.$(chip)) await page.click(chip);
+ else { await page.click(`${scope} .rt-addc [data-rt="addcol"]`); await page.click(`.rt-colmenu [data-addcol="${f}"]`); }
+ await W.until(page, ([s, f]) => !!document.querySelector(`${s} .rt-col[data-f="${f}"]`), [scope, f], { ms: 4000, what: f + 'の列' });
+};
 
 H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, idle, errs }) => {
  await reset();
@@ -38,13 +47,12 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   const j = await page.evaluate(async EQ => {
    const Bs = WL.bladeSet, out = {};
    const M = Bs.normalize(await api('/api/bladeset/context?equipment=' + encodeURIComponent(EQ)));
-   const fm = +M.P.fingerMax;
    out.stored = M.holdsStored;
    let same = 0, n = 0;
    for (let t = 0.1; t <= 2.0001; t += 0.05) {
     const st = Object.assign(Bs.defaultState(), { thick: +t.toFixed(2), lots: [{ name: 'L', w: 50, n: 22, parent: 'L' }], order: [] });
     Bs.syncOrder(st); n++;
-    if (Bs.isFinger(st, M) === (st.thick < fm)) same++;
+    if (Bs.isFinger(st, M) === false) same++;
    }
    out.same = [same, n];
    const M2 = Object.assign({}, M, { holdsStored: true, holds: [
@@ -69,8 +77,8 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
    out.material = Bs.bladeChoice(st3, M3).category === '専用刃';
    return out;
   }, EQ);
-  rec('① 登録が無い設備は「未登録」（今までの決め方の種）', j.stored === false, String(j.stored));
-  rec('① 登録が無ければ、どの板厚でも今までと同じ方式（板厚 < 切替板厚）', j.same[0] === j.same[1], j.same.join('/'));
+  rec('① 登録が無い設備は「未登録」', j.stored === false, String(j.stored));
+  rec('① §9.574 登録が無ければ、どの板厚でも既定の行（ゴムリング）——薄い板でもフィンガーへ替えない', j.same[0] === j.same[1], j.same.join('/'));
   rec('② 表の決まり（条数・仕掛の列・板厚の範囲）で方式が決まり、上から最初の行が効く',
       j.table.every(x => x === 1), JSON.stringify(j.table));
   rec('③ 刃選択の「材質」条件が、1本目の仕掛の行から当たる', j.material === true);
@@ -84,16 +92,34 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await W.until(page, e => document.querySelector('#hpEq')?.value === e && !!document.querySelector('.rt-table'), EQ, { ms: 10000, what: '設備の判定表' });
   const shape = () => page.evaluate(() => ({
    state: document.querySelector('#masterMaintList .rt-state')?.textContent || '',
-   rows: [...document.querySelectorAll('.rt-table tbody tr')].map(tr => [...tr.querySelectorAll('input.rt-c')].map(i => i.value).join(',')
+   rows: [...document.querySelectorAll('.rt-table tbody tr.rt-row')].map(tr => [...tr.querySelectorAll('input.rt-c')].map(i => i.value).join(',')
      /* 答えの列は「方式（材質）」の1つの選択（§9.527）。値（方式|材質）でなく選ばれている札の字で見る。 */
      + '→' + (tr.querySelector('.rt-ansel')?.selectedOptions[0]?.textContent || '') + (tr.classList.contains('is-won') ? '★' : '')).join(' / '),
    ans: document.querySelector('.rt-ans')?.textContent.trim() || '' }));
   const s0 = await shape();
-  rec('④ 未登録の設備は、切替板厚から作った表と「未登録」を出す', /未登録/.test(s0.state) && s0.rows === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s0));
-  await page.selectOption('.rt-addcol', 'strips');
-  await W.until(page, () => /条数/.test(document.querySelector('.rt-table thead')?.textContent || ''), null, { ms: 4000, what: '条数の列' });
+  rec('④ §9.574 未登録の設備は、空の表（列なし・既定の行だけ）と「未登録」を出す',
+      /未登録/.test(s0.state) && s0.rows === '→ゴムリング'
+      && await page.evaluate(() => document.querySelectorAll('.rt-table .rt-col').length === 0), JSON.stringify(s0));
+  /* 空の表で最初の列を足すと、決まりの行も1つでき、そのセルへ入る（§9.574・H1）。 */
+  await addCol(page, '#masterMaintList', 'thickness');
+  const first = await page.evaluate(() => ({ rows: document.querySelectorAll('.rt-table tbody .rt-row').length,
+   focus: document.activeElement?.matches('.rt-c[data-r="0"][data-f="thickness"]') }));
+  rec('④ §9.574 空の表で列を足すと決まりの行が1つでき、そのセルへ入る（最初の決まりまでの手が1つ減る）', first.rows === 2 && first.focus, JSON.stringify(first));
+  /* 「＋ 条件の列」の一覧は何の値かを言い、名前でも説明でも探せる（§9.574）。前（実測）: 名前だけの選択肢（説明 0）。 */
+  await page.click('#masterMaintList .rt-addc [data-rt="addcol"]');
+  await page.waitForSelector('.rt-colmenu .rt-cm-q');
+  await page.keyboard.type('狭い');
+  const cm = await page.evaluate(() => ({ shown: [...document.querySelectorAll('.rt-colmenu [data-addcol]:not([hidden])')].map(b => b.dataset.addcol).join(','),
+   say: document.querySelector('.rt-colmenu [data-addcol="minWidth"] small')?.textContent || '' }));
+  rec('④ 列の一覧は説明つきで、字で探せる（「狭い」→ 条幅（いちばん狭い）だけ）', cm.shown === 'minWidth' && /mm/.test(cm.say), JSON.stringify(cm));
+  await page.keyboard.press('Escape');
+  await W.until(page, () => !document.querySelector('.rt-colmenu'), null, { ms: 4000, what: '一覧を閉じる' });
+  await addCol(page, '#masterMaintList', 'strips');
   await page.click('[data-rt="addrow"]');
-  await W.until(page, () => document.querySelectorAll('.rt-table tbody tr').length === 3, null, { ms: 4000, what: '決まりの行が増える' });
+  await W.until(page, () => document.querySelectorAll('.rt-table tbody .rt-row').length === 3, null, { ms: 4000, what: '決まりの行が増える' });
+  const c1 = '.rt-table tbody tr:nth-child(1) .rt-c[data-f="thickness"]';
+  await page.fill(c1, '<0.6'); await page.press(c1, 'Tab');
+  await W.until(page, () => /＜ 0\.6/.test([...document.querySelectorAll('.rt-c')].map(i => i.value).join('|')), null, { ms: 4000, what: '1行目が読まれる' });
   const cell = f => `.rt-table tbody tr:nth-child(2) .rt-c[data-f="${f}"]`;
   await page.fill(cell('strips'), '>= 20'); await page.press(cell('strips'), 'Tab');
   await W.until(page, () => /≧ 20/.test([...document.querySelectorAll('.rt-c')].map(i => i.value).join('|')), null, { ms: 4000, what: 'セルが読まれる' });
@@ -101,6 +127,13 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await W.until(page, () => !!document.querySelector('.rt-c.is-bad'), null, { ms: 4000, what: '読めないセル' });
   await page.fill('.rt-try .rt-p[data-p="strips"]', '22');
   await W.until(page, () => /2行目/.test(document.querySelector('.rt-ans')?.textContent || ''), null, { ms: 4000, what: '試す行の答え' });
+  /* 試す欄にも「この列の値」の候補と説明（§9.574）。前（実測）: 候補の器なし・説明なし（表ごとに1つずつ）。 */
+  const pr = await page.evaluate(() => [...document.querySelectorAll('.rt-try .rt-p')].map(i => ({ f: i.dataset.p, sg: !!i.dataset.wlSuggest, tip: i.title })));
+  rec('④ 試す欄はどれも候補の器と説明（何の値で試すか）を持つ', pr.length === 2 && pr.every(x => x.sg && /試す/.test(x.tip)), JSON.stringify(pr));
+  await page.click('.rt-try .rt-p[data-p="thickness"]');
+  await W.until(page, () => [...document.querySelectorAll('.fx-suggest:not([hidden]) .fx-sg-item b')].some(b => b.textContent === '0.6'), null, { ms: 4000, what: '試す欄の候補に表の値' });
+  rec('④ 試す欄に入ると、表に書いた値（0.6）が候補に出る', true);
+  await page.keyboard.press('Escape');
   const bad = await page.evaluate(() => { const e = document.querySelector('.rt-c.is-bad'); return e ? `${e.value}｜${e.title}` : ''; });
   rec('④ 読めない字は理由を出して、描き直しても残す', /^abc｜.+/.test(bad), bad);
   const s1 = await shape();
@@ -139,9 +172,9 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await page.click('#appConfirmOk');
   await W.until(page, () => /未登録/.test(document.querySelector('#masterMaintList .rt-state')?.textContent || ''), null, { ms: 10000, what: '未登録へ戻る' });
   const s2 = await shape();
-  rec('④ 「未登録に戻す」で行が消え、切替板厚の種へ戻る', s2.rows.replace(/★/g, '') === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s2));
-  /* 消えた列（条数）の試しの値が裏で効かない——板厚だけの表で、試す行は空なので答えは出さない。 */
-  rec('④ 表に無い列の試しの値は効かない（消えた条数の22で当てない）', !/★/.test(s2.rows) && /値を入れると/.test(s2.ans), JSON.stringify(s2));
+  rec('④ 「未登録に戻す」で行が消え、空の表（既定の行だけ）へ戻る', s2.rows.replace(/★/g, '') === '→ゴムリング', JSON.stringify(s2));
+  /* 消えた列（条数）の試しの値が裏で効かない——列の無い表で、試す行は空なので答えは出さない。 */
+  rec('④ 表に無い列の試しの値は効かない（消えた条数の22で当てない・列が無いので試す行も出さない）', !/★/.test(s2.rows) && !/に当たる/.test(s2.ans), JSON.stringify(s2));
   /* ---- ⑥ 行と列の並べ替え（§9.530、利用者の指示「条件テーブルの部分は行や列の並び替えが後からできるように」） ----
      前（実測）: 列は並べ替えられない（掴む物0）・行は▲▼で1段ずつ（最後を先頭へ3手）・列の並びは
      条件の出てくる順から起こすので、保存→開き直しで「板厚/条数」が「条数/板厚」へ入れ替わっていた。 */

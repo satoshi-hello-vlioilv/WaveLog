@@ -1,4 +1,4 @@
-# 刃組ガイダンス（254件）
+# 刃組ガイダンス（257件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 判定表は空から始める（列なし・既定の行だけ）。盤は既定の列を持たない。試す欄は字の欄（`inputmode="decimal"`・`type=number`は右寄せになる） | `test_holdpick.js`・`test_bladepick.js` | [§9.574](../../docs/decisions/9.574.md) |
+| 列は表の中で足す（見出しの「＋ 条件の列」＝何の値かを読んで選ぶ・探せる／空の表は道しるべの札・最初の列で決まりの行も1つ）。説明は`PICK_FIELD_DESC`の1箇所 | `test_holdpick.js`・`test_bladeset.py` | [§9.574](../../docs/decisions/9.574.md) |
+| 判定表の盤は送り先と読み直しだけ渡す（段取り・見本・仕掛の列は`rule-table.js`）。保存の読み直しは隣の表の未保存の変更を捨てない | `test_bladepick.js` | [§9.574](../../docs/decisions/9.574.md) |
 | 判定表の選択肢の列も字の列と同じ書き方を全部候補に出す（判定は字で比べる）。列幅は見出しの縁で変え、この端末に覚える（`wl.ruleTable.widths`） | `test_bladepick.js`・`test_holdpick.js` | [§9.573](../../docs/decisions/9.573.md) |
 | 台車の載り方は`carriageLoad()`の1箇所（稼働中＝直前の記録）。刃組ガイダンスと在庫の盤が同じ答えを読む | `test_partboards.js`・`test_bladeui.js` | [§9.540](../../docs/decisions/9.540.md) |
 | スペーサーの札は3つ（乗せる＝浮く図・押す＝表と入れ替え）。数は`spacerOutlook()`、端数は刃組と同じ積みで数える | `test_partboards.js` | [§9.540](../../docs/decisions/9.540.md) |
@@ -54,7 +57,7 @@
 | 使えるかは`selectable()`の1箇所（研磨中は選ばない）。専用刃は決まりに当たったときだけ・使えなければ`missing` | `test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
 | 【§9.529で改めた】刃選択で選べるのは板押さえ方式・板厚・材質・調質。前の項目で書いた決まりは`pickFieldsLegacy`で読み続ける | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
 | フィンガーは名称を持たない。1本＝設備＋幅＋材質（既定ベークライト）。呼び名は`finger_label()` | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
-| 保持方式は`保持方式マスタ`の判定表（上から最初の行・最後が既定）。答えは`holdPick()`、未登録は切替板厚の種 | `test_holdpick.js`・`test_bladeset.py` | [§9.524](../../docs/decisions/9.524.md) |
+| 保持方式は`保持方式マスタ`の判定表（上から最初の行・最後が既定）。答えは`holdPick()`、【§9.574で改めた】未登録は既定の行（ゴムリング）だけ | `test_holdpick.js`・`test_bladeset.py` | [§9.524](../../docs/decisions/9.524.md) |
 | 条件表の判定は`firstRule()`の1本（刃選択・保持方式・試す行）。仕掛の列は`source.<列名>`、読む行は`st.src` | `test_holdpick.js` | [§9.524](../../docs/decisions/9.524.md) |
 | 引き出しの字の段は`tierOf()`の1箇所: **近い段から空いているところへ**。重なるときだけ外の段 | `test_bladeui.js` | [§9.492](../../docs/decisions/9.492.md) |
 | 刃組表の区分は条幅ごとに**条数（×N）**を添える。数えるのは`res.segs`（図と同じ割付） | `test_bladeui.js` | [§9.492](../../docs/decisions/9.492.md) |
