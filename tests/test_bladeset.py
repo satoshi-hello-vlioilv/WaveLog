@@ -414,6 +414,9 @@ rec('知らない項目・比べ方は1件だけ落とす',
         {'field': 'thickness', 'op': '知らない', 'value': '1'},
         {'field': 'strips', 'op': 'eq', 'value': '6'}])
     == [{'field': 'strips', 'op': 'eq', 'value': '6'}])
+rec('§9.574 条件に使える項目はどれも説明（何の値か）を持つ',
+    all(f['desc'] for _k, _l, o in bs.PICK_TABLES for f in bs.pick_fields_for(o))
+    and set(bs.PICK_FIELD_DESC) == {f for f, *_r in bs.PICK_FIELDS})
 rec('§9.529 表ごとに使える項目: 保持方式＝材料だけ／カテゴリ＝＋板押さえ方式・フィンガー材質／刃厚＝＋刃のカテゴリ',
     [[f['field'] for f in bs.pick_fields_for(o) if f['group'] == 'answer'] for _k, _l, o in bs.PICK_TABLES]
     == [[], ['hold', 'fingerMaterial'], ['hold', 'fingerMaterial', 'category']])

@@ -498,6 +498,21 @@ PICK_FIELDS = (
     ('temper', '調質', 'text', 'material', 0),
     ('lotNo', 'ロット番号', 'text', 'material', 0),
 )
+# 項目の説明（§9.574、利用者の指摘「説明が不十分なところがあります」）。列を足す一覧・列の見出し・試す欄が
+# 「何の値か（単位・出どころ）」をこの1行で言う。値の作り方は`blade-core.js`の`pickCtx()`／`bladeChoice()`。
+PICK_FIELD_DESC = {
+    'hold': '「保持方式」の表の答え（フィンガー・ゴムリング・スペーサー一体型）',
+    'fingerMaterial': '「保持方式」の表で決まったフィンガーの材質',
+    'category': '「刃のカテゴリ」の表の答え（通常刃・専用刃）',
+    'thickness': '材料の板厚（mm）',
+    'coilWidth': '1本目のコイルの元板巾（mm）',
+    'strips': '割り付けた条の数',
+    'minWidth': 'いちばん狭い条の幅（mm）',
+    'maxWidth': 'いちばん広い条の幅（mm）',
+    'material': '1本目のコイルの製造材質（無ければオーダー材質）',
+    'temper': '1本目のコイルの製造調質（無ければオーダー調質）',
+    'lotNo': '1本目のコイルのロット番号',
+}
 # 計算値（保持方式の表が前から使っていた列・§9.524）。
 CALC_FIELDS = tuple((f, l, k) for f, l, k, g, _s in PICK_FIELDS if g == 'calc')
 _FIELD_KIND = {f: k for f, _l, k, _g, _s in PICK_FIELDS}
@@ -528,7 +543,7 @@ def is_source_field(field):
 
 def pick_fields_for(order):
     """`order`番目の表で使える項目（前の表の答え＋材料）。画面の「列を足す」の候補。"""
-    return [{'field': f, 'label': l, 'kind': k, 'group': g,
+    return [{'field': f, 'label': l, 'kind': k, 'group': g, 'desc': PICK_FIELD_DESC.get(f, ''),
              **({'options': list(_FIELD_OPTIONS[f])} if f in _FIELD_OPTIONS else {})}
             for f, l, k, g, st in PICK_FIELDS if st < order]
 

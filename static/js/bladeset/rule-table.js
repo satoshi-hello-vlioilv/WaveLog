@@ -117,6 +117,11 @@
   isDefault(r){return !(r.conditions||[]).length&&!r.fresh}
   kinds(){return Object.fromEntries(this.fields().map(f=>[f.field,f.kind]))}
   groupWord(f){const g=isSrc(f)?'source':(this.fieldOf(f)||{}).group;return ((this.o.groups()||[]).find(x=>x.key===g)||{}).label||''}
+  /* 列が何の値か（§9.574・説明はサーバーの`PICK_FIELD_DESC`）。仕掛の列は名前と見本で言う。 */
+  colDesc(f){
+   if(isSrc(f)){const ex=this.sampleValues(f).slice(0,3);return `仕掛の列「${this.colLabel(f)}」（1本目のコイルの行）${ex.length?`・例 ${ex.join(' / ')}`:''}`}
+   return (this.fieldOf(f)||{}).desc||'';
+  }
   /* この列の値の見本（§9.574 で盤ごとの写しを1つへ）。仕掛の列は実データの見本（`loadSource()`の20行から3つまで）、
      材料の字の列（材質・調質）は名前にその字を含む仕掛の列の見本。 */
   sampleValues(f){
@@ -356,24 +361,59 @@
     :this.stored?'<span class="rt-state">登録済み</span>':`<span class="rt-state is-seed">未登録——${o.seedNote}</span>`;
    const nd=this.rows.filter((r,i)=>this.rowDead(r)||this.shadowOf(i)).length;
    return `<header class="rt-h"><h3>${esc(o.label)}</h3>${st}${nd?`<span class="rt-state is-warn">当たらない決まり ${nd}行</span>`:''}
-    <span class="rt-acts"><select class="rt-addcol" aria-label="列（データ）を足す">${this.addColOptions()}</select>
-     <button type="button" class="mm-btn-ghost sm" data-rt="addrow">＋ 決まりを足す</button>
-     ${this.stored?`<button type="button" class="mm-btn-ghost sm" data-rt="reset" title="この表の登録を消し、${esc(o.seedNote)}へ戻します">未登録に戻す</button>`:''}
+    <span class="rt-acts">${this.stored?`<button type="button" class="mm-btn-ghost sm" data-rt="reset" title="この表の登録を消し、${esc(o.seedNote)}へ戻します">未登録に戻す</button>`:''}
      <button type="button" class="mm-btn-primary sm" data-rt="save"${this.dirty&&!this.busy?'':' disabled'}>保存</button></span></header>`;
   }
   leadHtml(){return this.o.lead?`<p class="rt-lead">${this.o.lead}</p>`:''}
-  addColOptions(){
+  /* 足せる列（使っていない列）。群の並びのまま・仕掛の列は名前の順のまま。 */
+  addable(){
    const used=new Set(this.cols);
-   const groups=(this.o.groups()||[]).map(g=>{
-    const opts=g.key==='source'
-     ?(this.o.sourceCols()||[]).filter(n=>!used.has(SRC+n)).map(n=>`<option value="${esc(SRC+n)}">${esc(n)}</option>`).join('')
-     :this.fields().filter(f=>f.group===g.key&&!used.has(f.field)).map(f=>`<option value="${esc(f.field)}">${esc(f.label)}</option>`).join('');
-    return opts?`<optgroup label="${esc(g.label)}">${opts}</optgroup>`:'';
-   }).join('');
-   return '<option value="">＋ 列（データ）を足す</option>'+groups;
+   return (this.o.groups()||[]).map(g=>({g,fs:g.key==='source'
+    ?(this.o.sourceCols()||[]).map(n=>SRC+n).filter(f=>!used.has(f))
+    :this.fields().filter(f=>f.group===g.key&&!used.has(f.field)).map(f=>f.field)})).filter(x=>x.fs.length);
+  }
+  /* 列を足す面（§9.574・H1「見出しの＋」）。何の値か（説明・例）を読んで選べ、字で探せる。器と鍵盤は`WL.popMenu`。 */
+  colMenuHtml(){
+   return `<input type="search" class="rt-cm-q" placeholder="データを探す（名前・説明）" aria-label="条件にするデータを探す">`
+    +this.addable().map(({g,fs})=>`<div class="rt-cm-g" data-g="${esc(g.key)}"><h4>${esc(g.label)}</h4>${fs.map(f=>
+     `<button type="button" data-addcol="${esc(f)}" data-q="${esc((this.colLabel(f)+' '+this.colDesc(f)).toLowerCase())}"><b>${esc(this.colLabel(f))}</b><small>${esc(this.colDesc(f))}</small></button>`).join('')}</div>`).join('')
+    +'<p class="rt-cm-none" hidden>当てはまるデータがありません</p>';
+  }
+  openColMenu(btn){
+   const el=document.createElement('div');
+   el.className='wl-menu rt-colmenu';el.innerHTML=this.colMenuHtml();
+   document.body.append(el);
+   WL.popMenu.open(el,{anchor:btn,owner:btn,onClose:()=>el.remove()});
+   const q=el.querySelector('.rt-cm-q');
+   q.oninput=()=>{const t=q.value.trim().toLowerCase();let n=0;
+    el.querySelectorAll('[data-addcol]').forEach(b=>{b.hidden=!!t&&!b.dataset.q.includes(t);if(!b.hidden)n++});
+    el.querySelectorAll('.rt-cm-g').forEach(g=>{g.hidden=!g.querySelector('[data-addcol]:not([hidden])')});
+    el.querySelector('.rt-cm-none').hidden=n>0};
+   el.onclick=e=>{const b=e.target.closest('[data-addcol]');if(!b)return;WL.popMenu.close();this.addCol(b.dataset.addcol)};
+   q.focus();
+  }
+  /* 列を足す。**決まりの行がまだ無ければ1行足し**、そのセルへ入る（空の表から最初の決まりまでの手を1つ減らす）。 */
+  addCol(f){
+   if(!f||this.cols.includes(f))return;
+   this.cols.push(f);
+   let ri=this.rows.findIndex(r=>!this.isDefault(r));
+   if(ri<0){ri=this.rows.length-1;this.rows.splice(ri,0,Object.assign(this.o.blankRow(),{conditions:[],note:'',fresh:true}));}
+   this.read=ri;this.touch();this.render();
+   const el=this.o.host().querySelector(`.rt-c[data-r="${ri}"][data-f="${CSS.escape(f)}"]`);if(el)el.focus();
+  }
+  /* 空の表（列なし）の道しるべ。①はよく使うデータ（仕掛の列以外）を札で並べ、押せば列と最初の決まりができる。 */
+  emptyHtml(){
+   const chips=this.addable().filter(x=>x.g.key!=='source').flatMap(x=>x.fs);
+   /* 行いっぱい＝番号・列・「＋ 条件の列」・答え・備考・操作。 */
+   return `<tr class="rt-empty"><td colspan="${this.cols.length+5}"><ol class="rt-steps">
+    <li class="is-now"><b>条件にするデータを選ぶ</b><small>押すと列と決まりの行が1つでき、そのセルへ入ります</small>
+     <span class="rt-chips">${chips.map(f=>`<button type="button" class="rt-chip" data-addcol="${esc(f)}" title="${esc(this.colDesc(f))}">＋ ${esc(this.colLabel(f))}</button>`).join('')}
+     <button type="button" class="mm-btn-ghost sm" data-rt="addcol" title="仕掛の列も含めて、説明を読んで選ぶ・名前で探す">ほかのデータ…</button></span></li>
+    <li><b>セルに条件を書く</b><small>例 ＜ 0.6・0.6〜1.0・SUS*。セルに入ると書き方の候補が出ます</small></li>
+    <li><b>右端で答えを選んで保存</b><small>どれにも当たらない作業は、いちばん下の既定の行で決まります</small></li></ol></td></tr>`;
   }
   colHeadHtml(f,ci){
-   return `<th class="rt-col" data-f="${esc(f)}" data-g="${esc((this.fieldOf(f)||{}).group||(isSrc(f)?'source':''))}"${widthStyle(widthOf(this.o.key,f))}>`
+   return `<th class="rt-col" data-f="${esc(f)}" data-g="${esc((this.fieldOf(f)||{}).group||(isSrc(f)?'source':''))}" title="${esc(this.colDesc(f))}"${widthStyle(widthOf(this.o.key,f))}>`
     +`<span class="rt-cn">${this.gripHtml('col',ci,`${this.colLabel(f)}の列`)}<b>${esc(this.colLabel(f))}</b>`
     +`<button type="button" class="rt-x" data-rt="delcol" data-c="${ci}" title="この列を消す" aria-label="${esc(this.colLabel(f))}の列を消す">×</button></span>`
     +`<small>${esc(this.groupWord(f))}</small>`
@@ -382,24 +422,30 @@
   probeRowHtml(hit){
    const ans=!this.probeFilled()?'<span class="is-idle">値を入れると、当たる行が光ります</span>'
     :hit?`<b>${esc(this.o.answerLabel(hit.row))}</b>（${this.isDefault(hit.row)?'既定の行':`${hit.index+1}行目`}に当たる）`:'<span class="is-idle">当たる行がありません</span>';
-   return `<tr class="rt-try"><th class="rt-no">試す</th>${this.cols.map(f=>`<td data-f="${esc(f)}"${widthStyle(widthOf(this.o.key,f))}>${this.probeInput(f)}</td>`).join('')}<td class="rt-ans" colspan="3">${ans}</td></tr>`;
+   return `<tr class="rt-try"><th class="rt-no" title="値を入れると、その作業で当たる行が光ります（保存はしません）">試す</th>${this.cols.map(f=>`<td data-f="${esc(f)}"${widthStyle(widthOf(this.o.key,f))}>${this.probeInput(f)}</td>`).join('')}<td class="rt-addc"></td><td class="rt-ans" colspan="3">${ans}</td></tr>`;
   }
   tableHtml(){
    const hit=this.probeHit();
+   const more=this.addable().length;
    const head=`<tr><th class="rt-no">#</th>${this.cols.map((f,ci)=>this.colHeadHtml(f,ci)).join('')}
+    <th class="rt-addc">${more?'<button type="button" class="rt-ghost" data-rt="addcol" title="条件にするデータ（列）を足す——説明を読んで選ぶ・名前で探す">＋ 条件の列</button>':''}</th>
     <th class="rt-out">→ ${esc(this.o.answerHead)}</th><th class="rt-note">備考</th><th class="rt-ops"></th></tr>`;
-   const body=this.rows.map((r,i)=>this.rowHtml(r,i,hit)).join('');
+   /* 決まりを足す行は**決まりの並びの最後**（既定の行の上・§9.574）。列が無いうちは道しるべを出す。 */
+   const rows=this.rows.map((r,i)=>this.rowHtml(r,i,hit));
+   const add=this.cols.length?`<tr class="rt-addr"><th class="rt-no"></th><td colspan="${this.cols.length+1}"><button type="button" class="rt-ghost" data-rt="addrow" title="決まりの行を足す（既定の行の上に入ります）">＋ 決まりを足す</button></td><td colspan="3"></td></tr>`:this.emptyHtml();
+   const body=rows.slice(0,-1).join('')+add+rows.slice(-1).join('');
    const ri=this.read>=0&&this.read<this.rows.length?this.read:(hit?hit.index:0);
-   return `<div class="rt-wrap"><table class="rt-table"><thead>${head}${this.probeRowHtml(hit)}</thead><tbody>${body}</tbody></table></div>
+   return `<div class="rt-wrap"><table class="rt-table"><thead>${head}${this.cols.length?this.probeRowHtml(hit):''}</thead><tbody>${body}</tbody></table></div>
     <p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>${this.deadHtml()}${this.mapHtml()}`;
   }
   probeInput(f){
    const fd=this.fieldOf(f),v=this.o.probe[f]??'';
-   if(fd&&fd.kind==='choice')return `<select class="rt-p" data-p="${esc(f)}">${['<option value="">（問わない）</option>']
+   const tip=` title="${esc(`${this.colLabel(f)}の値で試す（保存はしません）——${this.colDesc(f)}`)}"`;
+   if(fd&&fd.kind==='choice')return `<select class="rt-p" data-p="${esc(f)}"${tip}>${['<option value="">（問わない）</option>']
     .concat((fd.options||[]).map(x=>`<option value="${esc(x)}"${x===v?' selected':''}>${esc(x)}</option>`)).join('')}</select>`;
    /* 数の列も`type=text`＋`inputmode="decimal"`（§9.574）。`type=number`は土台の決まりで右寄せになり、広い欄で
       「右から埋まる」と読まれた。日本語の入力も受けない。数かどうかは判定（`probeCtx()`）が読む。 */
-   return `<input class="rt-p" data-p="${esc(f)}" type="text"${this.kindOf(f)==='num'?' inputmode="decimal"':''} value="${esc(v)}" placeholder="値">`;
+   return `<input class="rt-p" data-p="${esc(f)}" type="text"${this.kindOf(f)==='num'?' inputmode="decimal"':''} value="${esc(v)}" placeholder="値"${tip}>`;
   }
   /* セル1つ。読めなかった字は**直すまでそのまま残す**（描き直しで消すと、受け付けたと読める）。 */
   cellHtml(r,i,f){
@@ -410,7 +456,8 @@
    const d=this.isDefault(r)?null:this.deadOf(r,f),dw=d&&(d.dead?'当たらない':d.part?'一部当たらない':'');
    const why=dw?d.chains.filter(x=>x.dead).map(x=>x.why).join('／'):'';
    return `<td class="rt-cell ${mk}${dw?(d.dead?' is-dead':' is-deadpart'):''}" data-f="${esc(f)}"${ws}><input class="rt-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
-    +` placeholder="問わない"${c.length?` title="${esc(sayCell(c,this.colLabel(f))+(why?`（${why}）`:''))}"`:''}>`
+    +` placeholder="問わない" title="${esc(c.length?sayCell(c,this.colLabel(f))+(why?`（${why}）`:'')
+      :`${this.colLabel(f)}の条件を書く（空欄＝問わない）。入ると書き方と値の候補が出ます`)}">`
     +(mk?`<i class="rt-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+(dw?`<small class="rt-deadtag">${dw}</small>`:'')+'</td>';
   }
   opsHtml(i){
@@ -424,8 +471,8 @@
   }
   rowHtml(r,i,hit){
    const o=this.o,def=this.isDefault(r),won=hit&&hit.index===i;
-   const cells=def?`<td class="rt-any" colspan="${Math.max(1,this.cols.length)}">どれにも当てはまらないとき</td>`
-    :this.cols.map(f=>this.cellHtml(r,i,f)).join('');
+   const cells=def?`<td class="rt-any" colspan="${this.cols.length+1}">どれにも当てはまらないとき</td>`
+    :this.cols.map(f=>this.cellHtml(r,i,f)).join('')+'<td class="rt-addc"></td>';
    const cur=o.answerOf(r);
    const sel=`<select class="rt-ansel" data-r="${i}" aria-label="${esc(o.answerHead)}">${o.answers(r).map(a=>
     `<option value="${esc(a.v)}"${a.v===cur?' selected':''}>${esc(a.label)}</option>`).join('')}</select>`;
@@ -475,6 +522,10 @@
    });
    return {items,from:0,to:inp.value.length,pick:false};
   }
+  probeSuggest(inp){
+   const f=inp.dataset.p,items=this.valueItems(f,this.fieldOf(f),inp.value.trim(),inp.value.trim());
+   return items.length?{items:items.map(it=>it.head?it:Object.assign(it,{note:`${this.colLabel(f)}が ${it.ins} の作業で試す`})),from:0,to:inp.value.length,pick:false}:null;
+  }
   valueItems(f,fd,bare,typed){
    const vals=[...new Set([].concat((fd&&fd.options)||[],this.sampleValues(f),
      this.rows.flatMap(r=>this.condsOf(r,f)).flatMap(c=>c.op==='between'?[c.value,c.value2]:[c.value])).map(String))]
@@ -487,9 +538,8 @@
   /* ---------- 触る ---------- */
   touch(){this.dirty=true;this.o.onChange&&this.o.onChange()}
   wire(host){
-   host.querySelectorAll('[data-rt]').forEach(b=>{b.onclick=()=>this.act(b.dataset.rt,+b.dataset.r,+b.dataset.c)});
-   const addc=host.querySelector('.rt-addcol');
-   if(addc)addc.onchange=()=>{if(addc.value&&!this.cols.includes(addc.value)){this.cols.push(addc.value);this.touch();this.render()}};
+   host.querySelectorAll('[data-rt]').forEach(b=>{b.onclick=()=>this.act(b.dataset.rt,+b.dataset.r,+b.dataset.c,b)});
+   host.querySelectorAll('.rt-chip').forEach(b=>{b.onclick=()=>this.addCol(b.dataset.addcol)});
    host.querySelectorAll('.rt-c').forEach(el=>{
     WL.popMenu.suggest(el,inp=>this.suggestFor(inp),{onFocus:true});
     el.onchange=()=>this.setCell(+el.dataset.r,el.dataset.f,el.value);
@@ -501,6 +551,9 @@
    this.wireGrips(host);this.wireWidths(host);this.wireDead(host);this.wireMap(host);
    host.querySelectorAll('.rt-p').forEach(el=>{
     const set=()=>{this.o.probe[el.dataset.p]=el.value;this.o.onProbe?this.o.onProbe():this.render()};
+    /* 試す欄にも「この列の値」の候補（§9.574）。**描き直しより先に付ける**——打った字で表を作り直す前に、
+       いまの欄の位置で候補を出す（後に付けると、外れた欄の位置で出る）。 */
+    if(el.tagName!=='SELECT')WL.popMenu.suggest(el,inp=>this.probeSuggest(inp),{onFocus:true});
     /* 打つたびに表を作り直すので、**変換中は待つ**（`onTyped`・日本語が「kか」に割れる不具合）。 */
     if(el.tagName==='SELECT')el.onchange=set;else WL.base.onTyped(el,set);
    });
@@ -539,9 +592,10 @@
    delete r.fresh;this.read=ri;
    this.touch();this.render();
   }
-  act(a,ri,ci){
+  act(a,ri,ci,btn){
    const moves={
     addrow:()=>this.addRow(),
+    addcol:()=>this.openColMenu(btn),
     delrow:()=>{this.rows.splice(ri,1);this.read=-1;this.touch();this.render()},
     delcol:()=>this.delCol(ci),
     save:()=>this.save(),reset:()=>this.reset(),
