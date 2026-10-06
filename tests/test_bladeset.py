@@ -419,11 +419,14 @@ rec('§9.529 表ごとに使える項目: 保持方式＝材料だけ／カテ�
     == [[], ['hold', 'fingerMaterial'], ['hold', 'fingerMaterial', 'category']])
 
 # ---- 保持方式マスタ（§9.524） ----
-# 登録が無い設備は**今までの決め方の種**（板厚 < 切替板厚 → フィンガー／既定 → ゴムリング）。
-fm = bs.standard_for(c, EQ)['values']['fingerMax']
+# §9.574 登録が無い設備は**空の表**（条件の無い既定の行＝ゴムリングの1行だけ）。切替板厚から種を作らない。
 got = bs.hold_rows(c, EQ)
-rec('保持方式: 登録が無ければ、切替板厚から作った種（未登録）',
-    not got['stored'] and got['rows'] == bs.hold_seed(fm), str(got))
+rec('§9.574 保持方式: 登録が無ければ、既定の行（ゴムリング）だけ・列なし（未登録）',
+    not got['stored'] and got['rows'] == bs.hold_seed()
+    and [(r['conditions'], r['hold']) for r in got['rows']] == [([], 'ゴムリング')]
+    and not got.get('cols'), str(got))
+rec('§9.574 刃組基準値に「フィンガー切替板厚」は無い（判定は保持方式の表だけ）',
+    'fingerMax' not in bs.standard_for(c, EQ)['values'])
 # 保存は丸ごと。**条件の無い行は最後の1つだけが既定**・既定が無ければゴムリングで足す・知らない方式はゴムリング。
 n = bs.hold_replace(c, 'u', EQ, [
     {'conditions': [], 'hold': 'フィンガー'},
@@ -450,7 +453,7 @@ bs.hold_replace(c, 'u', EQ, [
 rec('保持方式: 行ごとにフィンガー材質を持つ（§9.527）。知らない字は空欄＝既定・ゴムリングの行は持たない',
     [r['material'] for r in bs.hold_rows(c, EQ)['rows']] == ['アルミニウム', '', ''],
     str([(r['hold'], r['material']) for r in bs.hold_rows(c, EQ)['rows']]))
-rec('保持方式: 種の行も材質は空欄（既定）', all(r['material'] == '' for r in bs.hold_seed(0.6)))
+rec('保持方式: 種の行も材質は空欄（既定）', all(r['material'] == '' for r in bs.hold_seed()))
 bs.hold_reset(c, EQ)
 rec('保持方式: 設備が無ければ保存を断る', _reject(lambda: bs.hold_replace(c, 'u', '', [])))
 # §9.530 列の並びは表の設定として残す（条件の出てくる順から起こさない）

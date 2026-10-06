@@ -5,11 +5,11 @@
    利用者の選択: 列＝計算値＋仕掛の列／表の形＝列がデータの判定表／当たらないときは最後の既定行。
 
    固定するのは5つ:
-    ① **登録が無い設備は今までと同じ**（板厚 < フィンガー切替板厚 → フィンガー）
+    ① **登録が無い設備は既定の行だけ**（どの板厚でもゴムリング・§9.574 で切替板厚の種をやめた）
     ② 表の決まり（条数・仕掛の列・板厚の範囲）で方式が決まる。**上から最初に当たった行**
     ③ 刃選択の「材質」条件が当たる（前は`st.material`を誰も入れておらず1度も当たらなかった）
     ④ 盤: セルの書き方を読む／読めない字は理由を出して残し保存させない／試す行で当たる行が光る／
-       保存すると登録・「未登録に戻す」で種へ戻る
+       保存すると登録・「未登録に戻す」で空の表へ戻る
     ⑤ 刃組ガイダンスが表に従い、説明文が「何行目に当たったか」を言う
     ⑥ 行と列を後から並べ替えられる（掴む札・キー）・列の並びは保存する（§9.530）
     ⑧ 当たり得ない条件を見分け、図・保存したらどうなるか・直す案を出す（§9.534）
@@ -38,13 +38,12 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   const j = await page.evaluate(async EQ => {
    const Bs = WL.bladeSet, out = {};
    const M = Bs.normalize(await api('/api/bladeset/context?equipment=' + encodeURIComponent(EQ)));
-   const fm = +M.P.fingerMax;
    out.stored = M.holdsStored;
    let same = 0, n = 0;
    for (let t = 0.1; t <= 2.0001; t += 0.05) {
     const st = Object.assign(Bs.defaultState(), { thick: +t.toFixed(2), lots: [{ name: 'L', w: 50, n: 22, parent: 'L' }], order: [] });
     Bs.syncOrder(st); n++;
-    if (Bs.isFinger(st, M) === (st.thick < fm)) same++;
+    if (Bs.isFinger(st, M) === false) same++;
    }
    out.same = [same, n];
    const M2 = Object.assign({}, M, { holdsStored: true, holds: [
@@ -69,8 +68,8 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
    out.material = Bs.bladeChoice(st3, M3).category === '専用刃';
    return out;
   }, EQ);
-  rec('① 登録が無い設備は「未登録」（今までの決め方の種）', j.stored === false, String(j.stored));
-  rec('① 登録が無ければ、どの板厚でも今までと同じ方式（板厚 < 切替板厚）', j.same[0] === j.same[1], j.same.join('/'));
+  rec('① 登録が無い設備は「未登録」', j.stored === false, String(j.stored));
+  rec('① §9.574 登録が無ければ、どの板厚でも既定の行（ゴムリング）——薄い板でもフィンガーへ替えない', j.same[0] === j.same[1], j.same.join('/'));
   rec('② 表の決まり（条数・仕掛の列・板厚の範囲）で方式が決まり、上から最初の行が効く',
       j.table.every(x => x === 1), JSON.stringify(j.table));
   rec('③ 刃選択の「材質」条件が、1本目の仕掛の行から当たる', j.material === true);
@@ -89,11 +88,20 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
      + '→' + (tr.querySelector('.rt-ansel')?.selectedOptions[0]?.textContent || '') + (tr.classList.contains('is-won') ? '★' : '')).join(' / '),
    ans: document.querySelector('.rt-ans')?.textContent.trim() || '' }));
   const s0 = await shape();
-  rec('④ 未登録の設備は、切替板厚から作った表と「未登録」を出す', /未登録/.test(s0.state) && s0.rows === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s0));
-  await page.selectOption('.rt-addcol', 'strips');
-  await W.until(page, () => /条数/.test(document.querySelector('.rt-table thead')?.textContent || ''), null, { ms: 4000, what: '条数の列' });
-  await page.click('[data-rt="addrow"]');
-  await W.until(page, () => document.querySelectorAll('.rt-table tbody tr').length === 3, null, { ms: 4000, what: '決まりの行が増える' });
+  rec('④ §9.574 未登録の設備は、空の表（列なし・既定の行だけ）と「未登録」を出す',
+      /未登録/.test(s0.state) && s0.rows === '→ゴムリング'
+      && await page.evaluate(() => document.querySelectorAll('.rt-table .rt-col').length === 0), JSON.stringify(s0));
+  for (const [f, w] of [['thickness', '板厚'], ['strips', '条数']]) {
+   await page.selectOption('.rt-addcol', f);
+   await W.until(page, w => (document.querySelector('.rt-table thead')?.textContent || '').includes(w), w, { ms: 4000, what: w + 'の列' });
+  }
+  for (const n of [2, 3]) {
+   await page.click('[data-rt="addrow"]');
+   await W.until(page, n => document.querySelectorAll('.rt-table tbody tr').length === n, n, { ms: 4000, what: '決まりの行が増える' });
+  }
+  const c1 = '.rt-table tbody tr:nth-child(1) .rt-c[data-f="thickness"]';
+  await page.fill(c1, '<0.6'); await page.press(c1, 'Tab');
+  await W.until(page, () => /＜ 0\.6/.test([...document.querySelectorAll('.rt-c')].map(i => i.value).join('|')), null, { ms: 4000, what: '1行目が読まれる' });
   const cell = f => `.rt-table tbody tr:nth-child(2) .rt-c[data-f="${f}"]`;
   await page.fill(cell('strips'), '>= 20'); await page.press(cell('strips'), 'Tab');
   await W.until(page, () => /≧ 20/.test([...document.querySelectorAll('.rt-c')].map(i => i.value).join('|')), null, { ms: 4000, what: 'セルが読まれる' });
@@ -139,8 +147,8 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await page.click('#appConfirmOk');
   await W.until(page, () => /未登録/.test(document.querySelector('#masterMaintList .rt-state')?.textContent || ''), null, { ms: 10000, what: '未登録へ戻る' });
   const s2 = await shape();
-  rec('④ 「未登録に戻す」で行が消え、切替板厚の種へ戻る', s2.rows.replace(/★/g, '') === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s2));
-  /* 消えた列（条数）の試しの値が裏で効かない——板厚だけの表で、試す行は空なので答えは出さない。 */
+  rec('④ 「未登録に戻す」で行が消え、空の表（既定の行だけ）へ戻る', s2.rows.replace(/★/g, '') === '→ゴムリング', JSON.stringify(s2));
+  /* 消えた列（条数）の試しの値が裏で効かない——列の無い表で、試す行は空なので答えは出さない。 */
   rec('④ 表に無い列の試しの値は効かない（消えた条数の22で当てない）', !/★/.test(s2.rows) && /値を入れると/.test(s2.ans), JSON.stringify(s2));
   /* ---- ⑥ 行と列の並べ替え（§9.530、利用者の指示「条件テーブルの部分は行や列の並び替えが後からできるように」） ----
      前（実測）: 列は並べ替えられない（掴む物0）・行は▲▼で1段ずつ（最後を先頭へ3手）・列の並びは

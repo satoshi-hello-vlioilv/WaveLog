@@ -21,7 +21,7 @@
 
    判定は**書かない**。`blade-core.js` の `firstRule()`／`condHits()` をそのまま呼ぶ——盤と刃組
    ガイダンスで判定が食い違うと、「盤では当たるのに現場では当たらない」という最も分かりにくい形で
-   壊れる（§9.379）。表は1枚として編集し、保存は丸ごと（`save(rows)`は呼ぶ側が持つ）。
+   壊れる（§9.379）。表は1枚として編集し、保存は丸ごと（送り先と読み直しは呼ぶ側が渡す・`send()`）。
    ============================================================ */
 (function(){
  const BS=()=>WL.bladeSet;
@@ -117,6 +117,15 @@
   isDefault(r){return !(r.conditions||[]).length&&!r.fresh}
   kinds(){return Object.fromEntries(this.fields().map(f=>[f.field,f.kind]))}
   groupWord(f){const g=isSrc(f)?'source':(this.fieldOf(f)||{}).group;return ((this.o.groups()||[]).find(x=>x.key===g)||{}).label||''}
+  /* この列の値の見本（§9.574 で盤ごとの写しを1つへ）。仕掛の列は実データの見本（`loadSource()`の20行から3つまで）、
+     材料の字の列（材質・調質）は名前にその字を含む仕掛の列の見本。 */
+  sampleValues(f){
+   const s=(this.o.samples&&this.o.samples())||{};
+   if(isSrc(f))return s[String(f).slice(SRC.length)]||[];
+   const fd=this.fieldOf(f);
+   if(!fd||fd.group!=='material')return [];
+   return Object.entries(s).filter(([n])=>n.includes(fd.label)).flatMap(([,v])=>v);
+  }
 
   /* ---------- 読む（呼ぶ側の答えを表にする） ---------- */
   setData(rows,stored,cols){
@@ -437,7 +446,7 @@
    host.innerHTML=this.headHtml()+this.leadHtml()+this.tableHtml();
    this.wire(host);
    const el=key&&host.querySelector(key);
-   if(el){el.focus();if(pos!=null)try{el.setSelectionRange(pos,pos)}catch(_e){WL.quiet.note('数の欄は字の位置を戻せない（焦点だけ戻す）',_e)}}
+   if(el){el.focus();if(pos!=null&&el.setSelectionRange)el.setSelectionRange(pos,pos)}
   }
 
   /* ---------- 候補（セルに入ると出る・§9.529「サジェスト機能」） ----------
@@ -467,7 +476,7 @@
    return {items,from:0,to:inp.value.length,pick:false};
   }
   valueItems(f,fd,bare,typed){
-   const vals=[...new Set([].concat((fd&&fd.options)||[],this.o.valuesOf?this.o.valuesOf(f):[],
+   const vals=[...new Set([].concat((fd&&fd.options)||[],this.sampleValues(f),
      this.rows.flatMap(r=>this.condsOf(r,f)).flatMap(c=>c.op==='between'?[c.value,c.value2]:[c.value])).map(String))]
     .filter(v=>v&&(!bare||v.toLowerCase().includes(bare.toLowerCase())||typed===''))
     .slice(0,8);
@@ -634,7 +643,11 @@
    const rows=this.rows.filter(r=>(r.conditions||[]).length||r===last)
     .map(r=>Object.assign(this.o.rowOut(r),{conditions:r.conditions||[],note:r.note||''}));
    this.busy=true;this.render();
-   try{await this.o.save(rows,this.cols.slice());this.dirty=false}
+   try{
+    const eq=this.o.payload().equipment||'';
+    if(!await this.send({rows,cols:this.cols.slice()}))throw new Error('更新者IDが決まっていません');
+    showToast&&showToast(`${this.label}の表を保存しました`,`${eq}・${rows.length}行`,2600);
+   }
    catch(e){await alertModal('保存できませんでした：'+(e&&e.message?e.message:e))}
    finally{this.busy=false;this.render();this.o.onChange&&this.o.onChange()}
   }
@@ -642,10 +655,29 @@
    if(!await confirmModal({title:'未登録に戻す',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">「${esc(this.o.label)}」の表の登録を消します。以後は${esc(this.o.seedNote)}で決めます。</p>`,
      confirmLabel:'未登録に戻す',cancelLabel:'やめる'}))return;
-   try{await this.o.reset()}catch(e){await alertModal('戻せませんでした：'+(e&&e.message?e.message:e))}
+   try{await this.send({reset:true})}catch(e){await alertModal('戻せませんでした：'+(e&&e.message?e.message:e))}
+  }
+  /* 書く段取り（更新者ID → 送る → 読み直す）は1つ（§9.574 で盤ごとの写しを1つへ）。盤は送り先（`endpoint`）・
+     いつも載せる鍵（`payload()`＝設備・表の名前）・読み直し（`reload()`）だけを渡す。IDが決まらなければ送らずに偽。
+     書けたらこの表は**読み直す前に**「変更なし」にする——同じ画面のほかの表の保存していない変更は、読み直しで捨てない
+     （`reload()`は変更の残る表を飛ばす。前は刃のカテゴリを保存すると刃厚の表に足した列が消えた）。 */
+  async send(extra){
+   const uid=WL.mm.requireMaintUser();if(uid===null)return false;
+   await WL.bsKit.post(this.o.endpoint,Object.assign({},this.o.payload(),extra,{user_id:uid}));
+   this.dirty=false;
+   await this.o.reload();
+   return true;
   }
  }
  const create=o=>new RuleTable(o);
+ /* 仕掛の列名と見本（条件の列の候補）。**読めなければ空**——計算値の列だけで組める。判定表を持つ盤はどれもここを呼ぶ。 */
+ async function loadSource(){
+  const db=WL.dataSource&&WL.dataSource.workKey&&WL.dataSource.workKey();
+  if(!db)return {columns:[],samples:{}};
+  try{const r=await api('/api/table-columns?samples=1&db='+encodeURIComponent(db),{quiet:true});
+   return {columns:Array.isArray(r.columns)?r.columns:[],samples:r.samples||{}}}
+  catch(e){WL.quiet.note('仕掛の列名を取れない（計算値の列だけで組める）',e);return {columns:[],samples:{}}}
+ }
 
- WL.ruleTable={create,parseCell,cellText,sayCell};
+ WL.ruleTable={create,loadSource,parseCell,cellText,sayCell};
 })();

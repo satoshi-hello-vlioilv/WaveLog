@@ -11,7 +11,7 @@
     2. 初期セットを登録すると、**刃組図・刃組表・所要が同じ割付から**出る
        ——図の部材の数と表の枚数が食い違わない
     3. 手順3で幅を変えると、図・表・所要が**同じ1回の描き直し**で追従する
-    4. 板厚をフィンガー切替より下げると、**保持層がフィンガーへ替わる**
+    4. 板厚を保持方式の表の境目（0.6・網が登録する）より下げると、**保持層がフィンガーへ替わる**
        （押上げ・ニップは「フィンガー方式」と言い、ゴムリングは所要に出ない）
     5. 立体図（3D）は**押したときだけ部品を取りに行き**、取れなければ
        **字で断って模式図はそのまま使える**（黙って空の器を出さない）
@@ -87,6 +87,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      次の実行が丸ごと引き継ぐ（§9.284）。実際に1度、途中の FATAL で
      86行を置き去りにして「汚した本」に名指しされた。 */
   try {
+    /* §9.574 保持方式の既定は空（どの板厚でもゴムリング）。薄い板でフィンガーへ替わることを
+       確かめる節（4）のために、**前の既定と同じ決まり**（板厚 ＜ 0.6 → フィンガー）をこの設備へ登録する。
+       後始末の finally で「未登録に戻す」。 */
+    const holdSet = await (await post('/api/bladeset/hold-pick', { equipment: EQ, cols: ['thickness'], rows: [
+     { conditions: [{ field: 'thickness', op: 'lt', value: '0.6' }], hold: 'フィンガー' },
+     { conditions: [], hold: 'ゴムリング' }] })).json();
+    if (!holdSet || holdSet.ok === false || holdSet.error) throw new Error('保持方式の表を登録できない: ' + JSON.stringify(holdSet));
     await page.goto(B + '/', { waitUntil: 'domcontentloaded' });
     await W.booted(page);
 
@@ -314,7 +321,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('色は見本の丸を添えて言う（色名だけで思い出させない）',
         tbl1.dots >= tbl1.ring.length && tbl1.dots > 0, `${tbl1.dots}個`);
 
-    /* ---- 4) 板厚をフィンガー切替より下げると保持層が替わる ---- */
+    /* ---- 4) 板厚を保持方式の表の境目（＜ 0.6）より下げると保持層が替わる ---- */
     await page.click('[data-step-open="bsV2"]');
     await page.waitForSelector('#bsThick', { timeout: 8000 });
     await page.evaluate(() => {
@@ -3761,6 +3768,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     if (planId) await post('/api/schedule/plan/delete', { id: planId });
     await setMode('edit');
     if (stopId) await post('/api/schedule/stop-reason-master/delete', { id: stopId });
+    await post('/api/bladeset/hold-pick', { equipment: EQ, reset: true });
     await wipe();
     const left = await getj('/api/bladeset/context?equipment=' + encodeURIComponent(EQ));
     rec('後始末で刃組マスタが空へ戻る',
