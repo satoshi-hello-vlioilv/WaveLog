@@ -1,4 +1,4 @@
-# 刃組ガイダンス（253件）
+# 刃組ガイダンス（254件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 判定表の選択肢の列も字の列と同じ書き方を全部候補に出す（判定は字で比べる）。列幅は見出しの縁で変え、この端末に覚える（`wl.ruleTable.widths`） | `test_bladepick.js`・`test_holdpick.js` | [§9.573](../../docs/decisions/9.573.md) |
 | 台車の載り方は`carriageLoad()`の1箇所（稼働中＝直前の記録）。刃組ガイダンスと在庫の盤が同じ答えを読む | `test_partboards.js`・`test_bladeui.js` | [§9.540](../../docs/decisions/9.540.md) |
 | スペーサーの札は3つ（乗せる＝浮く図・押す＝表と入れ替え）。数は`spacerOutlook()`、端数は刃組と同じ積みで数える | `test_partboards.js` | [§9.540](../../docs/decisions/9.540.md) |
 | 部材の在庫は保有だけ。下限は持たない（DBの列は古い版のために残し、読まない・書かない） | `test_bladeset.py`・`test_partboards.js` | [§9.539](../../docs/decisions/9.539.md) |

@@ -237,6 +237,8 @@
   if(opt&&opt.onFocus)inp.addEventListener('focus',show);
   inp.addEventListener('blur',()=>setTimeout(()=>{if(sgFor===inp&&document.activeElement!==inp)sgClose()},0));
   inp.addEventListener('keydown',e=>{
+   /* 日本語の変換中の ↑↓・Enter は変換の操作（候補を選ぶ・確定する）。候補の器では取らない。 */
+   if(e.isComposing||e.keyCode===229)return;
    if(sgFor!==inp||!sgEl||sgEl.hidden)return;
    const ok=pickable(),k=ok.indexOf(sgAt);
    if(e.key==='ArrowDown'||e.key==='ArrowUp'){

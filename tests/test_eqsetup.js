@@ -26,6 +26,7 @@
     5. 保存ボタンは**何を保存するのか名乗る**（本文の外＝いつでも押せる）
     6. 何も選ばずに押したら**理由を出して直す場所へ連れて行く**（§CLAUDE 4）
     7. 窓の作りは**1箇所**——`#appSettingsModal`を空にしても同じ形で戻る
+    8. **マスタを書けない端末でも在る設備は選べる**（マスタへ書かない・新規登録だけが書く）
 
    **「要素がある」だけを見ないこと**——直す前も欄そのものは在った。
    **実寸で位置を突き合わせる**（3）、**画面に出ている文字を数える**（2）。
@@ -225,6 +226,41 @@ run('test_eqsetup: 使用設備の設定モーダル（§9.257 ②、利用者�
    帯:document.getElementById('headerEquipmentName')?.textContent}));
   rec('選んで保存すると端末の設定とヘッダーの両方へ届く',
       saved.控え===EQ&&saved.帯===EQ,JSON.stringify(saved));
+
+  /* ---------- 8) マスタを書けない端末でも、在る設備は選べる（利用者の報告） ----------
+     「初期設定の設備を選ぶ部分だけはマスタの権限にかかわらず許可してほしい…設備作業者の権限であった場合、
+      どの設備にも登録できずに終わってしまい、設備での作業実績を登録できない」。
+     前は在る設備を選ぶだけでも`POST /api/equipment-master`（マスタへの書き込み）を通しており、スケジュール
+     モード・設備作業者では断られていた。**マスタへの書き込みが1本も出ないこと**まで見る。 */
+  const posts=[];
+  const onReq=r=>{if(r.method()==='POST'&&/\/api\/equipment-master(\?|$)/.test(r.url()))posts.push(r.url())};
+  page.on('request',onReq);
+  try{
+   await page.evaluate(()=>fetch('/api/access-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'schedule'})}));
+   await page.evaluate(()=>window.refreshAccessMode());
+   await W.until(page,()=>(window.accessMode||{}).mode==='schedule',null,{ms:5000,what:'スケジュールモードになる'});
+   await open();
+   const other=await page.evaluate(eq=>{const s=document.getElementById('configuredEquipment');
+    const o=[...s.options].find(x=>x.value&&x.value!=='__new__'&&x.value!==eq);return o?o.value:''},EQ);
+   await page.selectOption('#configuredEquipment',other||EQ);
+   await page.click('#saveAppSettings');
+   await W.until(page,want=>localStorage.getItem('AccessMeasurementConfiguredEquipment')===want,other||EQ,{ms:8000,what:'選んだ設備が端末に入る'});
+   const got=await page.evaluate(()=>({控え:localStorage.getItem('AccessMeasurementConfiguredEquipment'),
+    足元:document.getElementById('eqsetFoot')?.textContent||''}));
+   rec('8) マスタを書けないモードでも在る設備を選んで保存できる',!!other&&got.控え===other,JSON.stringify(got));
+   rec('8) 在る設備を選ぶだけならマスタへ書きに行かない',posts.length===0,posts.join(' / ')||'0本');
+   await W.until(page,()=>document.getElementById('appSettingsModal').hidden,null,{ms:8000,what:'保存して窓が閉じる'});
+   await open();
+   await page.selectOption('#configuredEquipment','__new__');
+   const help=await page.evaluate(()=>document.getElementById('equipmentMasterHelp')?.textContent||'');
+   rec('8) 新しく登録できないときは押す前にそう言い、在る設備から選ぶ道を出す',
+       /登録できません/.test(help)&&/登録済みの設備から選ぶ/.test(help),help);
+   await page.click('#cancelAppSettings');
+  }finally{
+   page.off('request',onReq);
+   await page.evaluate(()=>fetch('/api/access-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'edit'})}));
+   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
+  }
 
   rec('画面のJSが例外を出していない',errs.length===0,errs.join(' / '));
  }catch(e){

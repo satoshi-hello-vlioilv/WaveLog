@@ -14,6 +14,7 @@
     ⑥ 行と列を後から並べ替えられる（掴む札・キー）・列の並びは保存する（§9.530）
     ⑧ 当たり得ない条件を見分け、図・保存したらどうなるか・直す案を出す（§9.534）
     ⑨ 答えの地図と列の効き目・上の行に覆われて一度も当たらない行の名指し（§9.535）
+    ⑩ 列幅を見出しの縁で変えられ、端末に覚える（ダブルクリックで元へ）
 
    前（実測）: ② 表現できない（板厚だけ）・③ 当たらない。
    後片付けは finally（「未登録に戻す」＝行を消す）。途中で落ちると表が残り、
@@ -299,8 +300,28 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await W.until(page, () => [...document.querySelectorAll('.rt-try .rt-p')].some(i => i.value !== ''), null, { ms: 4000, what: 'マスを押すと試す行へ' });
   rec('⑨ 地図のマスを押すと、その区間の値が「試す」の行へ入り、当たる行が出る',
       await page.evaluate(() => !/値を入れると/.test(document.querySelector('.rt-ans').textContent)));
+  /* ---- ⑩ 列幅を変えられる（利用者の指示「複数条件を1セル内に書く場合、入力した文字数が多い場合もあるので
+     条件テーブルの列幅を変化させられるように」）。前（実測）: 取っ手が無く、列は中身なりのまま。
+     見出しの右の縁を掴んで引くと、見出しとその列のセルが同じ幅になり、描き直しても残る（端末に覚える）。
+     ダブルクリックで元の幅へ。 ---- */
+  const colW = () => page.evaluate(() => { const th = document.querySelector('#masterMaintList .rt-col'), f = th.dataset.f;
+   const td = document.querySelector(`#masterMaintList .rt-cell[data-f="${CSS.escape(f)}"]`);
+   return { th: Math.round(th.getBoundingClientRect().width), td: td ? Math.round(td.getBoundingClientRect().width) : null }; });
+  const w0 = await colW();
+  const g = await (await page.$('#masterMaintList .rt-col .rt-wgrip')).boundingBox();
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2); await page.mouse.down();
+  await page.mouse.move(g.x + g.width / 2 + 120, g.y + g.height / 2, { steps: 8 }); await page.mouse.up();
+  await W.until(page, () => !!(JSON.parse(localStorage.getItem('wl.ruleTable.widths') || '{}').hold), null, { ms: 4000, what: '列幅を端末に覚える' });
+  await page.evaluate(() => WL.holdPick.table.render());
+  const w1 = await colW();
+  rec('⑩ 見出しの縁を引くと列が広がり、描き直しても残る（セルも同じ幅）',
+      Math.abs(w1.th - (w0.th + 120)) <= 4 && w1.td === w1.th, JSON.stringify({ 前: w0, 後: w1 }));
+  await page.dblclick('#masterMaintList .rt-col .rt-wgrip');
+  await W.until(page, () => !(JSON.parse(localStorage.getItem('wl.ruleTable.widths') || '{}').hold || {})[document.querySelector('#masterMaintList .rt-col').dataset.f], null, { ms: 4000, what: 'ダブルクリックで元の幅へ' });
+  rec('⑩ ダブルクリックで中身なりの幅へ戻る', Math.abs((await colW()).th - w0.th) <= 2);
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));
  } finally {
+  await page.evaluate(() => localStorage.removeItem('wl.ruleTable.widths')).catch(() => {});
   await reset();
  }
 }, { mode: 'edit', viewport: { width: 1728, height: 1030 } });

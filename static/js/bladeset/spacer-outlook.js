@@ -58,7 +58,7 @@
   const s=o.sum,L=o.len,on=k===view;
   const body={
    table:()=>({v:`${nf(s.free)}<small> / 保有 ${nf(s.total)}枚</small>`,mini:split(s,s.total)}),
-   frac:()=>Object.assign(fracSummary(o),{mini:`<span class="bk-mini">${o.frac.cells.map(c=>`<i class="${c.free===0?'is-zero':''}"${cellTone(c,o.frac.cap)}></i>`).join('')}</span>`}),
+   frac:()=>Object.assign(fracSummary(o),{mini:`<span class="bk-fracmap">${o.frac.cells.map(c=>`<i class="${c.free===0?'is-zero':''}"${cellTone(c,o.frac.cap)}></i>`).join('')}</span>`}),
    len:()=>({v:L.perSet>0?`刃組 ${(L.free/L.perSet).toFixed(1)}<small>回ぶん（保有 ${(L.total/L.perSet).toFixed(1)}回）</small>`:'<small>有効長が未設定</small>',
              mini:`<span class="bk-split" aria-hidden="true"><i class="is-shelf" style="width:${pc(L.free,L.total)}%"></i><i class="is-busy" style="width:${pc(L.total-L.free,L.total)}%"></i></span>`})
   }[k]();
