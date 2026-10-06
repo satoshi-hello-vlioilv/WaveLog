@@ -281,7 +281,7 @@ def bladeset_hold_save():
  if x.get('reset') is True:
   n = _op_read(lambda c: bs.hold_reset(c, x.get('equipment')))
   return jsonify(ok=True, rows=0, removed=n,
-                 message='保持方式の表を未登録へ戻しました（刃組基準値のフィンガー切替板厚で決めます）。')
+                 message='保持方式の表を未登録へ戻しました（表は空です。どの作業もゴムリングになります）。')
  rows = x.get('rows')
  if not isinstance(rows, list):
   return jsonify(error='表の行（rows）がありません。'), 400

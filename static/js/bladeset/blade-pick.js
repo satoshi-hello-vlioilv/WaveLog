@@ -56,13 +56,13 @@
   },o));
  }
  const T={
-  category:makeTable('category',{label:'刃のカテゴリ',answerHead:'刃のカテゴリ',defaultCols:['hold','thickness'],
+  category:makeTable('category',{label:'刃のカテゴリ',answerHead:'刃のカテゴリ',
    seedNote:'すべて通常刃（今までの選び方）',
    lead:'通常刃か専用刃かを決めます。専用刃は<b>セットまで選べます</b>（「どれでも」なら使用中の専用刃のセットを A から順に）。研磨中のセットは選ばれません（「刃」で切り替え）。',
    answers:catChoices,answerOf:r=>`${r.answer||normal()}|${r.group||''}`,answerLabel:catLabel,
    setAnswer:(r,v)=>{const [a,g]=v.split('|');Object.assign(r,{answer:a,group:a===special()?(g||''):''})},
    blankRow:()=>({answer:special(),group:''})}),
-  thickness:makeTable('thickness',{label:'刃厚',answerHead:'刃厚',defaultCols:['category','thickness'],
+  thickness:makeTable('thickness',{label:'刃厚',answerHead:'刃厚',
    seedNote:'いちばん厚い刃（今までの選び方）',
    lead:'刃のカテゴリの表で決まったセットから、<b>どの刃厚の刃を使うか</b>を決めます。答えは「刃」に登録している刃厚です。',
    answers:thChoices,answerOf:r=>String(r.answer||''),answerLabel:thLabel,

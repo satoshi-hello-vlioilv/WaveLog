@@ -123,10 +123,10 @@
    this.rows=(rows||[]).map(r=>Object.assign({},r,{conditions:(r.conditions||[]).map(x=>Object.assign({},x))}));
    this.stored=!!stored;this.dirty=false;this.read=-1;
    /* 列＝**保存した並び**（§9.530・サーバーの`table_cols()`）。条件にあって並びに無い列は後ろへ。
-      何も無ければ呼ぶ側の既定の列。 */
+      何も無ければ**列なし**（§9.574、利用者の指示「デフォルトは条件テーブル空に」——前は呼ぶ側の既定の列を足していた）。 */
    const list=(cols||[]).slice();
    this.rows.forEach(r=>(r.conditions||[]).forEach(x=>{if(!list.includes(x.field))list.push(x.field)}));
-   this.cols=list.length?list:(this.o.defaultCols||[]).slice();
+   this.cols=list;
    this.sortConds();
   }
   /* 行の条件を列の並びへそろえる（保存しても読み直しても同じ並びになるように）。 */
@@ -139,7 +139,8 @@
    this.cols.forEach(f=>{
     const v=this.o.probe[f];
     if(v===undefined||String(v).trim()==='')return;
-    c[f]=this.kindOf(f)==='num'?Number(v):String(v);
+    /* 数の列は全角の数字も読む（字の欄なので打てる）。 */
+    c[f]=this.kindOf(f)==='num'?Number(WL.base.toHalfWidth(String(v)).trim()):String(v);
    });
    return c;
   }
@@ -387,7 +388,9 @@
    const fd=this.fieldOf(f),v=this.o.probe[f]??'';
    if(fd&&fd.kind==='choice')return `<select class="rt-p" data-p="${esc(f)}">${['<option value="">（問わない）</option>']
     .concat((fd.options||[]).map(x=>`<option value="${esc(x)}"${x===v?' selected':''}>${esc(x)}</option>`)).join('')}</select>`;
-   return `<input class="rt-p" data-p="${esc(f)}" type="${this.kindOf(f)==='num'?'number':'text'}" step="any" value="${esc(v)}" placeholder="値">`;
+   /* 数の列も`type=text`＋`inputmode="decimal"`（§9.574）。`type=number`は土台の決まりで右寄せになり、広い欄で
+      「右から埋まる」と読まれた。日本語の入力も受けない。数かどうかは判定（`probeCtx()`）が読む。 */
+   return `<input class="rt-p" data-p="${esc(f)}" type="text"${this.kindOf(f)==='num'?' inputmode="decimal"':''} value="${esc(v)}" placeholder="値">`;
   }
   /* セル1つ。読めなかった字は**直すまでそのまま残す**（描き直しで消すと、受け付けたと読める）。 */
   cellHtml(r,i,f){

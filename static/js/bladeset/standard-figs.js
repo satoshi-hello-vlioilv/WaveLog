@@ -124,9 +124,8 @@
   o+=band(110,'板ニップ',v('nipHardMin')-0.2,v('nipHardMax')+0.2,
    [v('nipHardMin'),v('nipMin'),v('nipMax'),v('nipHardMax')],['nipHardMin','nipMin','nipMax','nipHardMax']);
   o+=band(180,'上下の左右差',0,v('offsetHardTol')*1.4||0.1,[0,0,v('offsetTol'),v('offsetHardTol')],[null,null,'offsetTol','offsetHardTol']);
-  const fm=v('fingerMax'),gm=v('gapMax');
-  o+=`<g data-k="fingerMax">${t(20,238,`板厚 ${f2(fm)} 未満はフィンガー・以上はゴムリング（保持方式の表が未登録のとき）`,{cls:'sf-sub'})}</g>`;
-  return o+`<g data-k="gapMax">${t(20,256,`刃間の隙間は ${f2(gm)} mm まで許す`,{cls:'sf-sub'})}</g>`;
+  const gm=v('gapMax');
+  return o+`<g data-k="gapMax">${t(20,238,`刃間の隙間は ${f2(gm)} mm まで許す`,{cls:'sf-sub'})}</g>`;
  }
 
  /* ---- 刃の管理: 刃の径と使用限界径・研磨周期 ---- */

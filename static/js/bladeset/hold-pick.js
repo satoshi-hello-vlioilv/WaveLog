@@ -27,8 +27,8 @@
   key:'hold',label:'保持方式',answerHead:'保持方式',
   host:()=>document.querySelector('#masterMaintList [data-table="hold"]'),
   fields:()=>hs.fields,groups:()=>hs.groups,sourceCols:()=>hs.sourceCols,valuesOf:f=>valuesOf(f),
-  probe:hs.probe,defaultCols:['thickness'],
-  seedNote:'刃組基準値のフィンガー切替板厚から作った表',
+  probe:hs.probe,
+  seedNote:'空——どの作業も既定の行（ゴムリング）',
   lead:'板を保持する方式を決める<b>最初の表</b>です。ここの答え（板押さえ方式・フィンガー材質）は「刃選択」の表で条件に使えます。',
   answers:()=>outChoices(),answerOf:r=>`${r.hold}|${matOf(r)}`,answerLabel:outLabel,
   /* 答えの地図の色は刃組図と同じ（§9.535）: フィンガーは材質の色、ゴムリングは青、一体型は水色。 */

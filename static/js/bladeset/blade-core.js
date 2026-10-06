@@ -1843,11 +1843,8 @@
   const rules = (M && M.holds) || [];
   /* フィンガーの材質（§9.527）は当たった行が持つ。空欄・表が無ければ既定の材質。 */
   const matOf = (hold, row) => (hold === 'フィンガー' ? ((row && row.material) || fingerMatDefault(M)) : '');
-  if (!rules.length) {
-   const fm = num(M && M.P && M.P.fingerMax) || 0;
-   const hold = st.thick < fm ? 'フィンガー' : 'ゴムリング';
-   return { hold, material: matOf(hold, null), index: -1, stored: false, row: null };
-  }
+  /* 表が無い（古いサーバー・網の手組み）＝空の表と同じ: 既定の行のゴムリング（§9.574、利用者の選択「表も判定も空」）。 */
+  if (!rules.length) return { hold: 'ゴムリング', material: '', index: -1, stored: false, row: null };
   const hit = firstRule(rules, pickCtx(st, M), tableFields(M, 'hold'), true);
   const hold = hit ? hit.row.hold : 'ゴムリング';
   return { hold, material: matOf(hold, hit && hit.row), index: hit ? hit.index : -1,
@@ -1869,15 +1866,12 @@
     その行の条件・表が登録か種か。画面は字を組み立てない。 */
  function holdReason(st, M) {
   const h = holdPick(st, M);
-  if (h.index < 0 && !((M && M.holds) || []).length) {
-   const fm = num(M && M.P && M.P.fingerMax) || 0;
-   return `板厚 ${(+st.thick).toFixed(1)} が切替板厚 ${fm} ${st.thick < fm ? '未満' : '以上'}のため`;
-  }
+  if (h.index < 0 && !((M && M.holds) || []).length) return '「保持方式」の表が無いため（既定のゴムリング）';
   const cs = (h.row && h.row.conditions) || [];
   const why = cs.length
    ? `「保持方式」の${h.index + 1}行目（${rowText(cs, tableFields(M, 'hold'))}）に当たったため`
    : '「保持方式」のどの決まりにも当たらないため（最後の既定の行）';
-  return why + (h.stored ? '' : '。表は未登録なので、刃組基準値のフィンガー切替板厚から作った表で決めました');
+  return why + (h.stored ? '' : '。表は未登録（空）なので、既定の行で決めました');
  }
  /* 行の条件を字にする（「板厚 ＜ 0.6 または ＞ 0.9 かつ 製造材質 SUS*」）。セルの字（`cellText()`）に列の名前を添える。
     刃組の説明と条件表の盤が同じ字を使う。 */
