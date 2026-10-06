@@ -7,7 +7,7 @@
 
    前（実測・VER2.415.0）: 1行＝名称が鍵の汎用の表（名称は必須・同じセット＋刃厚の2行目を断らない・
    セット名は自由な字）。カテゴリ・使用状態は別タブ「刃セット」でしか切り替えられなかった（刃のタブの札0）。
-   固定するのは6つ:
+   固定するのは7つ:
     ① 一覧（§9.536 で径ゲージに）: 刃厚ごとのまとまりに セット×刃厚 が1つずつ（A→Z）、見出しが今すぐ選べる枚数
     ② 詳細: カテゴリ・使用状態の2択がこの盤にある（押すとすぐ保存）・名称の欄は無い
     ③ 刃厚の行: 欄を離れるとすぐ保存し、焦点は次の欄のまま。同じ刃厚は足せない（理由を言う）
@@ -16,6 +16,7 @@
     ⑥ 径ゲージ（§9.536、利用者の選択「B-9とB-10を切り替え表示…デフォルトはB-10」）: 既定はタイル・
        残り／研磨の予定を一覧が言い、詳細カードは言わない（階層を混ぜない）・見せ方はこの端末に覚える
        下限は持たない（§9.539 利用者の指示で項目ごと外した）——一覧にも詳細にも新しいセットにも「下限」が無い
+    ⑦ 頭・詳細カードの字が縦に積まれない（部品の名前の衝突で崩れていた・1728px）
    後片付けは finally（この網が作ったセットを消し、直した値を戻す）。 */
 const H = require('./lib/harness.js');
 const W = require('./lib/wait.js');
@@ -164,6 +165,31 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   await page.evaluate(() => document.querySelector('[data-master="bladesetBlade"]').click());
   await W.until(page, () => !!document.querySelector('#masterMaintList .bk-pane.bb-tree'), null, { ms: 10000, what: '覚えた見せ方で開く' });
   rec('⑥ 見せ方はこの端末に覚える（開き直しても刃厚ごとの一覧）', v6b.stored === 'tree');
+  /* ---- ⑦ 字が縦に積まれない（利用者の指摘「文字のレイアウト崩れで読みにくいレベルの縦書きやUIの中に文字が
+     入りきれていない」）。原因は部品の名前の衝突（`.bk-mini`＝頭の小さな欄 と スペーサーの端数の図・20列の格子）で、
+     「見せ方」「セット名」の欄が20列の格子になっていた。前（実測・1728px）: 縦に積まれた字 タイル4／一覧7。
+     測り方: 2字以上の字の塊が2行以上に折れ、1行あたり3字以下。 ---- */
+  const vertical = () => page.evaluate(() => {
+   const out = [];
+   ['masterMaintForm', 'masterMaintList'].forEach(id => {
+    const root = document.getElementById(id); if (!root) return;
+    const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n;
+    while ((n = tw.nextNode())) {
+     const t = n.textContent.replace(/\s+/g, ''); if (t.length < 2 || !n.parentElement.offsetParent) continue;
+     const rg = document.createRange(); rg.selectNodeContents(n);
+     const ys = new Set([...rg.getClientRects()].filter(r => r.width > 0).map(r => Math.round(r.top)));
+     if (ys.size >= 2 && t.length / ys.size <= 3) out.push(`「${t.slice(0, 10)}」${ys.size}行`);
+    }
+   });
+   return out;
+  });
+  const vTree = await vertical();
+  await page.click('#masterMaintForm [data-seg="view"][data-v="タイル"]');
+  await W.until(page, () => !!document.querySelector('#masterMaintList .bk-pane:not(.bb-tree)'), null, { ms: 8000, what: 'タイルへ戻す' });
+  await page.click('#masterMaintList .bb-tile, #masterMaintList [data-bk-key]').catch(() => {});
+  const vTile = await vertical();
+  rec('⑦ 頭・詳細カードの字が縦に積まれない（タイル・刃厚ごとの一覧とも0）', vTree.length === 0 && vTile.length === 0,
+      JSON.stringify({ 一覧: vTree.slice(0, 4), タイル: vTile.slice(0, 4) }));
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));
  } finally {
   for (const g of made) {

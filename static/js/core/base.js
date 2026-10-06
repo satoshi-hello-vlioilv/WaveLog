@@ -688,6 +688,14 @@ function sourceField(names){
 }
 // Waiting feedback on the initial navigation. Yield one frame so acknowledgement appears immediately.
 function nextPaint(){return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))}
+/* 打った字を受ける（`input`の代わり）。**日本語を変換している間は呼ばない**——変換中に欄を作り直すと、
+   打ちかけの「k」が確定して「kか」のように子音と母音が割れる（利用者の報告・刃選択の表）。
+   変換の確定（`compositionend`）で1回呼ぶ。打つたびに画面を描き直す欄は、これを通すこと。 */
+function onTyped(el,fn){
+ if(!el)return;
+ el.addEventListener('input',e=>{if(!e.isComposing)fn(e)});
+ el.addEventListener('compositionend',e=>fn(e));
+}
 /* ---------- データソースの役割(§9.87) ----------
    「どれが作業対象の一覧(仕掛)で、どれが品質データか」は
    **データソースマスタの[役割]が決める**。以前は 'SIKALOTNOW' という
@@ -3124,7 +3132,7 @@ Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalD
    ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
    ============================================================ */
 window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
-WL.base={normalizedLot,durationMs,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+WL.base={normalizedLot,durationMs,onTyped,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
  LENGTH_SLOTS,
  /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
     `measureDirty` は外からも倒す（`records-store` が保存し終えて false に

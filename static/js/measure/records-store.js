@@ -1967,7 +1967,16 @@ async function loadEquipmentMaster(force=false){
 /* **書き込みは`WL.equipment.set()`を通す**（§9.285 ①）——`localStorage`へ
    直に書くと、フィルタの`{使用設備}`も一覧の絞り込みも「変わったこと」を
    知る手立てが無い（実機で「切り替えた瞬間に反映されない」と報告された）。 */
-async function registerAndSelectEquipment(name){const result=await api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({name,reuseExisting:true}))});WL.equipment.set(result.name);await loadEquipmentMaster(true);return result}
+/* この端末の使用設備を決める。**設備マスタに在る設備を選ぶだけなら、マスタへは書かない**（この端末の設定だけ）
+   ——前は在る設備でも`POST /api/equipment-master`を通しており、マスタを触れない端末（設備作業者・
+   スケジュールモード）では断られて、どの設備にも登録できず作業実績を残せなかった（利用者の報告）。
+   マスタへ書くのは**新しい名前を登録するとき**だけ（その権限はアクセス権限マスタが決める）。 */
+async function chooseEquipment(name){
+ const known=equipmentMasterState.items.find(x=>x.name===name);
+ if(known){WL.equipment.set(known.name);return {ok:true,name:known.name,registered:false,message:'設備マスタの登録済み設備を使用します。'}}
+ const result=await api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({name,reuseExisting:true}))});
+ WL.equipment.set(result.name);await loadEquipmentMaster(true);return result;
+}
 /* 候補を並べる。**「＋ 設備マスタへ新規登録」を選んでも窓の高さは動かない**
    （§9.227 ②）——`hidden`で行ごと消すと、選んだ拍子に下のボタンが上下して
    狙いが外れる。場所は常に空けておき、伏せるのは中身だけ（CSSが
@@ -2068,7 +2077,10 @@ function updateEquipmentMasterHelp(){
   return;
  }
  if(select.value===EQ_NEW){
-  set('is-warn','入れた名前を<b>設備マスタへ登録</b>してから、この端末の使用設備にします'
+  /* 登録はマスタへの書き込み。**書けない端末では押す前に言う**（§CLAUDE 4）——選ぶだけなら書けなくてよい。 */
+  const why=equipmentRegisterBlocked();
+  set('is-warn',why?`${esc(why)}<b>登録済みの設備から選ぶ</b>か、マスタを編集できる端末で登録してください。`
+    :'入れた名前を<b>設備マスタへ登録</b>してから、この端末の使用設備にします'
     +'（次からは上の一覧に出ます）。');
   return;
  }
@@ -2078,6 +2090,14 @@ function updateEquipmentMasterHelp(){
   return;
  }
  set('',`あとは下の<b>「使用設備を保存」</b>を押すだけです（登録済み ${n}件）。`+offNote);
+}
+/* 設備マスタへ新しく登録できないなら、その理由（できるなら空）。判定はサーバー（`master_write_check`・モードの門）で、
+   ここは届いた`accessMode`を読むだけ。 */
+function equipmentRegisterBlocked(){
+ const a=window.accessMode||{};
+ if((a.mode||'edit')!=='edit')return 'いまのモードでは設備マスタへ登録できません。';
+ if(a.canEditFieldMaster===false)return `この端末のマスタ編集は「${a.masterEdit||'非表示'}」なので、設備マスタへ登録できません。`;
+ return '';
 }
 /* 窓を開く。**なぜ開いたか（`reason`）で足の一言が変わる**——測定を
    開こうとして止められたのか、自分で開いたのかで、次にすることが違う
@@ -2133,7 +2153,7 @@ async function openEquipmentSettingsFinal(reason='manual',suggested=''){
    return;
   }
   try{
-   const result=await registerAndSelectEquipment(name);
+   const result=await chooseEquipment(name);
    paintEquipmentNow(name,'saved');
    say(result.message||'保存しました。','is-ok');
    /* 画面の描き直しは`WL.equipment.onChange`が受け持つ（§9.285 ①）——

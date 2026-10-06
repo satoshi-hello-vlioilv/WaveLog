@@ -25,6 +25,19 @@
    ============================================================ */
 (function(){
  const BS=()=>WL.bladeSet;
+ /* 列（データ）の幅（利用者の指示「入力した文字数が多い場合もあるので条件テーブルの列幅を変化させられるように」）。
+    **この端末の見え方**なので端末に覚える（表の決まりではない＝保存して他の端末へ配らない）。鍵は表と列の名前。 */
+ const WIDTH_KEY='wl.ruleTable.widths';
+ const widthsAll=()=>{try{return JSON.parse(localStorage.getItem(WIDTH_KEY)||'{}')||{}}catch(e){WL.quiet.note('列幅の覚えを読めない（既定の幅で出す）',e);return {}}};
+ const widthOf=(table,f)=>{const w=+((widthsAll()[table]||{})[f]||0);return w>0?w:0};
+ function setWidth(table,f,w){
+  const all=widthsAll(),t=Object.assign({},all[table]||{});
+  if(w>0)t[f]=Math.round(w);else delete t[f];
+  all[table]=t;
+  try{localStorage.setItem(WIDTH_KEY,JSON.stringify(all))}catch(e){WL.quiet.note('列幅の覚えを書けない（次に開くと既定の幅）',e)}
+ }
+ /* 幅を決めた列のセルの`style`（見出し・試す・条件のセルで同じ）。 */
+ const widthStyle=w=>w?` style="width:${w}px;min-width:${w}px;max-width:${w}px"`:'';
  const SRC='source.';
  const isSrc=f=>String(f).startsWith(SRC);
 
@@ -350,15 +363,16 @@
    return '<option value="">＋ 列（データ）を足す</option>'+groups;
   }
   colHeadHtml(f,ci){
-   return `<th class="rt-col" data-g="${esc((this.fieldOf(f)||{}).group||(isSrc(f)?'source':''))}">`
+   return `<th class="rt-col" data-f="${esc(f)}" data-g="${esc((this.fieldOf(f)||{}).group||(isSrc(f)?'source':''))}"${widthStyle(widthOf(this.o.key,f))}>`
     +`<span class="rt-cn">${this.gripHtml('col',ci,`${this.colLabel(f)}の列`)}<b>${esc(this.colLabel(f))}</b>`
     +`<button type="button" class="rt-x" data-rt="delcol" data-c="${ci}" title="この列を消す" aria-label="${esc(this.colLabel(f))}の列を消す">×</button></span>`
-    +`<small>${esc(this.groupWord(f))}</small></th>`;
+    +`<small>${esc(this.groupWord(f))}</small>`
+    +`<span class="rt-wgrip" title="掴んで列の幅を変える（ダブルクリックで元の幅）" aria-hidden="true"></span></th>`;
   }
   probeRowHtml(hit){
    const ans=!this.probeFilled()?'<span class="is-idle">値を入れると、当たる行が光ります</span>'
     :hit?`<b>${esc(this.o.answerLabel(hit.row))}</b>（${this.isDefault(hit.row)?'既定の行':`${hit.index+1}行目`}に当たる）`:'<span class="is-idle">当たる行がありません</span>';
-   return `<tr class="rt-try"><th class="rt-no">試す</th>${this.cols.map(f=>`<td>${this.probeInput(f)}</td>`).join('')}<td class="rt-ans" colspan="3">${ans}</td></tr>`;
+   return `<tr class="rt-try"><th class="rt-no">試す</th>${this.cols.map(f=>`<td data-f="${esc(f)}"${widthStyle(widthOf(this.o.key,f))}>${this.probeInput(f)}</td>`).join('')}<td class="rt-ans" colspan="3">${ans}</td></tr>`;
   }
   tableHtml(){
    const hit=this.probeHit();
@@ -377,13 +391,13 @@
   }
   /* セル1つ。読めなかった字は**直すまでそのまま残す**（描き直しで消すと、受け付けたと読める）。 */
   cellHtml(r,i,f){
-   const c=this.condsOf(r,f),mk=this.cellMark(c),bad=(r.bad||{})[f];
-   if(bad)return `<td class="rt-cell"><input class="rt-c is-bad" data-r="${i}" data-f="${esc(f)}" value="${esc(bad.text)}"`
+   const c=this.condsOf(r,f),mk=this.cellMark(c),bad=(r.bad||{})[f],ws=widthStyle(widthOf(this.o.key,f));
+   if(bad)return `<td class="rt-cell" data-f="${esc(f)}"${ws}><input class="rt-c is-bad" data-r="${i}" data-f="${esc(f)}" value="${esc(bad.text)}"`
     +` title="${esc(bad.why)}" aria-invalid="true"><small class="rt-why">${esc(bad.why)}</small></td>`;
    /* 当たり得ない組は字で言う（色だけにしない・§CLAUDE 3）。理由と直し方は表の下の盤（`deadHtml()`）。 */
    const d=this.isDefault(r)?null:this.deadOf(r,f),dw=d&&(d.dead?'当たらない':d.part?'一部当たらない':'');
    const why=dw?d.chains.filter(x=>x.dead).map(x=>x.why).join('／'):'';
-   return `<td class="rt-cell ${mk}${dw?(d.dead?' is-dead':' is-deadpart'):''}"><input class="rt-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
+   return `<td class="rt-cell ${mk}${dw?(d.dead?' is-dead':' is-deadpart'):''}" data-f="${esc(f)}"${ws}><input class="rt-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
     +` placeholder="問わない"${c.length?` title="${esc(sayCell(c,this.colLabel(f))+(why?`（${why}）`:''))}"`:''}>`
     +(mk?`<i class="rt-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+(dw?`<small class="rt-deadtag">${dw}</small>`:'')+'</td>';
   }
@@ -437,8 +451,9 @@
    if(c&&c.op!=='eq'&&last)return null;
    const bare=c?c.value:last.replace(/^[<>=!≦≧＜＞≠＝*]+/,'').replace(/\*$/,'');
    const items=this.valueItems(f,fd,bare,last).map(it=>it.head?it:Object.assign(it,{ins:head+it.ins}));
-   const choice=fd&&fd.kind==='choice';
-   const tm=TEMPLATES[kind==='num'?'num':'text'].filter(([mk])=>!choice||/^(≠ )?v?$/.test(mk('v')));
+   /* 候補から選ぶ列（板押さえ方式・刃のカテゴリ…）も**字の列と同じ書き方を全部**出す——前は「＝／≠」だけで、
+      保持方式の表と同じ条件（または・で始まる・含む・空…）が書けると分からなかった（利用者の指摘）。判定は前から字として比べる。 */
+   const tm=TEMPLATES[kind==='num'?'num':'text'];
    const v=bare||'値';
    items.push({head:true,label:'書き方（押すと入ります）'});
    tm.forEach(([mk,say,open,fixed,lab])=>{
@@ -471,10 +486,26 @@
    host.querySelectorAll('.rt-row').forEach(tr=>{tr.onmouseenter=()=>{this.read=+tr.dataset.r;this.paintRead(host)}});
    host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{this.o.setAnswer(this.rows[+el.dataset.r],el.value);this.touch();this.render()}});
    host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>this.setNote(host,+el.dataset.r,el.value)});
-   this.wireGrips(host);this.wireDead(host);this.wireMap(host);
+   this.wireGrips(host);this.wireWidths(host);this.wireDead(host);this.wireMap(host);
    host.querySelectorAll('.rt-p').forEach(el=>{
     const set=()=>{this.o.probe[el.dataset.p]=el.value;this.o.onProbe?this.o.onProbe():this.render()};
-    if(el.tagName==='SELECT')el.onchange=set;else el.oninput=set;
+    /* 打つたびに表を作り直すので、**変換中は待つ**（`onTyped`・日本語が「kか」に割れる不具合）。 */
+    if(el.tagName==='SELECT')el.onchange=set;else WL.base.onTyped(el,set);
+   });
+  }
+  /* 列幅の取っ手（一覧と同じ道具`WL.columnWidthGrip`）。引いている間は見出しとその列のセルの幅だけ替え、
+     離したら端末に覚えて描き直す。ダブルクリックで中身なりの幅へ戻す。 */
+  wireWidths(host){
+   if(typeof WL.columnWidthGrip!=='function')return;
+   host.querySelectorAll('.rt-col .rt-wgrip').forEach(grip=>{
+    const f=grip.closest('.rt-col').dataset.f;
+    const cells=()=>[...this.o.host().querySelectorAll(`.rt-table [data-f="${CSS.escape(f)}"]:is(th,td)`)];
+    WL.columnWidthGrip(grip,{
+     startWidth:()=>{const th=cells().find(el=>el.tagName==='TH');return th?th.getBoundingClientRect().width:0},
+     preview:w=>cells().forEach(el=>{el.style.width=el.style.minWidth=el.style.maxWidth=`${w}px`}),
+     commit:w=>{setWidth(this.o.key,f,w);this.render()},
+     reset:()=>{setWidth(this.o.key,f,0);this.render()},
+    });
    });
   }
   /* 備考は打つそばから写す（表は作り直さない＝打っている欄の焦点を奪わない）。頭の「保存」だけ押せる形へ。 */

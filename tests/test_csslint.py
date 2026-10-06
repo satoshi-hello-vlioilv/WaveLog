@@ -10,7 +10,7 @@
    その約束が破られていないかをここで見る。ブラウザを起動しないので速い。
    ============================================================
 """
-import re,sys,pathlib
+import re,sys,pathlib,json
 
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 # CSSは static/css/ 配下へ分割してある(§9.72)。@layer の中では今も
@@ -224,34 +224,38 @@ rec('レイヤの並びを宣言しているのは00-base.cssだけ',not redecl,
 # 枠が漏れる（`.cl-search`＝更新履歴の検索欄にリンクマスタの枠と高さが付いて
 # いた）、の2つを実際に踏んだ。**目で数えない**——15件あった。
 # `@media`/`@container`の中は「幅で上書きする」ための意図した重ねなので除く。
+def _rule_decls(name,text=None):
+    """1ファイル（`text`を渡せばその字）の宣言を (セレクタ, レイヤ, プロパティ, 値) で並べる。結合子なしの
+    セレクタだけ・`@media`/`@container`の中は除く（幅で上書きする意図した重ね）。"""
+    src=re.sub(r'/\*[\s\S]*?\*/','',text if text is not None else (CSS_DIR/name).read_text(encoding='utf-8'))
+    ctx=[];buf=''
+    for ch in src:
+        if ch=='{':
+            sel=buf.strip();buf=''
+            ctx.append(sel if sel.startswith('@') else ('S',sel))
+        elif ch=='}':
+            if ctx:
+                top=ctx.pop()
+                if isinstance(top,tuple):
+                    body=buf;buf=''
+                    if any(isinstance(c,str) and (c.startswith('@media') or c.startswith('@container')) for c in ctx):
+                        continue
+                    layer=[c for c in ctx if isinstance(c,str) and c.startswith('@layer')]
+                    layer=layer[-1] if layer else ''
+                    for part in top[1].split(','):
+                        part=part.strip()
+                        if not re.fullmatch(r'([.#][\w-]+)+',part):continue
+                        for d in body.split(';'):
+                            if ':' not in d:continue
+                            prop,val=d.split(':',1);yield part,layer,prop.strip(),val.strip()
+            buf=''
+        else:
+            buf+=ch
 def _conflicts():
     decls={}   # (selector,layer) -> file -> {prop: value}
     for name in CSS_ORDER:
-        src=re.sub(r'/\*[\s\S]*?\*/','',(CSS_DIR/name).read_text(encoding='utf-8'))
-        ctx=[];buf=''
-        for ch in src:
-            if ch=='{':
-                sel=buf.strip();buf=''
-                ctx.append(sel if sel.startswith('@') else ('S',sel))
-            elif ch=='}':
-                if ctx:
-                    top=ctx.pop()
-                    if isinstance(top,tuple):
-                        body=buf;buf=''
-                        if any(isinstance(c,str) and (c.startswith('@media') or c.startswith('@container')) for c in ctx):
-                            continue
-                        layer=[c for c in ctx if isinstance(c,str) and c.startswith('@layer')]
-                        layer=layer[-1] if layer else ''
-                        for part in top[1].split(','):
-                            part=part.strip()
-                            if not re.fullmatch(r'([.#][\w-]+)+',part):continue
-                            slot=decls.setdefault((part,layer),{}).setdefault(name,{})
-                            for d in body.split(';'):
-                                if ':' not in d:continue
-                                prop,val=d.split(':',1);slot[prop.strip()]=val.strip()
-                buf=''
-            else:
-                buf+=ch
+        for part,layer,prop,val in _rule_decls(name):
+            decls.setdefault((part,layer),{}).setdefault(name,{})[prop]=val
     out=[]
     for (sel,layer),byf in decls.items():
         if len(byf)<2:continue
@@ -272,6 +276,32 @@ try:
 finally:
     (CSS_DIR/'95-boot.css').write_text(_saved,encoding='utf-8')
 rec('見張りは同じ形を注ぎ込むと数える',any(x.startswith('.mm-btn-primary ') for x in _probe),'; '.join(_probe[:3]))
+
+# ---- 10b) 同じファイル・同じレイヤで、同じセレクタに同じプロパティを違う値で2度書いていない（増やさない） ----
+# 後に書いたほうだけが効き、前の規則は黙って死ぬ。刃マスタの頭が縦書きに崩れたのは、`.bk-mini`（頭の小さな欄・
+# `inline-flex`）を後からスペーサーの端数の図（20列の`grid`）の名前にも使ったため（利用者の指摘・§9.573）。
+# 前から在る重ね（実測60）はファイルごとの上限（tests/fixtures/css_selfdup_baseline.json）で固め、下げる方向だけ動かす。
+def _self_dups(name,text=None):
+    seen={}
+    for part,layer,prop,val in _rule_decls(name,text):
+        seen.setdefault((part,layer,prop),set()).add(val)
+    return sorted(f'{p} {pr}' for (p,_l,pr),vs in seen.items() if len(vs)>1)
+_SB=ROOT/'tests/fixtures/css_selfdup_baseline.json'
+_sd_now={n:len(_self_dups(n)) for n in CSS_ORDER}
+_sd_now={k:v for k,v in _sd_now.items() if v}
+_sd_base=json.loads(_SB.read_text(encoding='utf-8')) if _SB.exists() else {}
+_sd_over=[f'{k} {_sd_base.get(k,0)}→{v}（{"; ".join(_self_dups(k)[:3])}）' for k,v in _sd_now.items() if v>_sd_base.get(k,0)]
+if '--update' in sys.argv:
+    if _sd_over and _sd_base: print('!! 上限を上げる更新はしません: '+'; '.join(_sd_over[:4]))
+    else:
+        _SB.write_text(json.dumps(_sd_now,ensure_ascii=False,indent=1,sort_keys=True)+'\n',encoding='utf-8')
+        print(f'baseline を書き直しました: {_SB} ({len(_sd_now)} files)')
+rec('同じファイル・同じレイヤで同じセレクタのプロパティを違う値で重ねていない（ファイルごとの上限を超えない）',
+    not _sd_over,'; '.join(_sd_over[:4]) or f'いま {sum(_sd_now.values())}件 / {len(_sd_now)}ファイル')
+_sd_probe=_self_dups('', '@layer component{.bk-mini{display:inline-flex;gap:4px}\n.bk-fracmap{display:grid}\n'
+                          '.bk-mini{display:grid;grid-template-columns:repeat(20,1fr)}}\n@media (max-width:900px){.bk-fracmap{display:block}}')
+rec('重ねの見張りは同じ形を数える（`.bk-mini`の衝突の形は1件・`@media`の中は数えない）',
+    _sd_probe==['.bk-mini display'],json.dumps(_sd_probe,ensure_ascii=False))
 
 # ---- 11) 色のリテラルはトークン定義行だけ(§9.350、REVIEW 3-18) ----
 # 規則（CLAUDE.md「色と文字サイズは:rootのトークンから選ぶ」）はあったが網が無く、

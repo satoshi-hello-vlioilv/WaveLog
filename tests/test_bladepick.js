@@ -9,13 +9,14 @@
 
    前（実測・VER2.415.0）: 表は1つ（専用刃の決まりのカード）・刃厚は選べない（いつもいちばん厚い刃）・
    条件は4項目の窓で「項目→比べ方→値」を1つずつ選ぶ・候補なし。
-   固定するのは6つ:
+   固定するのは7つ:
     ① 盤: ② 刃のカテゴリ・③ 刃厚の2つの判定表（保持方式と同じ部品）。未登録は今までの選び方
     ② 列: 前の表の答え（板押さえ方式）と材料を足せる。刃厚の表だけが「刃のカテゴリ」を足せる
     ③ 候補: セルに入ると「この列の値」と「書き方」が出る。打ち終えた条件は Tab で離れても置き換わらない
     ④ 読む: 表の下の1行が決まりを文で言う／「試す」は2つの表で共有し、上の帯が「→ カテゴリ → 刃厚」を言う
     ⑤ 答え: 専用刃はセットまで選べ、刃厚は登録している刃厚から選ぶ。保存すると表のまま登録になる
     ⑥ ガイダンス: 2つの表に従い、札が「専用刃 B・5mm」と言う
+    ⑦ 選択肢の列も字の列と同じ書き方（候補・「専用*」）・「試す」の字の欄に日本語を打っても割れない
    後片付けは finally（2つの表を未登録へ・刃セットを初期値へ）。 */
 const H = require('./lib/harness.js');
 const W = require('./lib/wait.js');
@@ -137,6 +138,34 @@ H.run('test_bladepick: 刃選択の2つの判定表（§9.529）', async ({ page
   const pk = await page.evaluate(() => ({ t: document.querySelector('#bsFPick').textContent, title: document.querySelector('#bsFPick').title }));
   rec('⑥ ガイダンスは2つの表に従い、札が「専用刃 セット・刃厚」と言い、根拠（何行目）を title に持つ',
       pk.t === `専用刃 ${gS}・${thks[thks.length - 1]}mm` && /刃のカテゴリ」の1行目/.test(pk.title) && /「刃厚」の1行目/.test(pk.title), JSON.stringify(pk));
+  /* ---- ⑦ 選択肢の列も保持方式と同じ書き方・日本語入力が割れない（利用者の指摘） ----
+     「刃選択マスタの『刃厚』や『刃のカテゴリ』に関しても保持方式マスタと同じように様々な条件を入れられ
+      サジェスト機能も出るように」「セルに文字を入力するときに子音と母音が分かれて、文字が入力できない」。
+     前（実測）: 選択肢の列の書き方の候補は「＝／≠」の2つだけ（字の列は11）。「試す」の字の欄は1字打つたびに表ごと
+     作り直され、IME で「か」を打つと「kかか」になった。 */
+  await page.evaluate(() => WL.mm.openMasterMaint());
+  await page.evaluate(() => document.querySelector('[data-master="bladesetPick"]').click());
+  await W.until(page, e => document.querySelector('#bpEq')?.value === e && document.querySelectorAll('.rt-table').length === 2, EQ, { ms: 10000, what: '2つの表（開き直し）' });
+  const tm = await page.evaluate(() => {
+   const t = WL.bladePick.tables.thickness, n = f => { const it = t.suggestFor({ dataset: { f }, value: '' }).items; return it.length - it.findIndex(x => x.head && /書き方/.test(x.label)) - 1; };
+   return { category: n('category'), hold: n('hold'), material: n('material') };
+  });
+  rec('⑦ 選択肢の列（刃のカテゴリ・板押さえ方式）にも字の列と同じ書き方の候補が出る',
+      tm.category === tm.material && tm.hold === tm.material && tm.material >= 10, JSON.stringify(tm));
+  await page.fill(cell('thickness', 'category'), '専用*'); await page.press(cell('thickness', 'category'), 'Tab');
+  await page.selectOption(`${T('thickness')} .rt-p[data-p="category"]`, '専用刃');
+  await W.until(page, () => !!document.querySelector('#masterMaintList [data-table="thickness"] .rt-row[data-r="0"].is-won'), null, { ms: 5000, what: '「専用*」の行が当たる' });
+  rec('⑦ 選択肢の列に「専用*」（で始まる）と書け、試すと当たる', true);
+  await page.selectOption(`${T('thickness')} .rt-addcol`, 'material');
+  await W.until(page, () => !!document.querySelector('#masterMaintList [data-table="thickness"] .rt-p[data-p="material"]'), null, { ms: 5000, what: '材質の列が足される' });
+  const cdp = await page.context().newCDPSession(page);
+  await page.focus(`${T('thickness')} .rt-p[data-p="material"]`);
+  await cdp.send('Input.imeSetComposition', { text: 'k', selectionStart: 1, selectionEnd: 1 });
+  await cdp.send('Input.imeSetComposition', { text: 'か', selectionStart: 1, selectionEnd: 1 });
+  await cdp.send('Input.insertText', { text: 'か' });
+  await W.until(page, () => document.querySelector('#masterMaintList [data-table="thickness"] .rt-p[data-p="material"]')?.value === 'か', null, { ms: 5000, what: '試す欄に「か」' }).catch(() => {});
+  const ime = await page.evaluate(() => document.querySelector('#masterMaintList [data-table="thickness"] .rt-p[data-p="material"]')?.value);
+  rec('⑦ 「試す」の字の欄に日本語を打っても割れない（「k」が残らない）', ime === 'か', JSON.stringify(ime));
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));
  } finally {
   await reset();

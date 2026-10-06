@@ -1071,6 +1071,12 @@ body.bs-mode .bs-shell{display:flex}
 .rt-cn .rt-grip{margin-right:0}
 .rt-col small{display:block;font-size:var(--fs-sm);color:var(--muted);font-weight:var(--fw-body)}
 .rt-col[data-g="answer"] small{color:var(--teal-dark)}
+/* 列幅の取っ手（列の右の縁・一覧の見出しと同じ形）。幅を決めた列はセルの欄も縮める（下限の7emを外す）。 */
+.rt-table .rt-col{position:relative}
+.rt-wgrip{position:absolute;top:0;right:-5px;width:10px;height:100%;cursor:col-resize;z-index:1}
+.rt-wgrip::after{content:"";position:absolute;top:20%;left:4px;width:1px;height:60%;background:var(--line-mid)}
+.rt-wgrip:hover::after{background:var(--teal);width:2px}
+.rt-table td[style] :is(input,select){min-width:0}
 .rt-table .rt-no{width:3.5em;text-align:center;color:var(--muted);font-weight:var(--fw-body)}
 .rt-x{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
 /* 掴む札（§9.530）。押せる物の見た目にはしない（枠なし）——掴めることはカーソルと乗せたときの地で言う。
@@ -1224,10 +1230,10 @@ body.bs-mode .bs-shell{display:flex}
 .bk-split .is-busy,.bk-lenbar .is-busy,.bk-hist .is-busy,.bk-key.is-busy{background:var(--look-slate)}
 .bk-split .is-car,.bk-hist .is-car,.bk-key.is-car{background:var(--look-slate-pale);box-shadow:inset 0 0 0 var(--edge-w) var(--look-slate)}
 .bk-split .is-shelf,.bk-lenbar .is-shelf,.bk-hist .is-shelf,.bk-key.is-shelf{background:var(--look-green)}
-.bk-mini{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));grid-auto-rows:7px;gap:1px}
-.bk-mini i,.bk-fc{background:color-mix(in srgb,var(--look-blue) var(--k,0%),var(--surface))}
-.bk-mini i{display:block;height:7px;border-radius:var(--radius-xs)}
-.bk-mini i.is-zero,.bk-fc.is-zero,.bk-key.is-zero{background:var(--look-red)}
+.bk-fracmap{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));grid-auto-rows:7px;gap:1px}
+.bk-fracmap i,.bk-fc{background:color-mix(in srgb,var(--look-blue) var(--k,0%),var(--surface))}
+.bk-fracmap i{display:block;height:7px;border-radius:var(--radius-xs)}
+.bk-fracmap i.is-zero,.bk-fc.is-zero,.bk-key.is-zero{background:var(--look-red)}
 .bk-key{display:inline-block;width:.9em;height:.9em;border-radius:var(--radius-xs);vertical-align:-1px;margin:0 var(--space-1) 0 var(--space-3)}
 .bk-key:first-child{margin-left:0}
 .bk-key.is-fc{background:linear-gradient(90deg,var(--surface),var(--look-blue));box-shadow:inset 0 0 0 var(--edge-w) var(--line)}
