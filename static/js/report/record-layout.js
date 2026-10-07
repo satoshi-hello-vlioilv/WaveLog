@@ -57,13 +57,16 @@
   const forced=keys.filter(k=>hint(k));
   const free=keys.filter(k=>!hint(k));
   const total=keys.reduce((s,k)=>s+px(k),0);
-  if(!forced.length&&total<=o.usablePx&&keys.length<=UNITS){lines[0]=keys.slice();return lines}
+  /* 段組を選んだ人には最低`minLines`段で返す（§9.575。値の無い項目を外すと1段に入ることがあり、
+     「段組」を押しても1段のままだった）。指定が無ければ今までどおり「紙に入るなら1段」。 */
+  const minL=Math.max(1,Math.min(LINES,o.minLines||1));
+  if(!forced.length&&total<=o.usablePx&&keys.length<=UNITS&&minL<2){lines[0]=keys.slice();return lines}
   forced.forEach(k=>lines[Math.min(LINES,hint(k))-1].push(k));
   /* 使う段の数＝2段（2段組）。**項目の数が2段の席を超えるときだけ**増やす（上限LINES）。
      1段の目安＝紙の幅か、全体を段の数で割った幅の大きいほう（どの段にも寄り過ぎない）。
      **1段は UNITS 個まで**（1項目に1マスは要る）。 */
-  const n=Math.min(LINES,Math.max(DEFAULT_LINES,Math.ceil(keys.length/UNITS)));
-  const per=Math.max(o.usablePx,total/n);
+  const n=Math.min(LINES,Math.max(DEFAULT_LINES,minL,Math.ceil(keys.length/UNITS)));
+  const per=minL>1?total/n:Math.max(o.usablePx,total/n);
   let at=0,acc=lines[0].reduce((s,k)=>s+px(k),0);
   free.forEach(k=>{
    const w=px(k);
@@ -76,7 +79,8 @@
  }
  /* ---------- 答え ----------
     `keys`＝出す列（並び順）。`o.placeOf(k)`＝置いた位置（無ければnull）、`o.naturalPx(k)`＝その列の
-    ふだんの幅、`o.usablePx`＝紙の刷れる幅（px換算）、`o.lineHint(k)`＝古い「段:N」の印。
+    ふだんの幅、`o.usablePx`＝紙の刷れる幅（px換算）、`o.lineHint(k)`＝古い「段:N」の印、
+    `o.minLines`＝置いていないときの最低の段数（任意・段組を選んだとき2）。
     戻り値 `{cells:[{k,line,col,span,auto}], lines, conflicts, overflow}`:
      ・置いた位置が重なったら**後から来たほうを自動へ回して名指す**（`conflicts`）
      ・盤に入りきらない列は名指す（`overflow`・紙にも一覧にも出ない）——黙って落とさない */
@@ -169,14 +173,16 @@
   st.frozen=Object.keys(st.places).length>0;
   const B={host,src,st};
   B.keys=()=>src.keys();
-  B.cur=()=>plan(B.keys().filter(k=>!st.hidden.has(k)),{placeOf:k=>st.places[k]||null,naturalPx:src.naturalPx,
-   usablePx:src.usablePx(),lineHint:st.frozen?null:src.lineHint});
+  /* 盤に載せない項目（呼ぶ側が言う・§9.575。例: この期間に値の無い項目）。使う印も置いた位置も残す。 */
+  B.skip=k=>!!(src.skip&&src.skip(k));
+  B.cur=()=>plan(B.keys().filter(k=>!st.hidden.has(k)&&!B.skip(k)),{placeOf:k=>st.places[k]||null,naturalPx:src.naturalPx,
+   usablePx:src.usablePx(),lineHint:st.frozen?null:src.lineHint,minLines:src.minLines?src.minLines():1});
   B.push=()=>src.onDraft({places:{...st.places},hidden:[...st.hidden]});
   /* 盤に出す段の数＝足した段か、使っている段の多いほう（使っている段は消さない）。 */
   B.lanes=pl=>Math.max(st.lanes,(pl||B.cur()).lines);
   B.nm=(line,pl)=>lineName(line,B.lanes(pl));
   /* 最初の1手で今の見た目を固める（自動のままだと残りが詰め直されて跳ぶ）。 */
-  B.freezeNow=()=>{if(!st.frozen){st.places=freeze(B.cur());st.frozen=true}};
+  B.freezeNow=()=>{if(!st.frozen){st.places={...st.places,...freeze(B.cur())};st.frozen=true}};
   B.paint=()=>boardPaint(B);
   B.$=sel=>host.querySelector(sel);
   return B;
@@ -194,6 +200,8 @@
   const hits=hitsOf(before.cells,k,q).map(c=>c.k);
   const keep={...st.places};
   hits.forEach(h=>{delete st.places[h]});
+  /* 盤に載せていない項目の位置も、重なるなら空ける（値が入ったときは空いた所へ自動で入る）。 */
+  Object.keys(st.places).filter(h=>h!==k&&B.skip(h)&&hitsOf([{k:h,...st.places[h]}],k,q).length).forEach(h=>{delete st.places[h]});
   st.places[k]=q;
   /* **新しく盤からあふれる項目が出るときだけ**断る（もともと入りきらない項目は数えない）。 */
   const lost=B.cur().overflow.filter(x=>!before.overflow.includes(x));
@@ -214,6 +222,7 @@
  function boardPaint(B){
   const pl=B.cur();
   paintPalette(B,pl);paintBoard(B,pl);paintNote(B,pl);paintInspector(B,pl);
+  if(B.src.onPaint)B.src.onPaint(B.st);   // 呼ぶ側の見本（紙の見出し）も同じ項目を光らせる（§9.575）
  }
  /* 使うデータ（左）: 群ごとに、使う印と「いまどこにあるか」。 */
  function paintPalette(B,pl){
@@ -224,11 +233,13 @@
   B.keys().filter(k=>!q||String(src.labelOf(k)).includes(q)||String(k).includes(q)).forEach(k=>{
    const g=src.groupOf(k)||'その他';if(!groups.has(g))groups.set(g,[]);groups.get(g).push(k);
   });
+  /* 状態は短く（名前を切らない・§9.575）。長い言い方は`title`。 */
   const where=k=>{
    if(st.hidden.has(k))return '<i class="rcl-st is-off">使わない</i>';
+   if(B.skip(k))return `<i class="rcl-st is-off" title="${esc(src.skipWhy||'盤に載せていません')}">値なし</i>`;
    const c=placedAt[k];
    if(!c)return pl.overflow.includes(k)?'<i class="rcl-st is-bad">盤に入らない</i>':'';
-   return `<i class="rcl-st${c.auto?' is-auto':''}">${B.nm(c.line,pl)} ${c.col+1}〜${c.col+c.span}${c.auto?'（自動）':''}</i>`;
+   return `<i class="rcl-st${c.auto?' is-auto':''}" title="${B.nm(c.line,pl)} ${c.col+1}〜${c.col+c.span}マス目${c.auto?'（自動の位置）':''}">${c.line}段 ${c.col+1}〜${c.col+c.span}${c.auto?' 自動':''}</i>`;
   };
   B.$('.rcl-pal-list').innerHTML=[...groups].map(([g,list])=>
    `<div class="rcl-grp">${esc(g)}<small>${list.filter(k=>!st.hidden.has(k)).length} / ${list.length}</small></div>`
@@ -262,18 +273,18 @@
   B.$('.rcl-note').innerHTML=notes.join('<br>')
    ||`${n}項目を置いています${auto?`（うち自動 ${auto}・点線）。掴んで動かすとその場所で固まります`:''}。1マスは紙で約${src.mmPerUnit().toFixed(1)}mmです。`;
  }
- /* 選んだ項目（右）: 段・位置・幅を数で直す。 */
+ /* 選んだ項目（盤の下の帯・§9.575）: 段・位置・幅を数で直す。**横1行**——盤の真下で、掴んだ所と
+    直す欄が離れない（前は右の柱で、盤の幅を3割食っていた）。 */
  function paintInspector(B,pl){
   const {st,src}=B;
   const box=B.$('.rcl-insp');
   const c=pl.cells.find(x=>x.k===st.sel);
-  if(!c){box.innerHTML='<h4>選んだ項目</h4><p class="rcl-empty">盤の項目を押すと、ここで段・位置・幅を数で直せます。</p>';return}
-  box.innerHTML=`<h4>選んだ項目</h4><dl>
-   <dt>項目</dt><dd><b>${esc(src.labelOf(c.k))}</b>${c.auto?' <small>（自動の位置）</small>':''}</dd>
-   <dt>段</dt><dd><span class="rcl-seg">${Array.from({length:B.lanes(pl)},(_,i)=>`<button type="button" data-line="${i+1}" class="${c.line===i+1?'is-on':''}">${B.nm(i+1,pl)}</button>`).join('')}</span></dd>
-   <dt>位置</dt><dd><input type="number" min="1" max="${UNITS}" value="${c.col+1}" data-num="col"> マス目から</dd>
-   <dt>幅</dt><dd><input type="number" min="1" max="${UNITS}" value="${c.span}" data-num="span"> マス（紙 約${Math.round(c.span*src.mmPerUnit())}mm）</dd>
-  </dl><button type="button" class="rcl-btn" data-off="${esc(c.k)}">この項目を使わない</button>`;
+  if(!c){box.innerHTML='<b class="rcl-insp-h">選んだ項目</b><span class="rcl-empty">盤の札か、下の紙の見出しを押すと、ここで段・位置・幅を数で直せます。</span>';return}
+  box.innerHTML=`<b class="rcl-insp-h">選んだ項目</b><b class="rcl-insp-k">${esc(src.labelOf(c.k))}</b>${c.auto?'<small>（自動の位置）</small>':''}
+   <span class="rcl-insp-f">段 <span class="rcl-seg">${Array.from({length:B.lanes(pl)},(_,i)=>`<button type="button" data-line="${i+1}" class="${c.line===i+1?'is-on':''}">${B.nm(i+1,pl)}</button>`).join('')}</span></span>
+   <label class="rcl-insp-f">位置 <input type="number" min="1" max="${UNITS}" value="${c.col+1}" data-num="col"> マス目から</label>
+   <label class="rcl-insp-f">幅 <input type="number" min="1" max="${UNITS}" value="${c.span}" data-num="span"> マス（紙 約${Math.round(c.span*src.mmPerUnit())}mm）</label>
+   <button type="button" class="rcl-btn" data-off="${esc(c.k)}">この項目を使わない</button>`;
   box.querySelectorAll('[data-line]').forEach(b=>b.onclick=()=>boardMove(B,c.k,{line:Number(b.dataset.line),col:c.col,span:c.span}));
   box.querySelectorAll('[data-num]').forEach(inp=>inp.onchange=()=>{
    const v=Math.round(Number(inp.value)||1);
@@ -350,7 +361,9 @@
  /* ---------- 配置の盤 ----------
     `src`: {
       target, keys():候補の全列, labelOf(k), groupOf(k):群の名前, naturalPx(k), usablePx(), lineHint(k),
-      mmPerUnit():1マスが紙で何mmか, onDraft(layout):下書きを当てる, onSave(body):保存, onClose()
+      mmPerUnit():1マスが紙で何mmか, onDraft(layout):下書きを当てる, onSave(body):保存, onClose(),
+      onPaint(state):描いたあと（任意・呼ぶ側の見本を同じ項目で光らせる）,
+      skip(k):盤に載せない項目か（任意）, skipWhy:その理由の一言（任意）, minLines():最低の段数（任意）
     }
     盤の中身は**下書き**（`places`/`hidden`）。保存を押すまで保存済みは変わらない（§9.212 ③）。
     骨組みは`index.html`の`<template id="tpl-record-board">`（§9.522）。 */
@@ -358,7 +371,11 @@
   host.replaceChildren(WL.template('record-board',{'units':String(UNITS)}));
   const B=boardState(host,src);
   wireBoard(B);B.paint();
-  return {paint:B.paint,state:B.st,plan:B.cur};
+  return {paint:B.paint,state:B.st,plan:B.cur,
+   /* 盤の外（紙の見出し）から項目を選ぶ（§9.575）。使わない項目は選べない。 */
+   select:k=>{if(B.st.hidden.has(k))return;B.st.sel=k;B.paint();B.$(`.rcl-chip[data-k="${CSS.escape(k)}"]`)?.focus({preventScroll:true})},
+   /* 盤の下の1行で言う（呼ぶ側の断り・§9.575）。 */
+   say:msg=>{B.st.msg=String(msg||'');B.paint()}};
  }
 
  WL.recordLayout={UNITS,LINES,DEFAULT_LINES,lineName,validPlace,spansFromWidths,autoLines,plan,segments,freeze,gridHtml,board};

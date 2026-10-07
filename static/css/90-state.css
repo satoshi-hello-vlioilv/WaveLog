@@ -560,11 +560,12 @@ body.sc-mode #headerContextSource{display:none}
   .status-filter-btn.active,
   .suggest-chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
 
-  /* 濃い面（縁なし）（7族） */
+  /* 濃い面（縁なし）（8族） */
   .db-viewtabs button.active,
   .mm-card-opt.is-on .mm-card-ico,
   .mode-tabs button.active,
   .nav-item--admin.active:hover,
+  .os-pv-tabs button.is-on,
   .rp-seg button.is-on,
   .sc-mode-toggle-btn.active,
   .work-tabs button.active{background:var(--teal);color:#fff}
