@@ -12,6 +12,8 @@
     4. **紙**: 配置の盤どおりに段・位置・幅が紙の表へ出る（検査番号がロット番号の**真下**＝同じ`colspan`の位置）
     5. **一覧の2段組**: 測定実績を「2段組」へ切り替えると、紙と同じ配置の答えで並ぶ（同じ縦線）
     6. **盤**: 開く・項目を掴んで別の段へ動かす・数の欄で幅を変える・保存すると紙が変わる
+    7. **作業でタブを分ける**（§9.575）: 「② 配置を組み替える」で紙を大きく出し、紙の見出しを押すと盤の同じ
+       項目を選ぶ・保存していない配置があるうちは印刷へ戻らない・載せる項目の既定は「値のある項目だけ」
    ============================================================ */
 'use strict';
 const {run}=require('./lib/harness.js');
@@ -69,6 +71,7 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
    const conflict=R.plan(['A','B'],o({A:{line:1,col:0,span:6},B:{line:1,col:2,span:4}}));
    const auto1=R.plan(['A','B','C','D'],o({},10000));
    const auto2=R.plan(['A','B','C','D'],o({},250));
+   const minL=R.plan(['A','B','C','D'],{...o({},10000),minLines:2});
    const hinted=R.plan(['A','B','C'],o({},10000,k=>k==='C'?2:0));
    const many=R.plan(Array.from({length:120},(_,i)=>'K'+i),o({},100));
    const seg=R.segments(placed,1);
@@ -77,7 +80,7 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
    return {U:R.UNITS,L:R.LINES,
     placedA:placed.cells.find(c=>c.k==='A'),placedB:placed.cells.find(c=>c.k==='B'),placedC:placed.cells.find(c=>c.k==='C'),
     conflict:{conf:conflict.conflicts,b:conflict.cells.find(c=>c.k==='B')},
-    auto1:{lines:auto1.lines,sum:sum(auto1)},auto2:{lines:auto2.lines,sum:sum(auto2)},
+    auto1:{lines:auto1.lines,sum:sum(auto1)},auto2:{lines:auto2.lines,sum:sum(auto2)},minL:{lines:minL.lines,sum:sum(minL)},
     hinted:hinted.cells.find(c=>c.k==='C').line,
     many:{overflow:many.overflow.length,cells:many.cells.length},
     crowd:{lines:crowd.lines,overflow:crowd.overflow.length,cells:crowd.cells.length},
@@ -90,6 +93,7 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
   rec('重なった位置は後から来たほうを自動へ回して名指す',pure.conflict.conf.join()==='B'&&pure.conflict.b&&pure.conflict.b.auto===true,JSON.stringify(pure.conflict));
   rec('置いていなければ幅から自動: 紙に入るなら1段・各段のマスの合計は24',
       pure.auto1.lines===1&&pure.auto1.sum[0]===pure.U,JSON.stringify(pure.auto1));
+  rec('段組を選んだ（minLines:2）なら紙に入っても2段へ割る（§9.575・各段24マス）',pure.minL.lines===2&&pure.minL.sum.every(v=>v===pure.U),JSON.stringify(pure.minL));
   rec('紙に入らなければ2段へ割る（各段24マスちょうど）',pure.auto2.lines===2&&pure.auto2.sum.every(v=>v===pure.U),JSON.stringify(pure.auto2));
   rec('古い「段:2」の印は手がかりとして読む',pure.hinted===2,String(pure.hinted));
   rec('盤に入らない列は名指す（黙って落とさない）',pure.many.overflow===120-pure.U*pure.L&&pure.many.cells===pure.U*pure.L,JSON.stringify(pure.many));
@@ -149,11 +153,31 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
   rec('紙でも検査番号はロット番号の真下（同じ位置・同じ幅）',paper.lot&&paper.insp&&paper.lot.col===paper.insp.col&&paper.lot.span===5&&paper.insp.span===5,
       JSON.stringify({lot:paper.lot,insp:paper.insp}));
   rec('紙の説明は段数と置いた位置の数を字で言う',new RegExp(`^${paper.lines}段構成`).test(paper.note)&&/置いた位置 4項目/.test(paper.note)&&!/盤に入らない/.test(paper.note),paper.note.slice(0,80));
+  /* 載せる項目（§9.575）: 既定は「値のある項目だけ」。外した数＋載せた数＝表示列の数、紙の見出しに外した項目は無い */
+  const filled=await page.evaluate(()=>{
+   const on=(document.querySelector('#osPvFilled .is-on')||{}).dataset||{};
+   const note=(document.getElementById('osPvFilledNote')||{}).textContent||'';
+   const ths=[...document.querySelectorAll('#osPreview .os-page thead th[data-k]')].map(t=>t.dataset.k);
+   const all=WL.opSheet.visibleColumnKeys();
+   const m=/値の無い (\d+)項目を外して/.exec(note);
+   return {on:on.filled,note,ths:ths.length,all:all.length,dropped:m?Number(m[1]):0};
+  });
+  rec('載せる項目の既定は「値のある項目だけ」で、外した数と載せた数を字で言う',filled.on==='on'&&filled.ths>0&&filled.ths+filled.dropped===filled.all,JSON.stringify(filled));
   await shot(page,'paper');
 
-  /* ---- 6) 盤: 開く・動かす・数で直す・保存 ---- */
-  await page.click('#osPvBoardOpen');
+  /* ---- 6) 盤: 開く・動かす・数で直す・保存（「② 配置を組み替える」のタブ・§9.575） ---- */
+  await page.click('#osPvTabs [data-tab="layout"]');
   await page.waitForSelector('#osPvBoard .rcl-chip',{timeout:10000});
+  const tab=await page.evaluate(()=>({on:(document.querySelector('#osPvTabs .is-on')||{}).dataset.tab,
+   side:getComputedStyle(document.querySelector('#osPreview .os-pv-side')).display,print:document.getElementById('osPvPrint').hidden,
+   zoom:Number(getComputedStyle(document.getElementById('osPvScale')).getPropertyValue('--os-zoom'))}));
+  rec('組み替えるタブでは印刷の設定と「印刷」を引っ込め、紙は大きく出す（0.8倍以上）',tab.on==='layout'&&tab.side==='none'&&tab.print===true&&tab.zoom>=0.8,JSON.stringify(tab));
+  /* 紙の見出しを押すと、盤の同じ項目を選ぶ（両方が光る） */
+  await page.click('#osPvScale .os-page thead th[data-k="検査番号"]');
+  const pick=await page.evaluate(()=>({chip:!!document.querySelector('#osPvBoard .rcl-chip.is-sel[data-k="検査番号"]'),
+   th:[...document.querySelectorAll('#osPvScale th.is-pick')].map(t=>t.dataset.k),
+   insp:(document.querySelector('#osPvBoard .rcl-insp-k')||{}).textContent||''}));
+  rec('紙の見出しを押すと盤の同じ項目が選ばれ、紙の見出しも光る',pick.chip&&pick.th.length>=1&&pick.th.every(k=>k==='検査番号')&&pick.insp==='検査番号',JSON.stringify(pick));
   const b0=await page.evaluate(()=>({chips:document.querySelectorAll('#osPvBoard .rcl-chip').length,
    pal:document.querySelectorAll('#osPvBoard .rcl-pal-item').length}));
   rec('盤が開き、項目の札と使うデータの一覧が出る',b0.chips>=4&&b0.pal>=b0.chips,JSON.stringify(b0));
@@ -184,8 +208,14 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
   const wide=await page.evaluate(k=>{const c=document.querySelector(`#osPvBoard .rcl-chip[data-k="${CSS.escape(k)}"]`);
    return c?c.style.gridColumn:''},OP1);
   rec('選んだ項目の幅を数の欄で直せる',/span 6/.test(wide),wide);
+  /* 保存していない配置があるうちは印刷のタブへ戻らない（黙って捨てない・理由を盤の下で言う） */
+  await page.click('#osPvTabs [data-tab="print"]');
+  const held=await page.evaluate(()=>({board:!document.getElementById('osPvBoard').hidden,
+   on:(document.querySelector('#osPvTabs .is-on')||{}).dataset.tab,note:(document.querySelector('#osPvBoard .rcl-note')||{}).textContent||''}));
+  rec('保存していない配置があると印刷へ戻らず、保存かやめるかを字で言う',held.board&&held.on==='layout'&&/保存していない配置/.test(held.note),JSON.stringify(held));
   await page.click('#osPvBoard [data-rl="save"]');
   await W.until(page,()=>document.getElementById('osPvBoard').hidden===true,null,{ms:8000,what:'盤が閉じる'});
+  rec('保存すると印刷のタブへ戻る',await page.evaluate(()=>(document.querySelector('#osPvTabs .is-on')||{}).dataset.tab==='print'&&!document.getElementById('osPvPrint').hidden));
   const saved=await getLayout();
   rec('保存すると配置がマスタへ入る',saved.places[OP1]&&saved.places[OP1].line===2&&saved.places[OP1].span===6,JSON.stringify(saved.places[OP1]));
   await page.click('#osPvClose');

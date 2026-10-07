@@ -65,7 +65,9 @@
  /* ---------- 設定（この端末に覚える） ----------
     既定は利用者の指示どおり **A4横 ＋ 直単位（日＋直）**。行の構成は
     `auto`＝入るなら1行・入らなければ2行（「1行で収まるものは1行構成」）。 */
- const DEFAULTS={paper:'a4-landscape',unit:'shift',rows:'auto',borders:true,dense:true};
+ /* `filled`＝紙に載せるのは**値のある項目だけ**（§9.575。既定）。全件で空の列を刷ると、
+    見出しが細って読めず（実測 57列のうち27列の見出しが切れ・空のセル60%）、読む人が探す欄が増える。 */
+ const DEFAULTS={paper:'a4-landscape',unit:'shift',rows:'auto',borders:true,dense:true,filled:true};
  let pref=Object.assign({},DEFAULTS);
  try{Object.assign(pref,JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{})}catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  function savePref(){try{localStorage.setItem(PREF_KEY,JSON.stringify(pref))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}}
@@ -138,6 +140,23 @@
   if(seed){const off=new Set(seed);return keys.filter(k=>!off.has(k))}
   return keys.filter(k=>WL.columnLayout.shows(target(),k));
  }
+ /* 紙に載せる列（§9.575）。`filled`なら**期間の全件で値の無い列**を外す（並び・置いた位置は変えない
+    ——外した列のマスは空く）。行番号（`#`）は値を持たない列なので外さない。件が無いときは外さない
+    （全部が空に見えて、紙が見出しすら持たなくなる）。配置を組み替える盤も同じ答えで載せる項目を決める
+    （外した項目は盤に載せず、使うデータの一覧に「値なし」と出す）。 */
+ function paperKeys(items){
+  const keys=visibleColumnKeys();
+  const list=items||[];
+  if(pref.filled===false||!list.length)return {keys,dropped:[]};
+  const views=list.map((x,i)=>rowView(x,i));
+  const blank=k=>{
+   const c=columnOf(k);if(c&&c.virtual)return false;
+   return !views.some(v=>cellText(k,WL.cellFormat.rawOf(target(),v,k),v).trim()!=='');
+  };
+  const dropped=keys.filter(blank);
+  const off=new Set(dropped);
+  return {keys:keys.filter(k=>!off.has(k)),dropped};
+ }
  function labelOf(k){return WL.columnLayout.label(target(),k)||k}
  function widthPxOf(k){
   const w=WL.columnLayout.width(target(),k);
@@ -203,9 +222,10 @@
     この紙の材料だけ: 出す列・置いた位置（列レイアウトマスタの`places`）・ふだんの幅・
     紙の刷れる幅（px換算）・古い「段:N」の印。 */
  function usablePx(paper){return paperUsableMm(paper).w/MM_PER_PX}
+ /* 段組を選んだ（`rows:'2'`）・一覧で段組にしたときは**最低2段**（§9.575）。 */
  function stackPlan(keys,opt){
   return WL.recordLayout.plan(keys,{placeOf:k=>WL.columnLayout.place(target(),k),
-   naturalPx:widthPxOf,usablePx:usablePx(opt.paper),lineHint:lineOf});
+   naturalPx:widthPxOf,usablePx:usablePx(opt.paper),lineHint:lineOf,minLines:opt.rows==='2'?2:1});
  }
  /* 1件の行数の説明（いま何段で・どこから決まったか・入らない項目）。**画面の字は答えから作る**。 */
  function stackNote(opt){
@@ -216,7 +236,7 @@
   const out=[`${p.lines}段構成です（${Array.from({length:p.lines},(_,i)=>`${WL.recordLayout.lineName(i+1,p.lines)} ${by(i+1)}項目`).join(' / ')}）。`
    +(placed?`置いた位置 ${placed}項目${p.cells.length>placed?`・自動 ${p.cells.length-placed}項目`:''}。`:'位置は幅から自動で決めています。')];
   if(p.overflow.length)out.push(`<b class="os-pv-bad">盤に入らない ${p.overflow.length}項目は紙に出ません</b>（${p.overflow.map(k=>esc(labelOf(k))).join('・')}）。`);
-  out.push('「⑤ 段組の配置」で使うデータ・段・位置・幅を決められます。');
+  out.push('段・位置・幅は「② 配置を組み替える」で決められます。');
   return out.join('');
  }
  /* 1行で出すか、段組で出すか。**`auto`は「置いた位置が無く、1行で紙に入るなら1行」**
@@ -267,7 +287,7 @@
   const tableMm=T.tracks.reduce((s,v)=>s+v,0);
   const head=T.lines.map((segs,i)=>`<tr class="os-head-${i+1}${i?' os-head-sub':''}">`
    +segs.map(g=>g.k==null?`<th class="os-gap" colspan="${g.span}"></th>`
-     :`<th colspan="${g.span}">${esc(labelOf(g.k))}</th>`).join('')+`</tr>`).join('');
+     :`<th colspan="${g.span}" data-k="${esc(g.k)}">${esc(labelOf(g.k))}</th>`).join('')+`</tr>`).join('');
   const cellHtml=(g,view)=>{
    if(g.k==null)return `<td class="os-gap" colspan="${g.span}"></td>`;
    /* 値は作り方の式を通す（§9.489・`rawOf()`の1本。以前は計算列のセルが空だった）。 */
@@ -381,12 +401,19 @@
     ——プレビュー専用の組み立てを作らない（見たものと刷るものが違ったら
     意味が無い）。 */
  const pv={items:[],opt:null,sheets:[],busy:false,again:false,basis:'work',from:'',to:'',onClose:null};
+ /* 窓の骨組み。**作業でタブを分ける**（§9.575・5案＋複合案から H1）——「① 印刷する」は設定と紙、
+    「② 配置を組み替える」は使うデータ・盤・紙の見本（大きく）。前は1枚に両方を積み、盤を開くと紙が
+    0.53倍まで縮んでいた。 */
  function ensurePreview(){
   let el=$id('osPreview');if(el)return el;
   el=document.createElement('div');el.className='os-pv';el.id='osPreview';el.hidden=true;
   el.innerHTML=`<div class="os-pv-dialog" role="dialog" aria-modal="true" aria-labelledby="osPvTitle">
     <header class="os-pv-head">
      <div><small>測定実績</small><h2 id="osPvTitle">操業データ表</h2></div>
+     <nav class="os-pv-tabs" id="osPvTabs" role="tablist" aria-label="すること">
+      <button type="button" role="tab" data-tab="print" title="用紙・単位・載せる項目を決めて刷ります">① 印刷する</button>
+      <button type="button" role="tab" data-tab="layout" title="1件ぶんの項目を、段・位置・幅で並べ替えます（紙の見出しを押しても選べます）">② 配置を組み替える</button>
+     </nav>
      <button type="button" id="osPvClose" class="os-pv-x" aria-label="閉じる">×</button>
     </header>
     <div class="os-pv-body">
@@ -397,7 +424,7 @@
       <section><h3>② 1件の行数</h3><div class="os-pv-seg" id="osPvRows">
         <button type="button" data-rows="auto" title="入るなら1行、入らなければ段組（置いた位置があれば段組）">自動</button>
         <button type="button" data-rows="1" title="必ず1行。入りきらないときは列を細くして詰めます">1行</button>
-        <button type="button" data-rows="2" title="1件を段に分けて出します（既定は2段・項目が多ければ最大4段）。位置は⑤で決められます">段組</button></div>
+        <button type="button" data-rows="2" title="1件を段に分けて出します（既定は2段・項目が多ければ最大4段）。位置は「② 配置を組み替える」で決められます">段組</button></div>
        <p class="os-pv-note" id="osPvRowsNote"></p></section>
       <section><h3>③ 用紙</h3>
        <!-- 大きさと向きは別の欄(§9.252)。掛け合わせて並べると用紙を1つ
@@ -411,26 +438,25 @@
         ${PAPER_ORIENTS.map(o=>`<button type="button" data-orient="${o.key}">${o.label}</button>`).join('')}
        </div>
        <p class="os-pv-note" id="osPvPaperNow"></p></section>
-      <section><h3>④ 見せ方</h3>
+      <section><h3>④ 載せる項目</h3><div class="os-pv-seg" id="osPvFilled">
+        <button type="button" data-filled="on" title="この期間の全件で値の無い項目は紙に載せません（既定）">値のある項目だけ</button>
+        <button type="button" data-filled="off" title="値の無い項目も、空の欄のまま載せます">すべて</button></div>
+       <p class="os-pv-note" id="osPvFilledNote"></p></section>
+      <section><h3>⑤ 見せ方</h3>
        <label class="os-pv-check"><input type="checkbox" id="osPvBorders">枠線を出す</label>
        <label class="os-pv-check"><input type="checkbox" id="osPvDense">高密度（文字と余白を詰める）</label>
        <button type="button" class="os-pv-btn" id="osPvColumns">列の見え方（名前・書式・読み替え）…</button>
       </section>
-      <!-- 段組の配置（§9.553）。使うデータを選び、段・位置・幅を盤の上で決める。決めた盤は紙と一覧が読む。 -->
-      <section><h3>⑤ 段組の配置</h3>
-       <button type="button" class="os-pv-btn os-pv-btn--wide" id="osPvBoardOpen">配置の盤を開く（使うデータ・段・位置・幅）</button></section>
       <section class="os-pv-sum" id="osPvSum"></section>
      </aside>
      <div class="os-pv-main">
+      <div class="os-pv-board" id="osPvBoard" hidden></div>
       <div class="os-pv-bar">
        <span id="osPvCount"></span>
+       <span class="os-pv-look" id="osPvLook" hidden>できあがり
+        <span class="os-pv-seg" id="osPvLookSeg"><button type="button" data-look="paper" class="is-on">紙</button><button type="button" data-look="list">一覧（段組）</button></span></span>
        <span class="os-pv-grow"></span>
        <button type="button" class="os-pv-btn os-pv-btn--primary" id="osPvPrint">この内容で印刷</button>
-      </div>
-      <div class="os-pv-board" id="osPvBoard" hidden></div>
-      <div class="os-pv-look" id="osPvLook" hidden>
-       <span>できあがり</span>
-       <div class="os-pv-seg" id="osPvLookSeg"><button type="button" data-look="paper" class="is-on">紙</button><button type="button" data-look="list">一覧（段組）</button></div>
       </div>
       <div class="os-pv-scroll" id="osPvScroll"><div class="os-pv-scale" id="osPvScale"></div></div>
       <div class="os-pv-listview" id="osPvList" hidden></div>
@@ -445,12 +471,18 @@
   $id('osPvClose').onclick=closePreview;
   $id('osPvPrint').onclick=doPrint;
   $id('osPvColumns').onclick=openColumnPanel;
-  $id('osPvBoardOpen').onclick=()=>openBoard();
+  el.querySelectorAll('#osPvTabs [data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
   el.querySelectorAll('#osPvLookSeg [data-look]').forEach(b=>b.onclick=()=>setLook(b.dataset.look));
+  /* 組み替える間は**紙の見出しを押すと、その項目を盤で選ぶ**（§9.575）。盤と紙の同じ項目が光る。 */
+  $id('osPvScale').addEventListener('click',e=>{
+   const th=board.ctl&&e.target.closest('th[data-k]');
+   if(th)board.ctl.select(th.dataset.k);
+  });
   /* **設定はclickで受ける**（§9.90。`change`は`click`の後に飛ぶので、
      押した結果で作り直す作りだと反映されない）。 */
   el.querySelectorAll('#osPvUnit [data-unit]').forEach(b=>b.onclick=()=>{pref.unit=b.dataset.unit;afterPref()});
   el.querySelectorAll('#osPvRows [data-rows]').forEach(b=>b.onclick=()=>{pref.rows=b.dataset.rows;afterPref()});
+  el.querySelectorAll('#osPvFilled [data-filled]').forEach(b=>b.onclick=()=>{pref.filled=b.dataset.filled==='on';afterPref()});
   el.querySelectorAll('#osPvPaperKind [data-kind],#osPvPaperOrient [data-orient]')
    .forEach(b=>b.onclick=()=>{
     pref.paper=paperKeyWith(pref.paper,b.dataset.kind||b.dataset.orient);afterPref();
@@ -473,6 +505,7 @@
    b.classList.toggle('is-on',b.dataset[attr]===val));
   on('#osPvUnit [data-unit]','unit',pref.unit);
   on('#osPvRows [data-rows]','rows',pref.rows);
+  on('#osPvFilled [data-filled]','filled',pref.filled===false?'off':'on');
   const cur=paperSizeOf(pref.paper);
   on('#osPvPaperKind [data-kind]','kind',cur.kind);
   on('#osPvPaperOrient [data-orient]','orient',cur.orient);
@@ -488,12 +521,33 @@
   const d=$id('osPvDense');if(d)d.checked=pref.dense!==false;
  }
  function currentOpt(){
-  const keys=visibleColumnKeys();
+  const pk=paperKeys(pv.items),keys=pk.keys;
   const opt={paper:pref.paper,unit:pref.unit,rows:pref.rows,borders:pref.borders!==false,
-             dense:pref.dense!==false,basis:pv.basis,equipment:activeEquipment,keys};
+             dense:pref.dense!==false,basis:pv.basis,equipment:activeEquipment,keys,dropped:pk.dropped};
   /* 段組のときだけ答えを持つ（1行構成は`keys`の並びのまま）。 */
   opt.plan=usesStack(keys,opt)?stackPlan(keys,opt):null;
   return opt;
+ }
+ /* 「④ 載せる項目」の一言（外した数と名前・数は答えから作る）。 */
+ function filledNote(opt){
+  const n=opt.keys.length,d=opt.dropped;
+  if(pref.filled===false)return `値の無い項目も載せます（${n}項目）。`;
+  if(!d.length)return `どの項目にも値があります（${n}項目を載せる）。`;
+  /* 名前は畳む（34項目並べると設定が画面の下へ押し出される）。 */
+  return `${pv.items.length}件とも値の無い ${d.length}項目を外しています（${n}項目を載せる）。`
+   +`<details class="os-pv-more"><summary>外した${d.length}項目</summary>${d.map(k=>esc(labelOf(k))).join('・')}</details>`;
+ }
+ function paintSummary(opt){
+  const sum=$id('osPvSum');if(!sum)return;
+  const w=tableParts(opt);
+  sum.innerHTML=`<h3>いまの紙</h3><dl>`
+   +`<div><dt>設備</dt><dd>${esc(activeEquipment||'すべての設備')}</dd></div>`
+   +`<div><dt>期間</dt><dd>${esc(pv.from||'—')} 〜 ${esc(pv.to||'—')}</dd></div>`
+   +`<div><dt>日付の数え方</dt><dd>${pv.basis==='cal'?'太陽暦':'現場歴'}</dd></div>`
+   +`<div><dt>載せる列</dt><dd>${opt.keys.length}列</dd></div>`
+   +(opt.plan?`<div><dt>幅</dt><dd>配置の盤の${WL.recordLayout.UNITS}マス＝紙の刷れる幅（1マス 約${w.tracks[0]}mm）</dd></div>`
+     :`<div><dt>幅</dt><dd>${w.fit<1?`紙に入らないので ${Math.round(w.fit*100)}% に縮めています`:'画面で決めた幅をそのまま使っています'}</dd></div>`)
+   +`</dl>`;
  }
  function renderPreview(){
   if(pv.busy){pv.again=true;return}
@@ -509,19 +563,11 @@
    if(cnt)cnt.textContent=`${pv.items.length}件 / ${pv.sheets.length}枚`;
    const note=$id('osPvRowsNote');
    if(note)note.innerHTML=stackNote(opt);
-   const sum=$id('osPvSum');
-   if(sum){
-    const w=tableParts(opt);
-    sum.innerHTML=`<h3>いまの紙</h3><dl>`
-     +`<div><dt>設備</dt><dd>${esc(activeEquipment||'すべての設備')}</dd></div>`
-     +`<div><dt>期間</dt><dd>${esc(pv.from||'—')} 〜 ${esc(pv.to||'—')}</dd></div>`
-     +`<div><dt>日付の数え方</dt><dd>${pv.basis==='cal'?'太陽暦':'現場歴'}</dd></div>`
-     +`<div><dt>載せる列</dt><dd>${opt.keys.length}列</dd></div>`
-     +(opt.plan?`<div><dt>幅</dt><dd>配置の盤の${WL.recordLayout.UNITS}マス＝紙の刷れる幅（1マス 約${w.tracks[0]}mm）</dd></div>`
-       :`<div><dt>幅</dt><dd>${w.fit<1?`紙に入らないので ${Math.round(w.fit*100)}% に縮めています`:'画面で決めた幅をそのまま使っています'}</dd></div>`)
-     +`</dl>`;
-   }
-   if(board.on&&board.look==='list'){const ls=$id('osPvList');if(ls)ls.innerHTML=listHtml({items:(pv.items||[]).slice(0,30)})}
+   const fn=$id('osPvFilledNote');
+   if(fn)fn.innerHTML=filledNote(opt);
+   paintSummary(opt);
+   if(board.on&&board.look==='list')paintPreviewList();
+   markPick();
    fitPreview();
   }finally{
    pv.busy=false;
@@ -529,7 +575,8 @@
   }
  }
  /* 倍率は**幅と高さの両方**へ合わせる（§9.186。幅だけだと1枚が縦に切れ、
-    紙に収まるかが分からない）。**`offsetWidth`で測る**——
+    紙に収まるかが分からない）。**組み替える間は幅だけ**（§9.575）——見出しを押して選ぶので、
+    字が読める大きさが要る（縦は流して見る）。**`offsetWidth`で測る**——
     `getBoundingClientRect()`はtransform後の見かけなので、回を重ねるほど縮む。 */
  function fitPreview(){
   const box=$id('osPvScroll'),scale=$id('osPvScale');
@@ -538,7 +585,8 @@
   if(!page)return;
   const w=page.offsetWidth,h=page.offsetHeight;
   if(!w||!h)return;
-  const z=Math.max(.15,Math.min((box.clientWidth-24)/w,(box.clientHeight-24)/h,1));
+  const byW=(box.clientWidth-24)/w;
+  const z=Math.max(.15,Math.min(board.on?byW:Math.min(byW,(box.clientHeight-24)/h),1));
   scale.style.setProperty('--os-zoom',String(z));
   /* `transform`は場所を空けないので、器の寸法はJSが入れる。 */
   scale.style.setProperty('--os-zoom-w',(w*z)+'px');
@@ -556,29 +604,56 @@
   if(typeof pv.onClose==='function'){const f=pv.onClose;pv.onClose=null;f()}
  }
 
- /* ---------- 配置の盤（§9.553・案4） ----------
-    盤は**このプレビューの上半分**に開く（窓の中から窓を開かない・§9.368）。下半分は紙の見本で、
-    盤を触るたびに描き直す（「できあがり」は紙と一覧（2段組）を切り替えて見られる）。
+ /* ---------- ② 配置を組み替える（§9.553・§9.575） ----------
+    盤は**このプレビューのタブ**（窓の中から窓を開かない・§9.368）。左に使うデータ、上に盤、下に紙の見本
+    （幅いっぱい）——盤を触るたびに描き直し、**紙の見出しを押すと盤の同じ項目を選ぶ**。
     盤の中身は下書き（`columnLayout.stage`）——保存を押すまで保存済みは変わらない。 */
- const board={on:false,ctl:null,look:'paper'};
+ const board={on:false,ctl:null,look:'paper',dirty:false};
  const GROUP_OF={lot:'ロットの情報',op:'操業データ'};
  function groupOf(k){
   const c=columnOf(k);
   if(!c)return '計算した列';
   return GROUP_OF[c.origin]||'基本情報';
  }
+ /* タブの切り替えは1本（札の印・盤の出し入れ・押せる物）。保存していない配置は**黙って捨てない**
+    ——印刷へ戻る前に「保存」か「やめる」を選んでもらう（盤の下の1行で言う）。 */
+ function setTab(tab){
+  if(tab==='layout'){if(!board.on)openBoard();}
+  else if(board.on){
+   if(board.dirty){board.ctl.say('保存していない配置があります。「この配置を保存」か「やめる（捨てる）」を押すと、印刷へ戻ります。');return}
+   closeBoard(true);
+  }
+  paintTabs();
+ }
+ function paintTabs(){
+  document.querySelectorAll('#osPvTabs [data-tab]').forEach(b=>{
+   const on=(b.dataset.tab==='layout')===board.on;
+   b.classList.toggle('is-on',on);b.setAttribute('aria-selected',String(on));
+  });
+  const pr=$id('osPvPrint');if(pr)pr.hidden=board.on;
+ }
+ /* 盤で選んだ項目を紙の見出しでも光らせる（盤が描くたび・紙を描き直すたび）。 */
+ function markPick(){
+  const sel=board.ctl?board.ctl.state.sel:'';
+  document.querySelectorAll('#osPvScale th[data-k]').forEach(th=>th.classList.toggle('is-pick',!!sel&&th.dataset.k===sel));
+ }
  function openBoard(){
   const host=$id('osPvBoard');if(!host)return;
-  board.on=true;host.hidden=false;$id('osPvLook').hidden=false;
+  board.on=true;board.dirty=false;host.hidden=false;$id('osPvLook').hidden=false;
   $id('osPreview').classList.add('is-board');
   const t=target();
   board.ctl=WL.recordLayout.board(host,{
    target:t,
    keys:()=>allColumnKeys(),
    initialHidden:()=>{const l=WL.columnLayout.get(t)||{};const seed=initialHidden(allColumnKeys(),l);return seed||l.hidden||[]},
-   labelOf,groupOf,naturalPx:widthPxOf,usablePx:()=>usablePx(pref.paper),lineHint:lineOf,
+   labelOf,groupOf,naturalPx:widthPxOf,usablePx:()=>usablePx(pref.paper),lineHint:lineOf,minLines:()=>(pref.rows==='2'?2:1),
    mmPerUnit:()=>(paperUsableMm(pref.paper).w-FRAME_MM)/WL.recordLayout.UNITS,
+   onPaint:markPick,
+   /* 紙に載せない項目は盤にも載せない（盤と紙を同じにする・§9.575）。 */
+   skip:k=>!!pv.opt&&pv.opt.dropped.includes(k),
+   skipWhy:'この期間の全件で値が無いので、紙にも盤にも載せていません（「① 印刷する」の「載せる項目」で「すべて」にすると載ります）',
    onDraft:d=>{
+    board.dirty=true;
     /* 段組の配置を決めている間は**段組で見せる**（1行のままだと盤を触っても紙が変わらない）。 */
     if(pref.rows==='1'){pref.rows='2';savePref();paintOptions()}
     WL.columnLayout.stage(t,{...WL.columnLayout.get(t),order:allColumnKeys(),hidden:d.hidden,places:d.places});
@@ -589,22 +664,28 @@
      await WL.columnLayout.patch(t,{order:allColumnKeys(),hidden:d.hidden,places:d.places});
      WL.columnLayout.discard(t);
      showToast&&showToast('段組の配置を保存しました','この設備の紙と、測定実績の一覧（段組）に同じ配置で出ます。',3200);
-     closeBoard(false);
+     closeBoard(false);paintTabs();
     }catch(e){showToast&&showToast('配置を保存できませんでした',e&&e.message||String(e),6000)}
    },
-   onClose:()=>closeBoard(true),
+   onClose:()=>{closeBoard(true);paintTabs()},
   });
+  paintTabs();
   renderPreview();
  }
  function closeBoard(discard){
   const host=$id('osPvBoard');
   if(discard)WL.columnLayout.discard(target());
-  board.on=false;board.ctl=null;
+  board.on=false;board.ctl=null;board.dirty=false;
   if(host){host.hidden=true;host.innerHTML=''}
   const look=$id('osPvLook');if(look)look.hidden=true;
   setLook('paper');
   $id('osPreview')?.classList.remove('is-board');
   renderPreview();
+ }
+ /* できあがりの一覧（段組）は紙と同じ項目で描く。 */
+ function paintPreviewList(){
+  const ls=$id('osPvList');
+  if(ls)ls.innerHTML=listHtml({items:(pv.items||[]).slice(0,30),keys:pv.opt?pv.opt.keys:null});
  }
  function setLook(v){
   board.look=v==='list'?'list':'paper';
@@ -612,7 +693,7 @@
   const sc=$id('osPvScroll'),ls=$id('osPvList');
   if(sc)sc.hidden=board.look==='list';
   if(ls)ls.hidden=board.look!=='list';
-  if(board.look==='list'&&ls)ls.innerHTML=listHtml({items:(pv.items||[]).slice(0,30)});
+  if(board.look==='list')paintPreviewList();
   else fitPreview();
  }
  function openColumnPanel(){
@@ -624,7 +705,7 @@
    key:'opsheet',eyebrow:'操業データ表',
    title:()=>`載せる列の設定（操業データ表：${eq||'共通'}）`,
    lead:'紙に載せる列と、並び・幅・表示名・書式・読み替えを決めます。'
-       +'<b>段組のときの段・位置・幅</b>は、プレビューの「⑤ 段組の配置」の盤で決めます（§9.553）。',
+       +'<b>段組のときの段・位置・幅</b>は、プレビューの「② 配置を組み替える」の盤で決めます（§9.553・§9.575）。',
    target:()=>targetOf(eq),
    savedToast:'操業データ表の列を保存しました',
    savedNote:'この設備の紙に同じ形で出ます',
@@ -679,15 +760,16 @@
   await prepare(opt);
   el.hidden=false;
   paintOptions();
+  paintTabs();
   renderPreview();
-  if(opt.board)openBoard();
+  if(opt.board)setTab('layout');
  }
  /* ---------- 画面の2段組の一覧（§9.553） ----------
     紙と**同じ答え**（`stackPlan`）を`WL.recordLayout.gridHtml()`で描く。**段組は必ず使う**
     （一覧で2段組を選んだ人に1行を返さない）。先頭と末尾（選ぶ印・操作）は呼ぶ側が渡す。 */
  function listHtml(o){
-  const keys=visibleColumnKeys();
-  const p=stackPlan(keys,{paper:pref.paper});
+  const keys=o.keys||visibleColumnKeys();
+  const p=stackPlan(keys,{paper:pref.paper,rows:'2'});
   const rows=(o.items||[]).map((x,i)=>{
    const view=rowView(x,i);
    return {cls:o.rowCls?o.rowCls(x):'',attrs:o.rowAttrs?o.rowAttrs(x):'',lead:o.lead?o.lead(x,i):String(i+1),tail:o.tail?o.tail(x):'',
@@ -710,7 +792,7 @@
              /* 刷るときの`@page`(§9.252)。**名前ではなく実寸mm**で頼んで
                 いることを網が直に見られるようにしておく。 */
              pageRule:pageRuleFor,
-             withMm,stackPlan,usesStack,prepare,listHtml,openBoard,
+             withMm,stackPlan,usesStack,prepare,listHtml,setTab,paperKeys,
              columnKeys:allColumnKeys,visibleColumnKeys,targetOf,lineOf,
              pref:()=>({...pref}),sheets:()=>pv.sheets.slice(),
              render:renderPreview};

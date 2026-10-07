@@ -1,4 +1,4 @@
-# 帳票と紙（96件）
+# 帳票と紙（99件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 操業データ表は「印刷する／配置を組み替える」のタブ（`setTab()`）。②は紙の見出しで盤の項目を選ぶ・未保存の配置は捨てない | `test_recordlayout.js` | [§9.575](../../docs/decisions/9.575.md) |
+| 紙と盤に載せる項目は`paperKeys()`の1箇所（既定は値のある項目だけ・並びと置いた位置は変えない）。盤は外した項目を「値なし」と言う（`src.skip`） | `test_recordlayout.js` | [§9.575](../../docs/decisions/9.575.md) |
+| 段組を選んだら最低2段（`plan()`の`minLines`）。既定（`auto`）は紙に入るなら1段のまま | `test_recordlayout.js`・`test_opsheet.js` | [§9.575](../../docs/decisions/9.575.md) |
 | 段組の答えは`WL.recordLayout.plan()`の1箇所（1件＝段×横24マス・既定2段・最大4段）。操業データ表の紙と測定実績の一覧の段組が同じ答えを読む | `test_recordlayout.js`・`test_opsheet.js` | [§9.553](../../docs/decisions/9.553.md) |
 | 配置は列レイアウトマスタの`places`。書くのは配置の盤だけ（全置換の保存は送らない＝`OWNED_ELSEWHERE`）。盤の寸法はサーバーの`PLACE_*`と同じ | `test_recordlayout.js` | [§9.553](../../docs/decisions/9.553.md) |
 | 盤に入らない・重なった項目は名指す（黙って落とさない）。押し出しで**新しく**あふれるときだけ断る。最初の1手で今の見た目を固める | `test_recordlayout.js` | [§9.553](../../docs/decisions/9.553.md) |

@@ -124,9 +124,11 @@ body.ac-mode .pager{display:none}
 .os-table-wrap{align-self:flex-start;border:0.2mm solid #111}
 .os-table{table-layout:fixed;border-collapse:collapse;
  font-size:calc(1em * var(--os-fit,1))}
-.os-table th,.os-table td{border:0.15mm solid #666;padding:0.3mm 0.6mm;
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
-.os-table th{background:var(--bg);font-weight:var(--fw-strong);text-align:center}
+.os-table th,.os-table td{border:0.15mm solid #666;padding:0.3mm 0.6mm;vertical-align:middle}
+.os-table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 見出しは**折り返す**（§9.575）。…で切ると、細い列の名前が「作業…」「オペ…」で読めなかった
+   （実測 57列のうち27列）。値のセルは1行のまま（行の高さがそろい、1枚に入る件数が読める）。 */
+.os-table th{background:var(--bg);font-weight:var(--fw-strong);text-align:center;overflow-wrap:anywhere;line-height:1.1}
 .os-table .os-head-sub th{background:var(--surface-2);font-weight:var(--fw-strong)}
 .os-num{text-align:right;font-variant-numeric:tabular-nums}
 /* 段組（§9.553・2〜4段で1件）。**1件が何段かであることを見た目で言う**——段の下罫線は
@@ -155,7 +157,7 @@ body.ac-mode .pager{display:none}
 /* ---------- 段組の配置（§9.553・`record-layout.js`） ----------
    **画面**なので寸法・色はトークンから選ぶ。盤（`.rcl-board`）と画面の2段組（`.rcl-grid`）は
    同じ`--rcl-units`マスの目盛りで組む——盤で見た並びが一覧でも同じ縦線にそろう。 */
-.rcl-wrap{display:grid;grid-template-columns:var(--w-lg) minmax(0,1fr) var(--w-lg);gap:var(--space-3);
+.rcl-wrap{display:grid;grid-template-columns:var(--w-lg) minmax(0,1fr);gap:var(--space-3);
  height:100%;min-height:0}
 .rcl-wrap h4{margin:0 0 var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
 .rcl-wrap h4 small{margin-left:var(--space-2);font-weight:var(--fw-body);color:var(--ink-2);font-size:var(--fs-micro)}
@@ -172,10 +174,12 @@ body.ac-mode .pager{display:none}
 .rcl-st.is-auto{color:var(--ink-2)}
 .rcl-st.is-off{color:var(--muted)}
 .rcl-st.is-bad,.rcl-bad{color:var(--warn-fg)}
-.rcl-main{display:grid;grid-template-columns:var(--space-6) minmax(0,1fr);grid-template-rows:auto auto auto;
+.rcl-main{display:grid;grid-template-columns:var(--space-6) minmax(0,1fr);grid-template-rows:auto auto auto auto;
  column-gap:var(--space-2);row-gap:var(--space-1);align-content:start;min-width:0}
-.rcl-head{grid-column:1/-1;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
-.rcl-head h4{margin:0}
+.rcl-head{grid-column:1/-1;display:flex;align-items:center;gap:var(--space-2)}
+.rcl-head h4{margin:0;flex:1 1 auto;min-width:0}
+/* 使い方の一言は見出しの下の行（ボタンを次の行へ押し出さない・§9.575）。 */
+.rcl-head h4 small{display:block;margin:2px 0 0}
 .rcl-grow{flex:1}
 .rcl-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-sm);
  background:var(--surface);color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
@@ -190,21 +194,25 @@ body.ac-mode .pager{display:none}
  grid-template-rows:repeat(var(--rcl-lines,2),var(--ctl-h-lg));row-gap:var(--space-1);
  padding:var(--space-1);border:1px dashed var(--line);border-radius:var(--radius-sm);touch-action:none;user-select:none;
  background:repeating-linear-gradient(90deg,transparent 0,transparent calc((100% - 1px)/24 - 1px),var(--line-soft) calc((100% - 1px)/24 - 1px),var(--line-soft) calc((100% - 1px)/24)) content-box}
-.rcl-chip{position:relative;display:flex;align-items:center;min-width:0;margin:0 1px;padding:0 var(--space-2);
+.rcl-chip{position:relative;display:flex;align-items:center;min-width:0;margin:0 1px;padding:0 var(--space-1);
  border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--pale);color:var(--teal-dark);
  font-size:var(--fs-sm);font-weight:var(--fw-ui);text-align:left;cursor:grab;overflow:hidden}
-.rcl-chip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 札の名前は**2行まで**（§9.575）。1行で…にすると、57枚のうち55枚の名前が切れていた。 */
+.rcl-chip>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+ overflow-wrap:anywhere;line-height:1.15}
 .rcl-chip:hover{transform:translateY(-1px)}
 .rcl-chip.is-auto{border-style:dashed;background:var(--surface);color:var(--ink-2)}
 .rcl-chip.is-sel{border-color:var(--look-violet);background:var(--look-violet-pale);color:var(--look-violet);box-shadow:0 0 0 2px var(--look-violet-pale)}
 .rcl-grip{position:absolute;top:0;right:0;bottom:0;width:8px;background:var(--teal);opacity:.35;cursor:ew-resize}
 .rcl-ghost{border:2px solid var(--teal);border-radius:var(--radius-sm);background:transparent;pointer-events:none}
 .rcl-ghost.is-bad{border-style:dashed;border-color:var(--warn-fg)}
-.rcl-note{grid-column:2;margin:0;font-size:var(--fs-micro);color:var(--ink-2);min-height:2.6em}
-.rcl-insp{min-width:0}
-.rcl-insp dl{display:grid;grid-template-columns:var(--w-xs) minmax(0,1fr);gap:var(--space-2);margin:0 0 var(--space-2);font-size:var(--fs-sm)}
-.rcl-insp dt{color:var(--ink-2);font-weight:var(--fw-strong)}
-.rcl-insp dd{margin:0}
+.rcl-note{grid-column:2;margin:0;font-size:var(--fs-sm);color:var(--ink-2);min-height:2.6em}
+/* 選んだ項目は盤の真下の1行（§9.575）。 */
+.rcl-insp{grid-column:2;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-3);
+ min-height:var(--ctl-h-sm);font-size:var(--fs-sm);color:var(--ink-2)}
+.rcl-insp-h{font-weight:var(--fw-strong)}
+.rcl-insp-k{color:var(--look-violet);font-weight:var(--fw-strong)}
+.rcl-insp-f{display:inline-flex;align-items:center;gap:var(--space-1)}
 .rcl-insp input[type=number]{width:var(--w-xs);height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 .rcl-seg{display:inline-flex;gap:var(--gap-hair)}
 .rcl-seg button{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);
@@ -218,29 +226,41 @@ body.ac-mode .pager{display:none}
 .rcl-rec:nth-child(odd):not(.rcl-head){background:var(--surface-2)}
 .rcl-rec.rcl-head{position:sticky;top:0;z-index:2;background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-strong)}
 .rcl-rec.is-picked{box-shadow:inset var(--bar-w) 0 0 var(--teal)}
+/* セルは**塊の箱**（§9.575）。flex の箱だと字が…にならず、右寄せの数は左から切れていた（実測 241のうち76）。 */
 .rcl-c{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 var(--space-2);
- display:flex;align-items:center;border-right:1px solid var(--line-soft)}
+ display:block;align-content:center;border-right:1px solid var(--line-soft)}
 .rcl-c.rcl-l1{border-bottom:1px solid var(--line-soft)}
 .rcl-head .rcl-c.rcl-l2{font-weight:var(--fw-strong)}
-.rcl-num{justify-content:flex-end;font-variant-numeric:tabular-nums}
+.rcl-num{text-align:right;font-variant-numeric:tabular-nums}
 .rcl-lead,.rcl-tail{grid-column:1;display:flex;align-items:center;gap:var(--space-1);padding:0 var(--space-2);color:var(--ink-2);
  border-right:1px solid var(--line-soft)}
 .rcl-tail{grid-column:-2;border-right:0;border-left:1px solid var(--line-soft)}
 .rcl-over{margin:var(--space-2);font-size:var(--fs-sm);color:var(--warn-fg)}
 .ac-list.is-stack{overflow:auto}
-/* プレビューの中の盤（上）と、できあがり（下）。 */
-.os-pv-board{flex:none;height:var(--os-board-h,320px);padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line-soft);
- background:var(--surface)}
+/* ② 配置を組み替える（§9.575）。左＝使うデータ（全高）、右＝盤 → 帯（件数・できあがり）→ 紙の見本。
+   盤の器（`.os-pv-board`・`.rcl-wrap`）は`display:contents`で、中の柱をこの格子へ直に並べる。 */
 .os-pv-board[hidden]{display:none}
-.os-pv-look{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-1) var(--space-3);
- font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);border-bottom:1px solid var(--line-soft)}
+.os-pv.is-board .os-pv-body{grid-template-columns:minmax(0,1fr)}
+.os-pv.is-board .os-pv-side{display:none}
+.os-pv.is-board .os-pv-main{display:grid;grid-template-columns:var(--w-xl) minmax(0,1fr);
+ grid-template-rows:auto auto minmax(0,1fr);grid-template-areas:"pal board" "pal bar" "pal stage"}
+.os-pv.is-board :is(.os-pv-board,.rcl-wrap){display:contents}
+.os-pv.is-board .rcl-pal{grid-area:pal;padding:var(--pad-card);border-right:1px solid var(--line-soft)}
+.os-pv.is-board .rcl-main{grid-area:board;padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line-soft)}
+.os-pv.is-board .os-pv-bar{grid-area:bar}
+.os-pv.is-board :is(.os-pv-scroll,.os-pv-listview){grid-area:stage}
+/* 組み替える間は紙の見出しを押して選べる。選んだ項目は盤の札と同じ紫（画面だけ・刷る紙には出ない）。 */
+.os-pv.is-board .os-pv-scale .os-table th[data-k]{cursor:pointer}
+.os-pv.is-board .os-pv-scale .os-table th[data-k]:hover{background:var(--pale)}
+.os-pv-scale .os-table th.is-pick{background:var(--look-violet-pale);color:var(--look-violet);outline:0.5mm solid var(--look-violet);outline-offset:-0.5mm}
+.os-pv-look{display:inline-flex;align-items:center;gap:var(--space-2)}
 .os-pv-look[hidden]{display:none}
 .os-pv-listview{flex:1;min-height:0;overflow:auto;padding:var(--space-2) var(--space-3);
  --row-h:calc(var(--tbl-fs) * var(--lh) + var(--space-1) * 2 + 1px)}
 .os-pv-listview[hidden]{display:none}
 .os-pv-scroll[hidden]{display:none}
-.os-pv-btn--wide{width:100%;white-space:normal;height:auto;min-height:var(--ctl-h-sm);padding:var(--space-1) var(--ctl-pad-x-sm)}
 .os-pv-bad{color:var(--warn-fg)}
+.os-pv-more summary{cursor:pointer;color:var(--teal-ink);font-weight:var(--fw-ui)}
 
 /* ---------- 印刷プレビュー（画面。§9.186） ---------- */
 .os-pv{position:fixed;inset:0;z-index:var(--z-modal);display:grid;place-items:center;
@@ -254,6 +274,11 @@ body.ac-mode .pager{display:none}
 .os-pv-head small{display:block;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .os-pv-head h2{margin:0;font-size:var(--fs-title);color:var(--ink)}
 .os-pv-x{border:0;background:transparent;font-size:var(--fs-lg);cursor:pointer;color:var(--ink-2)}
+/* すること（印刷する／配置を組み替える）のタブ（§9.575）。選んだ札は`90-state.css`の濃い面。 */
+.os-pv-tabs{display:flex;gap:var(--gap-hair);margin:0 auto 0 var(--space-4);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+.os-pv-tabs button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:0;border-radius:var(--radius-sm);background:transparent;
+ color:var(--ink-2);font-size:var(--fs);font-weight:var(--fw-ui);cursor:pointer}
+.os-pv-tabs button:hover{background:var(--surface)}
 .os-pv-body{flex:1;min-height:0;display:grid;grid-template-columns:var(--w-xl,300px) minmax(0,1fr)}
 .os-pv-side{min-height:0;overflow:auto;padding:var(--pad-card);
  border-right:1px solid var(--line-soft);display:flex;flex-direction:column;gap:var(--space-3);
