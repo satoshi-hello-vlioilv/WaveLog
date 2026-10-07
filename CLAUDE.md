@@ -65,10 +65,12 @@
 （分からないなら「分からない」と書く。1回だけ落ちたテストを「フレーク」で
 片付けないのも同じ趣旨・[`testing.md`](.claude/rules/testing.md)）。
 
-### E. 画面の見た目が変わる変更は、都度確認して少しずつ
+### E. 画面の見た目が変わる変更は、案を比べて選び、都度確認して少しずつ
 
 **構造（作り）の改善を先に進め、画面の見た目が変わるものは利用者に確認して
 から、少しずつ入れる。** 次に取り組む候補は `docs/REVIEW_2026-09.md`（推奨順・評価関数つき）。
+- **UIUXの改良は毎回、改良案を最低5案出し、実画面の画像を直接並べて採点して選んでから設計する**（利用者の指示）。
+  **僅差なら無理に選ばず**、組み合わせの複合案を3つ作り、元案の上位2案を足した5案で選び直す。
 
 ### F. push は手元で緑にしてから。レビュー指摘の直しはまとめて1回で push する
 
@@ -180,8 +182,7 @@ tests/run_all.sh                        # 通し。利用者の指示がある�
 python3 tests/make_fixture.py           # 検証用フィクスチャの作り直し
 ```
 
-- **テストを書くときの約束・後片付け・待ち方・踏んだ罠**は
-  [`testing.md`](.claude/rules/testing.md) と `tests/README.md`。
+- **テストを書くときの約束・後片付け・待ち方・踏んだ罠**は[`testing.md`](.claude/rules/testing.md)と`tests/README.md`。
 - **バージョンは意味のある変更ごとに** `backend/changelog_data.py` の
   `APP_VERSION` を上げ、`CHANGELOG` の先頭へ1件足す
   （[決まり](docs/decisions/rules-misc.md)）。
@@ -191,7 +192,6 @@ python3 tests/make_fixture.py           # 検証用フィクスチャの作り�
 - 構成: `docs/ARCHITECTURE.md`
 - 機能と起動方法: `README.md`
 - スケジュール機能そのものの設計: `docs/SCHEDULE_MODE_DESIGN.md`（§1〜§13）
-- 構造と画面の評価、次に取り組む候補: `docs/REVIEW_2026-09.md`（上の E）
 
 ## Git
 
