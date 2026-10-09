@@ -73,9 +73,20 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
    const auto2=R.plan(['A','B','C','D'],o({},250));
    const minL=R.plan(['A','B','C','D'],{...o({},10000),minLines:2});
    const hinted=R.plan(['A','B','C'],o({},10000,k=>k==='C'?2:0));
-   const many=R.plan(Array.from({length:120},(_,i)=>'K'+i),o({},100));
+   const many=R.plan(Array.from({length:R.UNITS*R.LINES+16},(_,i)=>'K'+i),o({},100));
    const seg=R.segments(placed,1);
-   const crowd=R.plan(['A',...Array.from({length:59},(_,i)=>'K'+i)],o({A:{line:1,col:0,span:4}},100));
+   const crowd=R.plan(['A',...Array.from({length:2*R.UNITS},(_,i)=>'K'+i)],o({A:{line:1,col:0,span:4}},100));
+   /* §9.577: 中身の幅をマスへ切り上げて配る・入らなければ段を足す・足りない列は名指す・古い配置は読み替える */
+   const ws={P:100,Q:180,S:40};
+   const need=R.plan(['P','Q','S'],{placeOf:()=>null,naturalPx:k=>ws[k],usablePx:960,minLines:2});
+   const unitPx=960/R.UNITS;
+   const grow=R.plan(['A','B','C','D','A2','B2'],{placeOf:()=>null,naturalPx:()=>100,usablePx:250});
+   const tightP=R.plan(['A'],{placeOf:()=>({line:1,col:0,span:2,u:R.UNITS}),naturalPx:()=>100,usablePx:960});
+   const legacy=R.onBoard({line:2,col:3,span:5});
+   /* 広い1項目＋細い10項目がちょうど1段に入るとき、比で配ると広い項目が中身より狭くなる（切り上げなら入る） */
+   const bigKeys=['Z',...Array.from({length:10},(_,i)=>'z'+i)];
+   const big=R.plan(bigKeys,{placeOf:()=>null,naturalPx:k=>k==='Z'?900:10,usablePx:1100});
+   const bigZ=big.cells.find(c=>c.k==='Z');
    const sum=p=>[1,2].map(l=>p.cells.filter(c=>c.line===l).reduce((s,c)=>s+c.span,0));
    return {U:R.UNITS,L:R.LINES,
     placedA:placed.cells.find(c=>c.k==='A'),placedB:placed.cells.find(c=>c.k==='B'),placedC:placed.cells.find(c=>c.k==='C'),
@@ -84,22 +95,31 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
     hinted:hinted.cells.find(c=>c.k==='C').line,
     many:{overflow:many.overflow.length,cells:many.cells.length},
     crowd:{lines:crowd.lines,overflow:crowd.overflow.length,cells:crowd.cells.length},
-    segSum:seg.reduce((s,g)=>s+g.span,0),segGap:seg.filter(g=>g.k==null).length};
+    segSum:seg.reduce((s,g)=>s+g.span,0),segGap:seg.filter(g=>g.k==null).length,
+    need:need.cells.map(c=>({k:c.k,px:c.span*unitPx,want:ws[c.k]})),grow:{lines:grow.lines,tight:grow.tight.length},
+    tight:tightP.tight,legacy,big:{lines:big.lines,zpx:bigZ.span*1100/R.UNITS,tight:big.tight},same:R.onBoard({line:1,col:7,span:9,u:R.UNITS})};
   });
   rec('置いた位置どおり（ロット番号の真下へ検査番号を置ける）',
       pure.placedA.line===1&&pure.placedB.line===2&&pure.placedA.col===pure.placedB.col&&pure.placedA.span===pure.placedB.span,
       JSON.stringify([pure.placedA,pure.placedB]));
   rec('置いていない列は空いたマスへ自動で入る（点線＝auto）',pure.placedC&&pure.placedC.auto===true&&pure.placedC.col>=4,JSON.stringify(pure.placedC));
   rec('重なった位置は後から来たほうを自動へ回して名指す',pure.conflict.conf.join()==='B'&&pure.conflict.b&&pure.conflict.b.auto===true,JSON.stringify(pure.conflict));
-  rec('置いていなければ幅から自動: 紙に入るなら1段・各段のマスの合計は24',
+  rec('置いていなければ幅から自動: 紙に入るなら1段・各段のマスの合計は盤の幅（96）',
       pure.auto1.lines===1&&pure.auto1.sum[0]===pure.U,JSON.stringify(pure.auto1));
-  rec('段組を選んだ（minLines:2）なら紙に入っても2段へ割る（§9.575・各段24マス）',pure.minL.lines===2&&pure.minL.sum.every(v=>v===pure.U),JSON.stringify(pure.minL));
-  rec('紙に入らなければ2段へ割る（各段24マスちょうど）',pure.auto2.lines===2&&pure.auto2.sum.every(v=>v===pure.U),JSON.stringify(pure.auto2));
+  rec('段組を選んだ（minLines:2）なら紙に入っても2段へ割る（§9.575・各段96マス）',pure.minL.lines===2&&pure.minL.sum.every(v=>v===pure.U),JSON.stringify(pure.minL));
+  rec('紙に入らなければ2段へ割る（各段96マスちょうど）',pure.auto2.lines===2&&pure.auto2.sum.every(v=>v===pure.U),JSON.stringify(pure.auto2));
   rec('古い「段:2」の印は手がかりとして読む',pure.hinted===2,String(pure.hinted));
-  rec('盤に入らない列は名指す（黙って落とさない）',pure.many.overflow===120-pure.U*pure.L&&pure.many.cells===pure.U*pure.L,JSON.stringify(pure.many));
+  rec('盤に入らない列は名指す（黙って落とさない）',pure.many.overflow===16&&pure.many.cells===pure.U*pure.L,JSON.stringify(pure.many));
   rec('置いた位置の残りへは入りきる最小の段数で入れ、広い列は空きに合わせて縮める（あふれない）',
-      pure.crowd.lines===3&&pure.crowd.overflow===0&&pure.crowd.cells===60,JSON.stringify(pure.crowd));
-  rec('段の並びは空いたマスも数えて24マスちょうど',pure.segSum===pure.U&&pure.segGap>=1,JSON.stringify({sum:pure.segSum,gap:pure.segGap}));
+      pure.crowd.lines===3&&pure.crowd.overflow===0&&pure.crowd.cells===2*pure.U+1,JSON.stringify(pure.crowd));
+  rec('中身の幅をマスへ切り上げて配る（どの項目も中身の幅以上・§9.577）',pure.need.length===3&&pure.need.every(c=>c.px+1e-6>=c.want),JSON.stringify(pure.need));
+  rec('広い項目も比で痩せない（中身の幅を先に取る）',pure.big.lines===1&&pure.big.zpx>=900&&!pure.big.tight.length,JSON.stringify(pure.big));
+  rec('どの段も紙の幅に入る数まで段を足す（切れない・§9.577）',pure.grow.lines===3&&pure.grow.tight===0,JSON.stringify(pure.grow));
+  rec('中身より狭く置いた項目は名指す（tight）',pure.tight.join()==='A',JSON.stringify(pure.tight));
+  rec('名乗らない配置は24マスの頃の物として倍へ読み替える（u を名乗れば素通し）',
+      pure.legacy.col===3*pure.U/24&&pure.legacy.span===5*pure.U/24&&pure.legacy.line===2&&pure.same.col===7&&pure.same.span===9,
+      JSON.stringify({legacy:pure.legacy,same:pure.same}));
+  rec('段の並びは空いたマスも数えて盤の幅（96）ちょうど',pure.segSum===pure.U&&pure.segGap>=1,JSON.stringify({sum:pure.segSum,gap:pure.segGap}));
 
   /* ---- 2) 盤の寸法は画面とサーバーで同じ ---- */
   const py=fs.readFileSync(path.join(__dirname,'..','backend','repositories','master_repo.py'),'utf8');
@@ -110,9 +130,14 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
   const places={'ロット番号':{line:1,col:0,span:5},'検査番号':{line:2,col:0,span:5},[OP1]:{line:1,col:5,span:3},[OP2]:{line:2,col:5,span:3}};
   await post('/api/column-layout-master',{target:TARGET,places,user_id:'test'});
   const back=await getLayout();
-  const same=(x,y)=>!!x&&!!y&&x.line===y.line&&x.col===y.col&&x.span===y.span;
-  rec('配置は保存して読み直しても同じ',Object.keys(places).every(k=>same(back.places[k],places[k]))&&Object.keys(back.places).length===4,
+  /* `places`は u を名乗らない（24マスの頃の形）——サーバーは倍へ読み替えて u:96 で返す（§9.577）。 */
+  const f=pure.U/24;
+  const same=(x,y)=>!!x&&!!y&&x.line===y.line&&x.col===y.col*f&&x.span===y.span*f&&x.u===pure.U;
+  rec('古い形の配置は96マスへ読み替えて保存・読み直しても同じ',Object.keys(places).every(k=>same(back.places[k],places[k]))&&Object.keys(back.places).length===4,
       JSON.stringify(back.places));
+  await post('/api/column-layout-master',{target:TARGET,places:{X:{line:1,col:40,span:30,u:pure.U}},user_id:'test'});
+  const now96=await getLayout();
+  rec('u を名乗る配置はそのまま保存する',now96.places.X&&now96.places.X.col===40&&now96.places.X.span===30,JSON.stringify(now96.places.X));
   await post('/api/column-layout-master',{target:TARGET,places:{X:{line:1,col:20,span:9}},user_id:'test'});
   const bad=await getLayout();
   rec('盤からはみ出す配置は保存しない（縮めて救わない）',!bad.places.X,JSON.stringify(bad.places));
@@ -147,11 +172,13 @@ run('test_recordlayout: 段組の配置（§9.553、利用者の指示）', asyn
    const sum=tr=>tr?[...tr.children].reduce((s,c)=>s+(Number(c.getAttribute('colspan'))||1),0):0;
    return {tracks:p.querySelectorAll('colgroup col').length,lot:h1&&at(h1,'ロット番号'),insp:h2&&at(h2,'検査番号'),
            s1:sum(h1),s2:sum(h2),rows:p.querySelectorAll('tbody tr').length,lines:p.querySelectorAll('thead tr').length,
-           note:(document.getElementById('osPvRowsNote')||{}).textContent||''};
+           note:(document.getElementById('osPvRowsNote')||{}).textContent||'',
+           cut:[...p.querySelectorAll('tbody td.os-c')].filter(t=>t.textContent.trim()&&t.scrollWidth>t.clientWidth+1).length};
   });
-  rec('紙は24本のトラック（盤の1マス＝紙の刷れる幅の1/24）',paper.tracks===24&&paper.s1===24&&paper.s2===24,JSON.stringify(paper));
-  rec('紙でも検査番号はロット番号の真下（同じ位置・同じ幅）',paper.lot&&paper.insp&&paper.lot.col===paper.insp.col&&paper.lot.span===5&&paper.insp.span===5,
+  rec('紙は96本のトラック（盤の1マス＝紙の刷れる幅の1/96）',paper.tracks===pure.U&&paper.s1===pure.U&&paper.s2===pure.U,JSON.stringify(paper));
+  rec('紙でも検査番号はロット番号の真下（同じ位置・同じ幅）',paper.lot&&paper.insp&&paper.lot.col===paper.insp.col&&paper.lot.span===5*f&&paper.insp.span===5*f,
       JSON.stringify({lot:paper.lot,insp:paper.insp}));
+  rec('紙の値は切れない（自動の項目は中身の幅から・§9.577）',paper.cut===0,String(paper.cut));
   rec('紙の説明は段数と置いた位置の数を字で言う',new RegExp(`^${paper.lines}段構成`).test(paper.note)&&/置いた位置 4項目/.test(paper.note)&&!/盤に入らない/.test(paper.note),paper.note.slice(0,80));
   /* 載せる項目（§9.575）: 既定は「値のある項目だけ」。外した数＋載せた数＝表示列の数、紙の見出しに外した項目は無い */
   const filled=await page.evaluate(()=>{

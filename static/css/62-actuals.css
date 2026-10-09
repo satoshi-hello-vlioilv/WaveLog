@@ -110,6 +110,8 @@ body.ac-mode .pager{display:none}
 .os-page[data-paper="a3-portrait"]{width:297mm;min-height:420mm}
 /* 高密度（既定）。**中身を削らずに詰める**——文字と余白だけを落とす。 */
 .os-page[data-dense="on"]{font-size:8.5px;line-height:1.15}
+/* 中身の幅を測る写し（§9.577）: 見出しの全体と語ごとの幅を、太字・折り返さずに測る。 */
+.os-measure-head b{display:inline-block;white-space:nowrap;font-weight:var(--fw-strong)}
 
 .os-head{display:flex;align-items:baseline;gap:3mm;flex-wrap:nowrap;
  border-bottom:0.4mm solid #111;padding-bottom:1mm}
@@ -189,8 +191,9 @@ body.ac-mode .pager{display:none}
 .rcl-lanes{display:grid;grid-template-rows:repeat(var(--rcl-lines,2),var(--ctl-h-lg));row-gap:var(--space-1);
  padding:var(--space-1) 0;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .rcl-lanes span{display:flex;align-items:center}
-/* 盤。**目盛り（1マスの縦線）を地に描く**——どの縦線にそろっているかが見える。 */
-.rcl-board{position:relative;display:grid;grid-template-columns:repeat(24,minmax(0,1fr));
+/* 盤。**目盛りを地に描く**——どの縦線にそろっているかが見える。マスは96（§9.577）、目盛りは4マスごと
+   （96本すべて引くと地が灰色に潰れて読めない）。マスの数は`--rcl-units`（JSの`UNITS`）の1つ。 */
+.rcl-board{position:relative;display:grid;grid-template-columns:repeat(var(--rcl-units,96),minmax(0,1fr));
  grid-template-rows:repeat(var(--rcl-lines,2),var(--ctl-h-lg));row-gap:var(--space-1);
  padding:var(--space-1);border:1px dashed var(--line);border-radius:var(--radius-sm);touch-action:none;user-select:none;
  background:repeating-linear-gradient(90deg,transparent 0,transparent calc((100% - 1px)/24 - 1px),var(--line-soft) calc((100% - 1px)/24 - 1px),var(--line-soft) calc((100% - 1px)/24)) content-box}
@@ -221,7 +224,7 @@ body.ac-mode .pager{display:none}
 /* 画面の2段組の一覧。1件＝1つの`.rcl-rec`（段ぶんの行）。先頭（選ぶ印）と末尾（操作）は段をまたぐ。
    **横は盤と同じ24マス**——一覧の幅が変わってもマスの比は紙と同じ（読み取る位置が紙と一致する）。 */
 .rcl-grid{min-width:max(100%,72em);font-size:var(--tbl-fs)}
-.rcl-rec{display:grid;grid-template-columns:var(--w-xs) repeat(24,minmax(0,1fr)) var(--w-xs);
+.rcl-rec{display:grid;grid-template-columns:var(--w-xs) repeat(var(--rcl-units,96),minmax(0,1fr)) var(--w-xs);
  grid-template-rows:repeat(var(--rcl-lines,2),var(--row-h));border-bottom:2px solid var(--line-mid);background:var(--surface)}
 .rcl-rec:nth-child(odd):not(.rcl-head){background:var(--surface-2)}
 .rcl-rec.rcl-head{position:sticky;top:0;z-index:2;background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-strong)}
