@@ -3,9 +3,9 @@
 **この1枚は「汎用」だけを持つ**——利用者からの恒久的な指示（すべての作業・
 すべてのコード・すべての画面に常時かかるもの）と、置き場への入口。
 領域ごとの**個別**の規則は
-[`.claude/rules/`](.claude/rules/README.md)（1147件・領域別の15枚）、
+[`.claude/rules/`](.claude/rules/README.md)（1148件・領域別の15枚）、
 なぜそうなのか（実測値・撤回した案・踏んだ罠）は
-[`docs/decisions/`](docs/decisions/README.md)（485の決定記録＋主題別の索引）。
+[`docs/decisions/`](docs/decisions/README.md)（486の決定記録＋主題別の索引）。
 **コードを触る前に、触る領域の1枚を開くこと。**
 
 ## 作業の進め方（利用者からの恒久的な指示・最優先）

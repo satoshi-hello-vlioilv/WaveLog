@@ -8000,6 +8000,33 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  const opShiftsTime=op=>!!op&&SC_TIME_SHIFT_OPS.has(op.op)
    &&!(op.op==='update'&&Object.prototype.hasOwnProperty.call(op,'title')
        &&!('fixedStart' in op)&&!('estimateMinutes' in op)&&!('state' in op));
+ /* ---------- 書込の列で諦めた変更を言う（§9.372） ----------
+    onFailureで個別に知らせた分は重ねて出さない。 @param {any[]} failures */
+ function reportQueueFailures(failures){
+  const unreported=failures.filter(f=>!f.__reported);
+  if(unreported.length){
+   /* **「何が」できなかったかを頭に出す**（§9.372）。「一部の変更」では、
+      外したのか足したのか並べ替えたのかが読めない——画面は既に巻き戻って
+      いるので、**この1行だけが手掛かり**になる。 */
+   const kinds=[...new Set(unreported.map(f=>SC_OP_LABEL[f.__op]||'変更できませんでした'))];
+   const head=kinds.length===1?kinds[0]:'いくつかの変更を反映できませんでした';
+   const why=unreported[0].message||'';
+   const msg=(unreported.length===1?why:`${unreported.length}件が元へ戻りました。${why}`).trim()
+     ||'理由を受け取れませんでした（通信を確かめてください）';
+   /* **開発へ渡せる形で残す**（§9.373）。画面へ出した知らせと同じ失敗を
+      1通に組み、**その場で押せる1手**として「報告用にコピー」を添える
+      ——現場が開発へ渡せるのは、覚えている今このときだけ。 */
+   const rep=WL.feedback&&WL.feedback.note(head,unreported[0],
+     {件数:unreported.length,設備:scState.equipment||'',
+      操作:[...new Set(unreported.map(f=>f.__op||''))].filter(Boolean).join(',')});
+   showToast&&showToast(head,msg,10000,
+     rep?{label:'報告用にコピー',run:()=>WL.feedback.copyReport(rep)}:null);
+   /* 追加が断られたら設備停止の一覧を読み直す（§9.576）——画面が持つ内訳の
+      番号がマスタと食い違っていると、何度押しても同じ400になる。 */
+   if(unreported.some(f=>f.__op==='add'))
+    loadStopReasons().catch(WL.quiet('設備停止の一覧を読み直せない（前の一覧のまま）'));
+  }
+ }
  async function runWriteQueue(){
   if(scQueueRunning)return;
   scQueueRunning=true;
@@ -8106,25 +8133,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    // onFailureで個別に知らせた分は、ここで重ねて出さない(同じ内容の通知が
     // 二重に並ぶ)。まとめ通知は「個別の知らせ先を持たない操作」が失敗した
     // ときだけ出す。
-   const unreported=failures.filter(f=>!f.__reported);
-   if(unreported.length){
-    /* **「何が」できなかったかを頭に出す**（§9.372）。「一部の変更」では、
-       外したのか足したのか並べ替えたのかが読めない——画面は既に巻き戻って
-       いるので、**この1行だけが手掛かり**になる。 */
-    const kinds=[...new Set(unreported.map(f=>SC_OP_LABEL[f.__op]||'変更できませんでした'))];
-    const head=kinds.length===1?kinds[0]:'いくつかの変更を反映できませんでした';
-    const why=unreported[0].message||'';
-    const msg=(unreported.length===1?why:`${unreported.length}件が元へ戻りました。${why}`).trim()
-      ||'理由を受け取れませんでした（通信を確かめてください）';
-    /* **開発へ渡せる形で残す**（§9.373）。画面へ出した知らせと同じ失敗を
-       1通に組み、**その場で押せる1手**として「報告用にコピー」を添える
-       ——現場が開発へ渡せるのは、覚えている今このときだけ。 */
-    const rep=WL.feedback&&WL.feedback.note(head,unreported[0],
-      {件数:unreported.length,設備:scState.equipment||'',
-       操作:[...new Set(unreported.map(f=>f.__op||''))].filter(Boolean).join(',')});
-    showToast&&showToast(head,msg,10000,
-      rep?{label:'報告用にコピー',run:()=>WL.feedback.copyReport(rep)}:null);
-   }
+   reportQueueFailures(failures);
    /* ---------- 書込のあとは時刻を取り直す(§9.185) ----------
       予定を1本足す・外す・並べ替えると、**その後ろの予定の時刻が全部
       動く**。楽観的更新で作った行は`plannedStart`を持たないので、取り

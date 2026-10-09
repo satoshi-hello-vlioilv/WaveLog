@@ -101,6 +101,26 @@ const apiErrorMessage=(status,text,url)=>{
    サーバーの`_READ_ONLY_POST_ENDPOINTS`が正で、**呼ぶ側がその印を付ける**
    （知っているのは呼ぶ側）。付け忘れは`tests/test_savechip.py`が数える。 */
 const SAVE_CHIP_DELAY_MS=500;
+/* ---------- 共有マスタの知らせ（§9.576） ----------
+   サーバーは書込サイクルの結果（共有へ書き出せなかった・送り直した・他の端末と
+   ぶつかって控えへ逃がした）を応答の頭`X-WL-Master-Notice`で渡す。保存そのものは
+   写しに残っているので状態コードは2xxのまま——**言わなければ誰も気づかない**
+   （実機: 書き出せなかった内訳が次の書込で消え、予定の追加が400になった）。
+   同じ字は30秒に1回だけ（続けて保存するたびに並べない）。 */
+const MASTER_NOTICE_GAP_MS=30000;
+let masterNoticeLast={text:'',at:0};
+/** @param {Response} r */
+function masterNotice(r){
+ const raw=r.headers&&r.headers.get('X-WL-Master-Notice');
+ if(!raw)return;
+ let text='';
+ try{text=decodeURIComponent(raw)}catch(_){text=raw}
+ const now=Date.now();
+ if(text===masterNoticeLast.text&&now-masterNoticeLast.at<MASTER_NOTICE_GAP_MS)return;
+ masterNoticeLast={text,at:now};
+ const t=window.showToast;
+ if(t)t('共有のマスタ',text,12000);
+}
 /** 問い合わせ先と fetch の設定（`quiet`＝保存中の札を出さない）。 @type {(u: string, o?: RequestInit & {quiet?: boolean}) => Promise<any>} */
 const api=async(u,o)=>{
  const opt={...(o||{})};
@@ -115,6 +135,7 @@ const api=async(u,o)=>{
  let r;
  try{r=await fetch(u,{cache:'no-store',...opt})}
  catch(error){settle(false);throw Error('アプリの中身（Python）と話せません。終了している可能性があります（'+WL.RESTART_HOW+'）詳細: '+(error?.message||String(error)))}
+ masterNotice(r);
  const text=await r.text();let j={},parsed=false;
  try{if(text){j=JSON.parse(text);parsed=true}}catch(_){j={}}
  if(!r.ok){

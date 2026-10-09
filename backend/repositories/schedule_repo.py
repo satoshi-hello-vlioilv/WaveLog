@@ -243,7 +243,7 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
     up=stop_sub_parent_of(mc2,int(stop_sub_id)) if sub else None
    finally:
     mc2.close()
-   if not sub:raise ValueError('指定のサブカテゴリが見つかりません。')
+   if not sub:raise ValueError(stop_sub_missing(stop_sub_id))
    if int(sub[1] or 0)!=int(stop_reason_id):
     raise ValueError('そのサブカテゴリは別の設備停止のものです。')
    if not (True if sub[5] is None else bool(sub[5])):
@@ -462,7 +462,7 @@ def plan_set_stop_sub(c_share,plan_id,uid,sub_id,pc=''):
   mc=config_master_conn()
   try:
    sub=stop_sub_row(mc,int(sub_id))
-   if not sub:raise ValueError('指定のサブカテゴリが見つかりません。')
+   if not sub:raise ValueError(stop_sub_missing(sub_id))
    up=stop_sub_parent_of(mc,int(sub_id))
    parent=stop_reason_id_of(mc,row[2],row[3])
   finally:
@@ -1358,6 +1358,12 @@ def stop_sub_rows(c_master,stop_reason_id=None):
  # 親を失った子（親だけ消された）も落とさない——見えないと消せない。
  for rest in kids.values():out.extend(rest)
  return out
+
+def stop_sub_missing(sub_id):
+ """予定へ渡された内訳が設備停止マスタに無いときの断り（§9.576）。番号と次の一手まで言う
+ ——画面の一覧がマスタと食い違っているだけのことが多い（画面は断られたら一覧を読み直す）。"""
+ return (f'指定のサブカテゴリ（ID {sub_id}）が設備停止マスタに見つかりません。'
+         'マスタが変わった可能性があります。一覧を読み直したので、内訳を選び直してください。')
 
 def stop_sub_row(c_master,sub_id):
  """1件。**無効化済みも返す**(消えた内訳を参照している予定の名前を出すため)。"""

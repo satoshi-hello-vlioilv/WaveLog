@@ -21,6 +21,13 @@
   読み: **手元の写し**から（共有を直接読まない）
   書き: ロック → 写しを取り直す → 当てる → 改訂番号 → 丸ごと置換 → 解放
 
+**書き出せなかった変更は写しに残し、次に共有へ届いたときに送り直す**（§9.576）。
+共有へ届かなかった1回のあとで「取り直す」をそのまま行うと、写しが共有の
+古い中身で上書きされ、**画面には見えていた変更が次の書込で黙って消える**
+（実機: 内訳を足した直後の予定の追加が「指定のサブカテゴリが見つかりません」）。
+送り直す前に共有が他の端末で進んでいたら、写しを控えのファイルへ残してから
+共有を取り込み、そのことを知らせる（黙って片方を捨てない）。
+
 **既定は「共有に置いていなければ何もしない」。** 手元の `db/` に置いて
 いる端末の動きは1バイトも変わらない（§9.251と同じ作法）。
 ============================================================
@@ -150,7 +157,18 @@ def configure(master_path):
     if mirror is None:
         return src
     try:
-        _pull(force=True)
+        if pending() is not None:
+            # **書き出せていない変更を取り込みで消さない**（§9.576）。送り直しは
+            # ロックを取ってから。届かなければ写しのまま起動し、次の書込で送り直す。
+            token = acquire_lock('', '')
+            try:
+                settled, _note = _settle_pending()
+                if not settled:
+                    _pull(force=True)
+            finally:
+                release_lock(token)
+        else:
+            _pull(force=True)
     except Exception as e:
         # **共有へ届かなくても起動は止めない**——前に落とした写しがあれば
         # それで読める（§9.89の「元へ到達できなくても前の写しで読み続ける」）。
@@ -183,6 +201,7 @@ def status():
            'revision': st['revision']}
     if st['shared']:
         out['lock'] = lock_status()
+        out['pending'] = pending()
     return out
 
 
@@ -240,7 +259,9 @@ def _ensure_meta(c):
     c.commit()
 
 
-def _read_revision(path):
+def _read_revision(path, strict=False):
+    """改訂番号。読めなければ0——ただし `strict` なら投げる（「読めない」を
+    「0番」と取り違えると、送り直してよいかの判定を誤る）。"""
     try:
         with _opened(path, True) as c:
             if META_TABLE not in tables(c):
@@ -249,6 +270,8 @@ def _read_revision(path):
                 f'SELECT [値] FROM [{META_TABLE}] WHERE [キー]=?', [REVISION_KEY]).fetchone()
             return int((row or [0])[0] or 0)
     except Exception as _e:
+        if strict:
+            raise MasterShareUnavailable(f'共有のマスタの改訂番号を読めませんでした: {_e}') from _e
         quiet('改訂番号を読めない（0として比べる）',_e)
         return 0
 
@@ -269,6 +292,86 @@ def _bump_revision(path, uid=''):
     with _lock:
         _state['revision'] = nxt
     return nxt
+
+
+# ---- 書き出せていない変更（§9.576） --------------------------------------
+# 印は**写しの外**のファイルに置く——写しの中（共有メタ）へ書くと、送り直した
+# ときに印ごと共有へ出て、取り込んだ他の端末まで「書き出せていない」と読む。
+def _pending_path():
+    m = local_path()
+    return m.with_name(m.name + '.unpushed.json') if m is not None else None
+
+
+def pending():
+    """書き出せていない変更があれば `{'base','at','error'}`、無ければ None。"""
+    p = _pending_path()
+    if p is None:
+        return None
+    try:
+        if not p.exists():
+            return None
+        return json.loads(p.read_text(encoding='utf-8')) or None
+    except Exception as _e:
+        quiet('書き出せていない印を読めない（印が無いものとして続ける）',_e)
+        return None
+
+
+def _mark_pending(base, error):
+    """写しの変更が共有へ出ていないことを残す。`base` は**その変更を積んだ共有の
+    改訂番号**（送り直すとき、共有がここから動いていなければ写しをそのまま出せる）。"""
+    p = _pending_path()
+    old = pending()
+    if old is not None:
+        base = old.get('base', base)       # 積み重ねても土台は最初の1回のまま
+    p.write_text(json.dumps({'base': base, 'at': datetime.now().isoformat(),
+                             'error': str(error)[:300]}, ensure_ascii=False),
+                 encoding='utf-8')
+
+
+def _clear_pending():
+    p = _pending_path()
+    if p is not None:
+        atomic_io.unlink(p, label='master.unpushed')
+
+
+def _keep_aside():
+    """写しを控えのファイルへ写す（共有が先に進んでいて送り直せないとき）。"""
+    m = local_path()
+    aside = m.with_name(f'master.unpushed.{datetime.now():%Y%m%d-%H%M%S}.sqlite3')
+    _copy_db(m, aside)
+    return aside
+
+
+def _settle_pending():
+    """書き出せていない変更を先に片付ける。**ロックを持っている側が呼ぶ。**
+
+    戻り値: 写しを送り直して共有と同じになったら True（取り直さなくてよい）／
+    印が無い・送り直せず控えへ逃がしたら False（いつもどおり取り直す）。
+    共有へ届かなければ投げる——**写しは触らない**（印も残す）。
+    第2戻り値は知らせる字（無ければ空）。"""
+    p = pending()
+    if p is None:
+        return False, ''
+    src = source_path()
+    found = path_exists_safe(src)
+    if found is None:
+        raise MasterShareUnavailable(
+            f'共有のマスタへ届きません（書き出せていない変更はこの端末に残っています）: {src}')
+    shared_rev = _read_revision(src, strict=True) if found else None
+    if found is False or shared_rev == p.get('base'):
+        _push()
+        _clear_pending()
+        with _lock:
+            _state['revision'] = _read_revision(local_path())
+        app_logger().info('書き出せていなかったマスタの変更を共有へ送り直しました（%s）', p.get('at'))
+        return True, '前に書き出せなかったマスタの変更を、共有へ送り直しました。'
+    aside = _keep_aside()
+    _clear_pending()
+    msg = (f'前に書き出せなかったマスタの変更は、そのあいだに他の端末が共有のマスタを'
+           f'書き換えていたため送り直せませんでした。共有の内容を取り込み、'
+           f'この端末の変更は控えのファイルに残しました: {aside}')
+    app_logger().error(msg)
+    return False, msg
 
 
 # ---- ロック（作業予定と同じ二段構え: ロックが一次、改訂番号が二次） -------
@@ -506,14 +609,18 @@ class _Cycle:
         self.pc = pc_name
         self.token = None
         self.sig = None
+        self.notice = ''        # 画面へ知らせる字（送り直した・控えへ逃がした・書き出せなかった）
 
     def begin(self):
         _write_lock.acquire()
         try:
             self.token = acquire_lock(self.login, self.pc)
-            # **当てる前に取り直す**——間隔を信用して書くと、そのあいだに
-            # 他端末が書いた変更を踏み潰す（§9.188の「書込は必ずforce」）。
-            _pull(force=True)
+            # 前に書き出せなかった変更があれば、取り直す前に送り直す（§9.576）。
+            settled, self.notice = _settle_pending()
+            if not settled:
+                # **当てる前に取り直す**——間隔を信用して書くと、そのあいだに
+                # 他端末が書いた変更を踏み潰す（§9.188の「書込は必ずforce」）。
+                _pull(force=True)
             self.sig = signature()
         except Exception:
             self._unwind()
@@ -524,8 +631,16 @@ class _Cycle:
         try:
             if self.sig is not None and signature() == self.sig:
                 return False        # 何も変わっていない＝押し出さない
+            base = _read_revision(local_path())     # 取り直した＝共有と同じ番号
             _bump_revision(local_path(), uid)
-            _push()
+            try:
+                _push()
+            except Exception as e:
+                # **写しは残す**。次の書込（または起動）が送り直す（§9.576）。
+                _mark_pending(base, e)
+                self.notice = ('マスタの変更はこの端末に保存しましたが、共有へ書き出せませんでした'
+                               f'（{e}）。次に保存するとき自動で送り直します。')
+                raise
             return True
         finally:
             self._unwind()
