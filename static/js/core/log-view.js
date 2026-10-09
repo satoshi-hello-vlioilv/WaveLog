@@ -125,6 +125,9 @@
   const box=$id('lgPreview');if(!box)return;
   box.value=reportText();
   const size=$id('lgPreviewSize');if(size)size.textContent=`${num(box.value.length)}字`;
+  /* 直近の失敗に「そのときのサーバーの記録」がまだ無ければ、届いてから描き直す（§9.578）。 */
+  const f=failures()[0];
+  if(f&&!f.server&&WL.feedback&&WL.feedback.ready)WL.feedback.ready(f).then(()=>{if(f.server&&$id('lgPreview'))box.value=reportText()});
  };
 
  /* 「報告に入るもの」。状態は**語で**言い（色だけにしない）、直す先の段へ
@@ -161,6 +164,8 @@
   box.innerHTML=rows.join('');
  };
  const copyReport=async()=>{
+  const f=failures()[0];
+  if(f&&WL.feedback&&WL.feedback.ready)await WL.feedback.ready(f);
   refreshPreview();
   const text=$id('lgPreview').value;
   const ok=await copyText(text);

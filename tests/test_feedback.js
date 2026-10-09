@@ -80,8 +80,8 @@ run('test_feedback: 失敗を開発へ報告できる形で残す（§9.373）',
    rec('失敗が報告として1件残る',n>=1,`${n}件`);
 
    /* ---- 2・3. 報告の中身 ---- */
-   const text=await page.evaluate(()=>{
-    const l=WL.feedback.log();return WL.feedback.reportText(l[l.length-1])});
+   const text=await page.evaluate(async()=>{
+    const l=WL.feedback.log();await WL.feedback.ready(l[l.length-1]);return WL.feedback.reportText(l[l.length-1])});
    const has=w=>text.includes(w);
    rec('何をしようとしたかが入っている',has('何をしようとしたか')&&has('予定から外せませんでした'),
        text.split('\n').slice(0,4).join(' / ').slice(0,120));
@@ -96,6 +96,22 @@ run('test_feedback: 失敗を開発へ報告できる形で残す（§9.373）',
    rec('版が実際に入っている（空でも「読めません」でもない）',
        /^VER\d/.test(ver),ver||'（空）');
    rec('直前の足あとが入っている',has('直前の足あと'),'');
+   /* §9.578: 解析に要る事実（要約の1行・失敗した問い合わせ・送った内容の要点・直前の書込・
+      そのときのサーバーの記録・共有の置き場） */
+   rec('先頭に要約の1行（何が・HTTP・同じ失敗の回数）',/^要約: .*「予定から外せませんでした」 HTTP 423.*同じ失敗 \d+回/m.test(text.split('\n')[1]||''),
+       text.split('\n')[1]||'');
+   rec('失敗した問い合わせ（方法・宛先・返事）が入っている',/失敗した問い合わせ: POST \/api\/schedule\/plan\/(delete|batch) → HTTP 423/.test(text),
+       (text.match(/失敗した問い合わせ.*/)||[''])[0]);
+   rec('送った内容の要点に識別子が入っている',/送った内容の要点: .*\bid=\d+/.test(text),(text.match(/送った内容の要点.*/)||[''])[0].slice(0,120));
+   rec('直前の書込（画面を問わず）が入っている',has('直前の書込（画面を問わず'),'');
+   rec('そのときのサーバーの記録が入っている',/そのときのサーバーの記録[^\n]*\n {2}\d{4}-\d\d-\d\d \d\d:\d\d:\d\d 〜/.test(text),
+       (text.match(/そのときのサーバーの記録[^\n]*\n.*/)||[''])[0].slice(0,120));
+   rec('共有の置き場の状態が入っている',has('共有のマスタ: ')&&has('共有の作業予定: '),'');
+   const gistOk=await page.evaluate(()=>{
+    const g=WL.feedback.gist(JSON.stringify({equipment:'LS4',stopSubId:12,memo:'自由に書いたメモの本文',ops:[{op:'add',lotNo:'L1'}]}));
+    return {g,ok:/equipment=LS4/.test(g)&&/stopSubId=12/.test(g)&&/memo（\d+字）/.test(g)&&!/自由に書いた/.test(g)&&/ops\[0\]\.lotNo=L1/.test(g)};
+   });
+   rec('送った内容の要点は識別子だけ（自由記述は字数だけ）',gistOk.ok,gistOk.g);
    rec('機械で読む1行が末尾に付く',/\nWLFB1 \{/.test(text),
        (text.match(/WLFB1 .{0,40}/)||[''])[0]);
    rec('機械で読む1行はJSONとして読める',await page.evaluate(()=>{

@@ -32,12 +32,24 @@
       **個人を特定する材料は入れない**——ログインIDと端末名は運用上の
       名乗りなのでそのまま入れるが、入力値そのものは入れない（ロット番号の
       ような業務上の識別子は解析に要るので入れる）。
+
+   §9.578（利用者の指示「問題が発生したときにしっかり分析できるように…さらに高性能でわかりやすく」）:
+   ⑥ **書込は全部、土台が控える**（`api()`の1箇所から`request()`）。画面ごとの足あとだけでは、
+      別の画面の操作（例: マスタの保存）が報告に出なかった——§9.576 はまさにそれが原因だった。
+      本文は**識別子だけ**（`gist()`・鍵の名前と短い値。長い字は字数だけ）。
+   ⑦ **失敗した問い合わせそのもの**（方法・宛先・本文の要点・かかった時間）を1通に入れる。
+   ⑧ **そのときのサーバーの記録と共有の置き場の状態**を添える（`/api/feedback/context`）。
+      取りに行くのは失敗を記録したときの1回（あとから開いても同じ材料）。
+   ⑨ 1通の先頭に**要約の1行**（いつ・どこで・何が・何回）。読む人が最初の1行で見当を付けられる。
    ============================================================ */
 (function(){
  const KEY='wlFeedbackLogV1';
  const MAX=50;            // 端末に残す件数
  const TRAIL=20;          // 足あと（直前の操作）
  const QUIET=8;           // 添える「静かに見送った失敗」
+ const WRITES=15;         // 控える書込（画面を問わず・⑥）
+ const GIST_MAX=400;      // 本文の要点の字数の上限
+ const CONTEXT_WAIT_MS=3000; // コピーの前にサーバーの記録を待つ上限
 
  /* ---------- 版（解析の要なので、必ず埋まるようにする） ----------
     起動の覆いの刻印（`#bootVer`＝`VER2.264.0`）は**覆いごとDOMから消える**
@@ -80,6 +92,54 @@
   while(trail.length>TRAIL)trail.shift();
  }
 
+ /* ---------- 書込の控え（⑥⑦） ----------
+    本文の要点は**識別子だけ**: 鍵の名前が識別子らしい（ID・番号・設備・種類…）短い値はそのまま、
+    それ以外の字は字数だけ（メモや自由記述をそのまま報告へ出さない・⑤）。 */
+ const ID_KEY=/(id|no|code|kind|op|mode|target|equipment|lot|type|key|設備|番号|種類|区分|対象)$/i;
+ function gist(body){
+  let v=body;
+  if(typeof v==='string'){try{v=JSON.parse(v)}catch(_){return v?`（${v.length}字）`:''}}
+  const out=[];
+  const walk=(x,path,depth)=>{
+   if(out.join(' ').length>GIST_MAX||depth>4)return;
+   if(Array.isArray(x)){out.push(`${path}[${x.length}件]`);x.slice(0,3).forEach((y,i)=>walk(y,`${path}[${i}]`,depth+1));return}
+   if(x&&typeof x==='object'){Object.keys(x).forEach(k=>walk(x[k],path?`${path}.${k}`:k,depth+1));return}
+   if(x==null||x==='')return;
+   const leaf=path.split('.').pop().replace(/\[\d+\]$/,'');
+   const t=String(x);
+   out.push(ID_KEY.test(leaf)&&t.length<=40?`${path}=${t}`:(typeof x==='string'?`${path}（${t.length}字）`:`${path}=${t}`));
+  };
+  walk(v,'',0);
+  const text=out.join(' ');
+  return text.length>GIST_MAX?text.slice(0,GIST_MAX)+'…':text;
+ }
+ const writes=[];
+ /* `api()`が書込のたびに1回呼ぶ（成功も失敗も）。戻り値は控えた1件（失敗のErrorへ付ける）。 */
+ function request(o){
+  const u=String(o.url||'');
+  const rec={at:Date.now(),method:String(o.method||'').toUpperCase(),path:u.replace(/^https?:\/\/[^/]+/,'').slice(0,160),
+   status:o.status==null?null:o.status,ms:o.ms==null?null:Math.round(o.ms),gist:gist(o.body)};
+  writes.push(rec);
+  while(writes.length>WRITES)writes.shift();
+  return rec;
+ }
+
+ /* ---------- そのときのサーバーの記録（⑧） ---------- */
+ const pending=new WeakMap();
+ function fetchContext(rec){
+  const p=fetch(`/api/feedback/context?at=${rec.at}`,{cache:'no-store'})
+   .then(r=>r.json()).then(j=>{if(j&&j.ok){rec.server={from:j.from,to:j.to,counts:j.counts,items:j.items,more:j.more,share:j.share};save()}})
+   .catch(e=>{rec.server={error:String(e&&e.message||e)};save()});
+  pending.set(rec,p);
+  return p;
+ }
+ /* 報告を組む前に呼ぶ。サーバーの記録が届くのを待つ（上限つき・届かなくても報告は出す）。 */
+ function ready(rec){
+  if(!rec||rec.server)return Promise.resolve(rec);
+  const p=pending.get(rec)||fetchContext(rec);
+  return Promise.race([p,new Promise(r=>setTimeout(r,CONTEXT_WAIT_MS))]).then(()=>rec);
+ }
+
  /* ---------- 失敗の記録（①） ---------- */
  let log=null;
  function load(){
@@ -107,6 +167,8 @@
    status,
    code:(err&&err.code)||'',
    about:about&&typeof about==='object'?about:{},
+   req:(err&&err.req)||null,
+   writes:writes.slice(),
    trail:trail.slice(),
    quiet:(WL.quiet&&WL.quiet.log?WL.quiet.log():[]).slice(-QUIET),
    ctx:collect(),
@@ -114,6 +176,7 @@
   load().push(rec);
   while(log.length>MAX)log.shift();
   save();
+  fetchContext(rec);
   return rec;
  }
 
@@ -134,10 +197,56 @@
   });
   return lines;
  }
+ /* 同じ失敗が足あとの中で何回あったか（⑨・繰り返すかどうかで疑う所が変わる）。 */
+ function repeats(rec){
+  const t=rec.trail||[];
+  const fails=t.filter(x=>/^失敗/.test(x.how||''));
+  return {same:fails.filter(x=>x.what===rec.what).length,fails:fails.length,steps:t.length};
+ }
+ function summary(rec){
+  const env=(rec.ctx||{})['この端末']||{};
+  const eq=(rec.about||{})['設備']||'';
+  const r=repeats(rec);
+  return `要約: ${stamp(rec.at)}${eq?` ${eq}`:''}（${env.モード||'?'}モード・${env.版||'?'}・${env.端末||'?'}）で`
+   +`「${rec.what||'不明'}」${rec.status?` HTTP ${rec.status}`:''}${rec.why?` — ${String(rec.why).replace(/[。.]+$/,'')}`:''}`
+   +(r.steps?`。直前${r.steps}操作のうち 同じ失敗 ${r.same}回`:'');
+ }
+ const WORD={error:'エラー',warning:'警告'};
+ function serverLines(sv){
+  const L=[];
+  if(!sv){L.push('  （まだ届いていません・サーバーへ聞けませんでした）');return L}
+  if(sv.error){L.push(`  （読めませんでした: ${sv.error}）`);return L}
+  const c=sv.counts||{};
+  L.push(`  ${sv.from} 〜 ${sv.to}: エラー ${c.error||0}件・警告 ${c.warning||0}件`);
+  (sv.items||[]).forEach(g=>{
+   L.push(`  [${WORD[g.level]||g.level}] ×${g.count}  ${g.first===g.last?g.last:`${g.first}〜${g.last.slice(11)}`}  [${g.logger}] ${g.text}`);
+   /* トレースバックは**最後の4行**（例外の名前と起きた行は末尾にある）。 */
+   if(g.level==='error')(g.lines||[]).slice(1).slice(-4).forEach(x=>L.push('      '+x));
+  });
+  if(sv.more)L.push(`  （ほかに ${sv.more}種類）`);
+  return L;
+ }
+ function shareLines(sh){
+  const L=[];
+  if(!sh)return L;
+  const m=sh.master||{},s=sh.schedule||{};
+  if(m.error)L.push(`  共有のマスタ: 読めませんでした（${m.error}）`);
+  else L.push(`  共有のマスタ: ${m.shared?'共有に置いている':'この端末に置いている'}・改訂 ${m.revision??'?'}`
+   +`${m.pending?`・**書き出せていない変更あり**（${m.pending.at||''} ${m.pending.error||''}）`:'・書き出せていない変更なし'}`
+   +`${m.lock&&m.lock.locked?`・錠 ${m.lock.holderLogin||'?'}／${m.lock.holderPc||'?'}`:''}`);
+  if(s.error)L.push(`  共有の作業予定: 読めませんでした（${s.error}）`);
+  else{
+   const lk=s.lock||{},w=s.watch||{};
+   L.push(`  共有の作業予定: ${lk.configured===false?'共有なし':`錠 ${lk.locked?`${lk.holderLogin||'?'}／${lk.holderPc||'?'}`:'なし'}`}`
+    +`${w.revision!=null?`・改訂 ${w.revision}`:''}${w.lastError?`・最後の失敗 ${w.lastError}`:''}`);
+  }
+  return L;
+ }
  function reportText(rec){
   if(!rec)return '';
   const L=[];
   L.push('WaveLog 不具合報告');
+  L.push(summary(rec));
   L.push(`日時: ${stamp(rec.at)}`);
   L.push(RULE);
   L.push(`何をしようとしたか: ${rec.what||'（不明）'}`);
@@ -145,6 +254,22 @@
   if(rec.status)L.push(`サーバーの返事: HTTP ${rec.status}${rec.code?`（${rec.code}）`:''}`);
   const about=pairs(rec.about,'  ');
   if(about.length){L.push('対象:');about.forEach(x=>L.push(x))}
+  if(rec.req){
+   const q=rec.req;
+   L.push(`失敗した問い合わせ: ${q.method} ${q.path} → ${q.status==null?'返事なし':`HTTP ${q.status}`}${q.ms!=null?`（${q.ms}ms）`:''}`);
+   if(q.gist)L.push(`  送った内容の要点: ${q.gist}`);
+  }
+  if(rec.writes&&rec.writes.length){
+   L.push(RULE);
+   L.push('直前の書込（画面を問わず・古い順）');
+   rec.writes.forEach(w=>L.push(`  ${stamp(w.at)}  ${w.method} ${w.path} → ${w.status==null?'返事なし':w.status}`
+    +`${w.ms!=null?` ${w.ms}ms`:''}${w.gist?`  ${w.gist}`:''}`));
+  }
+  L.push(RULE);
+  L.push('そのときのサーバーの記録（失敗の前10分〜後2分の警告とエラー）');
+  serverLines(rec.server).forEach(x=>L.push(x));
+  const sh=shareLines(rec.server&&rec.server.share);
+  if(sh.length){L.push(RULE);L.push('共有の置き場の状態（報告を作ったとき）');sh.forEach(x=>L.push(x))}
   L.push(RULE);
   L.push('そのときの画面の状態');
   Object.keys(rec.ctx||{}).forEach(name=>{
@@ -163,7 +288,8 @@
   }
   L.push(RULE);
   L.push('（ここから下は開発が機械で読むぶんです。消さずに一緒に送ってください）');
-  L.push('WLFB1 '+JSON.stringify(rec));
+  /* 機械で読む1行にトレースバックの行は入れない（上の人が読む形にあり、二重にすると1通が倍になる）。 */
+  L.push('WLFB1 '+JSON.stringify(rec,(k,v)=>k==='lines'?undefined:v));
   return L.join('\n');
  }
 
@@ -187,6 +313,7 @@
   return copyReport(l.length?l[l.length-1]:null);
  }
  async function copyReport(rec){
+  await ready(rec);
   const text=reportText(rec);
   if(!text){
    window.showToast&&showToast('報告できる記録がありません','まだ失敗は記録されていません',3000);
@@ -221,7 +348,7 @@
   今:new Date().toString(),
  }));
 
- WL.feedback={note,provide,step,copyLast,copyReport,
+ WL.feedback={note,provide,step,request,gist,ready,summary,copyLast,copyReport,
               reportText,log:()=>load().slice(),
               clear:()=>{log=[];save()}};
 })();
