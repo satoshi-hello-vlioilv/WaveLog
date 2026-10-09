@@ -1,4 +1,4 @@
-/* record-layout.js: 段組の配置——1件ぶんを「段×横24マス」の盤に置く（§9.553、利用者の指示）
+/* record-layout.js: 段組の配置——1件ぶんを「段×横96マス」の盤に置く（§9.553・§9.577、利用者の指示）
    ============================================================
    「操業データ表の2段組の繰り返し部分のリスト表示の方法について使うデータを選んで、
     表示位置を細かくカスタム出来るように作り込んで欲しいです。紙への印刷はもちろんのこと、
@@ -17,15 +17,30 @@
    **どの列があるか・値・見出しは知らない**（呼ぶ側が`src`で渡す）——段組を使う紙や一覧が
    増えても、ここは書き換えない。
 
-   配置の保存は列レイアウトマスタの`places`（`{列名:{line,col,span}}`・サーバーの
+   **マスは細かく（96）、幅は中身から**（§9.577・利用者の指示「幅は項目ごとにフレキシブルにできないと
+   到底収まりません」）。置いていない項目は、値と見出しが切れない幅（`naturalPx`＝呼ぶ側が中身から測る）を
+   マスへ**切り上げて**配る——24マスでは1段に20項目を超えるとほぼ1マスずつになり、中身の幅を配れなかった。
+
+   配置の保存は列レイアウトマスタの`places`（`{列名:{line,col,span,u}}`・サーバーの
    `normalize_place()`が盤に収まる形へ整える）。**盤の寸法はサーバーの
    `PLACE_UNITS`/`PLACE_LINES`と同じ値**（網`test_recordlayout`が突き合わせる）。
    ============================================================ */
 (function(){
  'use strict';
  window.WL=window.WL||{};
- const UNITS=24;
- /* 段の数の上限。**既定は2段**（2段組）——操業データの項目は設備によって50を超え、2段×24マスに
+ const UNITS=96;
+ /* 配置は何マスの盤で置いたかを名乗る（`u`）。**名乗らない配置は24マスの頃の物**として読み替える
+    （サーバーの`normalize_place()`と同じ決まり・§9.577）。 */
+ const LEGACY_UNITS=24;
+ function onBoard(p){
+  if(!p||typeof p!=='object')return null;
+  const u=Number(p.u)||LEGACY_UNITS;
+  if(u===UNITS)return p;
+  if(UNITS%u)return null;
+  const f=UNITS/u;
+  return {line:p.line,col:p.col*f,span:p.span*f,u:UNITS};
+ }
+ /* 段の数の上限。**既定は2段**（2段組）——操業データの項目は設備によって50を超え、2段×96マスでも
     入りきらないので、盤で段を足せる（足した段も紙と一覧が同じに読む）。 */
  const LINES=4;
  const DEFAULT_LINES=2;
@@ -36,10 +51,13 @@
   return !!p&&Number.isInteger(p.line)&&Number.isInteger(p.col)&&Number.isInteger(p.span)
    &&p.line>=1&&p.line<=LINES&&p.col>=0&&p.span>=1&&p.col+p.span<=UNITS;
  }
- /* 幅の比でマスを配る（合計は`units`ちょうど・各1マス以上）。端数は大きい順に1マスずつ足す。 */
- function spansFromWidths(ws,units){
+ /* 幅の比でマスを配る（合計は`units`ちょうど・各1マス以上）。端数は大きい順に1マスずつ足す。
+    `unitPx`（1マスの幅）を渡すと**中身の幅をマスへ切り上げてから**余りを比で配る（§9.577・切れない幅を先に取る）。
+    切り上げた合計が盤より多ければ、いちばん広い項目から1マスずつ返す（切れるのは広い項目の端から）。 */
+ function spansFromWidths(ws,units,unitPx){
   const n=ws.length;if(!n)return [];
   if(n>=units)return ws.map(()=>1);
+  if(unitPx>0)return spansByNeed(ws,units,unitPx);
   const total=ws.reduce((s,v)=>s+Math.max(1,v),0);
   const raw=ws.map(v=>Math.max(1,v)*(units-n)/total);
   const out=raw.map(v=>1+Math.floor(v));
@@ -47,6 +65,17 @@
   const order=raw.map((v,i)=>({i,f:v-Math.floor(v)})).sort((a,b)=>b.f-a.f);
   for(let j=0;left>0&&j<order.length;j++,left--)out[order[j].i]++;
   return out;
+ }
+ function spansByNeed(ws,units,unitPx){
+  const sp=ws.map(v=>Math.max(1,Math.ceil(Math.max(0,v)/unitPx-1e-6)));
+  let left=units-sp.reduce((s,v)=>s+v,0);
+  while(left<0){const i=sp.indexOf(Math.max(...sp));sp[i]--;left++}
+  if(!left)return sp;
+  const tot=ws.reduce((s,v)=>s+Math.max(1,v),0);
+  const raw=ws.map(v=>Math.max(1,v)*left/tot),add=raw.map(Math.floor);
+  const r=left-add.reduce((s,v)=>s+v,0);
+  raw.map((v,i)=>({i,f:v-add[i]})).sort((a,b)=>b.f-a.f).slice(0,r).forEach(o=>add[o.i]++);
+  return sp.map((v,i)=>v+add[i]);
  }
  /* 置いていないときの段の分け方: 紙の幅に入るなら1段、入らなければ左から詰めて溢れたぶんを次の段へ。
     以前の印（書式のパターンの「段:1」「段:2」・§9.205）は**手がかり**として読む（古い設定を捨てない）。 */
@@ -62,20 +91,25 @@
   const minL=Math.max(1,Math.min(LINES,o.minLines||1));
   if(!forced.length&&total<=o.usablePx&&keys.length<=UNITS&&minL<2){lines[0]=keys.slice();return lines}
   forced.forEach(k=>lines[Math.min(LINES,hint(k))-1].push(k));
-  /* 使う段の数＝2段（2段組）。**項目の数が2段の席を超えるときだけ**増やす（上限LINES）。
-     1段の目安＝紙の幅か、全体を段の数で割った幅の大きいほう（どの段にも寄り過ぎない）。
-     **1段は UNITS 個まで**（1項目に1マスは要る）。 */
-  const n=Math.min(LINES,Math.max(DEFAULT_LINES,minL,Math.ceil(keys.length/UNITS)));
-  const per=minL>1?total/n:Math.max(o.usablePx,total/n);
-  let at=0,acc=lines[0].reduce((s,k)=>s+px(k),0);
-  free.forEach(k=>{
-   const w=px(k);
-   const full=lines[at].length>=UNITS||(lines[at].length&&acc+w>per&&at<n-1);
-   if(full&&at<LINES-1){at++;acc=lines[at].reduce((s,x)=>s+px(x),0)}
-   lines[at].push(k);acc+=w;
-  });
-  if(!lines[0].length){const i=lines.findIndex(l=>l.length);if(i>0)lines[0]=lines[i].splice(0,1)}
-  return lines;
+  /* 使う段の数は**どの段も紙の幅に入る（中身が切れない）最小の数**（§9.577・下限は2段＝2段組・上限LINES）。
+     1段の目安＝全体を段の数で割った幅（どの段にも寄り過ぎない）。**1段は UNITS 個まで**（1項目に1マスは要る）。 */
+  const fill=n=>{
+   const out=lines.map(l=>l.slice()),per=total/n;
+   let at=0,acc=out[0].reduce((s,k)=>s+px(k),0);
+   free.forEach(k=>{
+    const w=px(k);
+    const full=out[at].length>=UNITS||(out[at].length&&acc+w>per&&at<n-1);
+    if(full&&at<LINES-1){at++;acc=out[at].reduce((s,x)=>s+px(x),0)}
+    out[at].push(k);acc+=w;
+   });
+   return out;
+  };
+  const fits=out=>out.every(l=>l.reduce((s,k)=>s+px(k),0)<=o.usablePx);
+  let n=Math.min(LINES,Math.max(DEFAULT_LINES,minL,Math.ceil(keys.length/UNITS),Math.ceil(total/Math.max(1,o.usablePx))));
+  let out=fill(n);
+  while(n<LINES&&!fits(out))out=fill(++n);
+  if(!out[0].length){const i=out.findIndex(l=>l.length);if(i>0)out[0]=out[i].splice(0,1)}
+  return out;
  }
  /* ---------- 答え ----------
     `keys`＝出す列（並び順）。`o.placeOf(k)`＝置いた位置（無ければnull）、`o.naturalPx(k)`＝その列の
@@ -83,14 +117,16 @@
     `o.minLines`＝置いていないときの最低の段数（任意・段組を選んだとき2）。
     戻り値 `{cells:[{k,line,col,span,auto}], lines, conflicts, overflow}`:
      ・置いた位置が重なったら**後から来たほうを自動へ回して名指す**（`conflicts`）
-     ・盤に入りきらない列は名指す（`overflow`・紙にも一覧にも出ない）——黙って落とさない */
+     ・盤に入りきらない列は名指す（`overflow`・紙にも一覧にも出ない）——黙って落とさない
+     ・中身の幅より狭いマスしか取れなかった列は名指す（`tight`・値が切れうる・§9.577） */
  function plan(keys,o){
+  const unitPx=Math.max(1,o.usablePx)/UNITS;
   const occ=Array.from({length:LINES},()=>Array(UNITS).fill(null));
   const free=(line,col,span)=>{for(let u=col;u<col+span;u++)if(occ[line-1][u])return false;return true};
   const take=(k,line,col,span)=>{for(let u=col;u<col+span;u++)occ[line-1][u]=k};
   const cells=[],conflicts=[],overflow=[];
   const placed=[],rest=[];
-  keys.forEach(k=>{const p=o.placeOf?o.placeOf(k):null;(validPlace(p)?placed:rest).push([k,p])});
+  keys.forEach(k=>{const p=onBoard(o.placeOf?o.placeOf(k):null);(validPlace(p)?placed:rest).push([k,p])});
   placed.forEach(([k,p])=>{
    if(free(p.line,p.col,p.span)){take(k,p.line,p.col,p.span);cells.push({k,line:p.line,col:p.col,span:p.span,auto:false})}
    else{conflicts.push(k);rest.push([k,null])}
@@ -99,7 +135,7 @@
   if(!cells.length){
    autoLines(restKeys,o).forEach((list,i)=>{
     if(list.length>UNITS){overflow.push(...list.slice(UNITS));list=list.slice(0,UNITS)}
-    const spans=spansFromWidths(list.map(k=>o.naturalPx(k)),UNITS);
+    const spans=spansFromWidths(list.map(k=>o.naturalPx(k)),UNITS,unitPx);
     let at=0;
     list.forEach((k,j)=>{take(k,i+1,at,spans[j]);cells.push({k,line:i+1,col:at,span:spans[j],auto:true});at+=spans[j]});
    });
@@ -110,7 +146,7 @@
    const freeIn=n=>occ.slice(0,n).reduce((s,row)=>s+row.filter(x=>!x).length,0);
    let n=Math.max(DEFAULT_LINES,...cells.map(c=>c.line));
    while(n<LINES&&freeIn(n)<restKeys.length)n++;
-   const wants=restKeys.map(k=>Math.max(1,Math.min(UNITS,Math.round(o.naturalPx(k)/Math.max(1,o.usablePx)*UNITS))));
+   const wants=restKeys.map(k=>Math.max(1,Math.min(UNITS,Math.ceil(o.naturalPx(k)/unitPx-1e-6))));
    const room=freeIn(n),need=wants.reduce((s,v)=>s+v,0);
    const scaled=need>room?wants.map(v=>Math.max(1,Math.floor(v*room/need))):wants;
    restKeys.forEach((k,i)=>{
@@ -131,7 +167,8 @@
    });
   }
   const lines=Math.max(1,...cells.map(c=>c.line));
-  return {cells,lines,conflicts,overflow};
+  const tight=cells.filter(c=>c.span*unitPx+0.5<o.naturalPx(c.k)).map(c=>c.k);
+  return {cells,lines,conflicts,overflow,tight};
  }
  /* 段ごとの並び（左から）。空いたマスは`k:null`の切れ目として返す——紙は空のセル、画面は何も置かない。 */
  function segments(p,line){
@@ -144,7 +181,7 @@
  /* 置いた位置を全部の列について書き出す（盤を初めて触ったとき・§9.553「触ったら固める」）。
     **自動のままだと1つ動かすたびに残りが詰め直されて跳ぶ**ので、最初の1手で今の見た目を固める。 */
  function freeze(p){
-  const out={};p.cells.forEach(c=>{out[c.k]={line:c.line,col:c.col,span:c.span}});return out;
+  const out={};p.cells.forEach(c=>{out[c.k]={line:c.line,col:c.col,span:c.span,u:UNITS}});return out;
  }
 
  /* ---------- 画面の2段組（一覧） ----------
@@ -168,7 +205,7 @@
  /* 盤の状態と、状態から引く答え（描く・動かす・配線が同じ1つを読む）。 */
  function boardState(host,src){
   const l0=WL.columnLayout.get(src.target)||{};
-  const st={places:JSON.parse(JSON.stringify(l0.places||{})),hidden:new Set(src.initialHidden?src.initialHidden():(l0.hidden||[])),
+  const st={places:Object.fromEntries(Object.entries(l0.places||{}).map(([k,v])=>[k,onBoard(v)]).filter(([,v])=>v)),hidden:new Set(src.initialHidden?src.initialHidden():(l0.hidden||[])),
    frozen:false,sel:'',drag:null,msg:'',query:'',lanes:DEFAULT_LINES};
   st.frozen=Object.keys(st.places).length>0;
   const B={host,src,st};
@@ -176,7 +213,9 @@
   /* 盤に載せない項目（呼ぶ側が言う・§9.575。例: この期間に値の無い項目）。使う印も置いた位置も残す。 */
   B.skip=k=>!!(src.skip&&src.skip(k));
   B.cur=()=>plan(B.keys().filter(k=>!st.hidden.has(k)&&!B.skip(k)),{placeOf:k=>st.places[k]||null,naturalPx:src.naturalPx,
-   usablePx:src.usablePx(),lineHint:st.frozen?null:src.lineHint,minLines:src.minLines?src.minLines():1});
+   usablePx:src.usablePx(),lineHint:st.frozen?null:src.lineHint,
+   /* 足した段は自動の位置にも効く（§9.577・段の数は利用者が決める）。固めたあとは空いた段として出す。 */
+   minLines:Math.max(src.minLines?src.minLines():1,st.frozen?1:st.lanes)});
   B.push=()=>src.onDraft({places:{...st.places},hidden:[...st.hidden]});
   /* 盤に出す段の数＝足した段か、使っている段の多いほう（使っている段は消さない）。 */
   B.lanes=pl=>Math.max(st.lanes,(pl||B.cur()).lines);
@@ -194,7 +233,7 @@
  function boardMove(B,k,p){
   const {st,src}=B;
   B.freezeNow();
-  const q={line:Math.min(LINES,Math.max(1,p.line)),span:Math.min(UNITS,Math.max(1,p.span)),col:0};
+  const q={line:Math.min(LINES,Math.max(1,p.line)),span:Math.min(UNITS,Math.max(1,p.span)),col:0,u:UNITS};
   q.col=Math.min(UNITS-q.span,Math.max(0,p.col));
   const before=B.cur();
   const hits=hitsOf(before.cells,k,q).map(c=>c.k);
@@ -251,7 +290,7 @@
  function paintBoard(B,pl){
   const {st,src}=B;
   const bd=B.$('.rcl-board'),L=B.lanes(pl),ln=B.$('.rcl-lanes');
-  bd.style.setProperty('--rcl-lines',String(L));
+  bd.style.setProperty('--rcl-lines',String(L));bd.style.setProperty('--rcl-units',String(UNITS));
   ln.style.setProperty('--rcl-lines',String(L));
   ln.innerHTML=Array.from({length:L},(_,i)=>`<span>${B.nm(i+1,pl)}</span>`).join('');
   const add=B.$('[data-rl="lane"]');
@@ -269,6 +308,7 @@
   const notes=[];
   if(pl.conflicts.length)notes.push(`<b class="rcl-bad">重なっていた ${pl.conflicts.length}項目を空いた所へ回しました</b>（${names(pl.conflicts)}）`);
   if(pl.overflow.length)notes.push(`<b class="rcl-bad">盤に入らない ${pl.overflow.length}項目は紙にも一覧にも出ません</b>（${names(pl.overflow)}）。段を足すか、使わない項目を外してください。`);
+  if(pl.tight.length)notes.push(`<b class="rcl-bad">値が切れうる ${pl.tight.length}項目</b>（${names(pl.tight)}）——中身の幅より狭く置いています。幅を広げるか、段を足してください。`);
   if(st.msg)notes.push(`<b class="rcl-bad">${esc(st.msg)}</b>`);
   B.$('.rcl-note').innerHTML=notes.join('<br>')
    ||`${n}項目を置いています${auto?`（うち自動 ${auto}・点線）。掴んで動かすとその場所で固まります`:''}。1マスは紙で約${src.mmPerUnit().toFixed(1)}mmです。`;
@@ -378,5 +418,5 @@
    say:msg=>{B.st.msg=String(msg||'');B.paint()}};
  }
 
- WL.recordLayout={UNITS,LINES,DEFAULT_LINES,lineName,validPlace,spansFromWidths,autoLines,plan,segments,freeze,gridHtml,board};
+ WL.recordLayout={UNITS,LINES,DEFAULT_LINES,lineName,validPlace,onBoard,spansFromWidths,autoLines,plan,segments,freeze,gridHtml,board};
 })();

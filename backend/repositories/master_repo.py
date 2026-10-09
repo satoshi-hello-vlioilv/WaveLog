@@ -1739,11 +1739,14 @@ def normalize_align(value,head=False):
  return v if v in (HEAD_ALIGNS if head else VALUE_ALIGNS) else ''
 
 
-# 段組の配置（§9.553）。**1件ぶんを「段×横24マス」の盤**に置く——どの段の・何マス目から・何マスぶん。
+# 段組の配置（§9.553）。**1件ぶんを「段×横96マス」の盤**に置く——どの段の・何マス目から・何マスぶん。
 # 盤の寸法は画面の`WL.recordLayout`（`record-layout.js`の`UNITS`/`LINES`）と同じ値（網`test_recordlayout`が突き合わせる）。
 # サーバーは保存する値を盤に収まる形へ整えるために使う。
-PLACE_UNITS=24
+# §9.577で24→96マスにした（幅を中身から配るため）。配置は何マスの盤で置いたか（`u`）を名乗り、
+# **名乗らない配置は24マスの頃の物**として倍へ読み替える（画面の`onBoard()`と同じ決まり）。
+PLACE_UNITS=96
 PLACE_LINES=4
+PLACE_LEGACY_UNITS=24
 
 def normalize_place(value):
  """保存できる配置へ整える。読めない・盤からはみ出す値はNone（＝置いていない・自動で置く）。
@@ -1756,9 +1759,12 @@ def normalize_place(value):
  if not isinstance(value,dict):return None
  try:
   line=int(value.get('line'));col=int(value.get('col'));span=int(value.get('span'))
+  units=int(value.get('u') or PLACE_LEGACY_UNITS)
  except (TypeError,ValueError):return None
+ if units<=0 or PLACE_UNITS%units:return None
+ col,span=col*(PLACE_UNITS//units),span*(PLACE_UNITS//units)
  if not (1<=line<=PLACE_LINES and 0<=col<PLACE_UNITS and 1<=span<=PLACE_UNITS-col):return None
- return {'line':line,'col':col,'span':span}
+ return {'line':line,'col':col,'span':span,'u':PLACE_UNITS}
 
 
 def ensure_column_layout_table(c):

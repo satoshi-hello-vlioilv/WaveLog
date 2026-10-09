@@ -221,11 +221,59 @@
     **答えは`WL.recordLayout.plan()`の1本**（紙と一覧が同じ答えを読む）。ここが渡すのは
     この紙の材料だけ: 出す列・置いた位置（列レイアウトマスタの`places`）・ふだんの幅・
     紙の刷れる幅（px換算）・古い「段:N」の印。 */
- function usablePx(paper){return paperUsableMm(paper).w/MM_PER_PX}
+ function usablePx(paper){return (paperUsableMm(paper).w-FRAME_MM)/MM_PER_PX}
+ /* ---------- 項目の幅は中身から（§9.577・利用者の指示「幅は項目ごとにフレキシブルに」） ----------
+    段組の幅は**その紙に実際に出る値の最長と見出し**から決める（画面の列幅は画面で読むための幅）。
+    測るのは**紙と同じCSSで描いた表**（`canvas`の見積もりでは足りなくなる・§9.294 ④と同じ作法）。
+    見出しは2行まで折り返すので「全体の半分か、いちばん長い語」、値は折り返さない。
+    同じ材料なら測り直さない（§9.198）。件が無ければ画面の幅へ倒す。 */
+ const CONTENT_SLACK_MM=0.5;
+ let contentCache={sig:'',items:null,val:null};
+ function measureContent(keys,items,dense){
+  const views=items.map((x,i)=>rowView(x,i));
+  const host=document.createElement('section');
+  host.className='os-page';host.dataset.paper='a3-landscape';if(dense)host.dataset.dense='on';
+  host.style.cssText='position:absolute;left:-99999px;top:0;width:auto;min-height:0;visibility:hidden';
+  const td=k=>{const c=columnOf(k);return `<td class="os-c${(c&&c.num)?' os-num':''}">`};
+  host.innerHTML=`<table class="os-table" style="width:max-content;table-layout:auto"><tbody>`
+   +views.map(v=>`<tr>${keys.map(k=>td(k)+esc(cellText(k,WL.cellFormat.rawOf(target(),v,k),v))+'</td>').join('')}</tr>`).join('')
+   +`</tbody></table><div class="os-measure-head">${keys.map(k=>`<b>${esc(labelOf(k))}</b>`
+     +String(labelOf(k)).split(/[\s（(・／/]/).filter(Boolean).map(t=>`<b>${esc(t)}</b>`).join('')).join('')}</div>`;
+  document.body.appendChild(host);
+  try{
+   const row=host.querySelector('tbody tr');
+   const cells=row?[...row.children]:[];
+   const cs=cells[0]?getComputedStyle(cells[0]):null;
+   const edge=cs?(parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)+parseFloat(cs.borderLeftWidth)+parseFloat(cs.borderRightWidth)):0;
+   const heads=[...host.querySelectorAll('.os-measure-head b')];
+   const out=new Map();let at=0;
+   keys.forEach((k,i)=>{
+    const whole=heads[at].getBoundingClientRect().width;at++;
+    let word=0;const n=String(labelOf(k)).split(/[\s（(・／/]/).filter(Boolean).length;
+    for(let j=0;j<n;j++,at++)word=Math.max(word,heads[at].getBoundingClientRect().width);
+    const val=cells[i]?cells[i].getBoundingClientRect().width:0;
+    out.set(k,Math.max(val,Math.max(whole/2,word)+edge)+CONTENT_SLACK_MM/MM_PER_PX);
+   });
+   return out;
+  }finally{host.remove()}
+ }
+ /* 項目の幅（px）を答える関数。`items`が無い・測れないときは画面の列幅（`widthPxOf`）。 */
+ function naturalOf(keys,items,dense){
+  if(!(items||[]).length)return widthPxOf;
+  /* 同じ材料（同じ件の並び・項目・表示名・書式・読み替え・字の大きさ）なら測り直さない。 */
+  const l=WL.columnLayout.get(target())||{};
+  const sig=JSON.stringify([keys,keys.map(labelOf),l.formats||{},l.rules||{},l.formulas||{},dense?1:0]);
+  if(contentCache.sig!==sig||contentCache.items!==items){
+   try{contentCache={sig,items,val:measureContent(keys,items,dense)}}
+   catch(e){WL.quiet.note('中身の幅を測れない（画面の列幅で組む）',e);contentCache={sig,items,val:null}}
+  }
+  const m=contentCache.val;
+  return m?(k=>m.has(k)?m.get(k):widthPxOf(k)):widthPxOf;
+ }
  /* 段組を選んだ（`rows:'2'`）・一覧で段組にしたときは**最低2段**（§9.575）。 */
  function stackPlan(keys,opt){
   return WL.recordLayout.plan(keys,{placeOf:k=>WL.columnLayout.place(target(),k),
-   naturalPx:widthPxOf,usablePx:usablePx(opt.paper),lineHint:lineOf,minLines:opt.rows==='2'?2:1});
+   naturalPx:naturalOf(keys,opt.items,opt.dense!==false),usablePx:usablePx(opt.paper),lineHint:lineOf,minLines:opt.rows==='2'?2:1});
  }
  /* 1件の行数の説明（いま何段で・どこから決まったか・入らない項目）。**画面の字は答えから作る**。 */
  function stackNote(opt){
@@ -236,6 +284,7 @@
   const out=[`${p.lines}段構成です（${Array.from({length:p.lines},(_,i)=>`${WL.recordLayout.lineName(i+1,p.lines)} ${by(i+1)}項目`).join(' / ')}）。`
    +(placed?`置いた位置 ${placed}項目${p.cells.length>placed?`・自動 ${p.cells.length-placed}項目`:''}。`:'位置は幅から自動で決めています。')];
   if(p.overflow.length)out.push(`<b class="os-pv-bad">盤に入らない ${p.overflow.length}項目は紙に出ません</b>（${p.overflow.map(k=>esc(labelOf(k))).join('・')}）。`);
+  if(p.tight.length)out.push(`<b class="os-pv-bad">値が切れうる ${p.tight.length}項目</b>（${p.tight.map(k=>esc(labelOf(k))).join('・')}）——置いた幅が中身より狭いためです。`);
   out.push('段・位置・幅は「② 配置を組み替える」で決められます。');
   return out.join('');
  }
@@ -245,7 +294,8 @@
   if(opt.rows==='1')return false;
   if(opt.rows==='2')return true;
   if(keys.some(k=>WL.columnLayout.place(target(),k)))return true;
-  return keys.reduce((s,k)=>s+Math.max(MIN_COL_MM,widthPxOf(k)*MM_PER_PX),0)>paperUsableMm(opt.paper).w-FRAME_MM;
+  const nat=naturalOf(keys,opt.items,opt.dense!==false);
+  return keys.reduce((s,k)=>s+Math.max(MIN_COL_MM,nat(k)*MM_PER_PX),0)>paperUsableMm(opt.paper).w-FRAME_MM;
  }
 
  /* ---------- 幅をmmで配る（§9.236 ③「自然体」） ----------
@@ -523,7 +573,7 @@
  function currentOpt(){
   const pk=paperKeys(pv.items),keys=pk.keys;
   const opt={paper:pref.paper,unit:pref.unit,rows:pref.rows,borders:pref.borders!==false,
-             dense:pref.dense!==false,basis:pv.basis,equipment:activeEquipment,keys,dropped:pk.dropped};
+             dense:pref.dense!==false,basis:pv.basis,equipment:activeEquipment,keys,dropped:pk.dropped,items:pv.items};
   /* 段組のときだけ答えを持つ（1行構成は`keys`の並びのまま）。 */
   opt.plan=usesStack(keys,opt)?stackPlan(keys,opt):null;
   return opt;
@@ -646,7 +696,7 @@
    target:t,
    keys:()=>allColumnKeys(),
    initialHidden:()=>{const l=WL.columnLayout.get(t)||{};const seed=initialHidden(allColumnKeys(),l);return seed||l.hidden||[]},
-   labelOf,groupOf,naturalPx:widthPxOf,usablePx:()=>usablePx(pref.paper),lineHint:lineOf,minLines:()=>(pref.rows==='2'?2:1),
+   labelOf,groupOf,naturalPx:k=>naturalOf(allColumnKeys(),pv.items,pref.dense!==false)(k),usablePx:()=>usablePx(pref.paper),lineHint:lineOf,minLines:()=>(pref.rows==='2'?2:1),
    mmPerUnit:()=>(paperUsableMm(pref.paper).w-FRAME_MM)/WL.recordLayout.UNITS,
    onPaint:markPick,
    /* 紙に載せない項目は盤にも載せない（盤と紙を同じにする・§9.575）。 */
@@ -769,7 +819,7 @@
     （一覧で2段組を選んだ人に1行を返さない）。先頭と末尾（選ぶ印・操作）は呼ぶ側が渡す。 */
  function listHtml(o){
   const keys=o.keys||visibleColumnKeys();
-  const p=stackPlan(keys,{paper:pref.paper,rows:'2'});
+  const p=stackPlan(keys,{paper:pref.paper,rows:'2',items:o.items,dense:pref.dense!==false});
   const rows=(o.items||[]).map((x,i)=>{
    const view=rowView(x,i);
    return {cls:o.rowCls?o.rowCls(x):'',attrs:o.rowAttrs?o.rowAttrs(x):'',lead:o.lead?o.lead(x,i):String(i+1),tail:o.tail?o.tail(x):'',
