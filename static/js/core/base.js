@@ -133,15 +133,20 @@ const api=async(u,o)=>{
  const timer=watching?setTimeout(()=>{const c=chip();armed=!!(c&&c.autoBegin())},SAVE_CHIP_DELAY_MS):0;
  const settle=ok=>{clearTimeout(timer);if(armed){const c=chip();if(c)c.autoEnd(ok)}};
  let r;
+ const t0=performance.now();
+ /* 書込は全部、報告のために控える（§9.578・`WL.feedback.request()`の1箇所）。 */
+ const note=status=>(watching||String(opt.method||'GET').toUpperCase()!=='GET')&&window.WL&&WL.feedback&&WL.feedback.request
+  ?WL.feedback.request({method:opt.method,url:u,status,ms:performance.now()-t0,body:opt.body}):null;
  try{r=await fetch(u,{cache:'no-store',...opt})}
- catch(error){settle(false);throw Error('アプリの中身（Python）と話せません。終了している可能性があります（'+WL.RESTART_HOW+'）詳細: '+(error?.message||String(error)))}
+ catch(error){settle(false);const e=Error('アプリの中身（Python）と話せません。終了している可能性があります（'+WL.RESTART_HOW+'）詳細: '+(error?.message||String(error)));e.req=note(null);throw e}
+ const req=note(r.status);
  masterNotice(r);
  const text=await r.text();let j={},parsed=false;
  try{if(text){j=JSON.parse(text);parsed=true}}catch(_){j={}}
  if(!r.ok){
   settle(false);
   const err=Error((parsed&&j.error)||apiErrorMessage(r.status,text,u));
-  if(parsed)Object.assign(err,j);err.status=r.status;err.body=String(text||'').slice(0,500);throw err}
+  if(parsed)Object.assign(err,j);err.status=r.status;err.body=String(text||'').slice(0,500);err.req=req;throw err}
  settle(true);
  return j};
 /* ---------- HTMLへ埋める前の逃がし（§9.276 ⑤、利用者の報告） ----------

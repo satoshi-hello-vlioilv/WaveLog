@@ -58,6 +58,8 @@ ALLOW = {
         'PC名として使えない名前の除外表（_USELESS_PC_NAMES）。ループバックへ問い合わせてはいない',
     ('backend/access_mode.py', 'localhost'):
         'PC名として使えない名前の除外表（_USELESS_PC_NAMES）。ループバックへ問い合わせてはいない',
+    ('backend/routes/logs.py', 'PORT'):
+        '起動の状況の報告に「どのポートで動いているか」を書くだけ（§9.316）。共有の状態は読むだけで（§9.578）、共有へ書く手順には使わない',
 }
 
 

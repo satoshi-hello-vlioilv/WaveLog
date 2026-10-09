@@ -68,6 +68,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file
 from .body import body, any_
 
+from .. import master_share, schedule_sync
 from ..logging_setup import app_logger, launcher_logger
 from ..paths import logs_dir
 from ..quiet import quiet
@@ -495,6 +496,60 @@ def boot_report():
   text=f'まとめを作れませんでした: {type(e).__name__}: {e}'
  return jsonify(ok=True,env=env,places=places,records=records,
                 bootMarkFound=found,problems=problems,text=text)
+
+
+# ========================================================================
+# 失敗の「そのとき」の記録（§9.578、利用者の指示）
+# ------------------------------------------------------------------------
+# 「問題が発生したときにしっかり分析できるようにユーザー報告用の仕組みもさらに
+#   高性能でわかりやすく改良してください。」
+#
+# 画面の失敗の1通には、**同じ時間帯にサーバーが書いた警告・エラー**と
+# **共有の置き場の状態**が入っていなかった（§9.576の報告では、肝心の
+# 「共有マスタへ書き出せませんでした」がサーバーのログにだけあり、1通からは
+# 推し量るしかなかった）。失敗の時刻を渡すと、その前後をまとめて返す。
+# まとめ方は`problem_digest()`の1箇所（数字だけ違う文は1つ）。
+# ========================================================================
+CONTEXT_BEFORE_MIN=10
+CONTEXT_AFTER_MIN=2
+CONTEXT_TOP=12
+
+
+def _share_state():
+ """共有の置き場（マスタ・作業予定）の今の状態。**読めない物は理由を入れて返す**。"""
+ out={}
+ try:
+  st=master_share.status()
+  out['master']={'shared':st.get('shared'),'revision':st.get('revision'),
+                 'pending':st.get('pending'),'lock':st.get('lock')}
+ except Exception as e:
+  out['master']={'error':f'{type(e).__name__}: {e}'}
+ try:
+  out['schedule']={'lock':schedule_sync.lock_status(),'watch':schedule_sync.watch_status()}
+ except Exception as e:
+  out['schedule']={'error':f'{type(e).__name__}: {e}'}
+ return out
+
+
+def feedback_context(at_ms,records=None):
+ """`at_ms`（画面の失敗の時刻）の前後のサーバーの警告・エラーと、共有の状態。"""
+ at=datetime.fromtimestamp(at_ms/1000.0) if at_ms else datetime.now()
+ lo=(at-timedelta(minutes=CONTEXT_BEFORE_MIN)).strftime('%Y-%m-%d %H:%M:%S')
+ hi=(at+timedelta(minutes=CONTEXT_AFTER_MIN)).strftime('%Y-%m-%d %H:%M:%S')
+ recs=records if records is not None else _current_records()
+ near=[r for r in recs if r.get('ts') and lo<=r['ts']<=hi and r.get('level') in ('error','warning')]
+ dig=problem_digest(near,top=CONTEXT_TOP)
+ items=[{'level':g['level'],'text':g['text'],'logger':g['logger'],'count':g['count'],
+         'first':g['first'],'last':g['last'],'lines':(g.get('lines') or [])[:8]} for g in dig['items']]
+ return {'from':lo,'to':hi,'counts':dig['counts'],'items':items,'more':dig['more'],'share':_share_state()}
+
+
+@bp.get('/api/feedback/context')
+def feedback_context_route():
+ """画面の失敗の報告に添える「そのときの」サーバーの記録（§9.578）。読むだけ。"""
+ try:at_ms=int(request.args.get('at') or 0)
+ except ValueError:at_ms=0
+ return jsonify(ok=True,**feedback_context(at_ms))
 
 
 @bp.get('/api/logs/files')
