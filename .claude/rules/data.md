@@ -1,4 +1,4 @@
-# データの置き場と共有（79件）
+# データの置き場と共有（80件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 「報告する」は①失敗を選ぶ（同じ失敗は回数で1行）②書く③コピー。要約は送る内容の2行目に1回だけ、起動のログは末尾60行 | `test_feedback.js` | [§9.579](../../docs/decisions/9.579.md) |
 | 書込は全部`api()`から`WL.feedback.request()`へ控える（本文は識別子だけ）。失敗の1通には問い合わせ・そのときのサーバーの記録・共有の状態を入れる | `test_feedback.js`・`test_logs.py` | [§9.578](../../docs/decisions/9.578.md) |
 | 共有へ書き出せなかったマスタの変更は写しに残し、取り直す前に送り直す（`_settle_pending()`の1箇所）。共有が先に進んでいたら控えへ逃がして言う | `test_mastershare.py` | [§9.576](../../docs/decisions/9.576.md) |
 | 端末の測定データと設定は端末の控え（`terminal_store`・Python・`local_root()/terminal`）へも写す。`%TEMP%`・`db/`に置かない | `test_terminalstore.py` | [§9.545](../../docs/decisions/9.545.md) |

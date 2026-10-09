@@ -608,6 +608,7 @@ body.sc-mode #headerContextSource{display:none}
   .bs-opts label.is-on,
   .bs-sc.is-on,
   .lg-problem.is-on,
+  .lg-pick-row.is-on,
   .sc-frame-shift.is-on,
   .sp-pat.is-on,
   .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}

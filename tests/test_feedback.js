@@ -143,7 +143,18 @@ run('test_feedback: 失敗を開発へ報告できる形で残す（§9.373）',
    await page.waitForFunction(()=>/WLFB1 \{/.test(document.getElementById('lgPreview')?.value||''),null,{timeout:10000}).catch(()=>{});
    const inWin=await page.evaluate(()=>document.getElementById('lgPreview')?.value||'');
    rec('送る内容に同じ1通が入っている（機械で読む1行まで）',
-       inWin.includes('WaveLog 不具合報告')&&inWin.includes('WLFB1 {'),inWin.slice(0,80));
+       inWin.includes('---- 報告する失敗 ----')&&inWin.includes('予定から外せませんでした')&&inWin.includes('WLFB1 {'),inWin.slice(0,80));
+   /* §9.579: 報告する失敗を選ぶ（既定は最新）・要約は1回だけ・選んだ失敗の要約が画面にも出る */
+   const pick=await page.evaluate(()=>({rows:document.querySelectorAll('#lgPick .lg-pick-row').length,
+     on:(document.querySelector('#lgPick .lg-pick-row.is-on')||{}).textContent||'',
+     sum:(document.getElementById('lgPickSum')||{}).textContent||'',
+     heads:(document.getElementById('lgPreview').value.match(/^要約: /gm)||[]).length,
+     line2:document.getElementById('lgPreview').value.split('\n')[1]||''}));
+   rec('報告する失敗を選べる（失敗の行＋「失敗は出ていない」・既定は最新）',pick.rows>=2&&/予定から外せませんでした/.test(pick.on),JSON.stringify(pick).slice(0,160));
+   rec('要約は送る内容の2行目に1回だけ・画面の要約と同じ字',pick.heads===1&&/^要約: /.test(pick.line2)&&pick.sum.includes(pick.line2.replace(/^要約: /,'').slice(0,20)),pick.line2.slice(0,80));
+   await page.click('#lgPick .lg-pick-row:last-child');
+   const none=await page.evaluate(()=>document.getElementById('lgPreview').value);
+   rec('「失敗は出ていない」を選ぶと失敗の1通を入れない（機械で読む1行も無い）',!/---- 報告する失敗 ----/.test(none)&&!/WLFB1 \{/.test(none)&&/選んでいません/.test(none),none.split('\n')[1]||'');
   }finally{
    for(const id of made)if(id)await post('/api/schedule/plan/delete',{equipment:EQ,id});
    const left=await page.evaluate(async e=>{

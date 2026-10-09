@@ -103,30 +103,79 @@
     最後に来るよう、画面の失敗の詳しい1通は末尾に置く。 */
  const failures=()=>(WL.feedback&&WL.feedback.log?WL.feedback.log():[]).slice().reverse();
  const failLine=f=>`${stamp(new Date(f.at))}  ${f.what||'（不明）'}${f.why?` — ${f.why}`:''}${f.status?`（HTTP ${f.status}）`:''}`;
+ /* ---- 報告する失敗を選ぶ（§9.579・5案から B） ----
+    同じ失敗（何を・なぜ が同じ）は1つにまとめて回数で言う。既定は**いちばん新しい失敗**。
+    「画面に失敗は出ていない」も選べる（遅い・動きがおかしい、はメモで言う）。 */
+ const NONE='none';
+ const pickState={key:''};
+ const failKey=f=>`${f.what||''}\u0001${f.why||''}`;
+ const failGroups=()=>{
+  const m=new Map();
+  failures().forEach(f=>{const k=failKey(f),g=m.get(k);if(g)g.count++;else m.set(k,{key:k,rec:f,count:1})});
+  return [...m.values()];
+ };
+ const pickedGroup=()=>{
+  const gs=failGroups();
+  if(pickState.key===NONE)return null;
+  return gs.find(g=>g.key===pickState.key)||gs[0]||null;
+ };
+ /* 送る内容は**貼れる長さ**に抑える（§9.579）。起動のログは末尾だけ（全文は「ログを見る」とファイル）。 */
+ const BOOT_LOG_TAIL=60;
+ const trimBootLog=text=>{
+  const head='---- 直近の起動のログ ----';
+  const i=text.indexOf(head);if(i<0)return text;
+  const lines=text.slice(i).split('\n'),end=lines.findIndex(l=>/^==== ここまで ====/.test(l));
+  const body=lines.slice(1,end<0?undefined:end);
+  if(body.length<=BOOT_LOG_TAIL)return text;
+  return text.slice(0,i)+[lines[0],`  （古い ${body.length-BOOT_LOG_TAIL}行は省きました。全文は「ログを見る」か「ファイルに保存」で）`,
+   ...body.slice(-BOOT_LOG_TAIL),...(end<0?[]:lines.slice(end))].join('\n');
+ };
+ const MACHINE='（ここから下は開発が機械で読むぶんです';
  const reportText=()=>{
   const memo=($id('lgMemo')?.value||'').trim();
-  const fails=failures();
-  const L=['==== WaveLog 開発への報告 ====',`作成: ${stamp()}`,'',
-           '---- 何が起きたか（利用者のメモ） ----',memo||'（書かれていません）','',
-           '---- 画面で起きた失敗（この端末に残っている記録・新しい順） ----'];
-  if(fails.length){
-   fails.slice(0,FAIL_LIST).forEach(f=>L.push('  '+failLine(f)));
-   if(fails.length>FAIL_LIST)L.push(`  （ほかに ${fails.length-FAIL_LIST}件）`);
-  }else L.push('  記録なし');
+  const g=pickedGroup();
+  const one=g&&WL.feedback.reportText?WL.feedback.reportText(g.rec):'';
+  const cut=one.indexOf(MACHINE);
+  const L=['==== WaveLog 開発への報告 ====',
+           g?WL.feedback.summary(g.rec):'要約: 画面に出た失敗は選んでいません（メモを読んでください）',
+           `作成: ${stamp()}`,'',
+           '---- 何が起きたか（利用者のメモ） ----',memo||'（書かれていません）',''];
+  /* 1通の頭（題と要約）は上に1回だけ書いたので落とす（同じ1行を2度読ませない）。 */
+  if(g)L.push('---- 報告する失敗 ----',(cut<0?one:one.slice(0,cut)).split('\n').filter((l,i)=>!(i<2&&/^(WaveLog 不具合報告|要約: )/.test(l))).join('\n').trimEnd(),'');
+  const others=failGroups().filter(x=>!g||x.key!==g.key);
+  L.push('---- ほかに画面で起きた失敗（新しい順・同じ失敗はまとめて回数） ----');
+  if(others.length){
+   others.slice(0,FAIL_LIST).forEach(x=>L.push('  '+failLine(x.rec)+(x.count>1?` ×${x.count}`:'')));
+   if(others.length>FAIL_LIST)L.push(`  （ほかに ${others.length-FAIL_LIST}種類）`);
+  }else L.push('  なし');
   L.push('');
   const b=bootState.last;
-  L.push(b&&b.text?b.text:'（起動の状況を読めませんでした。「点検と整理」で取り直せます）');
-  if(fails.length&&WL.feedback.reportText){
-   L.push('','---- 直近の失敗の詳しい記録 ----',WL.feedback.reportText(fails[0]));
-  }
+  L.push(b&&b.text?trimBootLog(b.text):'（起動の状況を読めませんでした。「点検と整理」で取り直せます）');
+  if(g&&cut>=0)L.push('',one.slice(cut));
   return L.join('\n');
  };
+ /* 選ぶ一覧と、選んだ失敗の要約（送る内容の先頭と同じ字）。 */
+ const renderPick=()=>{
+  const box=$id('lgPick');if(!box)return;
+  const gs=failGroups(),g=pickedGroup();
+  const row=(key,on,body)=>`<label class="lg-pick-row${on?' is-on':''}"><input type="radio" name="lgPick" value="${esc(key)}"${on?' checked':''}>${body}</label>`;
+  box.innerHTML=(gs.length?gs.map(x=>row(x.key,g&&g.key===x.key,
+    `<span class="lg-pick-at">${stamp(new Date(x.rec.at)).slice(5,16)}</span><span class="lg-pick-what"><b>${esc(x.rec.what||'（不明）')}</b>${x.rec.why?` — ${esc(x.rec.why)}`:''}</span>`
+    +`<span class="lg-pick-n">${x.count>1?`×${x.count}・`:''}${x.rec.status?`HTTP ${x.rec.status}`:'返事なし'}</span>`)).join('')
+    :'<p class="lg-pick-empty">この端末に、画面に出た失敗の記録はありません。</p>')
+   +row(NONE,!g,'<span class="lg-pick-what">画面に失敗は出ていない（遅い・動きがおかしい など。メモに書いてください）</span>');
+  const sum=$id('lgPickSum');
+  /* 選んだ行と同じ字は繰り返さない。ここは「送る内容の1行目」そのもの（何が届くかを先に見せる）。 */
+  if(sum)sum.innerHTML=g?`<small>送る内容の1行目</small><span>${esc(WL.feedback.summary(g.rec).replace(/^要約: /,''))}</span>`:'';
+  if(sum)sum.hidden=!g;
+ };
  const refreshPreview=()=>{
+  renderPick();
   const box=$id('lgPreview');if(!box)return;
   box.value=reportText();
   const size=$id('lgPreviewSize');if(size)size.textContent=`${num(box.value.length)}字`;
   /* 直近の失敗に「そのときのサーバーの記録」がまだ無ければ、届いてから描き直す（§9.578）。 */
-  const f=failures()[0];
+  const f=(pickedGroup()||{}).rec;
   if(f&&!f.server&&WL.feedback&&WL.feedback.ready)WL.feedback.ready(f).then(()=>{if(f.server&&$id('lgPreview'))box.value=reportText()});
  };
 
@@ -164,7 +213,7 @@
   box.innerHTML=rows.join('');
  };
  const copyReport=async()=>{
-  const f=failures()[0];
+  const f=(pickedGroup()||{}).rec;
   if(f&&WL.feedback&&WL.feedback.ready)await WL.feedback.ready(f);
   refreshPreview();
   const text=$id('lgPreview').value;
@@ -590,6 +639,7 @@
   });
   // ① 報告する
   $id('lgMemo').addEventListener('input',debounce(refreshPreview,150));
+  $id('lgPick').addEventListener('change',e=>{if(e.target.name==='lgPick'){pickState.key=e.target.value;refreshPreview()}});
   $id('lgReportCopy').onclick=copyReport;
   $id('lgReportSave').onclick=saveReport;
   // ② ログを見る
@@ -636,22 +686,19 @@
  };
  const opts=(list,sel)=>list.map(([v,t])=>`<option value="${v}"${v===sel?' selected':''}>${t}</option>`).join('');
 
- const ensurePanel=()=>{
-  let panel=$id('logPanel');if(panel)return panel;
-  panel=document.createElement('section');panel.className='lg-panel';panel.id='logPanel';panel.hidden=true;
-  const head=`<div class="lg-head-tools" id="lgHead">
-    <div class="lg-steps" role="tablist" aria-label="ログ・診断の段">
-     ${STEPS.map(s=>`<button type="button" class="lg-step" role="tab" data-step="${s.key}" title="${esc(s.tip)}">
-       <i class="fa-solid ${s.icon}" aria-hidden="true"></i>${esc(s.label)}</button>`).join('')}
-    </div></div>`;
-  const report=`<div class="lg-page lg-page-report" data-page="report" hidden>
+ /* ① 報告するの骨組み（選ぶ→書く→コピー・§9.579）。 */
+ const reportPageHtml=()=>`<div class="lg-page lg-page-report" data-page="report" hidden>
     ${card('lg-send','開発へ報告する',null,`
      <p class="lg-lead">困ったことが起きたら、ここから開発へ送ってください。この端末の記録を集めて、1つの文章にまとめます。</p>
      <ol class="lg-flow">
       <li><span class="lg-flow-no">1</span><div class="lg-flow-body">
+        <span class="lg-flow-title">報告する失敗を選ぶ<small>新しい順・同じ失敗はまとめて回数</small></span>
+        <div class="lg-pick" id="lgPick" role="radiogroup" aria-label="報告する失敗"></div>
+        <div class="lg-pick-sum" id="lgPickSum" hidden></div></div></li>
+      <li><span class="lg-flow-no">2</span><div class="lg-flow-body">
         <label class="lg-flow-title" for="lgMemo">何が起きたかを書く<small>任意</small></label>
         <textarea id="lgMemo" rows="4" placeholder="例）測定画面で「保存」を押したら固まった。10時ごろから、2回続けて。"></textarea></div></li>
-      <li><span class="lg-flow-no">2</span><div class="lg-flow-body">
+      <li><span class="lg-flow-no">3</span><div class="lg-flow-body">
         <span class="lg-flow-title">コピーして、メールやチャットへ貼る</span>
         <div class="lg-flow-acts">
          <button type="button" class="lg-primary" id="lgReportCopy"><i class="fa-solid fa-copy" aria-hidden="true"></i>報告をコピー</button>
@@ -664,6 +711,15 @@
     ${card('lg-preview','送る内容',{id:'lgPreviewSize',text:''},
      '<textarea id="lgPreview" readonly spellcheck="false" aria-label="送る内容（コピーされる文章そのもの）"></textarea>')}
    </div>`;
+ const ensurePanel=()=>{
+  let panel=$id('logPanel');if(panel)return panel;
+  panel=document.createElement('section');panel.className='lg-panel';panel.id='logPanel';panel.hidden=true;
+  const head=`<div class="lg-head-tools" id="lgHead">
+    <div class="lg-steps" role="tablist" aria-label="ログ・診断の段">
+     ${STEPS.map(s=>`<button type="button" class="lg-step" role="tab" data-step="${s.key}" title="${esc(s.tip)}">
+       <i class="fa-solid ${s.icon}" aria-hidden="true"></i>${esc(s.label)}</button>`).join('')}
+    </div></div>`;
+  const report=reportPageHtml();
   const logs=`<div class="lg-page lg-page-logs" data-page="logs" hidden>
     ${card('lg-problems','問題のまとめ',null,
      '<p class="lg-note"><b class="lg-count" id="lgProblemsCount"></b>同じ内容は1つにまとめています。押すと、その件だけに絞ります。</p><div class="lg-problem-list" id="lgProblems"></div>')}

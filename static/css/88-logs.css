@@ -117,6 +117,21 @@
 .lg-done{margin:0;min-height:calc(var(--fs-sm) * var(--lh));font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .lg-done.is-ok{color:var(--success)}
 .lg-done.is-ng{color:var(--danger)}
+/* 報告する失敗を選ぶ（§9.579）。行は「時刻・何が—なぜ・回数とHTTP」の格子で縦にそろえる。選んだ行は縁と地で言う。 */
+.lg-pick{display:grid;gap:var(--space-1);max-height:calc(var(--ctl-h) * 5);overflow:auto}
+.lg-pick-row{display:grid;grid-template-columns:auto 6.5em minmax(0,1fr) auto;align-items:center;gap:var(--space-2);
+ padding:var(--space-1) var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ font-size:var(--fs-sm);cursor:pointer}
+.lg-pick-row:has(>.lg-pick-what:nth-child(2)){grid-template-columns:auto minmax(0,1fr)}
+.lg-pick-row:hover{background:var(--surface-2)}
+.lg-pick-at{color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.lg-pick-what{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg-pick-n{color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.lg-pick-empty{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
+.lg-pick-sum{display:grid;gap:2px;padding:var(--space-2) var(--space-3);border:1px solid var(--warn-border);border-radius:var(--radius-sm);
+ background:var(--warn-bg);font-size:var(--fs-sm);color:var(--ink)}
+.lg-pick-sum[hidden]{display:none}
+.lg-pick-sum small{color:var(--ink-2);font-size:var(--fs-sm)}
 .lg-sub{margin:var(--space-5) 0 var(--space-2);padding-top:var(--space-3);border-top:1px solid var(--line-soft);
  color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* 送る内容。**コピーされる文章そのもの**を見せる（見たものと送るものを違えない）。 */
