@@ -35,6 +35,7 @@ import os
 import socket
 import threading
 import time
+from urllib.parse import quote
 
 from .db_access import DBS, connect
 from .repositories.master_repo import (permission_flags, master_write_check,
@@ -515,6 +516,61 @@ def get_mode():
  with _lock:
   return _mode
 
+def _install_master_share(app):
+ """マスタを共有に置いたときの書込サイクル(§9.263)の入口と出口。`install()`が呼ぶ。"""
+ # ロック → 取り直し → （ここでハンドラが当てる）→ 改訂番号 → 丸ごと置換。
+ # **書込ガードの後に登録すること**——先に走ると、権限で断るリクエストの
+ # ためにロックを取ってしまう（Flaskは登録順にbefore_requestを呼ぶ）。
+ # 読みは手元の写しからなので、GETはここを通らない。
+ @app.before_request
+ def _master_share_begin():
+  from . import master_share
+  from flask import g
+  if not master_share.writes_master(request.blueprint,request.method,request.endpoint):
+   return None
+  try:
+   g._master_cycle=master_share.begin_write(current_login_id(),current_pc_name())
+  except master_share.MasterLockHeld as e:
+   # **待たせずに理由を返す**——押した手応えが無いまま固まるより、
+   # 誰が何秒握っているかを言って、もう一度押してもらうほうがよい(§4)。
+   return jsonify(error=str(e)),409
+  except Exception as e:
+   from .logging_setup import app_logger
+   app_logger().warning('共有マスタのロックを取れませんでした: %s',e)
+   return jsonify(error=f'共有のマスタを更新できませんでした: {e}'),503
+  return None
+
+ def _master_share_close():
+  """書込サイクルを閉じ、画面へ知らせる字を返す（無ければ空）。"""
+  from flask import g
+  cycle=getattr(g,'_master_cycle',None)
+  if cycle is None:return ''
+  g._master_cycle=None
+  try:
+   cycle.end(current_login_id())
+  except Exception as e:
+   from .logging_setup import app_logger
+   app_logger().warning('共有マスタへ書き出せませんでした（写しに残し、次の書込で送り直します）: %s',e)
+  return cycle.notice
+
+ # **応答を返す前に閉じる**（§9.576）——書き出せなかったことを応答の頭
+ # （`X-WL-Master-Notice`）で画面へ渡すため。以前は teardown で閉じていたので、
+ # 失敗しても記録に警告が残るだけで、画面は「保存できた」としか読めなかった。
+ # 変更は写しに残って送り直されるので、状態コードは変えない（押し直させない）。
+ @app.after_request
+ def _master_share_end(resp):
+  note=_master_share_close()
+  if note:
+   resp.headers['X-WL-Master-Notice']=quote(note)
+  return resp
+
+ # **teardownでも閉じる**——ハンドラが投げると after_request は呼ばれない。
+ # ロックを返すための保険（ここで閉じたときは画面へ字を渡せない）。
+ @app.teardown_request
+ def _master_share_teardown(exc=None):
+  _master_share_close()
+
+
 def install(app):
  global _mode
  # **起動時に1回だけ決めて持ち続ける**(§9.208 ⑧、利用者の指示)。ここで
@@ -615,42 +671,8 @@ def install(app):
                                         # チェックをハンドラ側で行う(§7.5)
   return jsonify(error='現在のモードでは、この操作は実行できません。'),403
 
- # ---- マスタを共有に置いたときの書込サイクル(§9.263) ----
- # ロック → 取り直し → （ここでハンドラが当てる）→ 改訂番号 → 丸ごと置換。
- # **書込ガードの後に登録すること**——先に走ると、権限で断るリクエストの
- # ためにロックを取ってしまう（Flaskは登録順にbefore_requestを呼ぶ）。
- # 読みは手元の写しからなので、GETはここを通らない。
- @app.before_request
- def _master_share_begin():
-  from . import master_share
-  from flask import g
-  if not master_share.writes_master(request.blueprint,request.method,request.endpoint):
-   return None
-  try:
-   g._master_cycle=master_share.begin_write(current_login_id(),current_pc_name())
-  except master_share.MasterLockHeld as e:
-   # **待たせずに理由を返す**——押した手応えが無いまま固まるより、
-   # 誰が何秒握っているかを言って、もう一度押してもらうほうがよい(§4)。
-   return jsonify(error=str(e)),409
-  except Exception as e:
-   from .logging_setup import app_logger
-   app_logger().warning('共有マスタのロックを取れませんでした: %s',e)
-   return jsonify(error=f'共有のマスタを更新できませんでした: {e}'),503
-  return None
-
- # **teardownで閉じる**——例外で抜けてもロックを返す（after_requestは
- # ハンドラが投げると呼ばれない）。
- @app.teardown_request
- def _master_share_end(exc=None):
-  from flask import g
-  cycle=getattr(g,'_master_cycle',None)
-  if cycle is None:return
-  g._master_cycle=None
-  try:
-   cycle.end(current_login_id())
-  except Exception as e:
-   from .logging_setup import app_logger
-   app_logger().warning('共有マスタへ書き出せませんでした: %s',e)
+ # ---- マスタを共有に置いたときの書込サイクル(§9.263)。書込ガードの後 ----
+ _install_master_share(app)
 
  return app
 

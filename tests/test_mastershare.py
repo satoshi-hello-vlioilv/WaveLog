@@ -19,6 +19,9 @@ master.sqlite3 へ直に書き、読むときも共有を直接開いていた�
  7. マスタへ書くBlueprintが**書込サイクルの一覧に全部載っている**
     （載せ忘れるとそのAPIだけ素通しになる）
  8. **ファイルを開いたままにしない・写しを rename しない**（§9.270）
+ 9. **書き出せなかった変更を次の取り直しで消さない**（§9.576）——写しに残し、
+    次の書込・起動で送り直す。共有が先に進んでいたら控えへ逃がして知らせる。
+    画面へは応答の頭（`X-WL-Master-Notice`）で言う
 
 8について。実機で「起動時の取り込みも保存も全部 WinError 32」になった。
 原因は `with connect(...) as c:` が**閉じない**こと——`sqlite3.Connection`
@@ -329,6 +332,118 @@ try:
                     leaky.append(f'{name}:{fn.lineno}')
     rec('置き換える側のモジュールは with connect(...) を書かない（閉じないため）',
         not leaky, '／'.join(leaky) if leaky else 'master_share/schedule_sync/db_mirror')
+    # ---- 9. 書き出せなかった変更を次の取り直しで消さない（§9.576） --------
+    # 実機の報告: 内訳を足した直後の予定の追加が 400「指定のサブカテゴリが
+    # 見つかりません」。同じ分に共有への書込が WinError 59／5 で落ちていた。
+    # 書き出し（_push）の失敗は警告だけで画面は「保存できた」と読み、次の書込の
+    # 頭の「取り直す」が写しを共有の古い中身で上書きして、足した行が消えていた。
+    def fail_push():
+        raise OSError(59, '予期しないネットワーク エラー')
+    real_push = ms._push
+    make_master(share, 'base-9'); ms.refresh(force=True)
+    cyc = ms.begin_write('tester', 'PC1')
+    make_master(opened, 'unpushed-9')
+    ms._push = fail_push
+    try:
+        try:
+            cyc.end('tester'); raised = False
+        except OSError:
+            raised = True
+    finally:
+        ms._push = real_push
+    rec('書き出しの失敗は呼んだ側へ伝わる', raised, str(raised))
+    rec('書き出せなかったことを知らせる字がある', '書き出せません' in cyc.notice, cyc.notice[:40])
+    rec('書き出せなかった印が残る（写しの外）', ms.pending() is not None and ms.status().get('pending') is not None,
+        str(ms.pending()))
+    rec('失敗してもロックは返す', ms.lock_status().get('locked') is False, str(ms.lock_status()))
+    rec('写しには変更が残る', read_value(opened) == 'unpushed-9', read_value(opened))
+    cyc = ms.begin_write('tester', 'PC1')          # 次の書込（予定の追加など）
+    rec('次の書込の頭で写しを消さない（送り直す）', read_value(opened) == 'unpushed-9', read_value(opened))
+    rec('送り直した変更が共有へ出る', read_value(share) == 'unpushed-9', read_value(share))
+    rec('送り直したら印は消える', ms.pending() is None, str(ms.pending()))
+    rec('送り直したことを知らせる', '送り直しました' in cyc.notice, cyc.notice[:40])
+    cyc.end('tester')
+
+    # 9b. 送り直す前に共有が他の端末で進んでいた → 控えへ逃がして共有を取り込む
+    cyc = ms.begin_write('tester', 'PC1')
+    make_master(opened, 'mine-9b')
+    ms._push = fail_push
+    try:
+        try:
+            cyc.end('tester')
+        except OSError:
+            pass
+    finally:
+        ms._push = real_push
+    make_master(share, 'other-9b'); ms._bump_revision(share, 'other')   # 別の端末が書いた
+    cyc = ms.begin_write('tester', 'PC1')
+    asides = sorted(work.glob('master.unpushed.*.sqlite3'))
+    rec('ぶつかったら共有を取り込む（他の端末の変更を踏み潰さない）',
+        read_value(opened) == 'other-9b', read_value(opened))
+    rec('ぶつかったら自分の変更は控えのファイルに残す',
+        len(asides) == 1 and read_value(asides[0]) == 'mine-9b', str(asides))
+    rec('ぶつかったことを控えの場所まで言う', bool(asides) and str(asides[0]) in cyc.notice, cyc.notice[:60])
+    rec('ぶつかったあと印は消える', ms.pending() is None, str(ms.pending()))
+    cyc.end('tester')
+    for a in asides:
+        a.unlink()
+
+    # 9c. 共有へ届かないまま再起動しても、写しを消さない
+    cyc = ms.begin_write('tester', 'PC1')
+    make_master(opened, 'restart-9c')
+    ms._push = fail_push
+    try:
+        try:
+            cyc.end('tester')
+        except OSError:
+            pass
+    finally:
+        ms._push = real_push
+    _orig_exists = ms.path_exists_safe
+    ms.path_exists_safe = lambda p: None            # 共有の応答不良のまま起動
+    try:
+        ms.configure(share)
+        rec('届かないまま起動しても写しは消さない', read_value(opened) == 'restart-9c', read_value(opened))
+        rec('届かないまま起動しても印は残す', ms.pending() is not None, str(ms.pending()))
+        try:
+            ms.begin_write('tester', 'PC1'); refused = False
+        except ms.MasterShareUnavailable as e:
+            refused = '残っています' in str(e)
+        rec('届かない間の書込は理由つきで断る（写しを上書きしない）', refused, str(refused))
+    finally:
+        ms.path_exists_safe = _orig_exists
+    ms.configure(share)                               # 届くようになって起動
+    rec('届くようになった起動で送り直す', read_value(share) == 'restart-9c' and ms.pending() is None,
+        read_value(share))
+    rec('送り直しのあともロックは残さない', ms.lock_status().get('locked') is False, str(ms.lock_status()))
+
+    # 9d. 画面へ言う道: 応答の頭（`X-WL-Master-Notice`）。teardownでは応答が出たあと
+    # なので言えない——after_request で閉じていることを実物の Flask で確かめる。
+    from urllib.parse import unquote
+    from flask import Flask, Blueprint
+    from backend import access_mode
+    fapp = Flask('t9d')
+    bp = Blueprint('masters', 't9d')
+
+    @bp.post('/t9d/write')
+    def _t9d_write():
+        make_master(opened, 'via-flask-9d')
+        return {'ok': True}
+    fapp.register_blueprint(bp)
+    access_mode.install(fapp)
+    ms._push = fail_push
+    try:
+        r = fapp.test_client().post('/t9d/write', json={})
+    finally:
+        ms._push = real_push
+    note = unquote(r.headers.get('X-WL-Master-Notice', ''))
+    rec('書き出せなかった書込は応答の頭で画面へ言う', r.status_code == 200 and '書き出せません' in note,
+        f'{r.status_code} {note[:40] or r.get_data(as_text=True)[:80]}')
+    rec('応答のあとロックは残さない', ms.lock_status().get('locked') is False, str(ms.lock_status()))
+    r = fapp.test_client().post('/t9d/write', json={})
+    rec('次の書込で送り直したことも言う', '送り直しました' in unquote(r.headers.get('X-WL-Master-Notice', '')),
+        unquote(r.headers.get('X-WL-Master-Notice', ''))[:40])
+    rec('送り直した結果が共有に出ている', read_value(share) == 'via-flask-9d', read_value(share))
 finally:
     ms._state.clear(); ms._state.update(_orig[0])
     ms._mode_setting, ms._looks_shared, ms.paths.work_dir = _orig[1], _orig[2], _orig[3]

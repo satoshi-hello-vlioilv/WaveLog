@@ -1,4 +1,4 @@
-# データの置き場と共有（77件）
+# データの置き場と共有（78件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 共有へ書き出せなかったマスタの変更は写しに残し、取り直す前に送り直す（`_settle_pending()`の1箇所）。共有が先に進んでいたら控えへ逃がして言う | `test_mastershare.py` | [§9.576](../../docs/decisions/9.576.md) |
 | 端末の測定データと設定は端末の控え（`terminal_store`・Python・`local_root()/terminal`）へも写す。`%TEMP%`・`db/`に置かない | `test_terminalstore.py` | [§9.545](../../docs/decisions/9.545.md) |
 | 記録は`updatedAt`の新しいほうを採り、消した印より古い記録は戻さない。突き合わせは`reconcileTerminal()`の1箇所 | `test_terminal.js` | [§9.545](../../docs/decisions/9.545.md) |
 | 設定は画面のJSより先に当てる（`terminal-sync.js`が先頭）。手元で変えて送れていない値は手元が勝つ（値の指紋） | `test_terminal.js` | [§9.545](../../docs/decisions/9.545.md) |
