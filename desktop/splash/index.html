@@ -6,17 +6,19 @@
 <title>測定伝送システム — 起動中</title>
 <!--
   デスクトップ版の起動画面（exe に入る・§9.544）。アプリ内の起動の覆い（#appBoot・95-boot.css）と
-  **同じ色・同じ地**——トークンと地の指定は写してあり、tests/test_boot.py が一致を見張る。
-  進み具合は窓（Rust）が確かめた事実だけで言う: ① Python を探す ② アプリの中身を起こす ③ 画面を開く。
-  窓が splash.step(id, state, detail) / splash.fail(title, detail) を呼ぶ。
+  **同じ分割カード・同じ4段・同じ色・同じ地**（§9.580）——窓から覆いへ切り替わっても、左のブランドと右の段の
+  並びがそのまま続いて見える。トークンと地の指定は写してあり、段の名前は backend/boot_status.py の PHASES と同じ
+  （tests/test_boot.py が一致を見張る）。窓（Rust）は splash.step(id, state, detail) / splash.fail(title, detail) を呼ぶ。
+  窓の段（update・python・backend・open）は見せる段へ寄せる: update→版をそろえる／python・backend→アプリを起こす／
+  open→画面を組み立てる。窓の段の細かな字（Python の場所など）は段の title に残し、画面には「いま」と注意だけ出す。
 -->
 <style>
  :root{
-  --nav:#173842; --teal:#087c89; --teal-dark:#096b75; --teal-soft:#9cd6ce;
-  --pale:#dcecef; --bg:#eef2f4; --line:#b7c7cc; --track:#e3ebee;
-  --ink:#173842; --ink-3:#4a6169; --ink-soft:#7b8e95;
-  --warn:#f5a30a; --warn-fg:#7a2f00; --warn-bg:#fff0d6; --warn-line:#d58d16;
-  --danger:#a32424; --danger-bg:#fdeaea; --danger-line:#e0a3a3;
+  --nav:#173842; --teal:#087c89; --teal-dark:#096b75; --teal-soft:#9cd6ce; --teal-ink:#075e67;
+  --pale:#dcecef; --bg:#eef2f4; --line:#b7c7cc; --surface-3:#e3ebee;
+  --ink:#17272d; --ink-2:#3a565d; --muted:#60747b;
+  --warn:#f5a30a; --warn-fg:#7a2f00; --warn-bg:#fff0d6;
+  --danger:#a32424; --danger-bg:#fdeaea;
  }
  *{box-sizing:border-box}
  html,body{height:100%}
@@ -33,55 +35,86 @@
   font-family:"Yu Gothic UI","Meiryo","Segoe UI",system-ui,sans-serif;
   font-size:14px; line-height:1.6;
  }
- .card{width:min(94vw,600px);border-radius:18px;overflow:hidden;background:#fff;border:1px solid var(--line);
-  box-shadow:0 18px 44px rgba(23,56,66,.18),0 3px 8px rgba(23,56,66,.10);color:var(--ink)}
- .head{padding:20px 24px 14px;border-bottom:1px solid var(--track)}
- .head b{display:block;font-size:18px}
- .head span{color:var(--ink-3);font-size:13px}
- ol{list-style:none;margin:0;padding:8px 24px 6px}
- li{display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:start;padding:9px 0;border-top:1px solid var(--track)}
- li:first-child{border-top:0}
- .mark{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);margin-top:2px;display:grid;place-items:center;
-  font-size:11px;font-weight:800;color:#fff}
- .t{font-weight:700}
- .d{display:block;color:var(--ink-3);font-size:12.5px;word-break:break-all}
- .when{font:11.5px Consolas,monospace;color:var(--ink-soft);padding-top:3px}
- li.wait{color:var(--ink-soft)}
+ .card{width:min(94vw,880px);display:grid;grid-template-columns:5fr 6fr;border-radius:18px;overflow:hidden;background:#fff;
+  box-shadow:0 18px 48px rgba(23,39,45,.20)}
+ .brand{position:relative;overflow:hidden;color:#fff;display:grid;align-content:space-between;gap:32px;padding:40px 32px;
+  background:linear-gradient(160deg,var(--teal),var(--nav))}
+ .brand>*{position:relative;z-index:2}
+ .logo{width:64px;height:64px;display:block}
+ .brand h1{margin:0;font-size:26px;font-weight:700;letter-spacing:.04em;line-height:1.3}
+ .brand p{margin:4px 0 0;font-size:12px;color:var(--pale)}
+ .brand small{font-size:12px;color:var(--teal-soft)}
+ .ring{position:absolute;z-index:0;left:64px;top:72px;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;
+  border:1.5px solid var(--teal-soft);opacity:0;pointer-events:none;animation:ripple 4.6s linear infinite;animation-delay:var(--d,0s)}
+ @keyframes ripple{0%{width:34px;height:34px;opacity:0}4%{opacity:.32}30%{opacity:.15}100%{width:1080px;height:1080px;opacity:0}}
+ .body{display:grid;align-content:center;gap:16px;padding:40px 32px;color:var(--ink);max-height:94vh;overflow:auto}
+ .body h2{margin:0;font-size:20px;font-weight:700}
+ ol{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+ li{display:grid;grid-template-columns:22px 1fr;column-gap:12px;align-items:center;color:var(--muted)}
+ li b{font-weight:600}
+ .mark{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;
+  font-size:11px;font-weight:700;color:#fff}
+ .d{grid-column:2;display:none;font-size:12px;color:var(--ink-2);word-break:break-all}
+ li.ok,li.now,li.warn,li.bad{color:var(--ink)}
+ li.now b{font-weight:700}
+ li.now .d,li.warn .d,li.bad .d{display:block}
  li.now .mark{border-color:var(--teal);border-top-color:transparent;animation:spin .9s linear infinite}
  li.ok .mark{background:var(--teal);border-color:var(--teal)}
  li.ok .mark::after{content:"✓"}
  li.warn .mark{background:var(--warn);border-color:var(--warn);color:var(--warn-fg)}
  li.warn .mark::after{content:"!"}
+ li.warn .d{color:var(--warn-fg)}
  li.bad .mark{background:var(--danger);border-color:var(--danger)}
  li.bad .mark::after{content:"×"}
  @keyframes spin{to{transform:rotate(360deg)}}
- @media (prefers-reduced-motion:reduce){li.now .mark{animation:none}}
- .fail{margin:0 24px 16px;padding:12px 14px;border-radius:10px;background:var(--danger-bg);border:1px solid var(--danger-line);
-  color:var(--danger);font-size:12.5px;line-height:1.7}
+ @media (prefers-reduced-motion:reduce){li.now .mark,.ring{animation:none}}
+ .bar{height:6px;border-radius:999px;background:var(--surface-3);overflow:hidden;margin-top:4px}
+ .bar i{display:block;height:100%;width:var(--pct,0%);border-radius:999px;background:linear-gradient(90deg,var(--teal-dark),var(--teal));
+  transition:width .45s cubic-bezier(.25,.8,.3,1)}
+ .meta{display:flex;justify-content:space-between;margin:-8px 0 0;font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+ .meta b{color:var(--teal-ink)}
+ .fail{padding:12px 14px;border-radius:10px;background:var(--danger-bg);color:var(--danger);font-size:12.5px;line-height:1.7}
  .fail pre{white-space:pre-wrap;margin:6px 0 0;font:12px Consolas,monospace;max-height:220px;overflow:auto;color:var(--ink)}
- .foot{display:flex;justify-content:space-between;padding:10px 24px 16px;color:var(--ink-3);font-size:12.5px}
  .hidden{display:none}
+ @media (max-width:720px){.card{grid-template-columns:1fr}.brand{grid-template-columns:auto 1fr;align-items:center;padding:20px 24px}.brand small{display:none}}
 </style>
 </head>
 <body>
 <section class="card" aria-labelledby="title">
-  <div class="head"><b id="title">測定伝送システムを起動しています</b><span id="lead">準備ができたら、この窓がそのままアプリに切り替わります。</span></div>
-  <ol>
-    <li class="now" id="s-update"><span class="mark"></span><span><span class="t">版をそろえる</span><span class="d">共有の置き場の「配る版」と同じか確かめます</span></span><span class="when"></span></li>
-    <li class="wait" id="s-python"><span class="mark"></span><span><span class="t">Python を探す</span><span class="d">PATH で最初に見つかる Python</span></span><span class="when"></span></li>
-    <li class="wait" id="s-backend"><span class="mark"></span><span><span class="t">アプリの中身を起こす</span><span class="d">画面と共有DB（ポートは使いません）</span></span><span class="when"></span></li>
-    <li class="wait" id="s-open"><span class="mark"></span><span><span class="t">画面を開く</span><span class="d"></span></span><span class="when"></span></li>
-  </ol>
-  <div class="fail hidden" id="fail" role="alert"></div>
-  <div class="foot"><span>デスクトップ版</span><span id="elapsed">0.0 秒</span></div>
+  <div class="brand"><i class="ring" style="--d:0s"></i><i class="ring" style="--d:1.53s"></i><i class="ring" style="--d:3.06s"></i>
+    <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="13" fill="#eaf3f4" stroke="#bcd8db" stroke-width="2"/><rect x="10" y="12" width="44" height="40" rx="6" fill="#fff" stroke="#087c89" stroke-width="3.5"/><path d="M10 23h44" stroke="#087c89" stroke-width="3.5"/><path d="M22 12v-4M42 12v-4" stroke="#096b75" stroke-width="4" stroke-linecap="round"/><path d="M17 41c5-10 8 5 12-4s7 7 11-2" fill="none" stroke="#096b75" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="46" cy="33" r="4.5" fill="#f5a30a"/></svg>
+    <div><h1>測定伝送システム</h1><p>測定・作業予定・帳票をひとつに</p></div>
+    <small>デスクトップ版</small></div>
+  <div class="body">
+    <h2 id="title">起動しています</h2>
+    <ol>
+      <li class="now" id="p-update"><span class="mark"></span><b>版をそろえる</b><span class="d">最新の版か確かめています</span></li>
+      <li class="wait" id="p-app"><span class="mark"></span><b>アプリを起こす</b><span class="d">データの置き場につないでいます</span></li>
+      <li class="wait" id="p-screen"><span class="mark"></span><b>画面を組み立てる</b><span class="d">一覧と権限を読み込んでいます</span></li>
+      <li class="wait" id="p-ready"><span class="mark"></span><b>準備完了</b><span class="d">まもなく開きます</span></li>
+    </ol>
+    <div class="fail hidden" id="fail" role="alert"></div>
+    <div class="bar" id="bar"><i></i></div>
+    <p class="meta"><b id="pct">0%</b><span id="elapsed">経過 0.0 秒</span></p>
+  </div>
 </section>
 <script>
 (() => {
   const t0 = performance.now();
   const $ = (s) => document.querySelector(s);
   const sec = () => ((performance.now() - t0) / 1000).toFixed(1);
-  const timer = setInterval(() => { $("#elapsed").textContent = sec() + " 秒"; }, 100);
+  const timer = setInterval(() => { $("#elapsed").textContent = "経過 " + sec() + " 秒"; }, 100);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  /* 窓の段 → 見せる段（§9.580）。last はその段を締める窓の段（python が済んでも「アプリを起こす」はまだ続く）。 */
+  const PHASE = { update: "update", python: "app", backend: "app", open: "screen" };
+  const LAST = { update: true, python: false, backend: true, open: false };
+  /* 窓の細かな字を画面に出してよい段。python・backend の字は Python の場所や中身の名前を言うので、段の title に
+     だけ残し、画面は段の一言のまま（技術の言葉を出さない）。注意（warn）と失敗（bad）はどの段でも字を出す。 */
+  const SAY = { update: true, python: false, backend: false, open: true };
+  const ORDER = ["update", "app", "screen", "ready"];
+  /* 済んだ段までの進み具合。覆い（#appBoot）は中身の起動の6段を済みとして60%から引き継ぐので、
+     「アプリを起こす」が済んだ時点で60%にそろえる（切り替わっても棒が戻らない）。 */
+  const PCT = { update: 20, app: 60 };
   /* よくある理由 → 次にすること（理由の文から見分ける。当てはまらなければ理由だけ出す） */
   const HINTS = [
     [/No module named '?flask/i, "Python に Flask が入っていません。ネットにつながる状態で開き直すと自動で入れます。つながらない PC では、コマンドプロンプトで python -m pip install flask を実行してから開き直してください。"],
@@ -92,24 +125,28 @@
     [/版が食い違/, "アプリが更新されています。この窓を閉じて、デスクトップの起動アイコンから開き直してください。"],
     [/秒たっても準備できません/, "PC が混んでいるか、共有フォルダへの接続で止まっています。少し待ってから開き直してください。"],
   ];
+  const row = (k) => $("#p-" + k);
   window.splash = {
     step(id, state, detail) {
-      const li = $("#s-" + id); if (!li) return;
-      li.className = state;
-      if (detail) li.querySelector(".d").textContent = detail;
-      li.querySelector(".when").textContent = sec() + "s";
-      const next = li.nextElementSibling;
-      if (state === "ok" && next && next.classList.contains("wait")) next.className = "now";
+      const k = PHASE[id]; const li = k && row(k); if (!li) return;
+      /* 前の段はまだ「いま」「まだ」なら済みにする（注意・失敗は残す）。 */
+      ORDER.slice(0, ORDER.indexOf(k)).forEach((p) => { const r = row(p); if (/^(now|wait)$/.test(r.className)) r.className = "ok"; });
+      const done = state === "ok" && LAST[id];
+      if (li.className !== "warn" || state === "bad") li.className = state === "ok" && !done ? "now" : state;
+      if (detail) { li.title = detail; if (SAY[id] || /^(warn|bad)$/.test(state)) li.querySelector(".d").textContent = detail; }
+      const next = row(ORDER[ORDER.indexOf(k) + 1]);
+      if (done && next && next.classList.contains("wait")) next.className = "now";
+      const p = PCT[done ? k : ORDER[ORDER.indexOf(k) - 1]] || 0;
+      $("#bar").style.setProperty("--pct", p + "%"); $("#pct").textContent = p + "%";
     },
     fail(title, detail) {
       clearInterval(timer);
-      $("#elapsed").textContent = sec() + " 秒";
+      $("#elapsed").textContent = "経過 " + sec() + " 秒";
       $("#title").textContent = title;
-      $("#lead").textContent = "下の理由を確かめてください。直したら、この窓を閉じて起動アイコンから開き直してください。";
       document.querySelectorAll("li.now").forEach((li) => (li.className = "bad"));
       const hint = HINTS.find(([re]) => re.test(detail));
       const box = $("#fail");
-      box.innerHTML = (hint ? "<b>次にすること</b><div>" + hint[1] + "</div>" : "") + "<b>理由</b><pre>" + esc(detail) + "</pre>";
+      box.innerHTML = (hint ? "<b>次にすること</b><div>" + hint[1] + "</div>" : "<b>直したら、この窓を閉じて起動アイコンから開き直してください。</b>") + "<b>理由</b><pre>" + esc(detail) + "</pre>";
       box.classList.remove("hidden");
     },
   };

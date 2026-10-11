@@ -1,4 +1,4 @@
-# 起動・停止・監視（70件）
+# 起動・停止・監視（72件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 起動の画面が見せる段は4つで、顔ぶれは`boot_status.PHASES`の1箇所（覆いはテンプレートが回して描く・窓の起動画面は同じ鍵と言葉の写し）。技術の言葉を出さない | `test_boot.py`・`test_bootui.js` | [§9.580](../../docs/decisions/9.580.md) |
+| 窓の起動画面と覆いは同じ分割カード。窓の細かな字（Python の場所など）は段の title にだけ残し、進み具合は「アプリを起こす」が済んだ時点で60%（覆いが引き継ぐ値） | `test_bootui.js` | [§9.580](../../docs/decisions/9.580.md) |
 | Python を止めるときは本物（起動の合図の`pid`）が終わるまで待つ。入口（別名）だけを見ない | `test_appupdate.py` | [§9.571](../../docs/decisions/9.571.md) |
 | 版の確かめ（`update::peek()`）は Python の起動と同時に進める。違えば Python を止めて（写しを手放してから）`apply()`、起こし直す | `test_appupdate.py` | [§9.561](../../docs/decisions/9.561.md) |
 | 終わる入口は×だけ。閉じる前に聞くのは`close.rs`の`Gate`（名乗った画面だけ・2秒で閉じる） | `test_appquit.js` | [§9.556](../../docs/decisions/9.556.md) |
@@ -55,7 +57,7 @@
 | `backend`から素の`from app import app`を書かない。答えは`app_module.flask_app()`の1箇所 | `test_scowner.py` | [§9.404](../../docs/decisions/9.404.md) |
 | ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](../../docs/decisions/9.404.md) |
 | 起動画面の地は深い紺＋斜めの光。**カードは不透明な白のまま**（透かすと本文が薄れ、描画も重い） | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |
-| 波紋はヘッダーの帯の中だけ（`overflow:hidden`）。輪は**幅と高さ**で広げる（`scale`は線まで太る） | `test_theme.js` | [§9.411](../../docs/decisions/9.411.md) |
+| 【§9.580で器を移した】波紋は左のブランドの面の中だけ（`overflow:hidden`）。輪は**幅と高さ**で広げる（`scale`は線まで太る） | `test_theme.js` | [§9.411](../../docs/decisions/9.411.md) |
 | ショートカットの行き先は入口の exe 1本（＋`--program`・§9.554）。絵は`app_icon.py`。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](../../docs/decisions/9.410.md) |
 | 【§9.552で撤回】補助スクリプト（`make_shortcut.vbs`）へ位置で渡す——いまは窓の副コマンドへ JSON 1つ | `test_shortcut.py` | [§9.486](../../docs/decisions/9.486.md) |
 | 【§9.559で改めた】起動前の確認は起動の窓口（`sidecar._prepare()`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](../../docs/decisions/9.225.md) |

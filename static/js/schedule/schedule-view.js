@@ -3254,8 +3254,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function normalizeLotKey(v){return String(v??'').trim().toUpperCase()}
  /* 残仕掛設備ｺｰｽがこの設備名で始まっていれば作業可能。
     戻り値: {state:'ok'|'ng'|'unknown', course:'...'} */
- function workableOf(e){
-  const eq=String(scState.equipment||'').trim();
+ /* `eqName`は予定の画面の外（初期画面の帯・§9.580）から聞くときに渡す。渡さなければいま開いている設備。 */
+ function workableOf(e,eqName){
+  const eq=String(eqName??scState.equipment??'').trim();
   if(e.kind!=='作業')return {state:'na',course:''};
   if(!eq)return {state:'unknown',course:''};
   const lot=entryLotKey(e);
@@ -10982,16 +10983,17 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   catch(err){showToast&&showToast(`${link.label}を開けません`,
    (err&&err.message)?err.message:String(err),6000)}
  }
- async function startWorkFromEntry(e){
+ async function startWorkFromEntry(e,eqName){
+  const eq=eqName??scState.equipment;
   if(typeof WL.records.openMeasurement!=='function'){await alertModal('測定画面を開けません。');return}
   /* §9.51: まだこの設備に仕掛かっていないロットは開始させない。ボタン自体
      出していないが、ダブルクリック等の別経路からも来るので二重に確かめる
      (「予定」から始めるときだけ。着手済みの再開は対象外)。 */
   if(e.state==='予定'){
-   const w=workableOf(e);
+   const w=workableOf(e,eq);
    if(w.state!=='ok'){
     await alertModal(w.state==='ng'
-     ?`このロットはまだ${scState.equipment}に仕掛かっていないため作業を開始できません。\n残仕掛設備ｺｰｽ: ${w.course||'(不明)'}`
+     ?`このロットはまだ${eq}に仕掛かっていないため作業を開始できません。\n残仕掛設備ｺｰｽ: ${w.course||'(不明)'}`
      :'仕掛データに該当ロットが見つからないため、作業できるか確認できません。仕掛一覧を再読込してからお試しください。');
     return;
    }
@@ -11005,10 +11007,25 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    await WL.records.openMeasurement(row);
    // 開始時刻を打刻すればこの予定は「作業中」へ移る。次にスケジュールを
    // 開いたときに必ず取り直せるよう、キャッシュを捨てておく(§9.42)。
-   invalidatePlanCache(scState.equipment);
+   invalidatePlanCache(eq);
   }catch(err){
    await alertModal('測定画面を開けません: '+(err&&err.message?err.message:err));
   }
+ }
+
+ /* ---------- 初期画面の帯へ渡す要約（§9.580） ----------
+    「残り何件・いま何を測っているか・次に始められるのはどれか」を**予定の画面と同じ答え**で返す
+    （数え方を帯へ写すと、予定の画面と食い違う）。数えるのは作業ロットだけで、子ロットは親の1本
+    （小計と同じ・§9.493）。次の1本は「予定」のうち**この設備に仕掛かっている**最初の行（開始ボタンと同じ判定・§9.51）。 */
+ async function planDigest(eq){
+  const r=await api('/api/schedule/plan?equipment='+encodeURIComponent(eq));
+  const works=(r.entries||[]).filter(e=>e.kind==='作業'&&!e.parentId);
+  const doing=works.filter(e=>e.state==='着手');
+  const waiting=works.filter(e=>e.state==='予定');
+  const next=waiting.find(e=>workableOf(e,eq).state==='ok')||null;
+  return {doing,waiting:waiting.length,next,
+   blocked:next?0:waiting.length,
+   done:works.filter(e=>e.state==='完了').length};
  }
 
  function buildScheduleDetail(row){
@@ -11223,6 +11240,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      ボタンと同じ `openScheduleView()` をそのまま呼ぶ。 */
   /* `opts.mode`で**戻る段**を指定できる（§9.407）。渡さなければ今までどおり。 */
   open:opts=>openScheduleView(opts),
+  /* 初期画面の帯（§9.580）が読む要約と、帯から始める・続けるための口。始め方は予定の行の「開始」と
+     同じ1本（`startWorkFromEntry()`・測定画面の入口を2つにしない）。 */
+  digest:eq=>planDigest(eq),
+  start:(e,eq)=>startWorkFromEntry(e,eq),
   /* 段の長い名（`作業スケジュール一覧`等）。**呼ぶ側に綴りを書かせない**
      ——刃組ガイダンスの戻るボタンがこの字を出す。 */
   modeName:key=>scModeName(key),

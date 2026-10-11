@@ -1,4 +1,4 @@
-# 作業スケジュール（98件）
+# 作業スケジュール（99件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 初期画面の「作業予定」の帯は1行・高さ固定。数え方と始め方は`WL.scheduleView.digest()`／`start()`の1箇所 | `test_planstrip.js` | [§9.580](../../docs/decisions/9.580.md) |
 | 換算係数の1件ごとの実績と見積・要約は`load_factor.points()`の1箇所（見積は予定と同じ`estimate_work()`） | `test_lfpoints.py`・`test_lfui.js` | [§9.543](../../docs/decisions/9.543.md) |
 | 外れ値の判定は`outlier_flags()`の1箇所（推定と散布図の点が同じ答えを読む） | `test_lfpoints.py` | [§9.543](../../docs/decisions/9.543.md) |
 | 予定を時刻へ置くのは`_Placer`の1箇所。`cursor`が空（稼働帯が尽きた）なら以降は`_unplaced()`——**例外で止めない** | `test_scload.py` | [§9.522](../../docs/decisions/9.522.md) |

@@ -206,7 +206,7 @@ body.qa-mode.qa-view-raw #listToolbar{display:flex}
    一覧の道具を**出す**ので、伏せる側の一覧に入れられない）。
    固定は`tests/test_actuals.js`（実際に開いて、器の外へ出ていないことを見る）。 */
 body:is(.rp-mode,.db-mode,.rec-mode,.cal-mode,.sc-mode,.mm-mode,.lg-mode,.ac-mode,.bs-mode)
- :is(#grid,#listToolbar,#tabs,#genericFilterBar,.qa-v7){display:none}
+ :is(#grid,#listToolbar,#tabs,#genericFilterBar,.qa-v7,#planStrip){display:none}
 /* ---------- 一覧を広く使う（§9.292 ⑦、利用者の指示） ----------
    「スケジュール作成時に、とにかく仕掛のデータを多く表示したいです。
     その時上部のメニューのほぼすべてを畳んで最大限広いスペースで仕掛の
