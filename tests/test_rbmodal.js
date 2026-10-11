@@ -89,12 +89,19 @@ run('test_rbmodal: 帳票ブロックの編集窓を組み直す（§9.249 ③�
    const body=r(document.querySelector('.fb-body'));
    const pick=r(document.querySelector('.fb-pick')),ch=r(document.querySelector('.fb-chosen'));
    const list=r(document.querySelector('.fb-list')),rows=r(document.querySelector('.fb-rows'));
-   return {panelH:panel&&Math.round(panel.height),bodyH:body&&Math.round(body.height),
+   /* 盤の欄（見出し・盤・説明の1行）の中で、どこにも使われていない高さ。**決め打ちの許容（40px）で
+      見ない**——見出しと説明の字の行の高さが変われば、余白が無くても落ちる（通しで 1px 差で落ちた）。 */
+   const fld=document.querySelector('.mm-tabpanel:not([hidden]) .fb');
+   let spare=null;
+   if(fld){const fr=fld.getBoundingClientRect(),cs=getComputedStyle(fld),gap=parseFloat(cs.rowGap)||0;
+    const kids=[...fld.children].map(c=>c.getBoundingClientRect()).filter(k=>k.height>0);
+    spare=Math.round(fr.height-kids.reduce((s,k)=>s+k.height,0)-gap*Math.max(0,kids.length-1));}
+   return {panelH:panel&&Math.round(panel.height),bodyH:body&&Math.round(body.height),spare,
      pickW:pick&&Math.round(pick.width),chosenW:ch&&Math.round(ch.width),
      listH:list&&Math.round(list.height),rowsH:rows&&Math.round(rows.height)};
   });
   rec('盤が段の高さをほぼ全部使う（余白のまま残さない）',
-      fb.bodyH>=fb.panelH-40,JSON.stringify(fb));
+      fb.spare!=null&&fb.spare<=4&&fb.bodyH>=fb.panelH*0.9,JSON.stringify(fb));
   rec('選べる項目：紙での並び＝3:7（メインがいちばん大きい）',
       Math.abs(fb.pickW/(fb.pickW+fb.chosenW)-0.3)<0.03&&fb.chosenW>fb.pickW,
       JSON.stringify({pick:fb.pickW,chosen:fb.chosenW,
