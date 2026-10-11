@@ -1329,15 +1329,10 @@ columnTint.paint();
 const sortSpec=(()=>{
  const KINDS=['empty','num','date','text'];
  const LABEL={empty:'空欄',num:'数値',date:'日付',text:'文字列'};
- const NUM=/^[-+]?(\d+\.?\d*|\.\d+)$/;
  const DATE=/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
  const PACKED=/^(\d{4})(\d{2})(\d{2})(?:[ T]?(\d{2})(\d{2})(\d{2})?)?$/;
- const numOf=v=>{
-  if(typeof v==='number')return Number.isFinite(v)?v:null;
-  const t=String(v==null?'':v).trim().replace(/,/g,'');
-  if(!t||!NUM.test(t))return null;
-  const n=Number(t);return Number.isFinite(n)?n:null;
- };
+ /* 数として読めるかは式の`looseNum`の1箇所（§9.581・3桁区切りは正しい位置のときだけ）。 */
+ const numOf=v=>WL.formula.looseNum(v);
  /* **8桁の数字は日付として読まない**——製造番号が日付に化けると、
     数値の列が黙って日付の塊へ移る。時刻が続く形だけを日付として扱う。 */
  const dateKey=v=>{
@@ -1468,13 +1463,16 @@ const displayRules=(()=>{
    case 'contains':return rs!==''&&ls.includes(rs);
    case 'startsWith':return rs!==''&&ls.startsWith(rs);
    case 'endsWith':return rs!==''&&ls.endsWith(rs);
-   case 'gt':return compare(L,R)>0;
-   case 'ge':return compare(L,R)>=0;
-   case 'lt':return compare(L,R)<0;
-   case 'le':return compare(L,R)<=0;
+   /* 大小は**空欄どうしを比べない**（§9.581）。字で比べると空欄が「どの数より小さい」になり、
+      「5より小さい」が未入力のセルにまで当たっていた（「-5より大きい」には当たらない＝片側だけ）。
+      空欄を当てたいときは「空欄」の比べ方を使う。答えは式の`ordered()`の1箇所。 */
+   case 'gt':return WL.formula.ordered(L,R)&&compare(L,R)>0;
+   case 'ge':return WL.formula.ordered(L,R)&&compare(L,R)>=0;
+   case 'lt':return WL.formula.ordered(L,R)&&compare(L,R)<0;
+   case 'le':return WL.formula.ordered(L,R)&&compare(L,R)<=0;
    case 'between':{
     const R2=operand(cond.right2,row,selfCol);
-    return compare(L,R)>=0&&compare(L,R2)<=0;
+    return WL.formula.ordered(L,R)&&WL.formula.ordered(L,R2)&&compare(L,R)>=0&&compare(L,R2)<=0;
    }
    case 'regex':
     // 書き間違いで一覧が壊れないように、不正な正規表現は「当たらない」。
@@ -1510,6 +1508,13 @@ const displayRules=(()=>{
    if(sd.kind==='calc')return fixExpr(sd.expr);
    return lit(sd.value,notes,asText);
   };
+  const filled=sd=>!!sd&&sd.kind==='value'&&String(sd.value==null?'':sd.value).trim()!=='';
+  const ord=(c,L,rights,body)=>{
+   const g=[];
+   if(!filled(c.left))g.push(`trim(${L}) <> ''`);
+   [].concat(rights).forEach(r=>{if(!filled(r))g.push(`trim(${side(r,true)}) <> ''`)});
+   return `(${[...g,body].join(' and ')})`;
+  };
   const cond=c=>{
    const L=side(c.left);
    switch(c.op){
@@ -1520,11 +1525,12 @@ const displayRules=(()=>{
        '04' と 4 でルールと答えが割れた）。値は字のまま渡す（数に読めるかは`cmp`が決める）。 */
     case 'eq':return `cmp(${L}, ${side(c.right,true)}) = 0`;
     case 'ne':return `cmp(${L}, ${side(c.right,true)}) <> 0`;
-    case 'gt':return `cmp(${L}, ${side(c.right,true)}) > 0`;
-    case 'ge':return `cmp(${L}, ${side(c.right,true)}) >= 0`;
-    case 'lt':return `cmp(${L}, ${side(c.right,true)}) < 0`;
-    case 'le':return `cmp(${L}, ${side(c.right,true)}) <= 0`;
-    case 'between':return `(cmp(${L}, ${side(c.right,true)}) >= 0 and cmp(${L}, ${side(c.right2,true)}) <= 0)`;
+    /* 大小は空欄を比べない（§9.581・ルールと同じ）。空でない固定値の側は確かめなくてよい。 */
+    case 'gt':return ord(c,L,c.right,`cmp(${L}, ${side(c.right,true)}) > 0`);
+    case 'ge':return ord(c,L,c.right,`cmp(${L}, ${side(c.right,true)}) >= 0`);
+    case 'lt':return ord(c,L,c.right,`cmp(${L}, ${side(c.right,true)}) < 0`);
+    case 'le':return ord(c,L,c.right,`cmp(${L}, ${side(c.right,true)}) <= 0`);
+    case 'between':return ord(c,L,[c.right,c.right2],`cmp(${L}, ${side(c.right,true)}) >= 0 and cmp(${L}, ${side(c.right2,true)}) <= 0`);
     /* 含む・始まる・終わるは、ルールでは**右辺が空なら当たらない**（式の関数は空で真）。正規表現は空でも当たる
        （空の正規表現はどの字にも合う＝ルールも式も同じ）。 */
     case 'contains':case 'startsWith':case 'endsWith':case 'regex':{
@@ -1736,12 +1742,8 @@ const cellFormat=(()=>{
   if(!m)return s;
   return m[1]+m[2].replace(/\B(?=(\d{3})+(?!\d))/g,',')+(m[3]||'');
  }
- function asNumber(v){
-  const t=String(v==null?'':v).trim().replace(/,/g,'');
-  if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
-  const n=Number(t);
-  return Number.isFinite(n)?n:null;
- }
+ /* 数として読めるかは式の`looseNum`の1箇所（§9.581）。 */
+ const asNumber=v=>WL.formula.looseNum(v);
  /* 指定1つを値へ当てる。整形できなければnullを返し、呼び出し側が生の値を出す。 */
  function run(spec,raw){
   if(!spec)return null;

@@ -21,8 +21,8 @@
 ------------------------------------------------------------
   [列名]              その行のその列の値
   数値 / '文字列'     そのまま
-  + - * / %  ( )      四則(+は数値どうしなら足し算、片方が文字なら連結)
-  = <> < <= > >=      比較(真なら1、偽なら0)
+  + - * / %  ( )      四則(+は数どうしなら足し算、片方が字なら連結・§9.581)
+  = <> < <= > >=      比較(真なら1、偽なら0。数どうしは数で・空欄は大小に当たらない)
   and / or / not      論理
   if(条件, 真, 偽)    条件分岐
   num(x) text(x) round(x,n) abs(x) len(x) left(x,n) right(x,n)
@@ -32,7 +32,8 @@
  /* 長すぎる式は読めないので入口で断る。**2000字**（§9.474）——表示ルールを式へ変換すると
     （行＝if の入れ子）実際のルール（4条件×6行）で 400字を超えた。 */
  const MAX_LEN=2000;
- const NUM=/^\d+(\.\d+)?/;
+ /* 式の中に書く数（`12`・`12.5`・`.5`）。3桁区切りは書けない（`,`は引数の区切り）。 */
+ const NUM=/^(\d+(\.\d+)?|\.\d+)/;
 
  /* ---------- 字句解析 ---------- */
  function lex(src){
@@ -152,42 +153,57 @@
  }
 
  /* ---------- 評価 ---------- */
- const numOf=v=>{
-  if(v===null||v===undefined||v==='')return null;
-  if(typeof v==='number')return v;
-  const n=parseFloat(String(v).replace(/,/g,''));
-  return Number.isFinite(n)?n:null;
- };
+ /* ---------- 数の読み方（§9.581・**画面ではここが1箇所**） ----------
+    値は字で届く（'1,200'・'12.50'・'010'・'12A'）。読み方は2つだけ持ち、どこもこのどちらかを呼ぶ:
+      looseNum  … **数として読めるか**。字の全体が数のときだけ（前後の空白・3桁区切り・先頭のゼロ・
+                  「+」・末尾のゼロを許す）。**部分だけは読まない**（'12A'→12・'2026-10-11'→2026 にしない）。
+                  3桁区切りは**正しい位置のときだけ**（'1,2'・'12,00' は字のまま）。
+      strictNum … **書いてある通りに数か**（数か字かを決める所＝比較演算子と`+`）。looseNum に加えて
+                  **整数の部分が0で始まらない**こと（'010'・'007' はコード＝字。'0'・'0.5' は数）。
+    計算（- * / % と関数）は looseNum、比較演算子と`+`は strictNum、表示ルールの比べ方`cmp()`は looseNum
+    （§9.477の約束どおり '5' と '05' を同じに見る）。サーバーの並べ替え・絞り込みは`sort_order.num_of()`が
+    同じ決まりを持つ（網: test_formula の表と test_sortpipe）。 */
+ const LOOSE_NUM=/^[-+]?((\d{1,3}(,\d{3})+|\d+)(\.\d*)?|\.\d+)$/;
  const textOf=v=>v===null||v===undefined?'':String(v);
- const truthy=v=>{const n=numOf(v);return n===null?textOf(v)!=='':n!==0};
- /* 比較のためだけの「本当に数か」。**元の文字へ戻して一致するときだけ数**
-    とみなす。`numOf`は緩く読む(計算では '010'×2=20 でよい)が、比較で
-    それをやると **`[コード] = 10` が '010' に当たってしまう**——先頭ゼロの
-    コードは実データに普通にあるので、照合が黙って壊れる。 */
- /* **表示ルールの比べ方**（§9.477）: 両辺が数として読めれば数で、そうでなければ字で比べる（-1/0/1）。
-    数の読み方は**緩い**——前後の空白・3桁区切り・先頭のゼロ・「+」を許す（実データは同じ項目でも
-    '5'・'05'・'5.0'・'1,000' が混ざる）。上の比較演算子（`=`等）は先頭ゼロのコードを取り違えないために
-    **厳しく**読むので、2つは別の約束。**表示ルールの判定（base.js）もこの1本を呼ぶ**——ルールを式へ
-    変換したとき、同じ比べ方の式（`cmp(a,b) = 0`）で同じ答えになる。 */
- const LOOSE_NUM=/^[-+]?(\d+\.?\d*|\.\d+)$/;
  const looseNum=v=>{
-  const t=textOf(v).trim().replace(/,/g,'');
+  if(typeof v==='number')return Number.isFinite(v)?v:null;
+  const t=textOf(v).trim();
   if(!t||!LOOSE_NUM.test(t))return null;
-  const n=Number(t);return Number.isFinite(n)?n:null;
+  const n=Number(t.replace(/,/g,''));return Number.isFinite(n)?n:null;
  };
+ const strictNum=v=>{
+  if(typeof v==='number')return Number.isFinite(v)?v:null;
+  const n=looseNum(v);
+  if(n===null)return null;
+  const int=textOf(v).trim().replace(/^[-+]/,'').split('.')[0];
+  return int.length>1&&int[0]==='0'?null:n;
+ };
+ const numOf=looseNum;
+ /* 計算の結果は**15桁へ丸める**（0.1+0.2 を 0.30000000000000004 と出さない・= 0.3 を偽にしない）。
+    15桁は倍精度で確かに表せる桁数。測定の値（多くて6桁）を落とすことはない。 */
+ const tidy=n=>Number.isFinite(n)?Number(n.toPrecision(15)):null;
+ /* 四捨五入は**0から遠い側へ**（Excel の ROUND と同じ: -2.5→-3）。桁は10進の字でずらす
+    （1.005×100 は 100.4999… なので、掛け算でずらすと 1.00 になる）。 */
+ function roundHalfAway(n,d){
+  const shift=(x,k)=>{const [m,e]=String(x).split('e');return Number(m+'e'+((Number(e)||0)+k))};
+  const r=Math.round(shift(Math.abs(n),d));
+  return tidy(Math.sign(n)*shift(r,-d));
+ }
+ const truthy=v=>{const n=numOf(v);return n===null?textOf(v)!=='':n!==0};
+ /* **表示ルールの比べ方**（§9.477）: 両辺が数として読めれば数で、そうでなければ字で比べる（-1/0/1）。
+    上の比較演算子（`=`等）は先頭ゼロのコードを取り違えないために strictNum で読むので、2つは別の約束。
+    **表示ルールの判定（base.js）もこの1本を呼ぶ**——ルールを式へ変換したとき、同じ比べ方の式
+    （`cmp(a,b) = 0`）で同じ答えになる。 */
+ /* **大小を比べられるか**（§9.581）: どちらかが空欄なら比べない。字の比べ方だと空欄は「どの数より
+    小さい」になり、`[値] < 5`が未入力の行にまで当たる。式の`<`等・表示ルールの大小・サーバーの
+    `rule_test`が同じ答えを使う（`=`／`<>`は空欄どうしの一致を見たいので対象外）。 */
+ const ordered=(a,b)=>textOf(a).trim()!==''&&textOf(b).trim()!=='';
  function cmp(a,b){
   const x=looseNum(a),y=looseNum(b);
   if(x!==null&&y!==null)return x<y?-1:x>y?1:0;
   const s=textOf(a),t=textOf(b);
   return s<t?-1:s>t?1:0;
  }
- const strictNum=v=>{
-  if(typeof v==='number')return v;
-  const s=textOf(v).trim();
-  if(s==='')return null;
-  const n=Number(s);
-  return Number.isFinite(n)&&String(n)===s?n:null;
- };
 
  /* ---------- 文字列からの抽出・変換（§9.464、利用者の指示「データの抽出などは対応できて
     いないので、文字列からの抽出や変換処理もできるように」） ----------
@@ -212,8 +228,7 @@
   text:a=>textOf(a[0]),
   abs:a=>{const n=numOf(a[0]);return n===null?null:Math.abs(n)},
   round:a=>{const n=numOf(a[0]);if(n===null)return null;
-            const d=Math.max(0,Math.min(8,numOf(a[1])||0));
-            const p=Math.pow(10,d);return Math.round(n*p)/p},
+            return roundHalfAway(n,Math.max(0,Math.min(8,Math.trunc(numOf(a[1])||0))))},
   len:a=>textOf(a[0]).length,
   left:a=>textOf(a[0]).slice(0,Math.max(0,numOf(a[1])||0)),
   right:a=>{const n=Math.max(0,numOf(a[1])||0);return n?textOf(a[0]).slice(-n):''},
@@ -270,6 +285,7 @@
     /* **どちらも「本当に数」のときだけ数で比べる。** 緩く読むと
        「'010' = 10」が真になり、先頭ゼロのコードの照合が壊れる。 */
     const [l,r]=(x!==null&&y!==null)?[x,y]:[textOf(a),textOf(b)];
+    if(n.op!=='='&&n.op!=='<>'&&!ordered(a,b))return 0;
     switch(n.op){
      case '=':return l===r?1:0;
      case '<>':return l!==r?1:0;
@@ -282,18 +298,18 @@
    case 'bin':{
     const a=evalNode(n.a,row),b=evalNode(n.b,row);
     if(n.op==='+'){
-     const x=numOf(a),y=numOf(b);
-     /* 片方でも数でなければ**連結**。「品番+枝番」のような使い方が
-        いちばん多いので、そこで0が出ると意図と違う。 */
-     if(x!==null&&y!==null)return x+y;
+     /* 両方が**書いてある通りに数**のときだけ足し算、そうでなければ**連結**。「品番+枝番」の
+        使い方がいちばん多い——'12A'+'3' を 15、'010'+'3' を 13 にしない（§9.581）。 */
+     const x=strictNum(a),y=strictNum(b);
+     if(x!==null&&y!==null)return tidy(x+y);
      return textOf(a)+textOf(b);
     }
     const x=numOf(a),y=numOf(b);
     if(x===null||y===null)return null;
-    if(n.op==='-')return x-y;
-    if(n.op==='*')return x*y;
-    if(n.op==='/')return y===0?null:x/y;      // 0除算は空にする(エラーにしない)
-    return y===0?null:x%y;
+    if(n.op==='-')return tidy(x-y);
+    if(n.op==='*')return tidy(x*y);
+    if(n.op==='/')return y===0?null:tidy(x/y);      // 0除算は空にする(エラーにしない)
+    return y===0?null:tidy(x%y);
    }
    case 'call':{
     if(n.name==='if'){
@@ -391,12 +407,12 @@
   const o=opt||{};
   WL.popMenu.suggest(inp,el=>suggestItems(el,o));
  }
- window.WL.formula={compile,check,parse,sigs:SIGS,truthy,cmp,MAX_LEN,suggest,
+ window.WL.formula={compile,check,parse,sigs:SIGS,truthy,cmp,ordered,looseNum,MAX_LEN,suggest,
              /* 説明文をパネルとドキュメントで共用する(2箇所に書かない)。 */
              help:[
               ['[列名]','その行のその列の値'],
-              ['+ - * / %','四則。+ は数値どうしなら足し算、片方が文字なら連結'],
-              ['= <> < <= > >=','比較(真なら1・偽なら0)'],
+              ['+ - * / %','四則。+ は数どうしなら足し算、片方が字（010・12A など）なら連結'],
+              ['= <> < <= > >=','比較(真なら1・偽なら0)。1,200・12.50 も数で比べる。010 のようなコードは字のまま。空欄は大小に当たらない'],
               ['and / or / not','論理'],
               ['if(条件, 真, 偽)','条件で切り替える'],
               ['round(x,n) abs(x) num(x)','数の整え'],

@@ -22,6 +22,7 @@ import threading
 import time
 
 from .logging_setup import app_logger
+from .sort_order import num_of
 from .quiet import quiet
 
 # 接続はSQLiteのみ。以前はAccess(pyodbc)にも接続できたが、実機を含め全ての
@@ -145,6 +146,9 @@ def connect(path,readonly=False,engine=None):
  # **接続をSQLiteへ統一した後も残す**(消すと全マスタSQLの書き換えが要る)。
  c.create_function('Now',0,_sqlite_now);c.create_function('Nz',2,_sqlite_nz)
  c.create_function('CStr',1,_sqlite_cstr);c.create_function('Val',1,_sqlite_val)
+ # 一覧の絞り込みの大小（以上・以下…）が読む数（§9.581）。`Val()`は**先頭の数字だけ**を読むので
+ # '1,200'→1・'12A'→12・空欄→0 になっていた。読めない値は NULL＝大小の条件に当たらない。
+ c.create_function('NumOf',1,num_of,deterministic=True)
  return c
 
 # 列名の取得は「1行だけSELECTして description を見る」実装のため、共有越しの

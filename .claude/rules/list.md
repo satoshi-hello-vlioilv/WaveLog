@@ -1,4 +1,4 @@
-# 一覧と列（156件）
+# 一覧と列（158件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 数の読み方は`WL.formula`の2つ（looseNum／strictNum）・サーバーは`num_of()`。字の全体だけ・3桁区切りは正しい位置だけ | `test_formula.js`・`test_displayrule.py` | [§9.581](../../docs/decisions/9.581.md) |
+| 大小は空欄を比べない（`ordered()`）。式を使う表示ルールはサーバーで表示の値の並べ替えをしない | `test_formula.js`・`test_displayrule.py` | [§9.581](../../docs/decisions/9.581.md) |
 | 表示ルールの行の中は「かつ／または」と**かっこ（2段まで）**。組の答えは`groupsOf()`／`rule_groups()`の1組 | `test_colrule.js`・`test_displayrule.py` | [§9.523](../../docs/decisions/9.523.md) |
 | 「品質データを出していたか」は**画面の印（`qa-mode`）そのもの**から読む。別の控えを持たない（一覧の`exit`は印しか外さない） | `test_flows.js` | [§9.523](../../docs/decisions/9.523.md) |
 | 列の設定を開いたら絞り込みは全部外す（`clearFilters()`の1箇所）。列名で絞る間は「絞り込み中」と字で言う | `test_lcpanel.js` | [§9.490](../../docs/decisions/9.490.md) |

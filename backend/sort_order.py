@@ -41,7 +41,9 @@ import re
 KINDS=('empty','num','date','text')
 KIND_LABEL={'empty':'空欄','num':'数値','date':'日付','text':'文字列'}
 
-_NUM_RE=re.compile(r'^[-+]?(\d+\.?\d*|\.\d+)$')
+# 数として読める字（§9.581）。画面の`WL.formula.looseNum`と同じ決まり: 字の全体が数のときだけ、
+# 3桁区切りは**正しい位置のときだけ**（'1,2'・'12,00' は字のまま。カンマをどこでも外すと 12・1200 に化ける）。
+_NUM_RE=re.compile(r'^[-+]?((\d{1,3}(,\d{3})+|\d+)(\.\d*)?|\.\d+)$')
 _DATE_RE=re.compile(r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})'
                     r'(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$')
 _DATE_PACKED_RE=re.compile(r'^(\d{4})(\d{2})(\d{2})(?:[ T]?(\d{2})(\d{2})(\d{2})?)?$')
@@ -53,9 +55,9 @@ def num_of(v):
     桁区切りのカンマは落とす（実データに '1,200' が混ざる）。"""
  if isinstance(v,bool):return None
  if isinstance(v,(int,float)):return float(v)
- t=str('' if v is None else v).strip().replace(',','')
+ t=str('' if v is None else v).strip()
  if not t or not _NUM_RE.match(t):return None
- try:return float(t)
+ try:return float(t.replace(',',''))
  except ValueError:return None
 
 
@@ -274,6 +276,10 @@ def _cmp(a,b):
  return -1 if s<t else (1 if s>t else 0)
 
 
+def _ordered(a,b):
+ return str('' if a is None else a).strip()!='' and str('' if b is None else b).strip()!=''
+
+
 def rule_test(cond,row,self_col):
  """条件1つ。画面(`WL.displayRules.test`)と同じ判定。"""
  L=_operand(cond.get('left'),row,self_col)
@@ -288,13 +294,14 @@ def rule_test(cond,row,self_col):
  if op=='contains':return rs!='' and rs in ls
  if op=='startsWith':return rs!='' and ls.startswith(rs)
  if op=='endsWith':return rs!='' and ls.endswith(rs)
- if op=='gt':return _cmp(L,R)>0
- if op=='ge':return _cmp(L,R)>=0
- if op=='lt':return _cmp(L,R)<0
- if op=='le':return _cmp(L,R)<=0
+ # 大小は空欄を比べない（§9.581・画面の`WL.formula.ordered`と同じ）。
+ if op=='gt':return _ordered(L,R) and _cmp(L,R)>0
+ if op=='ge':return _ordered(L,R) and _cmp(L,R)>=0
+ if op=='lt':return _ordered(L,R) and _cmp(L,R)<0
+ if op=='le':return _ordered(L,R) and _cmp(L,R)<=0
  if op=='between':
   R2=_operand(cond.get('right2'),row,self_col)
-  return _cmp(L,R)>=0 and _cmp(L,R2)<=0
+  return _ordered(L,R) and _ordered(L,R2) and _cmp(L,R)>=0 and _cmp(L,R2)<=0
  if op=='regex':
   # 書き間違いで並びが壊れないように、不正な正規表現は「当たらない」。
   try:return re.search(rs,ls) is not None
@@ -331,6 +338,19 @@ def rule_leaves(conds):
  for cd in conds or []:
   out.extend(rule_leaves(cd.get('conditions')) if is_rule_group(cd) else [cd])
  return out
+
+
+def rules_need_formula(rows):
+ """表示ルールが式を使っているか（§9.581）。式は画面の`WL.formula`だけが解くので、
+ 使っていればサーバーは表示の値を作れない（作れないと言うのは呼ぶ側）。"""
+ for r in rows or []:
+  t=r.get('text')
+  if isinstance(t,str) and t.startswith('='):return True
+  for cd in rule_leaves(r.get('conditions')):
+   if str(cd.get('op') or '')=='formula':return True
+   for side in (cd.get('left'),cd.get('right'),cd.get('right2')):
+    if isinstance(side,dict) and side.get('kind')=='calc':return True
+ return False
 
 
 def rule_match(rows,row,self_col):

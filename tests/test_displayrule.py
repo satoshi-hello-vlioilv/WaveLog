@@ -180,6 +180,37 @@ def main():
    rec('空のルール名は弾く',True)
   rec('無いルールを消してもエラーにしない',mr.delete_display_rule(c,'存在しない')==0)
 
+
+ # ---- §9.581 数の読み方（サーバー側） ----
+ # 画面の`WL.formula.looseNum`と同じ決まり。3桁区切りは正しい位置のときだけ・字の全体だけを読む。
+ from backend import sort_order as so
+ from backend.routes import tables as tb
+ nums=[('1,200',1200.0),('12.50',12.5),('+5',5.0),('.5',0.5),('1,2',None),('12,00',None),('1,2,3',None),
+       ('010',10.0),('-1,500',-1500.0),('12A',None),('2026-10-11',None)]
+ badn=[f'{v!r}→{so.num_of(v)!r}' for v,w in nums if so.num_of(v)!=w]
+ rec('サーバーの num_of は画面と同じ読み方',not badn,' / '.join(badn))
+ # 表示ルールの大小は空欄を比べない（画面の`WL.formula.ordered`と同じ）。
+ lt=lambda L,R:so.rule_test({'left':{'kind':'self'},'op':'lt','right':{'kind':'value','value':R}},{'x':L},'x')
+ rec('空欄は「より小さい」に当たらない',not lt('','5') and not lt('  ','5') and lt('3','5') and lt('1,200','2,000'))
+ # 式を使う表示ルールは、サーバーでは表示の値を作れない（作れないと言う）。
+ rec('式を使う表示ルールを見分ける',
+     so.rules_need_formula([{'conditions':[{'left':{'kind':'calc','expr':'1'},'op':'formula'}]}])
+     and so.rules_need_formula([{'conditions':[],'text':'=[x]*2'}])
+     and so.rules_need_formula([{'conditions':[{'left':{'kind':'self'},'op':'gt','right':{'kind':'calc','expr':'1'}}]}])
+     and not so.rules_need_formula([{'conditions':[{'left':{'kind':'self'},'op':'gt','right':{'kind':'value','value':'3'}}],'text':'大'}]))
+ # 一覧の絞り込みの大小（`NumOf()`・接続が登録する）。'1,200'＞1000、空欄・字の混じりは当たらない。
+ with tempfile.TemporaryDirectory() as td:
+  with connect(Path(td)/'f.sqlite3') as fc:
+   fc.execute('create table t(x)')
+   def hit(v,op,lim):
+    fc.execute('delete from t');fc.execute('insert into t values(?)',(v,))
+    parts,params=tb._build_filter_where([{'column':'x','op':op,'value':lim}])
+    return bool(fc.execute('select count(*) from t where '+' and '.join(parts),params).fetchone()[0])
+   fcases=[('1,200','gt','1000',True),('','lt','5',False),('12A','gt','10',False),('2026-10-11','gt','100',False),
+           ('1,200','lt','5',False),('-1,500','lt','-1000',True),(1200,'gte','1,200',True),('5','lt','abc',False)]
+   badf=[f'{v!r} {op} {lim}' for v,op,lim,w in fcases if hit(v,op,lim)!=w]
+   rec('一覧の絞り込みの大小は字の全体を数として読む',not badf,' / '.join(badf))
+
  bad=[r for r in R if not r[1]]
  print('\n=== SUMMARY ===')
  print(f'{len(R)-len(bad)}/{len(R)} passed')
