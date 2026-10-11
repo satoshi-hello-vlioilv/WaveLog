@@ -385,6 +385,17 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  background:var(--surface-2);font-size:var(--fs-sm);color:var(--ink-2)}
 .reload-menu-note b{color:var(--ink-2)}
 
+/* ⓘ の説明（§9.583・`WL.popMenu.tips()`）。札は字と同じ高さの小さな丸——**押せる物に見せすぎない**
+   （設定の主役は欄。説明は読みたい人だけが開く）。面は読ませる面なので字は本文の大きさ・行送りは広め。 */
+.wl-tip-i{display:inline-grid;place-items:center;flex:0 0 auto;width:18px;height:18px;margin:0 0 0 var(--space-1);
+  padding:0;border:1px solid var(--line-mid);border-radius:var(--radius-round);background:var(--surface);
+  color:var(--ink-2);font:italic var(--fw-strong) var(--fs-sm)/1 Georgia,serif;cursor:help;vertical-align:middle}
+.wl-tip-i:hover,.wl-tip-i:focus-visible{border-color:var(--teal);color:var(--teal-dark);background:var(--teal-tint)}
+.wl-tip{--menu-w:240px;--menu-w-max:420px;--menu-pad:var(--space-2) var(--space-3)}
+.wl-tip-body{font-size:var(--fs-base-sm);line-height:1.65;color:var(--ink);font-weight:var(--fw-body)}
+.wl-tip-body b{font-weight:var(--fw-strong)}
+.wl-tip-body code{font-size:var(--fs-sm);word-break:break-all}
+
 /* 一覧の見出しを右クリックしたときの小さなメニュー(§9.110)。
    列を1つ隠すためだけに設定パネルを開かせない。**戻す操作も同じ場所**に
    置く——隠した本人が次に探すのはここなので、別の場所を覚えさせない。 */

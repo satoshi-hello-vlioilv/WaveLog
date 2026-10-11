@@ -68,7 +68,9 @@ run('test_storageui: 置き場を1枚で見せて、その場で直す（§9.267
     drop:!!r.querySelector('[data-path-drop]'),
     make:!!r.querySelector('[data-pc-make]'),
     visible:!!r.offsetParent}));
-  return {rows,
+  return {rows:rows.filter(r=>!/^lc:/.test(r.key)),extra:rows.filter(r=>/^lc:/.test(r.key)),
+    readHead:((document.querySelector('[data-store-group="read"]>summary')||{}).textContent||'').replace(/\s+/g,' '),
+    readOpen:!!(document.querySelector('[data-store-group="read"]')||{}).open,
     groups:[...document.querySelectorAll('.pc-store-group')].map(g=>g.dataset.storeGroup),
     lc:[...document.querySelectorAll('[data-lc-field]')].map(x=>x.dataset.lcField)};
  });
@@ -76,15 +78,19 @@ run('test_storageui: 置き場を1枚で見せて、その場で直す（§9.267
  rec('置き場が1枚に出る（本体3つが必ず居る）',
    ['master','schedule','recordsShare'].every(k=>byKey(k).key),
    map.rows.map(r=>r.key).join(','));
- rec('群は3つ（この端末の中／みんなで使う／読むだけ）',
-   map.groups.join(',')==='terminal,share,read',map.groups.join(','));
+ /* 並びは**よく直す順**（§9.583）: みんなで使う → この端末の中 → 読むだけ（ここでは直さない・行き先だけ）。 */
+ rec('群は3つ（みんなで使う／この端末の中／読むだけ）',
+   map.groups.join(',')==='share,terminal,read',map.groups.join(','));
  rec('置き場の種類を文字で出す（色だけで伝えない）',
    map.rows.filter(r=>r.kind).length>=3,
    map.rows.map(r=>r.key+':'+r.kind).join(' '));
  rec('在るかどうかも文字で出す',
    map.rows.every(r=>r.exists),map.rows.map(r=>r.key+':'+r.exists).join(' '));
- rec('全部の行が見えている（畳んだ段の中に隠れていない）',
-   map.rows.every(r=>r.visible),String(map.rows.filter(r=>!r.visible).length));
+ /* **直す欄を持つ行は畳まない**。読むだけの群は全部そろっていれば畳み、**見出しが件数と状態を言う**（§9.261・§9.583）。 */
+ rec('直す欄を持つ行は畳まれずに見えている',
+   map.rows.filter(r=>r.input).every(r=>r.visible),map.rows.filter(r=>r.input&&!r.visible).map(r=>r.key).join(',')||'全部見えている');
+ rec('畳んだ「読むだけ」は見出しが件数と状態を言う（開かずに読める）',
+   map.readOpen||(/4か所/.test(map.readHead)&&/すべてあります|まだ無い|未設定|確かめられない/.test(map.readHead)),map.readHead);
 
  // ---- ② 直せる置き場は、その場に欄と参照…とドロップ先がある ----
  rec('直せる置き場は欄・参照…・ドロップ先がその場にある',
@@ -127,16 +133,24 @@ run('test_storageui: 置き場を1枚で見せて、その場で直す（§9.267
  const lcInfo=await page.evaluate(()=>{
   const el=document.querySelector('[data-lc-field="master_db_path"]');
   const row=el&&el.closest('.pc-store-row');
-  return {value:el?el.value:null,
-    tag:row?[...row.querySelectorAll('.pc-store-tag')].map(x=>x.textContent).join('/'):'',
-    foot:row?(row.querySelector('.pc-store-foot')||{}).textContent||'':''};
+  const grp=row&&row.closest('[data-store-group]');
+  return {value:el?el.value:null,placeholder:el?el.placeholder:'',
+    tag:grp?((grp.querySelector('summary')||{}).textContent||'')+' '+((grp.querySelector('summary [data-tip]')||{dataset:{}}).dataset.tip||''):'',
+    foot:row?(row.querySelector('.pc-store-more')||{}).textContent||'':''};
  });
  /* **保存値を出す**——効いている値を欄へ入れると、画面が送り返すだけで
     値が焼き付く（§9.250 ⑩と同じ形）。 */
  rec('欄に出るのは保存値（効いている値ではない）',lcInfo.value==='',JSON.stringify(lcInfo));
- rec('いま効いている値は欄の外に出す',/いま:/.test(lcInfo.foot),lcInfo.foot.slice(0,80));
- rec('この端末だけの設定だと文字で言う',/この端末だけ/.test(lcInfo.tag),lcInfo.tag);
+ rec('いま効いている値は欄の薄字と補足（⋯）が言う',/既定: .*master\.sqlite3/.test(lcInfo.placeholder)&&/いま/.test(lcInfo.foot),
+   lcInfo.placeholder+' / '+lcInfo.foot.slice(0,60));
+ rec('この端末だけの設定だと文字で言う（群の名前と ⓘ）',/この端末の中/.test(lcInfo.tag)&&/config\/local\.json/.test(lcInfo.tag),lcInfo.tag.slice(0,90));
  rec('効くタイミングを書く（再起動）',/再起動/.test(lcInfo.foot),lcInfo.foot.slice(0,80));
+ /* ⋯ を押すと補足が浮く（浮いた面は行の中の控えの写し）。 */
+ await page.click('[data-store-key="master"] [data-pc-more]');
+ await W.until(page,()=>!!document.querySelector('.wl-menu.pc-more'),null,{ms:5000,what:'⋯ の補足が浮く'});
+ const more=await page.evaluate(()=>(document.querySelector('.wl-menu.pc-more')||{}).textContent||'');
+ rec('⋯ を押すと出どころ・効く時・メモが浮く',/出どころ/.test(more)&&/効く時/.test(more),String(more).slice(0,80));
+ await page.keyboard.press('Escape');
 
  // ---- ⑤* 同じ設定の欄を画面に2つ置かない（§9.207 入口は1つ） ----
  /* 保存は `#masterMaintForm` の `[data-pc-field]` を**全部**集めるので、

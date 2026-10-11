@@ -21,197 +21,176 @@ run('test_setpage: §9.68 パス設定を設定ページ形式へ / データ引
  await page.click('#openMasterMaint');
  await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});await idle();
 
- // ---------- 共通設定（旧「パス設定」。§9.168でデータソースぶんを分離） ----------
+ // ---------- 共通設定（§9.583でゼロから組み直した。旧「パス設定」・§9.168でデータソースぶんを分離） ----------
  await tab('共通設定');
+ await W.until(page,()=>document.querySelectorAll('#masterMaintForm .pc-store-row').length>0,null,{ms:15000,what:'置き場の行が描かれる'});
+ await idle();
+ const NAMES=['この端末','置き場','共有と同期','RNE抽出','アプリの更新'];
  const p=await page.evaluate(()=>{
-  const sc=document.querySelector('.mm-set-scroll');
+  const sc=document.querySelector('.pc-page>.mm-tabbody');
   const panel=document.querySelector('#masterMaintPanel').getBoundingClientRect();
-  const save=document.querySelector('.mm-set-sticky button');
-  const sr=save.getBoundingClientRect();
-  // 入力欄が枠外へ切れていないか(親のスクロール領域の内側に収まっているか)
+  const sr=document.querySelector('#pcSave button[type=submit]').getBoundingClientRect();
   const scr=sc.getBoundingClientRect();
-  /* **いま開いている段の中だけを測る**（§9.261）。畳んだ段の欄は
-     `display:none`なので寸法を持たず、全部「見切れ」に数えられてしまう
-     （実際に14件と出た）。見えていない欄は切れようがない。 */
+  /* **いま開いている段の中だけを測る**（§9.261）。畳んだ段の欄は寸法を持たないので「見切れ」に数えない。 */
   const clipped=[...sc.querySelectorAll('input,select')].filter(e=>{
    if(!e.offsetParent)return false;
    const r=e.getBoundingClientRect();
    return r.height<8||r.right>scr.right+1;
   }).length;
-  return {scrollable:sc.scrollHeight>sc.clientHeight,
+  const tabs=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')];
+  return {scrollH:sc.scrollHeight,clientH:sc.clientHeight,
     saveInsidePanel:sr.bottom<=panel.bottom+1&&sr.top>=panel.top,
-    groups:document.querySelectorAll('.mm-set-group').length,
-    badges:document.querySelectorAll('.mm-apply-badge').length,
-    /* **置き場の行の中の欄は数えない**（§9.267）——あれは「置き場」の
-       1枚に並ぶ行で、1つの保存ボタンで送るために`data-pc-field`を持つ。
-       ここが見たいのは「素の欄として二重に置いていないか」。 */
-    fields:[...document.querySelectorAll('[data-pc-field]')]
-      .filter(e=>!e.closest('.pc-store-row')).map(e=>e.dataset.pcField),
+    /* **置き場の行の中の欄は数えない**（§9.267）——あれは「置き場」の1枚に並ぶ行。 */
+    fields:[...document.querySelectorAll('[data-pc-field]')].filter(e=>!e.closest('.pc-store-row')).map(e=>e.dataset.pcField),
     storeRows:document.querySelectorAll('.pc-store-row').length,
     clipped,listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display,
-    tabs:document.querySelectorAll('.mm-tabbar.is-page .mm-tab').length,
+    names:tabs.map(t=>(t.querySelector('.mm-fieldgroup')||{}).textContent||''),
+    icons:tabs.filter(t=>t.querySelector('.mm-tab-icon')).length,
+    sums:tabs.map(t=>(t.querySelector('.mm-tab-sum')||{}).textContent.trim()),
     shownPanels:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length,
-    scrollH:sc.scrollHeight,clientH:sc.clientHeight};
+    /* 段の名前を中でもう一度見出しで言わない（§9.583・§CLAUDE 8） */
+    rep:[...document.querySelectorAll('#masterMaintForm h3,#masterMaintForm h4,#masterMaintForm h5')]
+      .map(h=>h.textContent.trim()).filter(t=>tabs.some(x=>(x.querySelector('.mm-fieldgroup')||{}).textContent===t)),
+    oldMap:!!document.querySelector('.pc-map,.pc-rail,.mm-set-group')};
  });
- /* **1本の長いスクロールはやめた**（§9.261、利用者の指示「タブとアコーディオンを
-    主構成に」）。以前は実測2768pxを736pxの器で見ており、4回ぶんスクロール
-    していた。いまは章＝段（タブ）で、開いている章だけが出る。 */
- rec('章が段（タブ）になっている',p.tabs>=4,`${p.tabs}段`);
- rec('章の数だけまとまりがある',p.groups>=4,`${p.groups}グループ`);
- rec('開いている章は1つだけ',p.shownPanels===1,`${p.shownPanels}段が開いている`);
- /* **1画面に収まる**（段に分けた値打ちはここ）。器より中身が高いと
-    「畳んだのに結局スクロールする」ことになる。 */
- rec('1つの章は器に収まる（長いスクロールにならない）',
-     p.scrollH<=p.clientH+2,`中身${p.scrollH}px / 器${p.clientH}px`);
-/* 件数ではなく**キーの一覧**で見る。項目は増える(RNE資材の置き場・
-    symnavim.confの場所を§9.79で追加した)ので、数を固定すると足すたびに
-    落ちる。「あるべきものが全部出ているか」が見たいこと。 */
- /* **データソースごとの読み込み先はここに無い**（§9.168）。同じ「どこを読むか」を
-    2画面に置くと、どちらが効くのか分からなくなるため「データ接続」へ寄せた。
-    **置き場（作業予定・測定データ・複製先・マスタ）は「置き場」の段が持つ**
-    （§9.267、利用者の指示「全ての設定を共通設定に視覚的に表現した上で」）。
-    §9.202では複製先を「測定データの保存」に置くと決めていたが、置き場が
-    画面に散っているのがそもそもの困りごとだったので撤回した。あちらは
-    `data-pc-field`ではなく置き場の行（`.pc-store-row`）として出るので、
-    ここが数える欄の一覧には**入らない**。 */
- const WANT=['sikalot_source','rne_extract_enabled',
-   'rne_extract_interval_sec','rne_assets_dir','rne_conf_path',
-   'schedule_lock_ttl_sec','schedule_lock_verify_delay_ms'];
- /* 置き場の欄をここ（`data-pc-field`）へ戻さない——戻すと同じ設定が
-    「置き場」の行と欄の2箇所に出る。 */
+ rec('段は5つ（この端末・置き場・共有と同期・RNE抽出・アプリの更新）',
+     JSON.stringify(p.names)===JSON.stringify(NAMES),p.names.join('／'));
+ /* **札が状態を言う**（§9.583 ①、利用者の報告「タブがわかりにくい」）——絵・名前・いまの一言。 */
+ rec('札は絵と「いまの一言」を持つ（開かずに状態が読める）',
+     p.icons===5&&p.sums.every(s=>s.length>0),JSON.stringify(p.sums));
+ rec('開いている段は1つだけ',p.shownPanels===1,`${p.shownPanels}段`);
+ rec('上の図・章のレール・段の名前の見出しの繰り返しは無い（主役の場所を空ける）',
+     !p.oldMap&&p.rep.length===0,JSON.stringify({旧:p.oldMap,繰り返し:p.rep}));
+ /* 1つの段は器に収まる（段に分けた値打ちはここ）。 */
+ rec('最初の段は器に収まる（長いスクロールにならない）',p.scrollH<=p.clientH+2,`中身${p.scrollH}px / 器${p.clientH}px`);
+ /* 件数ではなく**キーの一覧**で見る（項目は増える）。**データソースごとの読み込み先はここに無い**（§9.168）。
+    **置き場（作業予定・測定データ・複製先・マスタ）は「置き場」の段の行が持つ**（§9.267）。 */
+ const WANT=['pc_name','sikalot_source','db_mirror_update','db_mirror_interval_sec',
+   'schedule_watch_enabled','schedule_owner_enabled','schedule_session_block','schedule_source_sync',
+   'rne_extract_enabled','rne_extract_interval_sec','rne_assets_dir','rne_conf_path',
+   'schedule_lock_ttl_sec','schedule_lock_verify_delay_ms','update_dir'];
  const MOVED=['records_backup_export_path','records_share_dir','schedule_share_path'];
  const missing=WANT.filter(k=>!p.fields.includes(k));
  rec('よそへ移した設定をここに残さない',MOVED.every(k=>!p.fields.includes(k)),
      MOVED.filter(k=>p.fields.includes(k)).join(',')||'なし');
- rec('設定項目が漏れなく出ている',missing.length===0,
-   missing.length?`不足: ${missing.join(',')}`:`${p.fields.length}件`);
+ rec('設定項目が漏れなく出ている',missing.length===0,missing.length?`不足: ${missing.join(',')}`:`${p.fields.length}件`);
+ rec('同じ設定の欄を2つ置かない',new Set(p.fields).size===p.fields.length,p.fields.join(','));
  rec('入力欄が枠外へ切れていない',p.clipped===0,p.clipped+'件が見切れ');
- /* データソースの読み込み先は**ここでは変えられない**（読み取り専用の
-    並びだけ出す）。入力欄が残っていたら2画面に同じ設定がある状態。 */
- const dup=p.fields.filter(k=>/_path$/.test(k)&&!['schedule_share_path','records_backup_export_path','rne_conf_path'].includes(k));
+ const dup=p.fields.filter(k=>/_path$/.test(k)&&!['rne_conf_path'].includes(k));
  rec('データソースごとの読み込み先の欄は共通設定に無い',dup.length===0,dup.join(','));
- /* **起動アイコンの盤はここに無い**（§9.445）。盤はヘッダーの「表示」へ移した
-    ——共通設定はスケジュールモードでは出ないので、あそこだけに置くと現場の
-    端末からは作れない。ここに残るのは**いまの状態と行き先**だけで、
-    名前・絵の欄（`data-pc-field`）は1つも無いこと（設定を直す面を2つにしない）。 */
+ /* **起動アイコンの盤はここに無い**（§9.445）。ここに残るのは**いまの状態と行き先**だけ。 */
  const sc=await page.evaluate(()=>({
-   欄:[...document.querySelectorAll('[data-pc-field]')].map(e=>e.dataset.pcField)
-     .filter(k=>/^shortcut_/.test(k)),
+   欄:[...document.querySelectorAll('[data-pc-field]')].map(e=>e.dataset.pcField).filter(k=>/^shortcut_/.test(k)),
    状態:!!document.querySelector('#pcShortcut [data-sc-state]'),
    行き先:!!document.getElementById('pcScOpen'),
    作る:!!document.getElementById('lnkMake')}));
- rec('起動アイコンの名前・絵の欄は共通設定に無い（盤は「表示」の1箇所）',
-   sc.欄.length===0&&!sc.作る,sc.欄.join(',')||'なし');
- rec('共通設定にはいまの状態と行き先が残る（探させない）',
-   sc.状態&&sc.行き先,`状態${sc.状態} 行き先${sc.行き先}`);
- rec('反映タイミングがまとまりごとに示されている',p.badges>=4,p.badges+'個');
+ rec('起動アイコンの名前・絵の欄は共通設定に無い（盤は「表示」の1箇所）',sc.欄.length===0&&!sc.作る,sc.欄.join(',')||'なし');
+ rec('共通設定にはいまの状態と行き先が残る（探させない）',sc.状態&&sc.行き先,`状態${sc.状態} 行き先${sc.行き先}`);
  rec('保存ボタンが常にパネル内に見えている',p.saveInsidePanel);
  rec('設定ページでは下段の一覧枠を畳む',p.listWrap==='none',p.listWrap);
- // 一番下までスクロールしても保存ボタンは見えたまま
- await page.evaluate(()=>{const sc=document.querySelector('.mm-set-scroll');sc.scrollTop=sc.scrollHeight});
- await paint();
- const bottom=await page.evaluate(()=>{
-  const panel=document.querySelector('#masterMaintPanel').getBoundingClientRect();
-  const sr=document.querySelector('.mm-set-sticky button').getBoundingClientRect();
-  const sc=document.querySelector('.mm-set-scroll');
-  const last=sc.lastElementChild.getBoundingClientRect(),scr=sc.getBoundingClientRect();
-  return {save:sr.bottom<=panel.bottom+1,lastVisible:last.bottom<=scr.bottom+2};
+ /* ---- 段ごと: 器に収まるか・札は動かないか・保存の帯は動かないか ---- */
+ const per=[];
+ for(const n of NAMES){
+  const r=await page.evaluate(async n=>{
+   const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')].find(x=>(x.querySelector('.mm-fieldgroup')||{}).textContent===n);
+   t.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const sc=document.querySelector('.pc-page>.mm-tabbody');
+   const bar0=document.querySelector('.mm-tabbar.is-page').getBoundingClientRect().top;
+   sc.scrollTop=sc.scrollHeight;
+   await new Promise(r=>requestAnimationFrame(r));
+   const bar1=document.querySelector('.mm-tabbar.is-page').getBoundingClientRect().top;
+   const panel=document.querySelector('#masterMaintPanel').getBoundingClientRect();
+   const save=document.querySelector('#pcSave');
+   const sr=save.querySelector('button').getBoundingClientRect();
+   const open=[...document.querySelectorAll('.mm-tabpanel.is-page')].find(x=>!x.hidden);
+   const last=open.lastElementChild;
+   const lr=last?last.getBoundingClientRect():{bottom:0},scr=sc.getBoundingClientRect();
+   sc.scrollTop=0;
+   return {n,ratio:+(sc.scrollHeight/sc.clientHeight).toFixed(2),barStill:Math.abs(bar1-bar0)<1,
+     save:save.hidden||(sr.bottom<=panel.bottom+1),lastVisible:lr.bottom<=scr.bottom+2,
+     selected:t.getAttribute('aria-selected')==='true'};
+  },n);
+  per.push(r);
+ }
+ rec('段を切り替えると、その札が選ばれる',per.every(r=>r.selected),JSON.stringify(per.map(r=>r.n+':'+r.selected)));
+ rec('段の中を送っても札は動かない（段を切り替える場所を探させない）',per.every(r=>r.barStill),JSON.stringify(per.map(r=>r.n+':'+r.barStill)));
+ rec('どの段でも保存ボタンはパネル内に居る',per.every(r=>r.save),JSON.stringify(per.map(r=>r.n+':'+r.save)));
+ rec('どの段でも最下部の内容まで表示できる',per.every(r=>r.lastVisible),JSON.stringify(per.map(r=>r.n+':'+r.lastVisible)));
+ /* **段は器の1.1倍まで**（以前の置き場は2倍——説明の文と状態の対比で1件が4段あった）。 */
+ rec('どの段も器の1.1倍に収まる（以前は置き場が2倍）',per.every(r=>r.ratio<=1.1),JSON.stringify(per.map(r=>r.n+':'+r.ratio)));
+ /* ---- 説明は ⓘ へ畳む（§9.583 ②）。押すと浮いて読める（押しても何も起きない物を残さない） ---- */
+ await page.evaluate(()=>[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')].find(x=>/共有と同期/.test(x.textContent)).click());
+ await idle();
+ const tips=await page.evaluate(()=>({n:document.querySelectorAll('#masterMaintForm [data-tip]').length,
+   hints:[...document.querySelectorAll('#masterMaintForm .mm-field-hint')].filter(e=>e.offsetParent).length}));
+ rec('説明の文は ⓘ に畳む（段に説明の段落を並べない）',tips.n>=10&&tips.hints===0,JSON.stringify(tips));
+ await page.click('#pcSync-mirror summary .wl-tip-i');
+ const tipOpen=await W.until(page,()=>{const t=document.querySelector('.wl-menu.wl-tip');return !!t&&/手元へ写して/.test(t.textContent)},null,{ms:5000,what:'ⓘ の説明が浮く'});
+ rec('ⓘ を押すと説明が浮く（畳みは開け閉めしない）',tipOpen&&await page.evaluate(()=>!document.getElementById('pcSync-mirror').open));
+ await page.keyboard.press('Escape');
+ /* 共有と同期は1節1行の畳みで、**同時に開くのは1つ**（`<details name>`）。見出しにいまの値。 */
+ const acc=await page.evaluate(async()=>{
+  const a=document.querySelector('#pcSync-watch'),b=document.querySelector('#pcSync-owner');
+  a.open=true;await new Promise(r=>requestAnimationFrame(r));b.open=true;await new Promise(r=>requestAnimationFrame(r));
+  const r={a:a.open,b:b.open,now:[...document.querySelectorAll('.pc-sync .pc-acc-now')].map(x=>x.textContent.trim())};
+  b.open=false;return r;
  });
- rec('最後までスクロールしても保存ボタンが押せる',bottom.save);
- rec('最下部の内容まで表示できる',bottom.lastVisible);
- /* 段を切り替えても保存ボタンは動かない（本文の外にある・§9.222 ⑦）。 */
- const afterTab=await page.evaluate(()=>{
-  const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')];
-  if(t.length>2)t[2].click();
-  const panel=document.querySelector('#masterMaintPanel').getBoundingClientRect();
-  const sr=document.querySelector('.mm-set-sticky button').getBoundingClientRect();
-  return {save:sr.bottom<=panel.bottom+1,
-          shown:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length};
+ rec('共有と同期の節は同時に1つだけ開く',acc.a===false&&acc.b===true,JSON.stringify({a:acc.a,b:acc.b}));
+ rec('畳んだ節の見出しにいまの値が出る（思い出させない）',acc.now.length>=7&&acc.now.every(x=>x.length>0),acc.now.join(' | '));
+ /* ---- 再起動が要る欄（§9.208 ⑨ → §9.583）。効く時を字で言い、食い違いだけを「再起動待ち」と言う ---- */
+ const rs=await page.evaluate(()=>{
+  const c=document.querySelector('[data-pc-state="sikalot_source"]');
+  return {txt:c?c.textContent.trim():'',title:c?c.title:'',
+    pend:[...document.querySelectorAll('#masterMaintForm .pc-pending')].map(x=>(x.closest('[data-pc-row],tr')||x).textContent.trim().slice(0,30))};
  });
- rec('段を切り替えても保存ボタンはパネル内に居る',afterTab.save);
- rec('段を切り替えても開くのは1つだけ',afterTab.shown===1,`${afterTab.shown}段`);
- /* ---- 状態は**その欄のすぐ下**（§9.208 ⑨、利用者の指示で作り直した） ----
-    以前は画面のいちばん下に「保存値／いま効いている値」の対比表があり、
-    直した欄がその表のどの行なのかを探すことになっていた。表は廃止し、
-    状態は欄が持つ（§8 同じ情報を2箇所に出さない）。 */
- const cmp=await page.evaluate(()=>{
-  const st=[...document.querySelectorAll('.pc-state')];
-  const near=st.filter(el=>{
-   const f=el.closest('.mm-field');
-   return !!f&&!!f.querySelector('[data-pc-field]');
-  });
-  return{旧表:!!document.getElementById('pathConfigActive'),
-    状態欄:st.length,欄の下にある:near.length,
-    比べている:st.filter(el=>/いま/.test(el.textContent)&&/保存値/.test(el.textContent)).length,
-    章:[...document.querySelectorAll('[data-pc-section]')].map(x=>x.dataset.pcSection),
-    図:document.querySelectorAll('.pc-map .pc-node').length,
-    図の値:[...document.querySelectorAll('[data-pc-map]')].map(x=>x.textContent.trim()).filter(Boolean).length,
-    /* レールは§9.261で**段（タブ）**になった。 */
-    段:document.querySelectorAll('.mm-tabbar.is-page .mm-tab').length};
+ rec('再起動が要る欄は効く時を字で言い、いまの値と保存値は札の説明が持つ',
+     /再起動/.test(rs.txt)&&/いま効いている値/.test(rs.title)&&/保存値/.test(rs.title),JSON.stringify(rs));
+ rec('値が同じ項目を「再起動待ち」と誤表示しない',rs.pend.length===0,JSON.stringify(rs.pend));
+ /* PC名は**この端末の段**に出る（§9.208 ⑧）。読むだけの値に入力欄風の枠を付けない（§CLAUDE 10）。 */
+ await page.evaluate(()=>document.querySelector('.mm-tab[data-tab-key="terminal"]').click());
+ const who=await page.evaluate(()=>{
+  const d=[...document.querySelectorAll('#pcWho>div')];
+  const b=document.querySelector('#pcWho b');
+  const cs=d[0]?getComputedStyle(d[0]):null;
+  return {欄:d.length,PC名:b?b.textContent:'',出どころ:(document.querySelector('#pcWho small')||{}).textContent||'',
+   枠:cs?parseFloat(cs.borderTopWidth):-1,名乗り直す:!!document.querySelector('[data-pc-field="pc_name"]')};
  });
- rec('下段の対比表は廃止した（状態は欄が持つ）',cmp.旧表===false,String(cmp.旧表));
- rec('保存値と現在有効な値を欄のすぐ下で見比べられる',
-   cmp.比べている>=1&&cmp.欄の下にある>=1,JSON.stringify(cmp));
- rec('この端末のつながりを図で出す',cmp.図>=3&&cmp.図の値>=3,JSON.stringify({図:cmp.図,値:cmp.図の値}));
- rec('章立てと段（タブ）がある',cmp.段===cmp.章.length&&cmp.章.length>=4,
-     cmp.章.join('／')+' / '+cmp.段+'段');
- /* 押すとその章へ連れて行く（探させない）。 */
- /* 章は段になったので、**飛ぶ＝段を切り替えること**（§9.261・§9.266）。
-    図のノードから飛べることを見る（入口を2本作らない）。 */
- const jumped=await page.evaluate(async()=>{
-  const btn=document.querySelector('.pc-map [data-pc-jump="schedule"]');
-  if(!btn)return{無い:true};
-  btn.click();
-  await new Promise(r=>setTimeout(r,700));
-  const sec=document.getElementById('pcSec-schedule');
-  const panel=sec&&sec.closest('.mm-tabpanel');
-  return{見えている:!!panel&&!panel.hidden,
-    開いている段:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length};
- });
- rec('図から章へ飛ぶとその段が開く',
-     jumped.見えている===true&&jumped.開いている段===1,JSON.stringify(jumped));
- // 一致している項目に「再起動待ち」を出さない(表示文字列で誤検知しない)
- const pend=await page.evaluate(()=>[...document.querySelectorAll('.pc-state.is-pending-restart,.pc-source.is-pending-restart')]
-   .map(r=>r.innerText.split('\n')[0]));
- rec('値が同じ項目を「再起動待ち」と誤表示しない',pend.length===0,JSON.stringify(pend));
- /* PC名は**この端末の章**に出る（§9.208 ⑧）。取れない端末があったので、
-    名前そのものと出どころ、名乗り直す欄までを1箇所に置く。 */
- const who=await page.evaluate(()=>({
-  欄:document.querySelectorAll('#pcWho>div').length,
-  PC名:(document.querySelector('#pcWho b')||{}).textContent||'',
-  出どころ:(document.querySelector('#pcWho i')||{}).textContent||'',
-  名乗り直す:!!document.querySelector('[data-pc-field="pc_name"]')}));
  rec('この端末のPC名・出どころ・名乗り直す欄がある（§9.208 ⑧）',
-   who.欄===3&&!!who.PC名&&who.PC名!=='（取得できていません）'&&!!who.出どころ&&who.名乗り直す,
-   JSON.stringify(who));
+   who.欄===3&&!!who.PC名&&who.PC名!=='（取得できていません）'&&!!who.出どころ&&who.名乗り直す,JSON.stringify(who));
+ rec('名乗り（読むだけ）に入力欄風の枠を付けない',who.枠===0,String(who.枠));
 
  // 他タブへ移ると設定ページ用の指定が残らない
- // （オペレータマスタは §9.221 ③ で操業データ選択肢マスタへ統合して撤去した）
  await tab('アクセス権限');
  const other=await page.evaluate(()=>({page:document.querySelector('#masterMaintForm').classList.contains('mm-form-page'),
+   pc:!!document.querySelector('#masterMaintForm .pc-page'),
    listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display}));
- rec('他マスタへ移ると設定ページ指定が残らない',!other.page&&other.listWrap!=='none',JSON.stringify(other));
- /* **器（#masterMaintForm）は描き直しても同じ要素**（§9.522 の追補）。受け手を描くたびに付けると
-    積み上がり、3回開くと図のボタン1回で3回走っていた。段の一言も最初の描画の段を閉じ込めたままで、
-    2回目以降は打った字を追わなかった。**2回目・3回目の描画**で見る（1回目だけでは見分けられない）。 */
+ rec('他マスタへ移ると設定ページ指定が残らない',!other.page&&!other.pc&&other.listWrap!=='none',JSON.stringify(other));
+ /* **器（#masterMaintForm）は描き直しても同じ要素**（§9.522 の追補）。受け手を描くたびに付けると積み上がる。
+    **2回目・3回目の描画**で見る（1回目だけでは見分けられない）——行き先1回で段の切り替えが1回、
+    1字打って「変更 1件」（受け手が3重なら数え直しは同じでも、段の切り替えは3回走る）。 */
  for(const k of [2,3]){
   if(k===3)await tab('アクセス権限');
   await tab('共通設定');
+  await W.until(page,()=>!!document.querySelector('#masterMaintForm [data-pc-jump="rne"]'),null,{ms:15000,what:'置き場の行（RNE資材の行き先）'});
   const w=await page.evaluate(k=>{
-   const o=Element.prototype.scrollIntoView;let n=0;
-   Element.prototype.scrollIntoView=function(...a){if(/^pcSec-/.test(this.id||''))n++;return o.apply(this,a)};
-   try{document.querySelector('.pc-map [data-pc-jump="read"]').click()}finally{Element.prototype.scrollIntoView=o}
-   document.querySelector('#masterMaintForm .mm-tab[data-mmtab="0"]').click();
-   const el=document.querySelector('#masterMaintForm [data-pc-field="pc_name"]');
+   const f=document.querySelector('#masterMaintForm');
+   const o=f.__mmShowTab;let n=0;
+   f.__mmShowTab=i=>{n++;return o(i)};
+   try{document.querySelector('#masterMaintForm [data-pc-jump="rne"]').click()}finally{f.__mmShowTab=o}
+   const onRne=document.querySelector('.mm-tab[data-tab-key="rne"]').getAttribute('aria-selected')==='true';
+   document.querySelector('.mm-tab[data-tab-key="terminal"]').click();
+   const el=f.querySelector('[data-pc-field="pc_name"]');
    const was=el.value;el.value='ZZ'+k;el.dispatchEvent(new Event('input',{bubbles:true}));
-   const sum=(document.querySelector('#masterMaintForm [data-mmtab-sum="0"]')||{}).textContent||'';
+   const dirty=(f.querySelector('#pcDirty')||{}).textContent||'';
    el.value=was;el.dispatchEvent(new Event('input',{bubbles:true}));   /* 打った字は保存しない・元へ戻す */
-   return {走った:n,一言:sum};
+   const clean=(f.querySelector('#pcDirty')||{}).textContent||'';
+   return {走った:n,RNEの段:onRne,打った後:dirty,戻した後:clean};
   },k);
-  rec(`${k}回目に描いた共通設定でも、図のボタン1回で受け手は1回だけ走る（積み上がらない）`,w.走った===1,JSON.stringify(w));
-  rec(`${k}回目に描いた共通設定でも、段の見出しの一言が打った字を追う`,w.一言.indexOf('ZZ'+k)>=0,JSON.stringify(w));
+  rec(`${k}回目に描いた共通設定でも、行き先1回で段の切り替えは1回だけ（積み上がらない）`,w.走った===1&&w.RNEの段,JSON.stringify(w));
+  rec(`${k}回目に描いた共通設定でも、保存の帯が変えた数を追う（押す前に何が変わるかを言う）`,
+      /変更 1件/.test(w.打った後)&&/変更なし/.test(w.戻した後),JSON.stringify(w));
  }
-
  // ---------- データ引継ぎ ----------
  await tab('データ引継ぎ');
  const d0=await page.evaluate(()=>({

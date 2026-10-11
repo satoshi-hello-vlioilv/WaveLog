@@ -1,4 +1,4 @@
-# マスタ管理の画面（30件）
+# マスタ管理の画面（33件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 共通設定は5段。札は絵・名前・要対応の数・いまの一言で、段が`data-tab-sum`／`data-tab-badge`で名乗る | `test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |
+| 共通設定の段の中は「1行＝名前｜欄｜状態」（`pcKit().row`）。説明は ⓘ、置き場の行の補足は ⋯ | `test_setpage.js`・`test_storageui.js` | [§9.583](../../docs/decisions/9.583.md) |
+| 置き場は群ごとに畳める表（みんなで使う→この端末の中→読むだけ）。見出しが件数と状態を言う | `test_storageui.js`・`test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |
 | 共通設定の保存の帯は保存する欄（`[data-pc-field]`）がある段だけ。段の切り替えは`mm-tab`で器へ知らせる | `test_setpage.js` | [§9.557](../../docs/decisions/9.557.md) |
 | 換算係数は上＝要約／左＝散布図と積み上げ／右＝係数の図と上書き。打つと保存前に効くロットと見積の変わり方 | `test_lfui.js` | [§9.543](../../docs/decisions/9.543.md) |
 | 設備の使い分けは2枚目のタブ（主役は一覧）。多数派・違い・効かないセルは`WL.equipUse.useMatrix()`の1箇所（同数は使う側・どこにも出ない設備は数えない） | `test_equse.js` | [§9.542](../../docs/decisions/9.542.md) |

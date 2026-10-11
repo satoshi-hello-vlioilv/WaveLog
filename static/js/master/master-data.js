@@ -10,7 +10,7 @@
    換算係数は §9.543 で `master-loadfactor.js` へ移した（散布図・積み上げ・係数の図）。
    ============================================================ */
 (function(){
- const {CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,firstVisibleDefKey,fmtDT,hintHtml,loadMaint,maintState,numFieldHtml,numRaw,pageFoldHtml,pageTabsHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav}=WL.mm;
+ const {CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,firstVisibleDefKey,fmtDT,hintHtml,loadMaint,maintState,numFieldHtml,numRaw,pageFoldHtml,pageTabsHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav,tipHtml}=WL.mm;
  /* ---------- 測定データの保存(§9.202、利用者の指示) ----------
     「入力したのに完了へ反映されない」「測定バックアップの設定部分が無い」
     「『DBに同期』の使い方が分からない」は、**3つの置き場の関係が
@@ -257,7 +257,7 @@
      共通設定が組み上がった時点で開く（描く前に押しても取りこぼさない）。 */
   form.querySelectorAll('[data-ms-goto]').forEach(btn=>{
    btn.onclick=()=>{
-    pcPendingSection='schedule';
+    pcPendingSection='place';
     document.querySelector(`#masterMaintNav [data-master="${btn.dataset.msGoto}"]`)?.click();
    };
   });
@@ -1812,73 +1812,62 @@
    renderPathConfigForm();renderPathConfigList();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
- /* ---------- 共通設定の作り（§9.208 ⑨、利用者の指示） ----------
-    「多機能がゆえにわかりにくい説明になっているので、視覚的に表現できる
-     ところやUIを工夫して直感的にわかるように」
+ /* ---------- 共通設定の作り（§9.583、利用者の指示でゼロから組み直した） ----------
+    「タブがわかりにくい、ボタンがわかりにくいなどをはじめ文字がゴチャついて…サブ的な情報は
+     コンパクトに圧縮しメインコンテンツの表示領域を大きく確保して見やすくわかりやすい設計に」
 
-    直したのは4点。
-     ① **図を先に出す。** この端末が「どこから読み、どこへ書き、どこへ写すか」は
-        文で並べても頭の中で組み立て直すことになる。1枚の絵にして、節ごとの
-        いまの値をその中へ書く。図の枠は押せて、その設定の章まで連れて行く。
-     ② **状態は欄のすぐ下。** 以前は画面のいちばん下に「いま効いている値」の
-        対比表があり、再起動待ちかどうかを見るのに視線が上下していた
-        （§8 同じ情報を2箇所に出さない／§2 次にすることを1つだけ指す）。
-     ③ **章立てとレール。** 7つの節が1本の長いスクロールに並んでいて、いま
-        どこにいるのかが分からなかった。章の一覧を上に置き、**再起動待ちの
-        件数もそこに出す**（探させない）。
-     ④ **「この端末」を最初の章にする。** PC名・ログインID・モードはすべての
-        権限判定の入口なのに、どこにも書かれていなかった（§9.208 ⑧）。
-
-    保存の仕組み（`[data-pc-field]`を集めて`POST /api/path-config-master`）は
-    変えていない——**変えたのは並べ方と見せ方だけ**。 */
- const PC_SECTIONS=[
-  {id:'terminal',name:'この端末',icon:'PC',when:'保存後すぐ反映',cls:'is-live'},
-  {id:'read',    name:'どこから読むか',when:'サーバー再起動後に反映',cls:'is-restart'},
-  {id:'schedule',name:'置き場',when:'一部は再起動後に反映',cls:'is-restart'},
-  {id:'rne',     name:'RNE抽出',when:'保存後すぐ反映',cls:'is-live'},
+    直す前に測った値（評価関数・docs/decisions/9.583.md）: 主役の前に図＋札＋見出しが器の20〜28%、
+    1画面の字が600〜1300字でほぼ全部12px、札は12pxで中身を名乗らず166〜205px散らばる、段の名前を
+    中でもう一度見出しで言う、読み取り専用の値に入力欄風の枠、置き場は器の2〜2.8倍の長さ。
+    7案を撮って2回採点し、決めた形は次の5つ:
+     ① **札（タブ）が状態を言う**——絵・名前・要対応の数・いまの一言。上の図はやめた（同じことを札が言う）。
+     ② **段の中は「1行＝名前｜欄｜状態」**。名前の列は固定幅（§CLAUDE 9）。説明は ⓘ へ畳む。
+     ③ **置き場は群ごとに畳める表**。群の見出しに件数と状態、行の補足（出どころ・効く時・メモ）は ⋯ へ。
+     ④ **共有と同期は1節1行の畳み**（同時に開くのは1つ）。見出しにいまの値。
+     ⑤ 保存の帯は「保存｜変えた数｜再起動待ち」——押す前に何が変わるかを言う。
+    保存の仕組み（`[data-pc-field]`／`[data-lc-field]`を集めて送る）は変えていない。 */
+ const PC_TABS=[
+  {key:'terminal',name:'この端末',icon:'fa-desktop'},
+  {key:'place',name:'置き場',icon:'fa-folder-tree'},
+  {key:'sync',name:'共有と同期',icon:'fa-arrows-rotate'},
+  {key:'rne',name:'RNE抽出',icon:'fa-file-export'},
+  {key:'update',name:'アプリの更新',icon:'fa-cloud-arrow-down'},
  ];
- /* 1項目＝「名前 / 入力 / 一行の説明 / いまどうなっているか」。
-    状態欄(`data-pc-state`)は`renderPathConfigList()`が後から埋める。 */
- function pcStateHtml(key){return `<small class="pc-state" data-pc-state="${esc(key)}"></small>`}
- /* 畳んだ段の見出しへ出す「いま効いている値」（§3・§9.125）。
-    **保存値が空なら既定を名乗る**——空欄のままだと、畳んだ中に何が
-    入っているのか読めない。 */
- function pcNowText(key,fallback){
-  const v=pathConfigState.values||{},a=pathConfigState.active||{};
-  const raw=String(v[key]||a[key]||'').trim();
-  if(!raw)return fallback||'';
-  const def=(_PC_CHOICE_LABELS[key]||{})[raw];
-  return def||raw;
- }
- /* 選択肢の綴り→画面の言葉。綴りをそのまま出すと`auto`としか読めない。 */
- const _PC_CHOICE_LABELS={
-  schedule_watch_enabled:{auto:'auto: 見張る',on:'on: 見張る',off:'off: 見張らない'},
-  schedule_owner_enabled:{off:'off: 各PCが自分で書く',on:'on: 1台が書く（既定）'},
-  schedule_session_block:{off:'off: 止めない（既定）',on:'on: 後から入った端末は読み取り専用'},
-  schedule_source_sync:{auto:'auto: 見つけたら更新（既定）',confirm:'confirm: 中身を見せてから取り込む'},
-  db_mirror_enabled:{auto:'auto: 写して読む',on:'on: 写して読む',off:'off: 共有を直接読む'},
-  db_mirror_update:{auto:'auto: 変われば直ちに（既定）',manual:'manual: 再読込を押したときだけ'},
-  rne_extract_enabled:{auto:'auto: localのときだけ',on:'on: 定期実行',off:'off: 手動のみ'},
+ /* 選ばせる設定の顔ぶれは**ここ1箇所**（欄の選択肢・畳んだ見出しのいまの値・札の一言が同じ答えを読む）。
+    `def`はサーバーの既定、`short`は札の一言に使う短い言い方。 */
+ const PC_CHOICES={
+  sikalot_source:{def:'network',opts:[['network','network: 共有フォルダを読む'],['local','local: この端末でRNEから作ったものを読む']]},
+  db_mirror_update:{def:'auto',opts:[['auto','auto: 元が変われば直ちに写し直す'],['manual','manual: 一覧の「再読込」を押したときだけ']]},
+  schedule_watch_enabled:{def:'auto',short:{auto:'見張る',on:'見張る',off:'見張らない'},
+   opts:[['auto','auto: 見張る'],['on','on: 見張る'],['off','off: 見張らない（読むたびに共有から写す）']]},
+  schedule_owner_enabled:{def:'on',short:{on:'1台が書く',off:'各PCが書く'},
+   opts:[['on','on: 最初に入った1台が書き込み役になる'],['off','off: 各PCが自分で共有へ書く']]},
+  schedule_session_block:{def:'off',opts:[['off','off: 止めない（主担当を表示するだけ）'],['on','on: 後から入った端末は読み取り専用']]},
+  schedule_source_sync:{def:'auto',opts:[['auto','auto: 見つけたら更新する'],['confirm','confirm: 変わった中身（旧→新）を見せてから取り込む']]},
+  rne_extract_enabled:{def:'auto',opts:[['auto','auto: 取得元が local のときだけ'],['on','on: 取得元に関わらず定期実行する'],['off','off: 定期実行しない（手動のみ）']]},
  };
- /* ---------- デスクトップの起動アイコン（§9.410、利用者の指示⑤） ----------
-    「デスクトップにWaveLogの起動ショートカットを作成する機能が欲しいです。
-      アイコンも設定できますか？」
-
-    **この端末の話**なので「この端末」の章に置く（§9.208 ⑨の章立て）。
-    作れるか・どこへ作るか・行き先は**サーバーが答える**（§9.163）ので、
-    画面はその答えを出すだけ——作れない端末では**ボタンごと出さず理由を書く**
-    （押せるのに何も起きない的を残さない・§CLAUDE 4）。
-    絵は2つから選べる（利用者の問い「アイコンも設定できますか？」）。 */
- /* ---------- この端末の見え方への行き先（§9.433、利用者の報告） ----------
-    「ローディング中の動くアイコンをパターンから選んで設定できるようにした
-      はずですが設定画面にないので設定できるようにしてください」
-
-    **設定そのものは「表示」バッジの1箇所のまま**（§9.421「この端末の見え方の
-    入口は1つ。節を足す・入口は増やさない」）。増やすと、同じ設定を直す場所が
-    2つになり、どちらが効くのか分からなくなる（§9.267 と同じ理由）。
-    足りなかったのは**行き先**——設定を探しに来る場所はこの画面なので、
-    ここに「いまどうなっているか」と「どこで決めるか」を置く。
-    作法は他の画面の「共通設定 > 置き場 で決める」と同じ（§9.267）。 */
+ const pcSaved=key=>String((pathConfigState.values||{})[key]||'').trim();
+ /* いま効いている選択の値（保存値 → このプロセスの値 → 既定）。 */
+ function pcChoiceRaw(key){
+  const c=PC_CHOICES[key];
+  return pcSaved(key)||String((pathConfigState.active||{})[key]||'').trim()||(c&&c.def)||'';
+ }
+ /* 畳んだ見出しへ出す「いま効いている値」（§3・§9.125）。綴り（`auto:`）は外して言葉だけ。
+    **保存値が空なら既定を名乗る**——空欄のままだと、畳んだ中に何が入っているのか読めない。 */
+ function pcChoiceWord(key){
+  const c=PC_CHOICES[key],raw=pcChoiceRaw(key);
+  const hit=c&&c.opts.find(o=>o[0]===raw);
+  const word=hit?hit[1].replace(/^[a-z]+:\s*/,''):raw;
+  return pcSaved(key)?word:`${word}（既定）`;
+ }
+ const pcChoiceShort=key=>{const c=PC_CHOICES[key];return (c&&c.short&&c.short[pcChoiceRaw(key)])||pcChoiceWord(key)};
+ /* 数の設定のいまの値（保存値が空なら既定）。 */
+ const pcNum=(key,unit)=>{const v=pcSaved(key)||String((pathConfigState.defaults||{})[key]||'');return v?v+(unit||''):'—'};
+ /* 再起動が要る設定の印（`renderPathConfigList()`が「再起動待ち」へ塗り替える）。 */
+ const PC_WHEN_RESTART='<span class="pc-when">再起動で反映</span>';
+ /* ---------- この端末の見え方への行き先（§9.433 → §9.583） ----------
+    **設定そのものは「表示」バッジの1箇所のまま**（§9.421「この端末の見え方の入口は1つ。節を足す・
+    入口は増やさない」）。ここに置くのは**いまの値と行き先**の1行だけ（§9.433 の作法）。 */
  /* 読み込みの見せ方は**ここで選ぶ**（§9.436、利用者の指示「読み込みの見せ方を
     マスタに持ってきて、広いエリアでわかりやすく選べるように」）。
 
@@ -1895,8 +1884,6 @@
     ・使用中は**枠の色＋「使用中」の字**の両方で言う（色だけで言わない・
       §CLAUDE 3）。札は絶対配置なので、選び直しても**1pxも動かない**
       （§9.227）。
-    ・札の幅は**いちばん長い名前**（「棒が5本（中から外へ・速い）」）から
-      決め、余りは空白にする（器を1マスぶんに伸ばさない・§CLAUDE 11）。
 
     **設定の持ち主は`WL.loader`の1箇所のまま**。ここは面を1つ足しただけで、
     押すと`WL.loader.setStyle()`を呼び、`wl:look-change`で「表示」バッジ側の
@@ -1912,27 +1899,23 @@
     <h6>${esc(g.name)}<small>${esc(g.note)}</small></h6>
     <div class="pc-ld-grid">${cards}</div></section>`;
  };
- const pcLookHtml=()=>`<div class="pc-look" id="pcLook">
-   <div class="pc-look-head"><b>この端末の見え方</b>
-    <span class="pc-look-now" id="pcLookNow"></span></div>
-   <p class="mm-field-hint">この端末だけに効く設定です。押したその場で全画面に反映し、
-    <b>この端末に覚えます</b>（サーバーへは送りません）。</p>
-   <div class="pc-look-act">
-    <span class="pc-look-lead">文字の大きさ・時間の書き方は、どの画面からも触れるようヘッダーの「表示」に畳んであります。</span>
-    <button type="button" class="mm-btn-ghost" id="pcLookOpen">「表示」の設定を開く</button>
-   </div>
-   <details class="pc-acc pc-ld" id="pcLd">
+ /* 見え方の1行（文字の大きさ・時間の書き方・読み込み）。決めるのはヘッダーの「表示」。 */
+ function pcLookRowHtml(K){
+  return K.row('look','見え方',`<span class="pc-look-now" id="pcLookNow"></span>
+    <button type="button" class="mm-btn-ghost sm" id="pcLookOpen"><i class="fa-solid fa-sliders" aria-hidden="true"></i> 「表示」を開く</button>`,
+   {id:'pcLook',tip:'この端末だけに効く設定です（サーバーへは送りません）。文字の大きさ・時間の書き方は、どの画面からも触れるようヘッダーの「表示」に畳んであります。'});
+ }
+ /* 読み込みの見せ方の盤。器は**共通設定の他の節と同じ畳み**（`.pc-acc`）——29種の盤を
+    そのまま置くと段が1687pxになる。畳んだままでも見出しが**いまの見せ方そのもの**を動かして見せる。 */
+ function pcLdHtml(){
+  return `<details class="pc-acc pc-ld" id="pcLd">
     <summary><span class="ld-sample">${WL.loader.html(16)}</span><b>読み込みの見せ方</b>
-     <span class="pc-acc-now pc-ld-now" id="pcLdNow"></span></summary>
-    <div class="pc-acc-body">
-     <p class="mm-field-hint">データを待っているあいだに出る動くしるしです。
-      <a href="https://connoratherton.com/loaders" target="_blank" rel="noopener">loaders.css</a>（MIT）から
-      ${WL.loader.STYLES.length-1}種を写して<b>同梱</b>しています（回線が無い端末でも動きます）。
-      仲間ごとに並べてあります——まず仲間を1つ選び、その中の4〜5枚を見比べてください。</p>
-     ${WL.loader.GROUPS.map(pcLdGroupHtml).join('')}
-    </div>
-   </details>
-  </div>`;
+     <span class="pc-acc-now pc-ld-now" id="pcLdNow"></span>${tipHtml(
+      `データを待っているあいだに出る動くしるしです。loaders.css（MIT）から${WL.loader.STYLES.length-1}種を写して**同梱**しています（回線が無い端末でも動きます）。`
+      +'仲間ごとに並べてあります——まず仲間を1つ選び、その中の4〜5枚を見比べてください。')}</summary>
+    <div class="pc-acc-body">${WL.loader.GROUPS.map(pcLdGroupHtml).join('')}</div>
+   </details>`;
+ }
  /* いまの値は**設定を持っている1箇所から引く**（字を書き写さない・§9.374）。 */
  function renderLook(){
   const el=$('#pcLookNow');if(!el)return;
@@ -1941,15 +1924,14 @@
   if(window.WL&&WL.uiSize)parts.push('文字 '+nameOf(WL.uiSize.SIZES,WL.uiSize.size()));
   if(window.WL&&WL.duration)parts.push('時間 '+nameOf(WL.duration.STYLES,WL.duration.style()));
   if(window.WL&&WL.loader)parts.push('読み込み '+nameOf(WL.loader.STYLES,WL.loader.style()));
-  el.textContent=parts.join('／');
+  el.textContent=parts.join('・');
   const now=$('#pcLdNow');
   if(now&&window.WL&&WL.loader){
-   now.textContent=`全${WL.loader.STYLES.length}種・いま「${WL.loader.labelOf()}」`;
+   now.textContent=`いま「${WL.loader.labelOf()}」・全${WL.loader.STYLES.length}種`;
    /* 描いた直後は札にまだ印が無い（印を付ける役は`WL.loader`の1箇所）。 */
    WL.loader.mark();
   }
  }
-
  /* ---------- デスクトップの起動アイコン（§9.410 → §9.445） ----------
     **盤はヘッダーの「表示」の節**（§9.445、利用者の指示「どのモードからも
     使えるように」）。以前はここ（共通設定＞この端末）が唯一の面だったが、
@@ -2265,327 +2247,313 @@
  }
  WL.onReady(offerShortcut);
  /* 共通設定（この端末）に残すのは**いまの状態と行き先だけ**（§9.445。作法は
-    §9.433「読み込みの見せ方」と同じ——設定の持ち主は1箇所で、面が2つ）。 */
- function pcShortcutHtml(){
-  /* **1行に収める**（§9.126「中身を減らしたら器も減らす」）——ここは行き先
-     なので、章の高さを食わせない（器は728px・`test_setpage.js`が見張る）。 */
-  return `<div class="pc-look" id="pcShortcut">
-   <div class="pc-look-head"><b>デスクトップの起動アイコン</b>
-    <span class="lnk-state" data-sc-state>確認しています…</span></div>
-   <div class="pc-look-act">
-    <span class="pc-look-lead">毎日の入口（<b>この PC の WaveLog.exe</b>）へのショートカットを作ります。決めるのはヘッダーの「表示」——
-     <b>どのモードからも開けます</b>。</span>
-    <button type="button" class="mm-btn-ghost" id="pcScOpen">「表示」から作る</button>
-   </div>
-  </div>`;
+    §9.433「読み込みの見せ方」と同じ——設定の持ち主は1箇所で、面が2つ）。1行に収める。 */
+ function pcShortcutHtml(K){
+  return K.row('shortcut','起動アイコン',`<span class="lnk-state" data-sc-state>確認しています…</span>
+    <button type="button" class="mm-btn-ghost sm" id="pcScOpen"><i class="fa-solid fa-sliders" aria-hidden="true"></i> 「表示」で作る</button>`,
+   {id:'pcShortcut',tip:'毎日の入口（**この PC の WaveLog.exe**）へのデスクトップのショートカットです。作る・名前と絵を決めるのはヘッダーの「表示」——**どのモードからも開けます**。'});
  }
 
- /* 共通設定の欄の組み立て（§9.522）。どれも字を返すだけ（画面を読まない）。`v`は保存してある値。 */
- function pcFieldKit(v){
-  /* パス欄は「参照…」ダイアログとドラッグ&ドロップに対応させる(§9.49)。
-     手打ちのUNCパスは打ち間違いに気づきにくいのが実際の問題だった。 */
-  const pathField=(key,label,mode,hint)=>`<div class="mm-field mm-field-wide mm-field-path"><span>${esc(label)}</span>
-    <span class="mm-path" data-path-drop="${key}">
-     <input data-pc-field="${key}" data-field="${key}" type="text" value="${esc(v[key]||'')}" placeholder="未設定（既定値を使用）" autocomplete="off" spellcheck="false">
-     <button type="button" class="mm-path-browse" data-path-browse="${key}" data-path-mode="${mode||'file'}">参照…</button>
-    </span>
-    <small class="mm-field-hint">${esc(hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。空欄で保存すると既定値に戻ります。')}</small>
-    ${pcStateHtml(key)}</div>`;
-  const numField=(key,label,unit,step,min)=>`<label class="mm-field mm-field-num"><span>${esc(label)}</span>${
-   numFieldHtml({k:key,label,unit,step,min},v[key]||'',`data-pc-field="${key}"`)
-  }<small class="mm-field-hint">未入力なら既定値 ${esc(pathConfigState.defaults[key]||'')}${esc(unit||'')} を使用します。</small></label>`;
-  const pickField=(key,label,opts,hint)=>`<label class="mm-field"><span>${esc(label)}</span><select data-pc-field="${key}">${
-   opts.map(([val,text])=>`<option value="${esc(val)}"${(v[key]||'')===val?' selected':''}>${esc(text)}</option>`).join('')
-  }</select><small class="mm-field-hint">${hint||''}</small></label>`;
-  const group=(id,title,when,whenCls,body)=>`<section class="mm-set-group" id="pcSec-${id}" data-pc-section="${id}">
-    <div class="mm-set-group-head"><h4>${esc(title)}</h4><span class="mm-apply-badge ${whenCls}">${esc(when)}</span></div>
-    <div class="mm-set-group-body">${body}</div></section>`;
-  return {pathField,numField,pickField,group};
+ /* 共通設定の部品（§9.583）。どれも字を返すだけ（画面を読まない）。`v`は保存してある値。
+    **1行＝名前｜欄｜状態**——名前の列は固定幅（§CLAUDE 9）、説明は名前の横の ⓘ（`tipHtml`）、
+    状態の席（`data-pc-state`）は`renderPathConfigList()`が後から埋める。 */
+ function pcKit(v){
+  const row=(key,label,ctl,o)=>{
+   const p=o||{};
+   return `<div class="pc-row${p.cls?' '+p.cls:''}"${p.id?` id="${esc(p.id)}"`:''} data-pc-row="${esc(key)}">
+    <span class="pc-row-label">${esc(label)}${tipHtml(p.tip)}</span>
+    <div class="pc-row-ctl">${ctl}</div>
+    <span class="pc-row-state" data-pc-state="${esc(key)}">${p.state||''}</span></div>`;
+  };
+  /* パス欄は「参照…」ダイアログとドラッグ&ドロップに対応させる（§9.49）。 */
+  const path=(key,mode,ph)=>`<span class="mm-path" data-path-drop="${esc(key)}">
+    <input data-pc-field="${esc(key)}" data-field="${esc(key)}" type="text" value="${esc(v[key]||'')}"
+     placeholder="${esc(ph||'未設定（既定を使う）')}" autocomplete="off" spellcheck="false">
+    <button type="button" class="mm-path-browse" data-path-browse="${esc(key)}" data-path-mode="${esc(mode||'file')}">参照…</button></span>`;
+  /* 数の欄。**既定は欄の薄字で言う**（以前は欄ごとに「未入力なら既定値 900秒 を使用します」の1行があった）。 */
+  const num=(key,label,unit,step,min)=>numFieldHtml({k:key,label,unit,step,min},v[key]||'',
+   `data-pc-field="${esc(key)}" placeholder="${esc(String((pathConfigState.defaults||{})[key]||''))}"`);
+  const pick=key=>{
+   const c=PC_CHOICES[key],def=c.opts.find(o=>o[0]===c.def);
+   return `<select data-pc-field="${esc(key)}">${[['',`（既定）${def?def[1]:c.def}`],...c.opts].map(([val,t])=>
+    `<option value="${esc(val)}"${(v[key]||'')===val?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
+  };
+  const text=(key,ph)=>`<input data-pc-field="${esc(key)}" type="text" value="${esc(v[key]||'')}"
+    placeholder="${esc(ph||'')}" autocomplete="off" spellcheck="false">`;
+  /* 共有と同期の1節（同じ名前の畳みは同時に1つだけ開く＝`<details name>`）。 */
+  const fold=(id,icon,title,now,tip,body,tag)=>pageFoldHtml(title,now,`<div class="pc-rows">${body}</div>`,false,
+   {icon,tip,tag,name:'pcSync',id:'pcSync-'+id,cls:'pc-sync'});
+  return {row,path,num,pick,text,fold};
  }
- /* 章「この端末」。 */
- function pcSecTerminal(K,v){
-  const {group}=K;
-  /* PC名は**サーバーが解決した結果**を出す（§9.208 ⑧）。画面が持つ
-     `WL.terminal`は`/api/access-mode`の答えで、保存した直後は古い。 */
+ /* 段「この端末」: 名乗り（読むだけ）→ 名前の決め打ち → 見え方 → 起動アイコン → 読み込みの見せ方。 */
+ function pcTabTerminal(K){
+  /* PC名は**サーバーが解決した結果**を出す（§9.208 ⑧）。画面が持つ`WL.terminal`は保存した直後は古い。 */
   const term=(window.WL&&WL.terminal)||null;
   const act=pathConfigState.active||{};
   const pcNow=act.pc_name||(term&&term.pcName())||'';
   const pcFrom=act.pc_name_source||(term&&term.pcNameSource())||'';
-  const SEC_TERMINAL=group('terminal','この端末','保存後すぐ反映','is-live',`
-    <div class="pc-who" id="pcWho">
-     <div><small>PC名</small><b>${esc(pcNow||'（取得できていません）')}</b>
-      <i>${esc(pcFrom||'出どころ不明')}</i></div>
-     <div><small>ログインID</small><b>${esc((term&&term.loginId())||'（取得できていません）')}</b><i>OS</i></div>
-     <div><small>いまのモード</small><b>${esc((window.accessMode&&accessMode.mode)||'edit')}</b>
-      <i>アクセス権限マスタ</i></div>
-    </div>
-    <label class="mm-field mm-field-wide"><span>この端末の名前を決め打ちする</span>
-     <input data-pc-field="pc_name" type="text" value="${esc(v.pc_name||'')}" placeholder="空欄ならOSから自動で取得します" autocomplete="off" spellcheck="false">
-     <small class="mm-field-hint">アクセス権限マスタとの照合・記録の「更新端末名」・編集中の持ち主表示は、
-      <b>すべてこの名前</b>を見ます。自動で取れない端末だけここで名乗ってください。</small>
-     ${pcStateHtml('pc_name')}</label>
-    ${pcLookHtml()}
-    ${pcShortcutHtml()}
-    <div id="pcNotes"></div>`);
-  return SEC_TERMINAL;
- }
- /* 章「どこから読むか」。 */
- function pcSecRead(K){
-  const {numField,pickField,group}=K;
-  const SEC_READ=group('read','どこから読むか','サーバー再起動後に反映','is-restart',`
-    <div class="pc-source-list" id="pcSourceList"></div>
-    <p class="mm-field-hint">読み込み先を変えるには「データ接続」のカードから <b>編集</b> を押してください
-     （同じ設定を2画面に置くと、どちらが効くのか分からなくなるためここでは変えられません）。</p>
-    ${pickField('sikalot_source','読み方を決めていないデータソースの既定',
-      [['','（既定）network'],['network','network'],['local','local']],
-      'network=共有フォルダを読む ／ local=この端末でRNEから抽出したものを読む。<b>読み方を決めたデータソースには効きません</b>。')}
-    ${pcStateHtml('sikalot_source')}
-    ${pageFoldHtml('共有の元データの写し',pcNowText('db_mirror_update','auto: 変われば直ちに（既定）'),`
-     <p class="mm-field-hint">仕掛・品質などの共有の元データは、<b>手元へ写してから</b>読みます（読むあいだ共有を掴まないため）。
-      <b>起動したときは、写し直しが済むまで一覧を出しません</b>（前回の古い写しを見せないため）。</p>
-     ${pickField('db_mirror_update','写しの更新',
-       [['','（既定）auto: 元が変われば直ちに写し直す'],['auto','auto: 元が変われば直ちに写し直す'],
-        ['manual','manual: 自分では写し直さない（一覧の「再読込」を押したときだけ）']],
-       '<b>manual</b> は意図して更新を止めるときに使います。元に新しい版があれば、一覧の「元データ」に<b>新しい版あり</b>と出ます。')}
-     ${numField('db_mirror_interval_sec','元が変わったかを見る間隔','秒',10,10)}`)}`);
-  return SEC_READ;
- }
- /* 章「置き場」。 */
- function pcSecSchedule(K,v){
-  const {numField,pickField,group}=K;
-  /* **置き場は1枚**（§9.267、利用者の指示「マスタの置き場、スケジュールの
-     置き場、測定データの置き場、バックアップの置き場などを含めた全ての設定を
-     共通設定に視覚的に表現した上でそのままその表示とリンクして設定を簡単に
-     わかりやすく」）。以前は同じ「置き場の設定」なのに直す場所が3つに
-     分かれており、`config/local.json` の3つは**画面に一切出ていなかった**。
-     判定はサーバーが持つ（§9.163）ので、ここは答えを並べて直す口を添えるだけ。 */
-  const SEC_SCHEDULE=group('schedule','置き場','一部は再起動後に反映','is-restart',`
-    <div class="pc-share" id="pcShare">
-     <!-- 見出しは節の題(「置き場」)が既に言っている（§8 同じことを2度言わない）。
-          ここに出すのは**揃っているかどうか**だけ。 -->
-     <div class="pc-share-head"><span class="pc-share-root" id="pcShareRoot"></span></div>
-     <div class="pc-share-rows" id="pcShareRows"></div>
-    </div>
-    ${pageFoldHtml('共有の変化をどう取り込むか',pcNowText('schedule_watch_enabled','auto: 見張る'),`
-     <p class="mm-field-hint">共有（Box等）のschedule.sqlite3は<b>他の端末も書きます</b>。読むときは手元へ写したものを読み、
-      <b>改訂番号が変わったときだけ</b>写し直します（読むたびに写すと共有を掴み続け、他の端末の書込とぶつかります）。</p>
-     ${pickField('schedule_watch_enabled','共有の変化を見張る',
-       [['','（既定）auto: 見張る'],['auto','auto: 見張る'],['on','on: 見張る'],['off','off: 見張らない（読むたびに共有から写す）']],
-       'offにすると以前の動きに戻ります（共有が遅い環境では読み込みも遅くなります）。')}
-     ${numField('schedule_watch_interval_sec','変化を見る間隔','秒',5,5)}
-     ${numField('schedule_watch_pause_sec','取り込んだあと休む時間','秒',5,0)}`)}
-    ${pageFoldHtml('同時に書いたときの取り合い',
-      'ロック'+esc(String(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||''))+'秒',`
-     ${numField('schedule_lock_ttl_sec','書込ロックの有効期限','秒',5,1)}
-     ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}`)}
-    ${pageFoldHtml('書く役を1台に絞る',pcNowText('schedule_owner_enabled','on: 1台が書く（既定）'),`
-     <p class="mm-field-hint">共有へ<b>実際に書く役を1台に絞る</b>仕掛けです。他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、
-      <b>読みは今までどおり手元の写しから</b>読みます（画面は今までどおり各PCのデスクトップ版で開きます）。
-      <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。
-      <b>既定で入っています。</b>切ってよいのは、社内規程などで<b>受け口のポートを開けられない</b>ときです
-      （切っても動きます——各PCが自分で共有へ書く形に戻るだけです）。</p>
-     ${pickField('schedule_owner_enabled','書き込み役を1台に絞る',
-       [['','（既定）on: 最初に入った1台が書き込み役になる'],['on','on: 最初に入った1台が書き込み役になる'],['off','off: 各PCが自分で共有へ書く']],
-       '書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
-     ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
-     ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
-     <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>`)}
-    ${pageFoldHtml('同じ設備を2人で触るとき',pcNowText('schedule_session_block','off: 止めない（既定）'),`
-     <p class="mm-field-hint"><b>編集セッション</b>は「この設備の主担当は誰か」を見せる仕掛けです。
-      <b>既定では操作を止めません</b>——データの整合は、上の<b>書く役を1台に絞る</b>のと、
-      書き込みのたびの<b>ロック→取り直し→適用→改訂番号</b>で守られており、
-      並べ替えは<b>顔ぶれが変わっていたら断り</b>、<b>先に並べ替えられていたら上書きせず読み直します</b>。
-      <b>on</b> にすると以前の動きに戻り、後から入った端末は読み取り専用になります
-      （追加・削除・並べ替え・設備停止・申し送りができなくなります）。</p>
-     ${pickField('schedule_session_block','編集セッションで操作を止める',
-       [['','（既定）off: 止めない（主担当を表示するだけ）'],['off','off: 止めない（主担当を表示するだけ）'],
-        ['on','on: 後から入った端末は読み取り専用にする']],
-       '止めない場合でも、同じ顔ぶれのまま2人が同時に並べ替えたときは<b>後から保存したほうの並びが残ります</b>。')}`)}
-    ${pageFoldHtml('元データが変わったとき',pcNowText('schedule_source_sync','auto: 見つけたら更新（既定）'),`
-     <p class="mm-field-hint">予定の行が持っているのは<b>入れたときの仕掛データの写し</b>です。
-      出荷日のように<b>あとから決まる項目</b>は、写したあとに元データの側で変わります。
-      スケジュールを開いたときに<b>画面に出している項目だけ</b>を突き合わせ、変わっていれば取り込みます
-      （<b>書き換えるのは編集できる端末だけ</b>。閲覧の端末は見るだけです）。</p>
-     ${pickField('schedule_source_sync','元データが変わったときの扱い',
-       [['','（既定）auto: 見つけたら更新する'],['auto','auto: 見つけたら更新する'],
-        ['confirm','confirm: 変わった中身（旧→新）を見せてから取り込む']],
-       'autoでも黙っては変えません——<b>何件を最新にしたか</b>を知らせ、中身も開けます。')}`)}`);
-  return SEC_SCHEDULE;
- }
- /* 章「RNE抽出」。 */
- function pcSecRne(K){
-  const {pathField,numField,pickField,group}=K;
-  const SEC_RNE=group('rne','RNE抽出','保存後すぐ反映','is-live',`
-    <p class="mm-field-hint">RNE（Navigator問い合わせ定義）から <code>.sqlite3</code> を作り、それを一覧として読む仕組みです。
-     取得元が <b>local</b> のデータソースだけが、ここで作ったファイルを読みます。</p>
-    ${pickField('rne_extract_enabled','RNE抽出の定期実行',
-      [['','（既定）auto: 取得元がlocalのときだけ'],['auto','auto: 取得元がlocalのときだけ'],
-       ['on','on: 取得元に関わらず定期実行する'],['off','off: 定期実行しない（手動のみ）']],
-      '「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。')}
-    ${numField('rne_extract_interval_sec','RNE抽出間隔','秒',60,60)}
-    ${pathField('rne_assets_dir','RNE資材の置き場（フォルダ）','dir','RNEファイルと symnavim.conf をまとめて置くフォルダです。RNEファイルはこの下の rne/ 配下に置きます。共有フォルダを指定すれば、端末ごとにコピーせず1式を共用できます。空欄ならアプリ内の config/rne_extract です。')}
-    ${pathField('rne_conf_path','接続情報 symnavim.conf の場所','file','認証情報だけを別の場所に置きたい場合に指定します。空欄なら上の資材置き場の直下（symnavim.conf）です。')}
-    ${rneStatusPanelHtml()}`);
-  return SEC_RNE;
- }
- /* ページの骨組み（図 → 章のレール → 章の段 → 保存）。章の中身は`S`が持つ。 */
- function pcPageHtml(S){
-  const {SEC_TERMINAL,SEC_READ,SEC_SCHEDULE,SEC_RNE,SEC_UPDATE}=S;
-  return `<div class="mm-set-scroll pc-page">
-   <!-- ① 図：この端末が何とつながっているか -->
-   <div class="pc-map" id="pcMap" aria-label="この端末のつながり">
-    <button type="button" class="pc-node" data-pc-jump="read">
-     <b>参照データ</b><span class="pc-node-sub">仕掛・品質（読むだけ）</span>
-     <span class="pc-node-val" data-pc-map="read">—</span></button>
-    <span class="pc-arrow" aria-hidden="true"><i></i><em>読む</em></span>
-    <button type="button" class="pc-node is-self" data-pc-jump="terminal">
-     <b>この端末</b><span class="pc-node-sub">WaveLog</span>
-     <span class="pc-node-val" data-pc-map="terminal">—</span></button>
-    <span class="pc-arrow" aria-hidden="true"><i></i><em>書く</em></span>
-    <button type="button" class="pc-node" data-pc-jump="schedule">
-     <b>共有スケジュール</b><span class="pc-node-sub">作業予定（みんなで使う）</span>
-     <span class="pc-node-val" data-pc-map="schedule">—</span></button>
+  /* 読み取り専用の値に入力欄風の枠を付けない（§CLAUDE 10）——名前と値を横に並べた1行。 */
+  return `<dl class="pc-who" id="pcWho">
+    <div><dt>PC名</dt><dd><b>${esc(pcNow||'（取得できていません）')}</b><small>${esc(pcFrom||'出どころ不明')}</small></dd></div>
+    <div><dt>ログインID</dt><dd><b>${esc((term&&term.loginId())||'（取得できていません）')}</b><small>OS</small></dd></div>
+    <div><dt>モード</dt><dd><b>${esc(pcModeWord())}</b><small>アクセス権限マスタ</small></dd></div>
+   </dl>
+   <div class="pc-rows">
+    ${K.row('pc_name','名前を決め打ちする',K.text('pc_name','空欄なら OS から自動で取ります'),
+     {tip:'アクセス権限マスタとの照合・記録の「更新端末名」・編集中の持ち主表示は、**すべてこの名前**を見ます。自動で取れない端末だけ、ここで名乗ってください。'})}
+    ${pcLookRowHtml(K)}
+    ${pcShortcutHtml(K)}
    </div>
-
-   <!-- ② 章は**段（タブ）**（§9.261、利用者の指示「タブとアコーディオンを主構成に」）。
-        以前は全部を縦に並べて飛ぶだけで、実測2768pxを736pxの器で見ていた
-        （4回ぶんスクロール）。段にすれば1章ぶんだけになる。 -->
-   <nav class="pc-rail" id="pcRail" aria-label="共通設定の状態">
-    <span class="pc-rail-restart" id="pcRestartCount" hidden></span>
-   </nav>
-
-   ${pageTabsHtml([
-    {name:'この端末',body:SEC_TERMINAL},
-    {name:'どこから読むか',body:SEC_READ},
-    {name:'置き場',body:SEC_SCHEDULE},
-    {name:'RNE抽出',body:SEC_RNE},
-    {name:'アプリの更新',body:SEC_UPDATE},
-   ])}
-
-  </div>
-  <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">共通設定を保存</button><span class="mm-form-hint">保存すると、右上の 👤 のIDを更新者として記録します。</span></div>`;
+   ${pcLdHtml()}
+   <div id="pcNotes"></div>`;
  }
+ /* いまのモードの言葉（ヘッダーのバッジと同じ字）。 */
+ function pcModeWord(){
+  const b=document.getElementById('accessModeLabel');
+  return (b&&b.textContent.trim())||((window.accessMode&&accessMode.mode)||'—');
+ }
+ /* 段「置き場」。中身は`/api/storage-layout`の答えから`paintShareLayout()`が描く（§9.267）。 */
+ function pcTabPlace(){
+  return `<div class="pc-place" id="pcShare">
+    <p class="pc-place-root" id="pcShareRoot" hidden></p>
+    <div id="pcShareRows"><p class="pc-empty">置き場を読んでいます…</p></div>
+   </div>`;
+ }
+ /* 段「共有と同期」（§9.583で「どこから読むか」と「置き場」の後半を1段にまとめた）。
+    **どこにあるか（置き場）**と**どう写し・どう書くか（ここ）**を分けた——以前は「置き場」の段に
+    置き場の一覧と共有のふるまいの5節が積まれ、器の2〜2.8倍の長さだった。
+    参照データ（読むだけ）と作業予定（みんなで書く）の2群。節は見出しにいまの値を出して畳む。 */
+ function pcTabSync(K){
+  const v=pathConfigState.values||{},d=pathConfigState.defaults||{};
+  return `<h5 class="pc-sub"><i class="fa-solid fa-book-open" aria-hidden="true"></i>参照データ（仕掛・品質など・読むだけ）</h5>
+   ${K.fold('mirror','fa-copy','元データの写し',`${pcChoiceWord('db_mirror_update')}・${pcNum('db_mirror_interval_sec','秒')}ごとに見る`,
+    '仕掛・品質などの共有の元データは、**手元へ写してから**読みます（読むあいだ共有を掴まないため）。**起動したときは、写し直しが済むまで一覧を出しません**（前回の古い写しを見せないため）。',
+    K.row('db_mirror_update','写しの更新',K.pick('db_mirror_update'),
+     {tip:'**manual** は意図して更新を止めるときに使います。元に新しい版があれば、一覧の「元データ」に**新しい版あり**と出ます。'})
+    +K.row('db_mirror_interval_sec','元が変わったかを見る間隔',K.num('db_mirror_interval_sec','元が変わったかを見る間隔','秒',10,10)))}
+   ${K.fold('source','fa-database','既定の取得元',pcChoiceWord('sikalot_source'),
+    '**読み方を決めていないデータソース**だけに効きます。データソースごとの読み込み先は「データ接続」で決めます（同じ設定を2画面に置くと、どちらが効くのか分からなくなるため）。',
+    K.row('sikalot_source','読み方を決めていないデータソース',K.pick('sikalot_source'),{state:PC_WHEN_RESTART})
+    +`<p class="pc-line">読み込み先そのものは「データ接続」で決めます。
+      <button type="button" class="mm-btn-ghost sm" data-pc-goto="dataSource"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> データ接続を開く</button></p>`)}
+   <h5 class="pc-sub"><i class="fa-solid fa-people-arrows" aria-hidden="true"></i>作業予定（共有スケジュール・みんなで書く）</h5>
+   ${K.fold('watch','fa-eye','共有の変化を見張る',`${pcChoiceWord('schedule_watch_enabled')}・${pcNum('schedule_watch_interval_sec','秒')}ごと`,
+    '共有（Box等）の schedule.sqlite3 は**他の端末も書きます**。読むときは手元へ写したものを読み、**改訂番号が変わったときだけ**写し直します（読むたびに写すと共有を掴み続け、他の端末の書込とぶつかります）。',
+    K.row('schedule_watch_enabled','共有の変化を見張る',K.pick('schedule_watch_enabled'),
+     {tip:'off にすると以前の動きに戻ります（共有が遅い環境では読み込みも遅くなります）。'})
+    +K.row('schedule_watch_interval_sec','変化を見る間隔',K.num('schedule_watch_interval_sec','変化を見る間隔','秒',5,5))
+    +K.row('schedule_watch_pause_sec','取り込んだあと休む時間',K.num('schedule_watch_pause_sec','取り込んだあと休む時間','秒',5,0)))}
+   ${K.fold('owner','fa-pen-to-square','書き込み役を1台に絞る',pcChoiceWord('schedule_owner_enabled'),
+    '共有へ**実際に書く役を1台に絞る**仕掛けです。他のPCは書き込みだけをその1台へ LAN 内で頼み、**読みは今までどおり手元の写しから**読みます。**持ち主が落ちていても止まりません**——頼めなかったPCは自分で共有へ書きます。切ってよいのは、社内規程などで**受け口のポートを開けられない**ときです。',
+    K.row('schedule_owner_enabled','書き込み役',K.pick('schedule_owner_enabled'),
+     {tip:'書き込み役になったPCだけが下のポートを**LANへ開きます**（合言葉つきの決められた書き込みしか受け付けません）。'})
+    +K.row('schedule_owner_port','受け口のポート',K.num('schedule_owner_port','受け口のポート','',1,1025))
+    +K.row('schedule_owner_ttl_sec','目印の有効期限',K.num('schedule_owner_ttl_sec','目印の有効期限','秒',10,30))
+    +'<div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>')}
+   ${K.fold('lock','fa-lock','同時に書いたときの取り合い',`ロック ${pcNum('schedule_lock_ttl_sec','秒')}・確認まで ${esc(String(v.schedule_lock_verify_delay_ms||d.schedule_lock_verify_delay_ms||'—'))}ミリ秒`,
+    '2台が同じ瞬間に共有へ書かないよう、書く前に**錠（ロック）**を取ります。ふつうは触りません。',
+    K.row('schedule_lock_ttl_sec','書込ロックの有効期限',K.num('schedule_lock_ttl_sec','書込ロックの有効期限','秒',5,1))
+    +K.row('schedule_lock_verify_delay_ms','ロック確認までの待機',K.num('schedule_lock_verify_delay_ms','ロック確認までの待機','ミリ秒',100,0)))}
+   ${K.fold('session','fa-user-group','同じ設備を2人で触るとき',pcChoiceWord('schedule_session_block'),
+    '**編集セッション**は「この設備の主担当は誰か」を見せる仕掛けです。**既定では操作を止めません**——整合は書く役を1台に絞るのと、書き込みのたびの**ロック→取り直し→適用→改訂番号**で守られ、並べ替えは**顔ぶれが変わっていたら断り**、**先に並べ替えられていたら上書きせず読み直します**。',
+    K.row('schedule_session_block','編集セッションで操作を止める',K.pick('schedule_session_block'),
+     {tip:'**on** にすると、後から入った端末は読み取り専用になります（追加・削除・並べ替え・設備停止・申し送りができなくなります）。止めない場合でも、同じ顔ぶれのまま2人が同時に並べ替えたときは**後から保存したほうの並びが残ります**。'}))}
+   ${K.fold('srcsync','fa-code-compare','元データが変わったとき',pcChoiceWord('schedule_source_sync'),
+    '予定の行が持っているのは**入れたときの仕掛データの写し**です。出荷日のように**あとから決まる項目**は、写したあとに元データの側で変わります。スケジュールを開いたときに**画面に出している項目だけ**を突き合わせ、変わっていれば取り込みます（**書き換えるのは編集できる端末だけ**）。',
+    K.row('schedule_source_sync','取り込み方',K.pick('schedule_source_sync'),
+     {tip:'auto でも黙っては変えません——**何件を最新にしたか**を知らせ、中身も開けます。'}))}`;
+ }
+ /* 段「RNE抽出」: いまの状態（主役）→ 設定の4行。 */
+ function pcTabRne(K){
+  return `${rneStatusPanelHtml()}
+   <div class="pc-rows">
+    ${K.row('rne_extract_enabled','定期実行',K.pick('rne_extract_enabled'),
+     {tip:'「今すぐ抽出」は、この設定に関わらず資材が配置されていれば実行できます。'})}
+    ${K.row('rne_extract_interval_sec','間隔',K.num('rne_extract_interval_sec','間隔','秒',60,60))}
+    ${K.row('rne_assets_dir','資材の置き場（フォルダ）',K.path('rne_assets_dir','dir','未設定（アプリの中の config/rne_extract）'),
+     {tip:'RNEファイルと symnavim.conf をまとめて置くフォルダです。RNEファイルはこの下の `rne/` に置きます。共有フォルダを指定すれば、端末ごとにコピーせず1式を共用できます。'})}
+    ${K.row('rne_conf_path','接続情報 symnavim.conf',K.path('rne_conf_path','file','未設定（資材の置き場の直下）'),
+     {tip:'認証情報だけを別の場所に置きたいときに指定します。'})}
+   </div>`;
+ }
+ /* ページの骨組み（札 → 段 → 保存の帯）。**札は動かさず段の中だけ送る**（`scroll:true`）。 */
+ function pcPageHtml(bodies){
+  return `<div class="pc-page">${pageTabsHtml(PC_TABS.map(t=>({...t,body:bodies[t.key]})),{scroll:true})}</div>
+  <div class="pc-save" id="pcSave">
+   <button type="submit" class="mm-btn-primary">保存</button>
+   <span class="pc-dirty" id="pcDirty" aria-live="polite">変更なし</span>
+   <span class="pc-chip is-warn pc-restart" id="pcRestartCount" hidden></span>
+   <span class="pc-save-who" id="pcSaveWho"></span>
+  </div>`;
+ }
+ /* 保存の帯は**保存する欄がある段だけ**に出す（§9.556 B9）。欄の無い段で「保存」を
+    押せると、何が保存されるのか推し量らせる（押しても何も変わらない）。 */
  function syncPcSaveBar(form,panel){
-  const bar=form.querySelector('.mm-set-sticky');
-  if(bar)bar.hidden=!(panel&&panel.querySelector('[data-pc-field]'));
+  const bar=form.querySelector('#pcSave');
+  if(bar)bar.hidden=!(panel&&panel.querySelector('[data-pc-field],[data-lc-field]'));
  }
  function onPcTab(ev){syncPcSaveBar(ev.currentTarget,ev.detail&&ev.detail.panel)}
- /* 保存の帯は**保存する欄がある段だけ**に出す（§9.556 B9）。欄の無い段で「共通設定を保存」を
-    押せると、何が保存されるのか推し量らせる（押しても何も変わらない）。 */
  function wirePcSaveBar(form){
   form.addEventListener('mm-tab',onPcTab);
   syncPcSaveBar(form,[...form.querySelectorAll('.mm-tabpanel')].find(p=>!p.hidden));
  }
- /* 共通設定の配線（保存・段・図から章へ・直す場所・「表示」の行き先・起動アイコン）。 */
+ /* ---- 変えた数（§9.583 ⑤）。**押す前に何が変わるかを言う**——「保存」だけでは、
+    どの段で何を触ったかを思い出すことになる（§CLAUDE「思い出させない」）。
+    比べる相手は描いたときの値（`data-pc-init`）。後から描く置き場の行は描いたときに控える。 */
+ const pcFieldsOf=root=>[...root.querySelectorAll('[data-pc-field],[data-lc-field]')];
+ function pcMarkClean(root){pcFieldsOf(root).forEach(el=>{if(el.dataset.pcInit==null)el.dataset.pcInit=el.value})}
+ function pcPaintDirty(form){
+  const el=form.querySelector('#pcDirty');if(!el)return;
+  const n=pcFieldsOf(form).filter(f=>f.dataset.pcInit!=null&&f.value!==f.dataset.pcInit).length;
+  el.textContent=n?`変更 ${n}件・まだ保存していません`:'変更なし';
+  el.classList.toggle('is-dirty',!!n);
+ }
+ function onPcEdit(ev){
+  if(ev.target&&ev.target.matches&&ev.target.matches('[data-pc-field],[data-lc-field]'))pcPaintDirty(ev.currentTarget);
+ }
+ /* 誰の名前で記録するか（保存すると更新者として残る）。IDは後から届くことがある。 */
+ function paintPcSaveWho(form){
+  const el=form.querySelector('#pcSaveWho');if(!el)return;
+  const id=currentUserId();
+  el.textContent=id?`更新者 ${id} として記録します`:'更新者IDが分かりません（右上の 👤 で確かめられます）';
+ }
+ /* 共通設定の配線（保存・段・行き先・⋯・ⓘ・「表示」の行き先・起動アイコン）。 */
  function wirePathConfigForm(form){
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
-  /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
-     キーボード操作（←→）も見出しの一言もそのまま効く。 */
+  /* 段の切り替えは編集窓と同じ`bindMaintTabs`（キーボードの←→も見出しの一言もそのまま効く）。 */
   bindMaintTabs(form);wirePcSaveBar(form);
-  /* 図から章へ飛ぶのは**段を切り替えること**（入口を2本作らない）。
-     段になったので、スクロールではなく表示の切り替えで連れて行く。 */
-  /* **委譲で受ける**（§9.265と同じ理由）——置き場の行は後から描かれるので、
-     このとき1つずつ配線すると、行の中の「直す場所を開く」だけ効かない。 */
-  /* **器は描き直しても同じ要素**なので、名前のある関数で付ける（同じ関数は2度付かない・§9.522 の追補。
-     以前は描くたびに積み上がり、3回開くと1回押しただけで3回走った）。 */
+  /* **器は描き直しても同じ要素**なので、名前のある関数で付ける（同じ関数は2度付かない・§9.522 の追補）。
+     **委譲で受ける**——置き場の行は後から描かれるので、1つずつ配線すると行の中の行き先だけ効かない。 */
   form.addEventListener('click',onPcJumpClick);
   form.addEventListener('click',onPcGotoClick);
+  form.addEventListener('click',onPcMoreClick);
+  form.addEventListener('input',onPcEdit);
+  form.addEventListener('change',onPcEdit);
   bindInputHelpers(form);
-  /* 「表示」の設定へ連れて行く。**押すのはヘッダーのバッジそのもの**——
-     同じポップオーバーを2つ書かない（§9.267 の「置き場で決める」と同じ作法）。
-     行き先は2つ（見え方・起動アイコン）だが、**開け方は1箇所**（§9.445）。 */
+  WL.popMenu.tips(form);
+  /* 「表示」の設定へ連れて行く。**押すのはヘッダーのバッジそのもの**——同じポップオーバーを2つ書かない
+     （§9.267 の「置き場で決める」と同じ作法）。行き先は2つ（見え方・起動アイコン）だが、**開け方は1箇所**（§9.445）。 */
   form.querySelectorAll('#pcLookOpen,#pcScOpen').forEach(b=>{b.onclick=()=>{
    const badge=document.getElementById('uiSizeBadge');
    if(badge){badge.click();return}
    showToast('「表示」の設定を開けません','ヘッダーの「表示」ボタンが見つかりませんでした',5000);
   }});
-  /* 読み込みの見せ方の札（§9.436）。**押すのは`WL.loader.setStyle()`の1箇所**
-     ——印の付け替えも、いまの値の書き直しも、あちらが出す`wl:look-change`が
-     受け持つ（ここでクラスを触らない）。器ごと作り直されるので委譲で受ける。 */
+  /* 読み込みの見せ方の札（§9.436）。**押すのは`WL.loader.setStyle()`の1箇所**——印の付け替えも、
+     いまの値の書き直しも、あちらが出す`wl:look-change`が受け持つ。器ごと作り直されるので委譲で受ける。 */
   const ld=$('#pcLd');
   if(ld)ld.onclick=ev=>{
    const b=ev.target.closest('[data-loader-option]');if(!b)return;
    WL.loader.setStyle(b.dataset.loaderOption);
   };
   renderLook();
-  /* **変わったら書き直す**（§9.433）。選ぶ場所（「表示」のポップオーバー）と
-     いまの値を出す場所がここで分かれているので、知らせを受けて塗り直す
-     ——「選んだのに変わらない」は設定が壊れているのと見分けが付かない。
-     この画面は開くたびに器ごと作り直されるが、**渡すのは同じ関数**なので
-     `addEventListener`は積み上がらない（同じ型・同じ関数の登録は1つ）。
-     欄が消えているあいだは`renderLook()`が何もしないで戻る。 */
+  /* **変わったら書き直す**（§9.433）。渡すのは同じ関数なので`addEventListener`は積み上がらない。 */
   document.addEventListener('wl:look-change',renderLook);
-  /* デスクトップの起動アイコン（§9.445）。**ここは行き先だけ**なので、
-     することは「いまの状態を取りに行って塗る」の1つ（盤は「表示」の節）。 */
+  /* デスクトップの起動アイコン（§9.445）。**ここは行き先だけ**——いまの状態を取りに行って塗る。 */
   paintShortcut();loadShortcut();
+  pcMarkClean(form);pcPaintDirty(form);paintPcSaveWho(form);
+ }
+ /* 段を名前（鍵）で開く。図・行・他の画面から連れて来るとき、**飛ぶ＝段を切り替えること**。 */
+ function pcShowTab(form,key){
+  const panel=form.querySelector(`.mm-tabpanel[data-tab-key="${CSS.escape(key)}"]`);
+  if(!panel||typeof form.__mmShowTab!=='function')return null;
+  const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
+  if(i>=0)form.__mmShowTab(i);
+  return panel;
  }
  function onPcJumpClick(ev){
   const form=ev.currentTarget;
   const btn=ev.target.closest('[data-pc-jump]');if(!btn||!form.contains(btn))return;
   ev.preventDefault();
-  const sec=form.querySelector(`#pcSec-${btn.dataset.pcJump}`);
-  if(!sec)return;
-  const panel=sec.closest('.mm-tabpanel');
-  if(panel&&typeof form.__mmShowTab==='function'){
-   const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
-   if(i>=0)form.__mmShowTab(i);
-  }
-  sec.scrollIntoView({block:'start',behavior:'smooth'});
-  sec.classList.add('is-jumped');
-  setTimeout(()=>sec.classList.remove('is-jumped'),1200);
+  pcShowTab(form,btn.dataset.pcJump);
  }
- /* 「直す場所」からその画面へ飛ぶ。**行が持つ印で開く**ので、置き場が
-    増えてもここは触らなくてよい（飛び先はサーバーの答えの一部）。 */
+ /* 「直す場所」からその画面へ飛ぶ。**行が持つ印で開く**ので、置き場が増えてもここは触らない。 */
  function onPcGotoClick(ev){
   const b=ev.target.closest('[data-pc-goto]');if(!b)return;
   document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
  }
- /* 他の画面から連れて来られたときに、その段（と盤）を開く。 */
+ /* 行の ⋯（§9.583 ③）。補足（出どころ・効く時・メモ）は**行の中の控え**（`.pc-store-more`）にあり、
+    押すとその写しを浮かせる。器は`.wl-menu`の1つ・置き方と閉じ方は`WL.popMenu`（§9.448）。 */
+ let pcMoreEl=null;
+ function onPcMoreClick(ev){
+  const b=ev.target.closest('[data-pc-more]');if(!b)return;
+  ev.preventDefault();
+  const was=pcMoreEl&&pcMoreEl.__owner===b;
+  if(pcMoreEl)WL.popMenu.close();
+  if(was)return;
+  const src=b.closest('.pc-store-row')&&b.closest('.pc-store-row').querySelector('.pc-store-more');
+  if(!src)return;
+  const el=document.createElement('div');
+  el.className='wl-menu pc-more';el.setAttribute('role','dialog');
+  el.innerHTML=src.innerHTML;el.__owner=b;
+  document.body.append(el);pcMoreEl=el;
+  bindStorageActions(el);
+  WL.popMenu.open(el,{anchor:b,owner:b,onClose:()=>{el.remove();if(pcMoreEl===el)pcMoreEl=null}});
+ }
+ /* 他の画面から連れて来られたときに、その段（と盤）を開く。**一度きり**——次に開いたときまで
+    覚えていると、身に覚えの無い段が開く。 */
  function openPcPending(form){
-  /* 他の画面から「置き場で決める」で来たときは、その段を開いて印を付ける。
-     **一度きり**——次に共通設定を開いたときまで覚えていると、身に覚えの
-     無い段が開く。 */
-  /* 「表示」から来たときは盤まで見せる（§9.436）。**一度きり**——次に
-     共通設定を開いたときまで覚えていると、身に覚えの無い場所へ飛ぶ。 */
+  if(pcPendingSection){
+   const want=pcPendingSection;pcPendingSection='';
+   pcShowTab(form,want);
+  }
+  /* 「表示」から来たときは盤まで見せる（§9.436）。**開いてから連れて行く**（畳んだままだと、来た先に何も無いように見える）。 */
   if(pcPendingLook){
    pcPendingLook=false;
    requestAnimationFrame(()=>{
     const el=$('#pcLd');if(!el)return;
-    /* **開いてから連れて行く**（畳んだままだと、来た先に何も無いように見える）。 */
     el.open=true;
     el.scrollIntoView({block:'start',behavior:'smooth'});
     el.classList.add('is-lit');
     setTimeout(()=>el.classList.remove('is-lit'),1600);
    });
   }
-  if(pcPendingSection){
-   const want=pcPendingSection;pcPendingSection='';
-   const btn=form.querySelector(`[data-pc-jump="${want}"]`);
-   if(btn)btn.click();
-   else{
-    const sec=form.querySelector(`#pcSec-${want}`),panel=sec&&sec.closest('.mm-tabpanel');
-    if(panel&&typeof form.__mmShowTab==='function'){
-     const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
-     if(i>=0)form.__mmShowTab(i);
-    }
-   }
-  }
  }
  function renderPathConfigForm(){
   const form=$('#masterMaintForm');if(!form)return;
   const v=pathConfigState.values||{};
-  const K=pcFieldKit(v);
+  const K=pcKit(v);
   form.className='mm-form mm-form-page';
-  form.innerHTML=pcPageHtml({SEC_TERMINAL:pcSecTerminal(K,v),SEC_READ:pcSecRead(K),
-   SEC_SCHEDULE:pcSecSchedule(K,v),SEC_RNE:pcSecRne(K),
+  form.innerHTML=pcPageHtml({terminal:pcTabTerminal(K),place:pcTabPlace(),sync:pcTabSync(K),rne:pcTabRne(K),
    /* アプリの更新（§9.555）。中身と配線は`master-update.js`（WL.appUpdate）——この段は器を貸すだけ。 */
-   SEC_UPDATE:K.group('update','アプリの更新','各PCの次の起動で反映','is-restart',WL.appUpdate.sectionHtml(v))});
+   update:WL.appUpdate.sectionHtml(v,K)});
   wirePathConfigForm(form);
   WL.appUpdate.wire(form);
   WL.appUpdate.refresh();
   openPcPending(form);
   refreshRneStatus();
   refreshOwnerStatus();
+ }
+ /* ---- 札の一言と要対応の数（§9.583 ①）。**段が自分で名乗る**（`data-tab-sum`／`data-tab-badge`）。
+    数は「直す・確かめる必要があるもの」だけ（未設定は直す必要が無いこともあるので数えず、字で言う）。 */
+ let rneLast=null;
+ function pcTabSet(form,key,sum,badge,tone,title){
+  const p=form.querySelector(`.mm-tabpanel[data-tab-key="${key}"]`);if(!p)return;
+  p.dataset.tabSum=sum||'';
+  if(badge){p.dataset.tabBadge=String(badge);p.dataset.tabTone=tone||'warn';p.dataset.tabBadgeTitle=title||''}
+  else{delete p.dataset.tabBadge;delete p.dataset.tabTone;delete p.dataset.tabBadgeTitle}
+ }
+ function paintPcTabs(){
+  const form=$('#masterMaintForm');if(!form||!form.querySelector('.pc-page'))return;
+  const term=(window.WL&&WL.terminal)||null,act=pathConfigState.active||{};
+  pcTabSet(form,'terminal',[act.pc_name||(term&&term.pcName())||'',(term&&term.loginId())||'',pcModeWord()].filter(Boolean).join('・'));
+  const st=pathConfigState.storage,items=(st&&st.items)||[];
+  if(items.length){
+   const live=items.filter(x=>!x.retired);
+   const miss=live.filter(x=>x.path&&x.exists===false).length,pend=items.filter(x=>x.pending).length;
+   const unset=live.filter(x=>!x.path).length;
+   pcTabSet(form,'place',`${live.length}か所`+(unset?`・未設定${unset}`:'')+(miss?`・まだ無い${miss}`:'')+(pend?`・再起動待ち${pend}`:''),
+    miss+pend,'warn',['要対応',miss?`まだ無い置き場 ${miss}`:'',pend?`再起動待ち ${pend}`:''].filter(Boolean).join(' '));
+  }else pcTabSet(form,'place',pathConfigState.storageError?'置き場を読めません':'',pathConfigState.storageError?'!':'','bad','置き場の一覧を読めませんでした');
+  const syncPend=form.querySelectorAll('.mm-tabpanel[data-tab-key="sync"] .pc-pending').length;
+  pcTabSet(form,'sync',`${pcChoiceShort('schedule_watch_enabled')}・${pcChoiceShort('schedule_owner_enabled')}`,syncPend,'warn','要対応 再起動待ち '+syncPend);
+  if(rneLast){
+   const s=rneLast,miss=((s.assets&&s.assets.rneMissing)||[]).length+((s.assets&&!s.assets.symnavimConf)?1:0);
+   /* 資材が無いのを**要対応に数えるのは使うとき**（定期実行が回る・取得元が local）だけ。使わない端末では字で言う。 */
+   const uses=!!s.enabled||s.source==='local';
+   pcTabSet(form,'rne',(s.running?'抽出中':(s.enabled?`定期 ${s.intervalSec}秒ごと`:'定期 停止中'))+(miss?'・資材なし':''),
+    uses?miss:0,'bad','要対応 足りない資材 '+miss);
+  }
+  if(typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
  }
  /* ---------- 書き込み役の状態(§9.192) ----------
     「入れたのに効いているのか分からない」を作らない。誰が役をしていて、
@@ -2610,20 +2578,22 @@
    (lines.length?`<div class="pc-owner-lines">${lines.map(t=>`<span>${t}</span>`).join('')}</div>`:'');
  }
 
- /* ---------- RNE抽出の状態表示と手動実行(§9.50) ----------
+
+ /* ---------- RNE抽出の状態表示と手動実行(§9.50 → §9.583) ----------
     ローカル運用(sikalot_source=local)のとき、抽出は背景で定期実行される。
     以前は成否がアプリログにしか出ず、「動いているのか」「今すぐ取り直したい」
-    に画面から答えられなかった(「実際に起動させる方法が分からない」という指摘)。 */
+    に画面から答えられなかった(「実際に起動させる方法が分からない」という指摘)。
+    §9.583: 段の**主役**（最初に読むもの）にした。足りない資材は1行ずつ、作ったファイルは名前と時刻の2列。 */
  let rneTimer=null;
  function rneStatusPanelHtml(){
-  return `<div class="rne-panel" id="rnePanel">
-    <div class="rne-head">
-     <h4>RNE抽出（参照データのローカル運用）</h4>
-     <span class="rne-state" id="rneState">確認中…</span>
-     <button type="button" class="mm-btn-ghost sm" id="rneRunBtn">今すぐ抽出</button>
+  return `<section class="rne-panel" id="rnePanel" aria-live="polite">
+    <div class="rne-head"><b>いまの状態</b>
+     <span class="pc-chip rne-state" id="rneState">確かめています…</span>
+     ${tipHtml('RNE（Navigator 問い合わせ定義）から `.sqlite3` を作り、それを一覧として読む仕組みです。取得元が **local** のデータソースだけが、ここで作ったファイルを読みます。')}
+     <button type="button" class="mm-btn-ghost sm" id="rneRunBtn"><i class="fa-solid fa-play" aria-hidden="true"></i> 今すぐ抽出</button>
     </div>
-    <div id="rneBody"><div class="rne-note">状態を読み込んでいます…</div></div>
-   </div>`;
+    <div id="rneBody"><p class="rne-note">状態を読み込んでいます…</p></div>
+   </section>`;
  }
  function fmtWhen(sec){
   if(!sec)return '—';
@@ -2635,29 +2605,32 @@
   clearTimeout(rneTimer);rneTimer=null;
   let s;
   try{s=await api('/api/rne-extract/status')}
-  catch(e){const b=$('#rneBody');if(b)b.innerHTML=`<div class="rne-note">状態を取得できません: ${esc(e.message)}</div>`;return}
+  catch(e){const b=$('#rneBody');if(b)b.innerHTML=`<p class="rne-note is-bad">状態を取得できません: ${esc(e.message)}</p>`;return}
   const state=$('#rneState'),body=$('#rneBody'),btn=$('#rneRunBtn');
   if(!state||!body||!btn)return;
+  rneLast=s;
   state.textContent=s.running?'抽出中…':(s.enabled?'定期実行 有効':'定期実行 停止中');
-  state.className='rne-state '+(s.running?'is-running':(s.enabled?'is-on':'is-off'));
+  state.className='pc-chip rne-state '+(s.running?'is-run':(s.enabled?'is-ok':'is-off'));
   // 手動実行は取得元に関わらず、資材が配置されていれば押せる
   btn.disabled=!!s.running||!s.canRun;
   btn.title=s.canRun?'取得元の設定に関わらず、今この場でRNEから抽出し直します。'
                     :'抽出に必要なファイル(RNE定義・symnavim.conf)が配置されていません。';
-  const jobs=(s.jobs||[]).map(j=>`<div class="rne-job${j.ok?'':' is-ng'}"><b>${esc(j.name)}</b>${
-    j.ok?`成功 ${esc(String(j.rows??'-'))}行 / ${(j.elapsed||0).toFixed(1)}秒`:`失敗: ${esc(j.error||'')}`}</div>`).join('');
-  const outs=(s.outputs||[]).map(o=>`<div class="rne-job"><b>${esc(o.name)}</b>${
-    o.exists?`最終更新 ${esc(fmtWhen(o.mtime))}`:'まだ作成されていません'}</div>`).join('');
   const missing=(s.assets&&s.assets.rneMissing)||[];
+  /* 足りない資材は**1つずつ・置く場所つき**（§4。「何が・どこへ」が無いと打つ手が無い）。 */
+  const issues=[
+   missing.length?`<li>抽出定義（RNE）がありません: <b>${esc(missing.join(', '))}</b> → <code>${esc(s.assetsDir||'')}${s.assetsDir?'/rne':''}</code> へ置きます（機密のためリポジトリには含めません。config/rne_extract/README.md）</li>`:'',
+   (s.assets&&!s.assets.symnavimConf)?`<li>接続情報 symnavim.conf がありません → <code>${esc(s.assetsDir||'')}</code> へ置きます</li>`:'',
+  ].filter(Boolean).join('');
+  const outs=(s.outputs||[]).map(o=>`<dt>${esc(o.name)}</dt><dd>${o.exists?`最終更新 ${esc(fmtWhen(o.mtime))}`:'まだ作っていません'}</dd>`).join('');
+  const jobs=(s.jobs||[]).map(j=>`<dt>${esc(j.name)}</dt><dd class="${j.ok?'':'is-bad'}">${
+    j.ok?`成功 ${esc(String(j.rows??'-'))}行・${(j.elapsed||0).toFixed(1)}秒`:`失敗: ${esc(j.error||'')}`}</dd>`).join('');
   body.innerHTML=`
-   ${s.enabled?'':`<div class="rne-note"><b>定期実行は停止中です</b>（設定: ${esc(s.scheduleMode||'auto')}${s.scheduleMode==='off'?'':` / 取得元: ${esc(s.source||'')}`}）。
-     定期実行を回すには、上の「RNE抽出の定期実行」を <b>on</b> にするか、「参照データの取得元」を <b>local</b> にしてください（取得元の変更はサーバー再起動後に反映されます。定期実行の設定は再起動不要です）。
-     <b>「今すぐ抽出」は取得元の設定に関わらず実行できます。</b></div>`}
-   ${missing.length?`<div class="rne-note" style="color:var(--danger)"><b>抽出定義(RNE)が未配置です: ${esc(missing.join(', '))}</b><br>${esc(s.assetsDir||'')}\\rne へ配置してください（機密のためリポジトリには含まれません。config/rne_extract/README.md 参照）。</div>`:''}
-   ${(s.assets&&!s.assets.symnavimConf)?`<div class="rne-note" style="color:var(--danger)">接続情報 symnavim.conf が未配置です（${esc(s.assetsDir||'')}）。</div>`:''}
-   <div class="rne-jobs">${outs}</div>
-   ${jobs?`<div class="rne-jobs">${jobs}</div>`:''}
-   <div class="rne-note">定期実行: ${s.enabled?`起動直後に1回、以降 ${esc(String(s.intervalSec))}秒ごと`:'（停止中）'} ／ 手動実行: ${s.canRun?'可能':'資材が未配置のため不可'} ／ 直近の実行: ${esc(fmtWhen(s.finishedAt||s.startedAt))}${s.trigger?`（${s.trigger==='manual'?'手動':'定期'}）`:''}</div>`;
+   ${s.enabled?'':`<p class="rne-note">定期実行は止まっています（設定 ${esc(s.scheduleMode||'auto')}${s.scheduleMode==='off'?'':`・取得元 ${esc(s.source||'')}`}）。
+     回すには「定期実行」を <b>on</b> にするか、取得元を <b>local</b> にします（取得元の変更は再起動後に反映）。
+     <b>「今すぐ抽出」はいつでも押せます。</b></p>`}
+   ${issues?`<ul class="rne-issues">${issues}</ul>`:''}
+   <dl class="rne-out">${outs}${jobs}</dl>
+   <p class="rne-note">定期: ${s.enabled?`起動直後に1回、以降 ${esc(String(s.intervalSec))}秒ごと`:'止まっています'}・直近の実行: ${esc(fmtWhen(s.finishedAt||s.startedAt))}${s.trigger?`（${s.trigger==='manual'?'手動':'定期'}）`:''}</p>`;
   btn.onclick=async()=>{
    btn.disabled=true;
    try{
@@ -2666,138 +2639,122 @@
    }catch(e){showToast('抽出を開始できません',e.message,7000);btn.disabled=false;return}
    refreshRneStatus();
   };
+  paintPcTabs();
   // 実行中だけ短い間隔で追いかける(終わったら止める。無駄な問い合わせを残さない)
   if(s.running)rneTimer=setTimeout(refreshRneStatus,2000);
  }
- /* ---------- 状態はその欄のすぐ下（§9.208 ⑨） ----------
-    以前は画面のいちばん下に「保存値 ／ いま効いている値」の対比表を置いて
-    いた。項目が10件を超えると、直した欄がその表のどの行なのかを探すことに
-    なり、**再起動待ちかどうかを見るのに視線が上下する**。状態は欄の持ち物
-    なので欄が持つ——表そのものは廃止した（§8 同じ情報を2箇所に出さない）。
-    ここが埋めるのは「各欄の状態」「図の中の値」「章のレールの件数」の3つ。 */
- /* 共有の置き場を1枚で出す(§9.260)。**判定はサーバーが持つ**（§9.163）ので、
-    ここは受け取った答えを並べるだけ——「UNCかどうか」「同じ根の下か」を
-    画面でも判定すると答えが2通りになる。
-    **色だけで伝えない**(§3)ので、置き場の種類は必ず文字で書く。 */
+ /* ---------- 置き場（§9.260 → §9.267 → §9.583） ----------
+    **判定はサーバーが持つ**（§9.163）ので、ここは受け取った答えを並べて直す口を添えるだけ
+    ——「UNCかどうか」「どの段で決まったか」を画面でも判定すると答えが2通りになる。
+    §9.583: 群ごとに畳める表。**1行＝名前｜欄｜在るか・種類｜打つ手**、補足は ⋯ へ。
+    以前は1件が4段（題・欄・いま/出どころ・説明）で、9件で器の2倍を超えていた。 */
  /* 置き場の種類は**必ず文字で**（§3。色だけで伝えない）。 */
  const PC_SHARE_KIND={network:'共有（ネットワーク）',cloud:'共有（クラウド同期）',
                       local:'この端末の中','':'未設定'};
- /* 群の題と、その群が何のためにあるか。**3つより増やさない**（§9.105と
-    同じ理由——群の意味を覚える手間のほうが大きくなる）。 */
+ /* 群。**並びはよく直す順**（§CLAUDE 14）——みんなで使う置き場は運用を始めるときに必ず決め、
+    この端末の中は端末ごとに稀、読むだけはここでは直さない（行き先だけ）。**3つより増やさない**。 */
  const PC_STORE_GROUPS=[
-  {id:'terminal',name:'① この端末の中',
-   why:'この端末だけが使うもの。<b>置き場は config/local.json が決めます</b>（起動時に1回だけ読むので再起動が要ります）。'},
-  {id:'share',name:'② みんなで使う',
-   why:'他の端末とやりとりするもの。ここを共有フォルダにすると全員で同じものを見ます。'},
-  {id:'read',name:'③ 読むだけ',
-   why:'別のシステムが書いたものを読むだけです。書き換えません。'},
+  {id:'share',name:'みんなで使う',icon:'fa-people-arrows',
+   tip:'他の端末とやりとりするもの。ここを共有フォルダにすると、全員で同じものを見ます。'},
+  {id:'terminal',name:'この端末の中',icon:'fa-desktop',
+   tip:'この端末だけが使うもの。**置き場は config/local.json が決めます**（起動時に1回だけ読むので、変えたらアプリの再起動が要ります）。'
+    +'**マスタDB自身の置き場を決める値**なので、マスタの中には置けません（読みに行く先が分からなくなるため）。直す前の内容は `local.json.bak` に控えます。'},
+  {id:'read',name:'読むだけ',icon:'fa-book-open',
+   tip:'別のシステムが書いたものを読むだけです。書き換えません。読み込み先は「データ接続」と「RNE抽出」で決めます。'},
  ];
  /* 「在るか」は3値（§CLAUDE「共有DBを開く前にstatを置かない」）。
     **null（確かめられなかった）を「無い」と同じに扱わない。** */
  function pcExistsText(x){
-  if(!x.path)return {t:'未設定',c:'is-unset'};
+  if(!x.path)return {t:'未設定',c:'is-off'};
   if(x.exists===true)return {t:'あります',c:'is-ok'};
-  if(x.exists===false)return {t:'まだありません',c:'is-missing'};
-  return {t:'確かめられません',c:'is-unknown'};
+  if(x.exists===false)return {t:'まだありません',c:'is-warn'};
+  return {t:'確かめられません',c:'is-off'};
  }
- /* 置き場の1行。**直せるものには欄と「参照…」を、無いものには「作る」を**
-    その場に置く（§9.207。直す場所へ行かせない）。 */
+ const PC_JUMP_WORD={dataSource:'データ接続',rne:'RNE抽出'};
+ /* 行の補足（⋯で浮かせる控え）。**行の中に置く**——浮いた面はその写しを出すだけなので、
+    描き直しても補足と行が食い違わない。 */
+ function pcStoreMoreHtml(label,facts,notes){
+  const dl=facts.filter(([,v])=>v).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${v}</dd>`).join('');
+  return `<div class="pc-store-more" hidden><b class="pc-more-title">${esc(label)}</b>
+    ${dl?`<dl>${dl}</dl>`:''}${notes.filter(Boolean).map(n=>`<p class="pc-store-note">${n}</p>`).join('')}</div>`;
+ }
+ /* 置き場の1行。**直せるものには欄と「参照…」を、無いものには「作る」を**その場に置く（§9.207）。 */
  function pcStorageRowHtml(x,lcFields){
-  /* `config/local.json`の行は、**その欄の説明も一緒に出す**（利用者の混乱の元
-     ——「フォルダなのかファイルなのか」「共有の置き場と何が違うのか」が
-     行だけからは読めなかった）。説明は`localConfig`が持っている。 */
+  /* `config/local.json`の行は、**その欄の説明も一緒に出す**（「フォルダなのかファイルなのか」が行だけからは読めなかった）。 */
   const lcDef=(lcFields||[]).find(f=>f.key===x.field)||null;
-  /* 種類と「在るか」は**別のこと**だが、置き場が未設定のときはどちらも
-     「未設定」になり、同じ言葉が2つ並ぶ（§8）。そのときは種類を出さない。 */
   const kind=x.path?(PC_SHARE_KIND[x.kind||'']||''):'';
   const ex=pcExistsText(x);
-  const onShare=x.kind==='network'||x.kind==='cloud';
   const lc=x.store==='local-json';
   const field=lc?`data-lc-field="${esc(x.field)}"`:`data-pc-field="${esc(x.field)}"`;
   const canEdit=x.editable&&x.field;
+  /* 欄は**保存値**（効いている値を入れると送り返すだけで焼き付く・§9.250 ⑩）。空のときは薄字で「いま」を言う。 */
+  const saved=x.saved!=null?x.saved:x.path;
   const box=canEdit
    ? `<span class="mm-path" data-path-drop="${esc(x.field)}">
-       <input ${field} data-field="${esc(x.field)}" type="text" value="${esc(x.saved!=null?x.saved:x.path)}"
-        placeholder="未設定（既定を使います）" autocomplete="off" spellcheck="false">
+       <input ${field} data-field="${esc(x.field)}" type="text" value="${esc(saved)}"
+        placeholder="${esc(x.path?`既定: ${x.path}`:'未設定（既定を使います）')}" autocomplete="off" spellcheck="false">
        <button type="button" class="mm-path-browse" data-path-browse="${esc(x.field)}" data-path-mode="${esc(x.mode||'dir')}">参照…</button>
       </span>`
-   : `<code class="pc-share-path" title="${esc(x.path||'')}">${esc(x.path||'（未設定）')}</code>`;
-  /* **作れるのは「無いと分かっている」ときだけ**——確かめられなかった
-     ものに「作る」を出すと、在るものを作りに行ったように見える。 */
+   : `<code class="pc-store-path" title="${esc(x.path||'')}">${esc(x.path||'（未設定）')}</code>`;
+  /* **作れるのは「無いと分かっている」ときだけ**——確かめられなかったものに「作る」を出すと、在るものを作りに行ったように見える。 */
   const canMake=x.creatable&&x.path&&x.exists===false;
-  /* **1行＝3段**（題と素性／欄／打つ手）。素性を別の段にすると1件が4段に
-     なり、9件で器の2倍を超える（実測 1955px を 828px の器で見ていた）。
-     題の右へ添えれば読む順は変わらない（§CLAUDE 画面基準 1・12）。 */
-  return `<div class="pc-store-row${onShare?' is-shared':''}${lc?' is-local':''}" data-store-key="${esc(x.key)}">
-   <div class="pc-store-head">
-    <b class="pc-store-label">${esc(x.label)}</b>
-    <small class="pc-store-what">${esc(x.what||'')}</small>
-    ${kind?`<span class="pc-store-kind">${esc(kind)}</span>`:''}
-    <span class="pc-store-exists ${ex.c}">${esc(ex.t)}</span>
-    ${lc?'<span class="pc-store-tag">この端末だけ</span>':''}
-    ${x.retired?'<span class="pc-store-tag is-retired">役目を終えました</span>':''}
-   </div>
-   ${x.pending?`<small class="pc-store-note is-pending">保存済みですが、まだ効いていません。
-     いまは <code>${esc(x.active||'（未設定）')}</code> を使っています——
-     <b>アプリを再起動すると切り替わります</b>。置き場は先に作っておけます。</small>`:''}
-   ${box}
-   <div class="pc-store-foot">
-    ${canEdit?`<code class="pc-store-eff" title="${esc(x.path||'')}">${
-      x.pending?'これから':'いま'}: ${esc(x.path||'（未設定）')}</code>`:''}
-    ${x.from?`<span>出どころ <b>${esc(x.from)}</b></span>`:''}
-    ${x.pending
-      ? `<span class="pc-store-pending" title="いまは ${esc(x.active||'（未設定）')} を使っています">再起動待ち</span>`
-      : `<span>${x.when==='live'?'保存後すぐ反映':'再起動後に反映'}</span>`}
-    ${canMake?`<button type="button" class="mm-btn-ghost pc-make" data-pc-make="${esc(x.key)}"
-       data-pc-make-mode="${esc(x.mode||'dir')}">無いので作る…</button>`:''}
-    ${x.jump?`<button type="button" class="mm-btn-ghost pc-goto" data-pc-goto="${esc(x.jump)}">直す場所を開く</button>`:''}
-    ${x.section?`<button type="button" class="mm-btn-ghost" data-pc-jump="${esc(x.section)}">直す場所を開く</button>`:''}
-   </div>
-   ${x.note?`<small class="pc-store-note">${esc(x.note)}</small>`:''}
-   ${lcDef&&lcDef.hint?`<small class="pc-store-note">${hintHtml(lcDef.hint)}${
-     lcDef.expanded?` この端末では <code>${esc(lcDef.expanded)}</code> になります。`:''}</small>`:''}
-  </div>`;
+  /* 種類は**群の名前と違うときだけ**言う（「この端末の中」の群に「この端末の中」と添えても何も増えない・§CLAUDE 8）。
+     みんなで使う群の置き場が手元にある（＝まだ共有していない）は、知らないと壊れ方が分からないので必ず言う。 */
+  const expected={share:['network','cloud'],terminal:['local']}[x.group]||[];
+  const sub=[x.path&&!expected.includes(x.kind||'')?kind:'',x.retired?'役目を終えました':''].filter(Boolean);
+  const more=pcStoreMoreHtml(x.label,[
+   ['いま',x.path?`<code>${esc(x.path)}</code>`:''],
+   ['出どころ',esc(x.from||'')],
+   ['効く時',x.pending?'<b>再起動待ち</b>（アプリを開き直すと切り替わります）':esc(x.when==='live'?'保存するとすぐ':'アプリの再起動後')],
+   ['種類',esc(kind)],
+  ],[
+   x.pending?`保存済みですが、まだ効いていません。いまは <code>${esc(x.active||'（未設定）')}</code> を使っています。置き場は先に作っておけます。`:'',
+   esc(x.note||''),
+   lcDef&&lcDef.hint?hintHtml(lcDef.hint)+(lcDef.expanded?` この端末では <code>${esc(lcDef.expanded)}</code> になります。`:''):'',
+  ]);
+  const jump=x.jump?`<button type="button" class="mm-btn-ghost sm" data-pc-goto="${esc(x.jump)}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> ${esc(PC_JUMP_WORD[x.jump]||'直す場所')}</button>`
+   :x.section?`<button type="button" class="mm-btn-ghost sm" data-pc-jump="${esc(x.section)}"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> ${esc(PC_JUMP_WORD[x.section]||'直す場所')}</button>`:'';
+  return `<tr class="pc-store-row${x.retired?' is-retired':''}${x.pending?' is-pending':''}" data-store-key="${esc(x.key)}">
+   <th scope="row"><b class="pc-store-label">${esc(x.label)}</b><small>${esc(x.what||'')}</small></th>
+   <td class="pc-store-box">${box}</td>
+   <td class="pc-store-st"><span class="pc-chip pc-store-exists ${ex.c}">${esc(ex.t)}</span>${
+     x.pending?'<span class="pc-chip is-warn pc-pending">再起動待ち</span>':''}${
+     sub.length?`<small class="pc-store-kind">${esc(sub.join('・'))}</small>`:''}</td>
+   <td class="pc-store-act">${canMake?`<button type="button" class="mm-btn-ghost sm pc-make" data-pc-make="${esc(x.key)}"
+      data-pc-make-mode="${esc(x.mode||'dir')}"><i class="fa-solid fa-folder-plus" aria-hidden="true"></i> 作る…</button>`:''}${jump}
+    <button type="button" class="pc-more-btn" data-pc-more title="${esc(x.label)}の補足（出どころ・効く時・メモ）" aria-label="補足">
+     <i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>${more}</td>
+  </tr>`;
  }
- /* `config/local.json` の残り2つ（まとめて決める / 書込サイクル）。
-    **優先順位はサーバーが言う**——段を1つ足したときに2箇所直さない。 */
- /* 説明は**マスタと同じ書き方**を通す（`**強調**`が生で出ないように・§9.222 ⑧）。
-    変数で書いてあるときは**展開後の姿も出す**（§6。書いたものと効くものが
-    違うので、片方だけ見せると確かめようがない）。 */
- function pcLcNow(f){
-  const exp=f.expanded?`<br>この端末では <code>${esc(f.expanded)}</code> になります。`:'';
-  return `<small class="mm-field-hint">${hintHtml(f.hint||'')}
-    いまは <b>${esc(f.effective||'')}</b> です。${exp}</small>`;
+ /* `config/local.json` の残り2つ（まとめて決める / 書込サイクル）。**優先順位はサーバーが言う**。
+    説明は**マスタと同じ書き方**を通す（`**強調**`が生で出ないように・§9.222 ⑧）。 */
+ function pcLocalExtraRows(fields){
+  return (fields||[]).filter(f=>f.key==='db_dir'||f.key==='master_share_mode').map(f=>{
+   const box=f.mode==='choice'
+    ? `<select data-lc-field="${esc(f.key)}">${(f.choices||[]).map(([v,t])=>
+        `<option value="${esc(v)}"${(f.value||'')===v?' selected':''}>${esc(t)}</option>`).join('')}</select>`
+    : `<span class="mm-path" data-path-drop="${esc(f.key)}">
+        <input data-lc-field="${esc(f.key)}" data-field="${esc(f.key)}" type="text" value="${esc(f.value||'')}"
+         placeholder="未設定（既定: ${esc(f.default||'')}）" autocomplete="off" spellcheck="false">
+        <button type="button" class="mm-path-browse" data-path-browse="${esc(f.key)}" data-path-mode="${esc(f.mode||'dir')}">参照…</button>
+       </span>`;
+   const more=pcStoreMoreHtml(f.label,[['いま',`<b>${esc(f.effective||'')}</b>`],['効く時','アプリの再起動後']],
+    [hintHtml(f.hint||'')+(f.expanded?` この端末では <code>${esc(f.expanded)}</code> になります。`:'')]);
+   return `<tr class="pc-store-row is-extra" data-store-key="lc:${esc(f.key)}">
+    <th scope="row"><b class="pc-store-label">${esc(f.label)}</b><small>${esc(f.what||'config/local.json')}</small></th>
+    <td class="pc-store-box">${box}</td>
+    <td class="pc-store-st"></td>
+    <td class="pc-store-act"><button type="button" class="pc-more-btn" data-pc-more title="${esc(f.label)}の補足" aria-label="補足">
+     <i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>${more}</td></tr>`;
+  }).join('');
  }
- /* **読めなかったことを画面のいちばん上に出す**（§9.271）。以前はサーバーが
-    黙って空の設定として扱っていたので、`master_db_path` を書いてあるのに
-    アプリは既定の `db\master.sqlite3` を読み、画面は「未設定」に見えていた。
-    ここに出る＝**このファイルに書いた設定は1つも効いていない**。 */
+ /* **読めなかったことを群のいちばん上に出す**（§9.271）。ここに出る＝このファイルに書いた設定は1つも効いていない。 */
  function pcLocalErrorHtml(err){
   if(!err)return '';
   return `<p class="mm-warn-note" id="pcLocalConfigError"><b>この端末の設定ファイルを読めませんでした。</b>
-   ${esc(err)}<br>そのため、<b>下の3つに書いた内容は効いていません</b>（アプリは既定の置き場を読んでいます）。
-   このまま下の欄から保存し直すと、正しい形で書き直せます。</p>`;
+   ${esc(err)}<br>そのため、<b>この群に書いた内容は効いていません</b>（アプリは既定の置き場を読んでいます）。
+   このまま欄から保存し直すと、正しい形で書き直せます。</p>`;
  }
- function pcLocalExtraHtml(fields){
-  const rows=(fields||[]).filter(f=>f.key==='db_dir'||f.key==='master_share_mode');
-  if(!rows.length)return '';
-  return rows.map(f=>f.mode==='choice'
-   ? `<label class="mm-field"><span>${esc(f.label)}</span>
-      <select data-lc-field="${esc(f.key)}">${(f.choices||[]).map(([v,t])=>
-       `<option value="${esc(v)}"${(f.value||'')===v?' selected':''}>${esc(t)}</option>`).join('')}</select>
-      ${pcLcNow(f)}</label>`
-   : `<div class="mm-field mm-field-wide mm-field-path"><span>${esc(f.label)}</span>
-      <span class="mm-path" data-path-drop="${esc(f.key)}">
-       <input data-lc-field="${esc(f.key)}" data-field="${esc(f.key)}" type="text" value="${esc(f.value||'')}"
-        placeholder="未設定（既定: ${esc(f.default||'')}）" autocomplete="off" spellcheck="false">
-       <button type="button" class="mm-path-browse" data-path-browse="${esc(f.key)}" data-path-mode="${esc(f.mode||'dir')}">参照…</button>
-      </span>
-      ${pcLcNow(f)}</div>`
-  ).join('');
- }
- /* 置き場を1枚で出す(§9.260→§9.267)。**判定はサーバーが持つ**（§9.163）ので、
-    ここは受け取った答えを並べて直す口を添えるだけ——「UNCかどうか」
-    「どの段で決まったか」を画面でも判定すると答えが2通りになる。 */
  /* 置き場を「無ければ作る」（§9.267、利用者の指示「設定さえ書いてあれば
     フォルダやファイルが存在しない場合には強制的に作成して、ユーザーの操作を
     妨げないようにしたい。但し作成する前にユーザーに確認する方式に」）。
@@ -2854,156 +2811,115 @@
    btn.onclick=()=>makeStoragePath(btn.dataset.pcMake,btn.dataset.pcMakeMode||'dir');
   });
  }
+ /* 群の見出しの札（件数と状態）。**畳んだままでも「いまどうか」が読める**（§9.261・§9.433）。 */
+ function pcGroupTag(list){
+  const live=list.filter(x=>!x.retired);
+  const miss=live.filter(x=>x.path&&x.exists===false).length,pend=list.filter(x=>x.pending).length;
+  const unset=live.filter(x=>!x.path).length,unknown=live.filter(x=>x.path&&x.exists==null).length;
+  const chips=[
+   miss?`<span class="pc-chip is-warn">まだ無い ${miss}</span>`:'',
+   pend?`<span class="pc-chip is-warn">再起動待ち ${pend}</span>`:'',
+   unset?`<span class="pc-chip is-off">未設定 ${unset}</span>`:'',
+   unknown?`<span class="pc-chip is-off">確かめられない ${unknown}</span>`:'',
+  ].filter(Boolean);
+  return chips.length?chips.join(''):'<span class="pc-chip is-ok">すべてあります</span>';
+ }
+ /* **最初から開く群**: 直す欄を持つ群と、要対応がある群。読むだけで全部そろっていれば畳む
+    （ここでは直さない・行き先だけ。見出しが件数と状態を言う）。 */
+ const pcGroupOpen=(g,list)=>g.id!=='read'||list.some(x=>!x.retired&&(x.pending||(x.path&&x.exists!==true)||!x.path));
  function paintShareLayout(sl,err){
   const rows=$('#pcShareRows'),root=$('#pcShareRoot');
   if(!rows)return;
   const items=(sl&&sl.items)||[];
   if(!items.length){
-   rows.innerHTML=`<p class="mm-field-hint">置き場の一覧を読めませんでした${
-     err?`: ${esc(err)}`:''}。他の設定はこのまま直せます。</p>`;
+   rows.innerHTML=`<p class="pc-empty">置き場の一覧を読めませんでした${err?`: ${esc(err)}`:''}。他の段の設定はこのまま直せます。</p>`;
    return;
   }
+  /* 開け閉めは描き直しても保つ（保存のあと開いていた群が畳まれると、直した行を探すことになる）。 */
+  const was={};rows.querySelectorAll('[data-store-group]').forEach(d=>{was[d.dataset.storeGroup]=d.open});
   const byGroup={};items.forEach(x=>{(byGroup[x.group]=byGroup[x.group]||[]).push(x)});
   rows.innerHTML=PC_STORE_GROUPS.map(g=>{
    const list=byGroup[g.id]||[];
    if(!list.length)return '';
-   return `<section class="pc-store-group" data-store-group="${esc(g.id)}">
-    <h5 class="pc-store-group-head">${esc(g.name)}<small>${g.why}</small></h5>
-    ${list.map(r=>pcStorageRowHtml(r,sl&&sl.localConfig)).join('')}
-    ${g.id==='terminal'?`<div class="pc-store-extra">${pcLocalErrorHtml(sl&&sl.localConfigError)}${pcLocalExtraHtml(sl&&sl.localConfig)}
-     <small class="mm-field-hint">この3つは <code>${esc((sl&&sl.localConfigPath)||'config/local.json')}</code> に入ります。
-      <b>マスタDB自身の置き場を決める値</b>なので、マスタの中には置けません（読みに行く先が分からなくなるため）。
-      直す前の内容は <code>local.json.bak</code> に控えます。</small></div>`:''}
-   </section>`;
+   const extra=g.id==='terminal'?pcLocalExtraRows(sl&&sl.localConfig):'';
+   const table=`${g.id==='terminal'?pcLocalErrorHtml(sl&&sl.localConfigError):''}
+    <table class="pc-store"><tbody>${list.map(r=>pcStorageRowHtml(r,sl&&sl.localConfig)).join('')}${extra}</tbody></table>`;
+   const open=g.id in was?was[g.id]:pcGroupOpen(g,list);
+   return pageFoldHtml(g.name,`${list.filter(x=>!x.retired).length}か所`,table,open,
+    {icon:g.icon,tip:g.tip,tag:`<span class="pc-acc-tags">${pcGroupTag(list)}</span>`,cls:'pc-store-group',id:'pcStore-'+g.id,
+     attrs:`data-store-group="${esc(g.id)}"`});
   }).join('');
   if(root){
-   /* **揃っているときだけ言う**。揃っていない置き方が悪いわけではないので、
-      「バラバラです」とは書かない（直す必要のない状態を不備に見せない）。 */
-   root.textContent=(sl&&sl.sameRoot)?`本体3つとも同じ場所の下です: ${sl.sameRoot}`:'';
+   /* **揃っているときだけ言う**。揃っていない置き方が悪いわけではないので、「バラバラです」とは書かない。 */
+   root.textContent=(sl&&sl.sameRoot)?`本体3つ（マスタ・作業予定・測定データ）とも同じ場所の下です: ${sl.sameRoot}`:'';
    root.hidden=!(sl&&sl.sameRoot);
-   /* **器ごと畳む**——中身が隠れただけだと、器の余白が1行ぶん残る。 */
-   const head=root.closest('.pc-share-head');if(head)head.hidden=root.hidden;
   }
   bindPathFields(rows);
   bindStorageActions(rows);
+  WL.popMenu.tips(rows);
+  const form=rows.closest('form');
+  if(form){pcMarkClean(rows);pcPaintDirty(form)}
  }
 
+ /* ---------- 再起動待ちと札の数（§9.208 ⑨ → §9.583） ----------
+    状態は欄の持ち物なので欄の行が持つ（§8 同じ情報を2箇所に出さない）。
+    再起動が要る欄は「再起動で反映」と書き、保存値と効いている値が違えば「再起動待ち」へ塗り替える
+    （中身の2つの値は札の`title`）。数は保存の帯と札が言う。 */
  function renderPathConfigList(){
-  const form=$('#masterMaintForm');if(!form||!form.classList.contains('mm-form-page'))return;
+  const form=$('#masterMaintForm');if(!form||!form.querySelector('.pc-page'))return;
   const v=pathConfigState.values||{},a=pathConfigState.active||{};
-  /* 「いま効いている値」の言い方。空欄は**何が起きるか**まで書く
-     （「未設定」だけでは、既定へ落ちるのか機能が止まるのかが分からない）。 */
-  const activeText={
-   sikalot_source:a.sikalot_source||'',
-   schedule_share_path:a.schedule_share_path||'（未設定・スケジュール機能は無効）',
-  };
-  const savedText={
-   sikalot_source:v.sikalot_source||'（既定）network',
-   schedule_share_path:v.schedule_share_path||'（未設定・スケジュール機能は無効）',
-  };
-  /* まだ読んでいないデータソースは**「解決できていません」ではなく
-     「再起動後に反映」**と書く（§9.163）。前者は不具合に読めるが、
-     実際は設計どおりの待ち状態で、打つ手が違う。 */
+  /* 「いま効いている値」の言い方。空欄は**何が起きるか**まで書く。 */
+  const activeText={sikalot_source:a.sikalot_source||'',
+   schedule_share_path:a.schedule_share_path||'（未設定・スケジュール機能は無効）'};
+  const savedText={sikalot_source:v.sikalot_source||'（既定）network',
+   schedule_share_path:v.schedule_share_path||'（未設定・スケジュール機能は無効）'};
+  /* まだ読んでいないデータソースは**「解決できていません」ではなく「再起動後に反映」**（§9.163）。 */
   const pendingKeys=new Set();
   (pathConfigState.sources||[]).forEach(src=>{
-   if(src.loaded===false){
-    pendingKeys.add(src.valueKey);
-    activeText[src.valueKey]=`（未反映）再起動すると ${src.planned||'—'} を読みます`;
-   }else{
-    activeText[src.valueKey]=src.active||'（解決できていません）';
-   }
+   if(src.loaded===false){pendingKeys.add(src.valueKey);activeText[src.valueKey]=`（未反映）再起動すると ${src.planned||'—'} を読みます`}
+   else activeText[src.valueKey]=src.active||'（解決できていません）';
    savedText[src.valueKey]=v[src.valueKey]||'（既定値を使用）';
   });
-  /* 「再起動待ち」の判定は**表示文字列ではなく生の値**で行う。表示側は
-     現在値にエンジン種別を添えたり、未設定を「（既定）network」と書き換えたり
-     するので、文字列比較では中身が同じ行まで再起動待ちに見える（実際にそう出た）。
-     保存値が空＝既定を使う指定なので、待ちにはしない。 */
+  /* 「再起動待ち」の判定は**表示文字列ではなく生の値**で行う（中身が同じ行まで待ちに見えた）。保存値が空＝既定なので待ちにしない。 */
   const isPending=key=>{
    const savedRaw=String(v[key]||'').trim(),activeRaw=String(a[key]||'').trim();
    return pendingKeys.has(key)||(!!savedRaw&&savedRaw!==activeRaw);
   };
-  /* 各欄の状態。**再起動が要らない項目は「保存後すぐ反映」とだけ言う**
-     ——比べる相手（いま効いている値）が無いのに空欄の対比を並べない。 */
-  /* 置き場は`/api/storage-layout`の答え（§9.267）。読めなかったときは
-     理由を出す——空のまま黙ると「設定が消えた」と読まれる（§4）。 */
   paintShareLayout(pathConfigState.storage,pathConfigState.storageError);
+  const restartKeys=new Set(pathConfigRestartFields().map(([k])=>k));
   let pending=0;
   form.querySelectorAll('[data-pc-state]').forEach(el=>{
    const key=el.dataset.pcState;
-   const restartable=pathConfigRestartFields().some(([k])=>k===key);
-   if(!restartable){
-    if(key==='pc_name'){
-     const term=(window.WL&&WL.terminal)||null;
-     const now=a.pc_name||(term&&term.pcName())||'（取得できていません）';
-     const from=a.pc_name_source||(term&&term.pcNameSource())||'出どころ不明';
-     el.className='pc-state';
-     el.textContent=`いま名乗っている名前: ${now}（${from}）`;
-    }else{
-     el.className='pc-state';
-     el.textContent='保存するとすぐに反映されます。';
-    }
-    return;
-   }
+   if(!restartKeys.has(key))return;
    const p=isPending(key);
    if(p)pending++;
-   el.className='pc-state'+(p?' is-pending-restart':'');
-   el.innerHTML=`<span class="pc-state-now"><i>いま</i>${esc(activeText[key]||'—')}</span>`
-    +`<span class="pc-state-saved"><i>保存値</i>${esc(savedText[key]||'—')}</span>`
-    +(p?'<b class="mm-restart-flag">再起動待ち</b>':'');
-   el.title=`いま効いている値: ${activeText[key]||'—'}\n保存値（次回起動から）: ${savedText[key]||'—'}`;
+   el.innerHTML=p?'<span class="pc-chip is-warn pc-pending">再起動待ち</span>':PC_WHEN_RESTART;
+   el.title=`いま効いている値: ${activeText[key]||'—'}\n保存値（次の起動から）: ${savedText[key]||'—'}`;
   });
-  /* データソースは入力欄を持たない（「データ接続」が持つ）ので、
-     読み取り専用の並びとして章の中へ出す。再起動待ちはここでも数える。 */
-  const list=$('#pcSourceList');
-  if(list){
-   const rows=(pathConfigState.sources||[]);
-   if(!rows.length){
-    list.innerHTML='<p class="mm-field-hint">データソースが登録されていません。「データ接続」で登録してください。</p>';
-   }else{
-    list.innerHTML=rows.map(src=>{
-     const p=isPending(src.valueKey);
-     if(p&&!form.querySelector(`[data-pc-state="${src.valueKey}"]`))pending++;
-     return `<div class="pc-source${p?' is-pending-restart':''}"><b>${esc(src.label)}</b><code>${esc(src.key)}</code>
-      <span title="${esc(src.active||'')}">${esc(src.active||'（この端末ではまだ読んでいません）')}</span>
-      ${src.loaded===false?`<i class="pc-source-next">再起動すると ${esc(src.planned||'—')} を読みます</i>`:''}
-      ${p?'<b class="mm-restart-flag">再起動待ち</b>':''}</div>`;
-    }).join('');
-   }
-  }
-  /* 図の中の値。**節ごとの「いま」を絵の中で読める**ようにする。 */
-  const term=(window.WL&&WL.terminal)||null;
-  const short=t=>{const s=String(t||'—');return s.length>44?'…'+s.slice(-43):s};
-  const mapText={
-   read:short((pathConfigState.sources||[]).map(x=>x.active).filter(Boolean)[0]
-     ||(activeText.sikalot_source?`取得元 ${activeText.sikalot_source}`:'（未設定）')),
-   terminal:short((term&&term.pcName())||'（PC名を取得できていません）'),
-   schedule:short(a.schedule_share_path||'（未設定・機能無効）'),
-  };
-  form.querySelectorAll('[data-pc-map]').forEach(el=>{
-   const t=mapText[el.dataset.pcMap]||'—';
-   el.textContent=t;el.title=t;
+  /* 置き場の行の再起動待ちはサーバーの答え（`pending`）。データソースは置き場の「読むだけ」の行が持つ。 */
+  const items=(pathConfigState.storage&&pathConfigState.storage.items)||[];
+  pending+=items.filter(x=>x.pending).length;
+  (pathConfigState.sources||[]).forEach(src=>{
+   if(isPending(src.valueKey)&&!items.some(x=>x.field===src.valueKey)&&!form.querySelector(`[data-pc-state="${src.valueKey}"]`))pending++;
   });
-  /* 章のレールに再起動待ちの件数を出す（探させない）。 */
   const badge=$('#pcRestartCount');
   if(badge){
    badge.textContent=pending?`再起動待ち ${pending}件`:'';
    badge.hidden=!pending;
    badge.title=pending?'保存した値は、アプリを開き直すと効きます（'+WL.RESTART_HOW+'）':'';
   }
-  /* **作り直せるファイルの置き場**(§9.109)と、**マスタDBが同期フォルダーの
-     中にあるとき**の注意(§9.192)。どちらも設定ではないが、共有(BOX等)に置いた
-     ファイル群を複数のPCから起動する現場では、**知らないと壊れ方が分からない**。 */
+  /* **マスタDBが同期フォルダーの中にあるとき**の注意（§9.192）。設定ではないが、共有(BOX等)に置いた
+     ファイル群を複数のPCから起動する現場では、**知らないと壊れ方が分からない**。
+     作り直せるファイルの置き場（§9.109）は置き場の段の行が言うので、ここでは繰り返さない（§8）。 */
   const notes=$('#pcNotes');
   if(notes){
-   const wd=v.work_dir?`<p class="mm-def-hint">作り直せるファイル（写し・スケジュールの作業コピー）の置き場: ${esc(v.work_dir)}`
-     +`${v.work_dir_reason?`<b>（${esc(v.work_dir_reason)}）</b>`:''}</p>`:'';
-   const cloud=v.master_cloud?`<p class="mm-warn-note"><b>マスタDBが${esc(v.master_cloud)}の中にあります</b>（${esc(v.db_dir||'')}）。
+   notes.innerHTML=v.master_cloud?`<p class="mm-warn-note"><b>マスタDBが${esc(v.master_cloud)}の中にあります</b>（${esc(v.db_dir||'')}）。
      このフォルダーを<b>複数のPCから同時に起動すると、全員が同じマスタへ書き込みます</b>——
      同期の衝突で設定が失われることがあります。各PCの手元へ置く場合は
      <code>config/local.json</code> の <code>db_dir</code> を、そのPCのローカルフォルダーへ向けてください
-     （共有したいのは作業予定だけです。上の「作業予定の共有データ置き場」で共有します）。</p>`:'';
-   notes.innerHTML=wd+cloud;
+     （共有したいのは作業予定だけです。「置き場」の段の「作業予定」で共有します）。</p>`:'';
   }
+  paintPcTabs();
  }
  /* 保存の口は**2つある**（§9.267）——パス設定マスタ（`data-pc-field`）と
     `config/local.json`（`data-lc-field`）。**ボタンは1つ**にする（利用者の

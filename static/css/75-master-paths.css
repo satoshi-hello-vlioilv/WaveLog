@@ -57,15 +57,6 @@
 .pathpick-empty,.pathpick-loading,.pathpick-error{padding:1.2em;text-align:center;color:var(--muted);font-size:var(--fs-sm)}
 .pathpick-error{color:var(--danger)}
 .pathpick-status{font-size:var(--fs-sm);color:var(--muted)}
-/* ---------- RNE抽出の状態表示(§9.50) ---------- */
-.rne-panel{border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--pad-card);margin:1em 0;background:var(--pale)}
-.rne-head{display:flex;align-items:center;gap:var(--gap-section);flex-wrap:wrap;margin-bottom:.5em}
-.rne-head h4{margin:0;font-size:var(--fs)}
-.rne-state{padding:.15em .7em;border-radius:var(--radius-pill);font-size:var(--fs-sm);font-weight:var(--fw-ui);border:1px solid var(--line)}
-.rne-jobs{display:grid;gap:var(--gap-tight);margin:.5em 0 0;font-size:var(--fs-sm)}
-.rne-job{display:flex;gap:var(--gap-section);align-items:baseline}
-.rne-job b{min-width:9em}
-.rne-note{font-size:var(--fs-sm);color:var(--muted);margin:.5em 0 0;line-height:1.5}
 /* 勤務体系の適用設備(複数選択)。1つの体系を複数設備へ同時に割り当てられる。
    **設備名そのものが押せるタグ**(§9.197、利用者の指示)。以前はマス目の中に
    チェックボックスを置いていたが、`.mm-field input`の`min-width:200px`が
@@ -134,89 +125,137 @@
 }
 
 /* ============================================================
-   共通設定の作り直し（§9.208 ⑨、利用者の指示）
+   共通設定（§9.583、利用者の指示でゼロから組み直した）
    ------------------------------------------------------------
-   「多機能がゆえにわかりにくい説明になっている」——文の量は減らせない
-   （どれも知らないと壊れ方が分からない話）ので、**読む順番**を作る。
-     図 → 章のレール → 章（欄＋その場の状態）
+   「タブがわかりにくい、ボタンがわかりにくい…文字がゴチャついて」——直す前は1画面に600〜1300字、
+   ほぼ全部が12pxで、どこが設定（欄）でどこが説明なのかの区別が字の大きさに無かった（実測）。
+   **字の段は3つ**: 名前（本文 14px・太め）／欄の中身（13px）／補足（12px・灰）。説明の文は ⓘ へ畳む。
+   **1行＝名前｜欄｜状態**。名前の列は固定幅（§CLAUDE 9）、状態の列も固定幅（右端がそろう）。
    色は意味だけに使い、状態は必ず文字も添える（§3）。
    ============================================================ */
 @layer component {
-/* ---- 図：この端末が何とつながっているか ---- */
-.pc-map{
-  display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:stretch;
-  gap:var(--gap-inline);padding:var(--pad-card);
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);
-}
-.pc-node{
-  display:flex;flex-direction:column;gap:2px;min-width:0;
-  padding:var(--pad-card);text-align:left;cursor:pointer;
-  background:#fff;border:1px solid var(--line-mid);border-radius:var(--radius-sm);
-  box-shadow:none;
-}
-.pc-node:hover{border-color:var(--teal);background:var(--pale)}
-.pc-node.is-self{border-color:var(--teal);background:var(--pale)}
-.pc-node b{font-size:var(--fs);color:var(--ink)}
-.pc-node-sub{font-size:var(--fs-sm);color:var(--ink-2)}
-.pc-node-val{
-  margin-top:2px;font-size:var(--fs-sm);color:var(--ink);font-weight:var(--fw-ui);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
-.pc-arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--ink-2)}
-.pc-arrow i{display:block;width:100%;min-width:2.2em;border-top:2px solid var(--line-strong)}
-.pc-arrow em{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.pc-goto{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm)}
+/* ---- 状態の札（あります・未設定・再起動待ち…）。**面と字の2つ**で言い、字は必ず添える ---- */
+.pc-chip{display:inline-flex;align-items:center;gap:var(--space-1);padding:0 var(--space-2);
+  border-radius:var(--radius-pill);font-size:var(--fs-sm);font-weight:var(--fw-ui);line-height:1.6;white-space:nowrap;
+  background:var(--surface-3);color:var(--ink-2)}
+.pc-chip.is-ok{background:var(--success-bg);color:var(--success)}
+.pc-chip.is-warn{background:var(--warn-bg);color:var(--warn-fg)}
+.pc-chip.is-bad{background:var(--danger-bg);color:var(--danger)}
+.pc-chip.is-run{background:var(--teal-tint);color:var(--teal-ink)}
+.pc-chip.is-off{background:var(--surface-3);color:var(--ink-2)}
+.pc-chip[hidden]{display:none}
+/* 効くタイミング（推測させない・§CLAUDE 6）。札ほど強くしない——いつも同じ事実なので字だけ。 */
+.pc-when{font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
+.pc-empty{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
 
-/* ---- 章のレール ---- */
-.pc-rail{
-  position:sticky;top:0;z-index:2;
-  display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-inline);
-  padding:var(--space-2) 0;background:var(--bg);
-}
-.pc-rail button{
-  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
-  border:1px solid var(--line);border-radius:var(--radius-pill);
-  background:#fff;color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;
-}
-.pc-rail button:hover{border-color:var(--teal);background:var(--pale);color:var(--ink)}
-.pc-rail-restart{
-  margin-left:auto;padding:var(--pad-chip);border-radius:var(--radius-pill);
-  background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);
-  font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;
-}
-.pc-rail-restart[hidden]{display:none}
-/* 札が1つも出ていないときは帯ごと伏せる（§9.556 B8。中身の無い灰色の帯が図とタブのあいだに残っていた） */
-.pc-rail:not(:has(>:not([hidden]))){display:none}
-/* 飛んだ先が一瞬だけ分かるようにする（どこへ来たのかを推測させない）。 */
-.mm-set-group.is-jumped{box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
+/* ---- 1行＝名前｜欄｜状態 ---- */
+.pc-rows{display:flex;flex-direction:column;min-width:0}
+.pc-row{display:grid;grid-template-columns:var(--pc-label-w,15em) minmax(0,1fr) var(--pc-state-w,8.5em);
+  align-items:center;column-gap:var(--space-4);min-height:calc(var(--ctl-h) + var(--space-3));
+  padding:var(--space-1) 0;border-bottom:1px solid var(--line-soft)}
+.pc-rows>.pc-row:last-child{border-bottom:0}
+.pc-row-label{display:flex;align-items:center;min-width:0;font-size:var(--fs);font-weight:var(--fw-ui);color:var(--ink)}
+.pc-row-ctl{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+.pc-row-ctl>input:not([type]),.pc-row-ctl>input[type=text]{flex:1 1 auto;min-width:0;max-width:var(--w-2xl);height:var(--ctl-h);
+  padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+  color:var(--ink);font-size:var(--fs-base-sm)}
+.pc-row-ctl>select{height:var(--ctl-h);max-width:var(--w-2xl);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);
+  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font-size:var(--fs-base-sm)}
+.pc-row-ctl>.mm-path{flex:1 1 auto;min-width:0}
+.pc-row-ctl>.mm-path>input{flex:1 1 auto;min-width:0;height:var(--ctl-h);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:inherit;
+  font-size:var(--fs-sm);font-family:ui-monospace,Consolas,monospace}
+.pc-row-state{display:flex;justify-content:flex-end;align-items:center;min-width:0}
+/* 行の中の「いまの値」（読むだけ）。枠を付けない（押せそうに見せない・§CLAUDE 10）。 */
+.pc-look-now{font-size:var(--fs-base-sm);color:var(--ink-2)}
+.pc-line{margin:var(--space-1) 0 0;display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);
+  font-size:var(--fs-sm);color:var(--ink-2)}
 
-/* ---- この端末 ---- */
-.pc-who{display:flex;flex-wrap:wrap;gap:var(--gap-section)}
-.pc-who>div{
-  display:flex;flex-direction:column;gap:1px;min-width:var(--w-md);
-  padding:var(--pad-chip);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);
-}
-.pc-who small{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
-.pc-who b{font-size:var(--fs);color:var(--ink)}
-.pc-who i{font-style:normal;font-size:var(--fs-sm);color:var(--muted)}
+/* ---- この端末: 名乗り（読むだけ）は名前と値を横に並べた1行 ---- */
+.pc-who{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-6);margin:0 0 var(--space-2);
+  padding:var(--space-2) 0 var(--space-3);border-bottom:1px solid var(--line-soft)}
+.pc-who>div{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
+.pc-who dt{font-size:var(--fs-sm);color:var(--ink-2)}
+.pc-who dd{margin:0;display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
+.pc-who b{font-size:var(--fs-title);color:var(--ink)}
+.pc-who small{font-size:var(--fs-sm);color:var(--ink-2)}
+#pcLd{margin-top:var(--space-3)}
 
-/* ---- デスクトップの起動アイコン（§9.410、利用者の指示⑤） ----
-   「この端末」の章の中の1ブロック。**状態は見出しの横で1度だけ言い**
-   （作成済み／まだ／作れない）、作成先と行き先は押す前に読めるところへ置く
-   （§CLAUDE 6 出どころ・§CLAUDE 2 次にすることを1つだけ指す）。 */
-/* この端末の見え方への行き先（§9.433）。**器はショートカットの箱と同じ**
-   ——同じ章に並ぶ「この端末だけの設定」なので、形が違うと別種に見える。 */
-.pc-look{display:flex;flex-direction:column;gap:var(--gap-inline);
-  padding:var(--space-2);border:1px solid var(--line-soft);
-  border-radius:var(--radius-sm);background:var(--surface-2)}
-.pc-look-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
-.pc-look-head b{font-size:var(--fs-sm);color:var(--ink)}
-/* いまの値は**状態の字**（色だけで言わない・§CLAUDE 3）。 */
-.pc-look-now{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted)}
-.pc-look-act{display:flex;flex-wrap:wrap;gap:var(--gap-inline);align-items:center}
-/* 行き先の一言は**ボタンの左**（何のための行き先かを押す前に読める）。 */
-.pc-look-lead{flex:1 1 var(--w-2xl);min-width:var(--w-xl);
-  font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
+/* ---- 共有と同期: 2群の小見出し＋1節1行の畳み ---- */
+.pc-sub{display:flex;align-items:center;gap:var(--space-2);margin:var(--space-3) 0 var(--space-2);
+  font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink-2)}
+.pc-sub:first-child{margin-top:0}
+.pc-sub>i{color:var(--teal)}
+.pc-sync{margin-bottom:var(--space-2)}
+/* 見出しは「絵｜名前｜いまの値｜ⓘ」。名前の列を固定してそろえる（いまの値の左端が縦に並ぶ）。 */
+.pc-sync>summary{display:grid;grid-template-columns:auto auto var(--pc-label-w,15em) minmax(0,1fr) auto;column-gap:var(--space-2);flex-wrap:nowrap}
+.pc-sync>summary::before{grid-column:1}
+.pc-sync>summary .pc-acc-now{font-size:var(--fs-base-sm)}
+.pc-sync .pc-acc-body{padding-left:calc(var(--space-3) + 2.5em)}
+
+/* ---- 置き場: 群ごとに畳める表 ---- */
+.pc-place-root{margin:0 0 var(--space-2);font-size:var(--fs-sm);color:var(--ink-2)}
+.pc-place-root[hidden]{display:none}
+.pc-store-group{margin-bottom:var(--space-2)}
+.pc-acc-tags{display:inline-flex;gap:var(--space-1);flex-wrap:wrap}
+.pc-store{width:100%;border-collapse:collapse;table-layout:fixed}
+.pc-store th,.pc-store td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);vertical-align:middle;text-align:left}
+.pc-store tr:last-child>*{border-bottom:0}
+/* 名前の列は段の行より広く取る（置き場は素性——ファイル名・何の置き場か——を名前の下に添えるため）。 */
+.pc-store th{width:var(--pc-store-label-w,19em);font-weight:var(--fw-body)}
+/* 名前と素性は**切らずに折り返す**（切れた字は`title`では救えない・§9.222）。 */
+.pc-store-label{display:block;font-size:var(--fs);font-weight:var(--fw-ui);color:var(--ink);line-height:1.35}
+.pc-store th small{display:block;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.35}
+.pc-store-box .mm-path{display:flex;gap:var(--space-1);min-width:0}
+.pc-store-box .mm-path>input{flex:1 1 auto;min-width:0;height:var(--ctl-h);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:inherit;
+  font-size:var(--fs-sm);font-family:ui-monospace,Consolas,monospace}
+.pc-store-box>select{height:var(--ctl-h);max-width:100%;padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);
+  border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-base-sm)}
+/* 直せない置き場は**読むだけの字**（枠を付けない・§CLAUDE 10）。長い道は頭を落とさず末尾で切る。 */
+.pc-store-path{display:block;font-size:var(--fs-sm);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-store-st{width:10em}
+.pc-store-st>.pc-chip+.pc-chip{margin-left:var(--space-1)}
+.pc-store-kind{display:block;margin-top:2px;font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-store td.pc-store-act{width:13.5em;text-align:right;white-space:nowrap}
+.pc-store-act>*+*{margin-left:var(--space-1)}
+/* 役目を終えた置き場は薄く（消しはしない——古い設定が残っている端末で、何が残っているかは読める）。 */
+.pc-store-row.is-retired>th,.pc-store-row.is-retired>.pc-store-box{opacity:var(--op-disabled)}
+/* 「作る」は打つ手なので、他の行き先より1段強く出す。 */
+.pc-store-act .pc-make{color:var(--warn-fg);border-color:var(--warn-border)}
+/* ⋯（補足を浮かせる）。字のボタンより小さく、押せることは形と指のカーソルで言う。 */
+.pc-more-btn{display:inline-grid;place-items:center;width:var(--ctl-h-sm);height:var(--ctl-h-sm);padding:0;vertical-align:middle;
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.pc-more-btn:hover,.pc-more-btn:focus-visible{border-color:var(--teal);color:var(--teal-dark)}
+.pc-store-more[hidden]{display:none}
+/* 浮いた補足（`.wl-menu`の面ごとの値・§9.449）。 */
+.pc-more{--menu-w:300px;--menu-w-max:440px;--menu-pad:var(--space-3);font-size:var(--fs-base-sm);text-align:left}
+.pc-more-title{display:block;margin-bottom:var(--space-1);font-size:var(--fs);color:var(--ink)}
+.pc-more dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px var(--space-3);margin:0 0 var(--space-1)}
+.pc-more dt{color:var(--ink-2)}
+.pc-more dd{margin:0;color:var(--ink);word-break:break-all}
+.pc-more .pc-store-note{margin:var(--space-1) 0 0;line-height:1.6;color:var(--ink-2)}
+.pc-more code{font-size:var(--fs-sm)}
+.pc-more button{display:inline-flex;width:auto;margin-top:var(--space-2)}
+
+/* ---- RNE抽出: いまの状態（段の主役）---- */
+.rne-panel{margin:0 0 var(--space-3);padding:var(--space-2) var(--space-3);border:1px solid var(--line-soft);
+  border-radius:var(--radius-md);background:var(--surface-2)}
+.rne-head{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.rne-head>b{font-size:var(--fs);color:var(--ink)}
+.rne-head>#rneRunBtn{margin-left:auto}
+.rne-issues{margin:var(--space-2) 0 0;padding-left:var(--space-4);color:var(--danger);font-size:var(--fs-sm);line-height:1.7}
+.rne-issues code{color:var(--ink-2)}
+.rne-out{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px var(--space-4);margin:var(--space-2) 0 0;font-size:var(--fs-sm)}
+.rne-out dt{font-weight:var(--fw-ui);color:var(--ink)}
+.rne-out dd{margin:0;color:var(--ink-2)}
+.rne-out dd.is-bad,.rne-note.is-bad{color:var(--danger)}
+.rne-note{margin:var(--space-2) 0 0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
+
+/* ---- 保存の帯: 保存｜変えた数｜再起動待ち｜誰の名前で ---- */
+.pc-dirty{font-size:var(--fs-sm);color:var(--ink-2)}
+.pc-dirty.is-dirty{color:var(--warn-fg);font-weight:var(--fw-strong)}
+.pc-save-who{margin-left:auto;font-size:var(--fs-sm);color:var(--ink-2)}
 
 /* ---- 読み込みの見せ方の盤（§9.436、利用者の指示「広いエリアでわかりやすく
    選べるように」）。29種を**族ごとに**並べ、見本を大きく出す。 ---- */
@@ -261,146 +300,30 @@
   background:var(--teal);color:var(--card-bg);
   font-size:var(--fs-sm);font-style:normal;font-weight:var(--fw-ui);line-height:1.6}
 .pc-ld-card.is-current .pc-ld-on{display:block}
-/* ---- 起動アイコンの盤は「表示」へ移した（§9.445） ----
-   共通設定に残るのは**いまの状態と行き先**だけなので、器は見え方の行き先と
-   同じ`.pc-look`を使い回す（同じ役目の物を2つ作らない）。状態の字だけは
-   盤と共通の`.lnk-state`（定義は `20-shell.css` の1箇所）。 */
-
-/* ---- 共有の置き場を1枚で（§9.260） ----
-   作業予定・測定データ・マスタの3行。**ラベル列は固定幅**で縦にそろえる
-   （CLAUDE 画面基準 9。autoだと行ごとに値の左端がずれる）。 */
-.pc-share{display:flex;flex-direction:column;gap:var(--gap-inline);
-  padding:var(--space-2);border:1px solid var(--line-soft);
-  border-radius:var(--radius-sm);background:var(--surface-2)}
-.pc-share-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
-.pc-share-head b{font-size:var(--fs-sm);color:var(--ink)}
-.pc-share-root{font-size:var(--fs-sm);color:var(--ink-2)}
-.pc-share-rows{display:flex;flex-direction:column;gap:var(--space-1)}
-.pc-share-row{display:grid;gap:var(--space-1) var(--gap-inline);align-items:baseline;
-  grid-template-columns:var(--w-sm) var(--w-sm) minmax(0,1fr) var(--w-lg);
-  padding:var(--space-1) var(--space-2);border-radius:var(--radius-xs);
-  background:var(--surface);border:1px solid var(--line-soft)}
-/* 共有に置かれている行は左に色の帯。**色だけで伝えない**ので種類は文字でも出す。 */
-.pc-share-row.is-shared{border-left:3px solid var(--teal)}
-.pc-share-what{font-size:var(--fs-sm);color:var(--ink);display:flex;
-  flex-direction:column;gap:0;min-width:0}
-.pc-share-what small{font-family:var(--font-mono,monospace);font-size:var(--fs-sm);
-  color:var(--muted);font-weight:var(--fw-body);overflow:hidden;text-overflow:ellipsis}
-.pc-share-kind{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
-.pc-share-path{min-width:0;font-size:var(--fs-sm);color:var(--ink-2);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pc-share-where{font-size:var(--fs-sm);color:var(--ink-2);
-  display:flex;flex-direction:column;gap:0;min-width:0}
-.pc-share-where b{color:var(--ink-2)}
-.pc-share-note{grid-column:1/-1;font-size:var(--fs-sm);color:var(--warn-fg);line-height:1.5}
-/* 器そのものを問い合わせ先にする（マスタ管理はビューポート幅では判断
-   できない——左のナビと右のパネルで実幅が変わる）。しきい値は**em**で置く
-   （§9.199。表示サイズを変えても段が変わらない）。 */
-.pc-share{container-type:inline-size;container-name:pcshare}
-@container pcshare (max-width:52em){
-  .pc-share-row{grid-template-columns:minmax(0,1fr)}
-}
-
-
-/* ---- 置き場を1枚で（§9.267） --------------------------------------
-   群（この端末の中／みんなで使う／読むだけ）ごとにカードを縦に積む。
-   **ラベル列は固定幅**（CLAUDE 画面基準 9）。1行の中は
-   「題→素性→欄→いま→出どころと打つ手」の順で、**視覚導線と作業導線を
-   合わせる**（画面基準 14）。 */
-.pc-store-group{display:flex;flex-direction:column;gap:var(--space-1)}
-.pc-store-group+.pc-store-group{margin-top:var(--space-2);
-  padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
-.pc-store-group-head{display:flex;flex-direction:column;gap:0;margin:0;
-  font-size:var(--fs-sm);color:var(--ink);font-weight:var(--fw-ui)}
-.pc-store-group-head small{font-size:var(--fs-sm);color:var(--ink-2);
-  font-weight:var(--fw-body);line-height:1.5}
-.pc-store-row{display:grid;gap:2px var(--gap-inline);
-  grid-template-columns:minmax(0,1fr);
-  padding:var(--space-1) var(--space-2);border-radius:var(--radius-xs);
-  background:var(--surface);border:1px solid var(--line-soft)}
-/* 共有に置かれている行は左に色の帯。**色だけで伝えない**ので種類は文字でも出す。 */
-.pc-store-row.is-shared{border-left:3px solid var(--teal)}
-/* `config/local.json` の側は端末ごとの設定。**別物だと形でも言う**。 */
-.pc-store-row.is-local{border-left:3px dotted var(--line-strong)}
-.pc-store-head{display:flex;flex-wrap:wrap;align-items:baseline;
-  gap:0 var(--gap-inline);min-width:0}
-/* 題は固定幅で縦にそろえる（画面基準 9。autoだと行ごとに素性の左端がずれる）。
-   **折り返さない**（§9.90）——「測定データ（この端末）」が2行になると、
-   その行だけ背が高くなって群の中がそろわない。幅は実際の題から決める。 */
-.pc-store-label{flex:0 0 var(--w-lg);min-width:0;font-size:var(--fs-sm);
-  color:var(--ink);font-weight:var(--fw-ui);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pc-store-kind{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
-.pc-store-exists{font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.pc-store-exists.is-ok{color:var(--ok-fg,var(--ink-2))}
-.pc-store-exists.is-missing{color:var(--warn-fg)}
-.pc-store-exists.is-unknown,.pc-store-exists.is-unset{color:var(--muted)}
-.pc-store-tag{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui);
-  padding:0 var(--space-1);border:1px solid var(--line-soft);
-  border-radius:var(--radius-xs)}
-.pc-store-tag.is-retired{color:var(--muted)}
-/* 素性は題の右へ添える（別の段にすると1件が4段になる）。**縮む役はここだけ**
-   ——種類・状態の札まで一緒に縮むと、折り返して段が増える（§9.229 ⑤）。 */
-.pc-store-what{flex:1 1 var(--w-md);min-width:0;font-size:var(--fs-sm);
-  color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pc-store-kind,.pc-store-exists,.pc-store-tag{flex:0 0 auto}
-/* 読み取り専用の値に入力欄風の枠を付けない（画面基準 10）。 */
-.pc-store-eff{font-family:var(--font-mono,monospace);font-size:var(--fs-sm);
-  color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  min-width:0}
-.pc-store-foot{display:flex;flex-wrap:wrap;align-items:center;
-  gap:0 var(--gap-inline);min-width:0;
-  font-size:var(--fs-sm);color:var(--ink-2)}
-.pc-store-foot>*{flex:0 0 auto}
-.pc-store-foot .pc-store-eff{flex:1 1 var(--w-lg)}
-/* 欄は器いっぱい。パスは長いので、器を中身なりにすると必ず切れる
-   （画面基準 11 の「中身から決める」は、入る中身が長いなら広く取るということ）。 */
-.pc-store-row>.mm-path{display:flex;gap:var(--space-1);width:100%;min-width:0}
-.pc-store-row>.mm-path>input{flex:1 1 auto;min-width:0;max-width:none}
-.pc-store-row>.mm-path>.mm-path-browse{flex:0 0 auto}
-.pc-store-foot b{color:var(--ink-2)}
-.pc-store-note{font-size:var(--fs-sm);color:var(--ink-2);line-height:1.5}
-/* 保存したのにまだ効いていない、は**打つ手のある状態**なので目立たせる。 */
-.pc-store-note.is-pending{color:var(--warn-fg)}
-.pc-store-pending{color:var(--warn-fg);font-weight:var(--fw-strong)}
-/* 「無いので作る」は打つ手なので、他の行より1段強く出す。 */
-.pc-store-foot .pc-make{color:var(--warn-fg);font-weight:var(--fw-strong)}
-.pc-store-extra{display:flex;flex-direction:column;gap:var(--gap-inline);
-  padding:var(--space-2);border-radius:var(--radius-xs);
-  background:var(--surface-2);border:1px solid var(--line-soft)}
 /* 作るものの一覧（確認の窓の中）。 */
 .pc-make-list{margin:var(--space-1) 0;padding-left:var(--space-3);
   display:flex;flex-direction:column;gap:2px}
 .pc-make-list code{font-size:var(--fs-sm);color:var(--ink-2);
   word-break:break-all}
 
-/* ---- 章の中の小見出し（節が長い共有の置き場だけ） ---- */
-.pc-sub{display:flex;flex-direction:column;gap:var(--gap-inline);
-  padding-top:var(--space-2);border-top:1px dashed var(--line-soft)}
-.pc-sub-head{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
-
-/* ---- 欄のすぐ下の状態 ---- */
-.pc-state{
-  display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);
-  font-size:var(--fs-sm);color:var(--ink-2);
+/* 狭い器では名前の列を細く（欄の幅を残す）。器の幅で決めるので`em`で置く（§9.199）。
+   問い合わせ先は段の器（`.pc-page`）——器の印（`#masterMaintForm`）は他のマスタと共有なので付けない。 */
+.pc-page{container-type:inline-size;container-name:pcpage}
+@container pcpage (max-width:70em){
+  .pc-page>.mm-tabbody{--pc-label-w:12em;--pc-state-w:7em;--pc-store-label-w:15em}
+  .pc-store td.pc-store-act{width:11em}
 }
-.pc-state i{font-style:normal;margin-right:.4em;color:var(--muted);font-weight:var(--fw-strong)}
-.pc-state-now,.pc-state-saved{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.pc-state-now{color:var(--ink-2);font-weight:var(--fw-strong)}
-.pc-state.is-pending-restart{color:var(--warn-fg)}
 
 /* ---------- アプリの更新（§9.555・master-update.js） ----------
    流れ（① 版を置く → ② 配る版を選ぶ → ③ 各PCがそろう）は左から右——作業の順と同じ（§CLAUDE 14）。
    状態は色だけで言わない（段の字・札の字が言う）。 */
 .au{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
 /* 置き場の欄（§9.557）。道は長いので欄は横いっぱい、添え書きは欄の下に1行 */
-.au-dir{display:grid;gap:var(--space-1);margin-bottom:var(--space-3)}
-.au-dir-field input{width:100%}
-.au-dir-note{color:var(--ink-2);font-size:var(--fs-sm)}
+.au-dir-note{margin:var(--space-1) 0 0;color:var(--warn-fg);font-size:var(--fs-sm)}
+.au-dir-note[hidden]{display:none}
 .au-from{color:var(--ink-2)}
 .au-where{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
 .au-where code{color:var(--ink-2)}
-.au-ok{margin-left:var(--space-2);color:var(--teal-dark);font-weight:var(--fw-strong)}
 .au-bad{padding:var(--space-3);border:1px solid var(--danger-border);border-radius:var(--radius-md);
  background:var(--danger-bg);color:var(--danger);font-size:var(--fs-sm);line-height:1.7}
 .au-flow{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:var(--space-2);align-items:stretch}
