@@ -106,9 +106,6 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .work-time-item.validation-ng input{background:var(--invalid-bg);border-color:var(--invalid)}
 #workTimeHint.is-invalid{font-weight:var(--fw-strong)}
 .mm-tag-box.is-disabled{opacity:var(--op-disabled);background:var(--bg);cursor:not-allowed;pointer-events:none}
-.mm-apply-badge.is-restart{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
-.mm-apply-badge.is-live{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
-.mm-apply-badge.is-info{background:var(--bg);border-color:var(--line-soft);color:var(--muted)}
 /* 保存値と実際に効いている値が食い違う行(=再起動待ち) */
 .mm-row.is-pending-restart{background:var(--warn-bg)}
 .mm-imp-state-list b.is-warn{color:var(--warn-fg)}

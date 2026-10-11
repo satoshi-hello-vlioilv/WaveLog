@@ -135,7 +135,7 @@
   place,
   close(){close()},
   suggest,
-  peek,closePeek,
+  peek,closePeek,tips,
  };
 
  /* ---------- 乗せると浮く面（§9.540で刃組の札に作り、§9.542で設備の使い分けの表と共有） ----------
@@ -170,6 +170,27 @@
      押した物に`click`が届かない（§9.542で踏んだ・右端のセル）。 */
   trigger.addEventListener('focus',()=>{if(trigger.matches(':focus-visible'))peekOpen(trigger,o)});
   trigger.addEventListener('blur',peekSoon);
+ }
+
+ /* ---------- ⓘ の説明（§9.583） ----------
+    `[data-tip]`を名乗る小さな札（`WL.mm.tipHtml()`が作る）に、乗せる・鍵盤の焦点・押すで説明を浮かせる。
+    器とふるまいは上の`peek()`のまま（新しい浮き面を作らない）。押しても開くのは、乗せられない操作
+    （タッチ・鍵盤で Enter）でも読めるようにするため——押せる形をした物が何も起こさないのを残さない（§CLAUDE 4）。
+    字は`WL.markup`（`**強調**`・`` `コード` ``）を通す。**同じ札を2度配線しない**（描き直しても器が同じとき）。 */
+ function tips(root){
+  (root||document).querySelectorAll('[data-tip]').forEach(b=>{
+   if(b.__wlTip)return;
+   b.__wlTip=true;
+   const o={key:'tip:'+b.dataset.tip,cls:'wl-tip',side:b.dataset.tipSide||'below',
+    html:()=>`<div class="wl-tip-body">${WL.markup(b.dataset.tip||'')}</div>`};
+   peek(b,o);
+   /* 押したときは**開くだけ**（乗せて読んでから押す、という自然な動きで消さない）。閉じるのは外・Esc・離れたとき。
+      畳みの見出し（`<summary>`）の中で押しても畳みを開け閉めしない（押したのは説明の札）。 */
+   b.addEventListener('click',ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    if(!(PK.el&&PK.key===o.key))peekOpen(b,o);
+   });
+  });
  }
 
  /* ---------- 入力欄の候補（§9.529。式の欄・判定表のセルが共有する） ----------

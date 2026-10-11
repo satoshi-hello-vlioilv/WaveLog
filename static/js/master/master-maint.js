@@ -737,6 +737,9 @@
   return true;
  }
  function mmTabSummaryText(panel){
+  /* **段が自分で名乗るならそれを使う**（§9.583）。欄から拾える一言は「決めた値」だけで、
+     共通設定のように「いまどうなっているか（未設定・停止中）」を言いたい段には足りない。 */
+  if(panel.dataset.tabSum!=null)return panel.dataset.tabSum;
   const parts=[];
   panel.querySelectorAll('.mm-field').forEach(fld=>{
    if(!mmFieldShown(fld,panel))return;
@@ -774,23 +777,41 @@
     畳みは素の`<details>`。**畳んだままでも「いま何が効いているか」は
     見出しに出す**（§3。隠したものを何も書かずに隠すと、設定の存在ごと
     忘れられる・§9.125）。 */
- function pageTabsHtml(items){
+ /* 札は**絵・名前・要対応の数・いまの一言**（§9.583、利用者の報告「タブがわかりにくい」）。
+    絵（`icon`＝Font Awesome の名前）は任意。数は段が`data-tab-badge`で名乗る（`paint`が描く）。
+    `opt.scroll`を渡すと**札は動かさず中身だけを送る**（段を切り替える場所を探させない）。 */
+ function pageTabsHtml(items,opt){
+  const o=opt||{};
   const tabs=items.map((x,i)=>
    `<button type="button" class="mm-tab" role="tab" id="mmTab${i}" data-mmtab="${i}"`
+   +`${x.key?` data-tab-key="${esc(x.key)}"`:''}`
    +` aria-selected="${i?'false':'true'}" aria-controls="mmPanel${i}" tabindex="${i?-1:0}">`
+   +(x.icon?`<i class="fa-solid ${esc(x.icon)} mm-tab-icon" aria-hidden="true"></i>`:'')
    +`<span class="mm-fieldgroup">${esc(x.name)}</span>`
+   +`<em class="mm-tab-badge" data-mmtab-badge="${i}" hidden></em>`
    +`<small class="mm-tab-sum" data-mmtab-sum="${i}"></small></button>`).join('');
   const panels=items.map((x,i)=>
    `<section class="mm-tabpanel is-page" role="tabpanel" id="mmPanel${i}"`
+   +`${x.key?` data-tab-key="${esc(x.key)}"`:''}`
    +` aria-labelledby="mmTab${i}" data-mmtab="${i}"${i?' hidden':''}>${x.body}</section>`).join('');
   return `<div class="mm-tabbar is-page" role="tablist">${tabs}</div>`
-   +`<div class="mm-tabbody is-page">${panels}</div>`;
+   +`<div class="mm-tabbody is-page${o.scroll?' is-scroll':''}">${panels}</div>`;
  }
- /* 畳み。`open`を渡したときだけ開いた状態で出す（既定は畳む）。 */
- function pageFoldHtml(title,now,body,open){
-  return `<details class="pc-acc"${open?' open':''}>`
-   +`<summary><b>${esc(title)}</b>${now?`<span class="pc-acc-now">${esc(now)}</span>`:''}</summary>`
+ /* 畳み。`open`を渡したときだけ開いた状態で出す（既定は畳む）。
+    `opt`: `icon`（絵）・`tip`（ⓘ の説明。`WL.popMenu.tips()`が浮かせる）・`name`（同じ名前どうしは
+    1つだけ開く＝`<details name>`）・`id`・`cls`・`tag`（見出しの右端の札のHTML）・`attrs`（器に足す属性）。 */
+ function pageFoldHtml(title,now,body,open,opt){
+  const o=opt||{};
+  return `<details class="pc-acc${o.cls?' '+o.cls:''}"${o.id?` id="${esc(o.id)}"`:''}${o.name?` name="${esc(o.name)}"`:''}${o.attrs?' '+o.attrs:''}${open?' open':''}>`
+   +`<summary>${o.icon?`<i class="fa-solid ${esc(o.icon)} pc-acc-icon" aria-hidden="true"></i>`:''}`
+   +`<b>${esc(title)}</b>${now?`<span class="pc-acc-now">${esc(now)}</span>`:''}${o.tag||''}`
+   +`${o.tip?tipHtml(o.tip):''}</summary>`
    +`<div class="pc-acc-body">${body}</div></details>`;
+ }
+ /* ⓘ の説明（§9.583）。**読ませる説明は畳む**——欄の下に常に並べると、1画面が600〜1300字の
+    12pxの字で埋まり、どこが設定なのか読めなかった（実測）。乗せる・焦点・押すで浮く（`WL.popMenu.tips()`）。 */
+ function tipHtml(text){
+  return text?`<button type="button" class="wl-tip-i" data-tip="${esc(text)}" aria-label="説明">i</button>`:'';
  }
  function repaintMaintTabs(ev){
   const f=ev.currentTarget;
@@ -815,6 +836,14 @@
   const paint=()=>panels.forEach((p,i)=>{
    const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);
    if(el)el.textContent=mmTabSummaryText(p);
+   /* 要対応の数（§9.583）。**数だけで言わない**——札の`title`に何の数かを書く（色だけで伝えない・§CLAUDE 3）。 */
+   const b=bar.querySelector(`[data-mmtab-badge="${i}"]`);
+   if(b){
+    const n=p.dataset.tabBadge||'';
+    b.hidden=!n;b.textContent=n;
+    b.className='mm-tab-badge'+(p.dataset.tabTone?' is-'+p.dataset.tabTone:'');
+    b.title=p.dataset.tabBadgeTitle||'';
+   }
   });
   /* **値が変わったら見出しの一言を描き直す**（忘れると、直したのに
      畳んだ段だけ古い値を名乗る）。**器（`#masterMaintForm`）は描き直しても同じ要素**なので、
@@ -2954,6 +2983,6 @@
  },true);
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();

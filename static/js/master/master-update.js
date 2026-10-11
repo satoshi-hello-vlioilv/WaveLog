@@ -35,11 +35,12 @@
 
  /* 段の骨組み（中身は`refresh()`が埋める）。**置き場の欄だけは描き直さない**（打っている途中の字を
     消さない）——共通設定の保存（`[data-pc-field]`）に載り、パス設定マスタの`update_dir`（共有の設定）へ入る（§9.557）。 */
- function sectionHtml(v){
-  return `<div class="au-dir"><label class="mm-field au-dir-field"><span>置き場</span>
-    <input data-pc-field="update_dir" type="text" value="${esc((v&&v.update_dir)||'')}" autocomplete="off" spellcheck="false"
-     placeholder="空欄なら既定の置き場"></label>
-    <small class="au-dir-note" id="auDirNote">空欄なら既定の置き場を使います。変えると全PCに効きます（開いている PC は10分以内に控え、次の起動から新しい置き場を見ます）。</small></div>
+ function sectionHtml(v,K){
+  /* 1行＝名前｜欄｜状態（共通設定の他の段と同じ部品・§9.583）。説明は ⓘ。届くかは欄の右（状態の席）で
+     言う（`paintDir()`）。道の字を欄の下にもう一度書かない（§CLAUDE 8）。 */
+  return `<div class="pc-rows">${K.row('update_dir','版の置き場',K.path('update_dir','dir','空欄なら既定の置き場'),{state:'<span class="pc-when">確かめています…</span>',
+    tip:'空欄なら既定の置き場を使います。**変えると全PCに効きます**（開いている PC は10分以内に控え、次の起動から新しい置き場を見ます）。'})}</div>
+   <p class="au-dir-note" id="auDirNote" hidden></p>
    <div class="au" id="appUpdate" aria-live="polite"><p class="au-empty">更新の状態を読んでいます…</p></div>`;
  }
  /* 置き場の欄の添え書き: 既定の字・いま効いている置き場の出どころ（共有の設定／既定／この PC だけの上書き）。 */
@@ -47,9 +48,29 @@
  function paintDir(st){
   const inp=document.querySelector('[data-pc-field="update_dir"]');
   if(inp&&st.defaultDir)inp.placeholder=`空欄なら既定: ${st.defaultDir}`;
+  const cell=document.querySelector('[data-pc-state="update_dir"]');
+  if(cell){
+   cell.innerHTML=st.reachable?'<span class="pc-chip is-ok">届いています</span>':'<span class="pc-chip is-bad">届きません</span>';
+   cell.title=`いま見ている置き場: ${st.dir||''}（${DIR_FROM[st.dirSource]||'既定'}）`;
+  }
+  /* この PC だけの上書きがあるときだけ言う（**欄の値がこの PC に効いていない**——知らないと直したのに変わらない）。 */
   const note=document.getElementById('auDirNote');
-  if(note&&st.dirSource==='local')note.innerHTML='この PC は <code>config\\local.json</code> の <code>update_dir</code> で上書きしています。'
-   +'この欄の値は<b>ほかの PC</b>に効きます（この PC は local.json を消すと欄の値を使います）。';
+  if(note){
+   note.hidden=st.dirSource!=='local';
+   if(!note.hidden)note.innerHTML='この PC は <code>config\\local.json</code> の <code>update_dir</code> で上書きしています。'
+    +'この欄の値は<b>ほかの PC</b>に効きます（この PC は local.json を消すと欄の値を使います）。';
+  }
+ }
+ /* 札の一言（§9.583）。**段が自分で名乗る**——配る版・この PC が次の起動でそろうか・届くか。 */
+ function paintTab(st){
+  const panel=document.getElementById('appUpdate')&&document.getElementById('appUpdate').closest('.mm-tabpanel');
+  const form=panel&&panel.closest('form');if(!panel)return;
+  const rel=st&&st.release&&st.release.version;
+  panel.dataset.tabSum=!st?'状態を読めません':!st.reachable?'置き場に届きません':(rel?`配る版 ${rel}`:'配る版 未定')+(st.pending?'・次の起動で更新':'');
+  const bad=!st||!st.reachable;
+  if(bad){panel.dataset.tabBadge='!';panel.dataset.tabTone='bad';panel.dataset.tabBadgeTitle='要対応 更新の置き場に届きません'}
+  else{delete panel.dataset.tabBadge;delete panel.dataset.tabTone;delete panel.dataset.tabBadgeTitle}
+  if(form&&typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
  }
  /* ① → ② → ③ の流れ。いまの値を各段に書く（図と字を結ぶ）。 */
  function flowHtml(st){
@@ -85,11 +106,16 @@
  }
  function render(host,st){
   paintDir(st);
-  const where=`置き場 <code>${esc(st.dir)}</code> <span class="au-from">（${esc(DIR_FROM[st.dirSource]||'既定')}）</span>`;
+  /* いま見ている置き場は**欄に入っていない（空欄＝既定・この PC だけの上書き）ときだけ**言う——欄に書いた道を
+     下でもう一度言うと、同じ字が2つ並んで「違うものかも」と読み比べることになる（§CLAUDE 8）。 */
+  const inp=/** @type {HTMLInputElement|null} */(document.querySelector('[data-pc-field="update_dir"]'));
+  const typed=String(inp?inp.value:'').trim();
+  const same=typed?typed===st.dir:st.dirSource==='default';
+  const where=same?'':`いま見ている置き場 <code>${esc(st.dir)}</code> <span class="au-from">（${esc(DIR_FROM[st.dirSource]||'既定')}）</span>`;
   if(!st.reachable){
-   host.innerHTML=`<p class="au-where">${where}</p>
+   host.innerHTML=`${where?`<p class="au-where">${where}</p>`:''}
     <div class="au-bad"><b>置き場に届きません。</b>${esc(st.why)}<br>
-     ネットワーク（共有フォルダ）に届くか確かめてください。置き場は上の「置き場」の欄で変えられます。各PCは届かない間、いまの版のまま起動します。</div>`;
+     ネットワーク（共有フォルダ）に届くか確かめてください。置き場は上の「版の置き場」の欄で変えられます。各PCは届かない間、いまの版のまま起動します。</div>`;
    return;
   }
   const put=busy?progressHtml()
@@ -97,7 +123,7 @@
    ?`<label class="mm-btn-ghost au-pick"><input type="file" accept=".zip,application/zip" id="auZip" hidden>ZIP から版を置く…</label>
      <small>入るのは ${st.payload.map(esc).join('・')}（db・config は入れません）。同じ版はもう一度置けません。</small>`
    :`<small>版を置く・配る版を決めるのは、開発者・メンテナンス者だけです（この端末は「${esc(st.role)}」）。</small>`;
-  host.innerHTML=`<p class="au-where">${where} <span class="au-ok">届いています</span></p>
+  host.innerHTML=`${where?`<p class="au-where">${where}</p>`:''}
    ${flowHtml(st)}
    ${entryHtml(st)}
    <div class="au-put${busy?' is-busy':''}">${put}</div>
@@ -121,8 +147,8 @@
    const st=await api('/api/app/update');
    /* 開き直したとき、この PC がまだ置いている最中なら進み具合へ戻る（送った人の画面が消えても続いている） */
    if(st.publishing&&!busy){busy={name:'',size:0,stage:'check'};watch()}
-   render(host,st);paintProgress();
-  }catch(e){host.innerHTML=`<div class="au-bad">更新の状態を読めません: ${esc(e.message)}</div>`}
+   render(host,st);paintProgress();paintTab(st);
+  }catch(e){host.innerHTML=`<div class="au-bad">更新の状態を読めません: ${esc(e.message)}</div>`;paintTab(null)}
  }
  /* ---- 置いている間の進み具合（共通の帯`WL.progress`） ---- */
  function progressHtml(){

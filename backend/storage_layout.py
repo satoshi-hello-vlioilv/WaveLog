@@ -111,18 +111,18 @@ def local_config_fields():
          'default': str(app_db),
          'what': 'この端末が持つ2つのDBファイル（master.sqlite3 / records.sqlite3）'
                  'を置くフォルダ',
-         'hint': '<b>作業用のコピー置き場ではありません</b>——写しや作業コピーの'
-                 '置き場は下の「作り直せるファイル」で、こちらが決めます'
+         'hint': '**作業用のコピー置き場ではありません**——写しや作業コピーの'
+                 '置き場は「作り直せるファイル」で、アプリが決めます'
                  '（設定は要りません）。空欄ならアプリの中の db フォルダ。'
-                 '下の2つで個別に指定した側が優先されます。'
-                 '<code>%LOCALAPPDATA%\\WaveLog</code> のように環境変数でも書けます。'},
+                 '「マスタ」「測定データ（この端末）」で個別に指定した側が優先されます。'
+                 '`%LOCALAPPDATA%\\WaveLog` のように環境変数でも書けます。'},
         {'key': 'master_db_path', 'label': 'マスタDBだけ別の場所へ', 'mode': 'file',
          'value': str(raw.get('master_db_path') or ''),
          'expanded': expanded('master_db_path'),
          'effective': _master_configured(),
          'default': str(app_db / 'master.sqlite3'),
          'what': 'master.sqlite3（設定・マスタの全部）',
-         'hint': '<b>ファイル名まで</b>指定します（フォルダではありません）。'
+         'hint': '**ファイル名まで**指定します（フォルダではありません）。'
                  '共有フォルダを指定すると、書込は順番待ちを通り、'
                  '読みはこの端末の写しからになります。'},
         {'key': 'records_db_path', 'label': 'records.sqlite3 だけ別の場所へ',
@@ -132,10 +132,10 @@ def local_config_fields():
          'effective': _records_configured(),
          'default': str(app_db / 'records.sqlite3'),
          'what': 'records.sqlite3（この端末で測ったぶんの控え）',
-         'hint': '<b>ファイル名まで</b>指定します（フォルダではありません）。'
-                 'みんなで見る測定データの置き場は<b>これではありません</b>——'
-                 '「② みんなで使う」の「測定データ（共有）」のほうです。'
-                 '<b>ふつうは空欄でかまいません。</b>'},
+         'hint': '**ファイル名まで**指定します（フォルダではありません）。'
+                 'みんなで見る測定データの置き場は**これではありません**——'
+                 '「みんなで使う」の群の「測定データ（共有）」のほうです。'
+                 '**ふつうは空欄でかまいません。**'},
         {'key': 'master_share_mode', 'label': 'マスタの書込サイクル',
          'mode': 'choice',
          'choices': [['', '（既定）auto: 置き場の綴りで決める'],

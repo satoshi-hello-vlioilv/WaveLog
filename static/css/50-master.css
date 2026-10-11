@@ -206,26 +206,15 @@
 /* 設定ページのときは下段の一覧枠を畳む。畳まないと.mm-list-wrap{flex:1}と
    高さを半分ずつ分け合い、設定側が不必要に狭くなる(中身は空なのに)。 */
 .mm-form-page+.mm-list-wrap{display:none}
-.mm-set-scroll{flex:1;min-height:0;overflow-y:auto;padding:14px 18px 16px;
- display:flex;flex-direction:column;gap:var(--space-3)}
-/* flex:none は必須。縦並びのflexコンテナの子は既定で縮むため、
-   これが無いと各グループが枠に押し込まれ、overflow:hiddenで入力欄ごと
-   切り取られる(スクロールも出ない=中身が縮んで収まってしまうため)。 */
-.mm-set-scroll>*{flex:none}
-.mm-set-group{background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
-.mm-set-group-head{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
- padding:var(--pad-card);background:var(--bg);border-bottom:1px solid var(--line)}
-.mm-set-group-head h4{margin:0;font-size:var(--fs-base-sm);color:var(--ink)}
-.mm-set-group-body{padding:var(--pad-card);display:flex;flex-direction:column;gap:var(--gap-section)}
-/* 反映のタイミングを見出しに出す。「保存したのに変わらない」の原因が
-   再起動待ちであることを、設定を触る前に分かるようにする。 */
-.mm-apply-badge{margin-left:auto;padding:var(--pad-chip);border-radius:var(--radius-md);
- font-size:var(--fs-sm);font-weight:var(--fw-ui);border:1px solid transparent;white-space:nowrap}
-/* 保存ボタンは下端に貼り付ける(スクロールしても常に押せる) */
-.mm-set-sticky{position:sticky;bottom:0;z-index:2;margin:0;padding:10px 18px;
- background:#ffffff;border-top:1px solid var(--line);box-shadow:var(--elev-pop)}
-.mm-restart-flag{margin-left:8px;padding:var(--pad-chip);border-radius:var(--radius-sm);font-size:var(--fs-micro);
- background:var(--warn);color:#3d2a00;white-space:nowrap}
+/* 共通設定（§9.583）の器: 札（動かない）→ 段の中身（ここだけ送る）→ 保存の帯（下端・動かない）。
+   **縦積みの子は縮ませない**ものと縮ませるものを分ける——中身だけを`min-height:0`で縮ませて送り、
+   札と帯は`flex:none`（縮むと札の2行目や保存ボタンが切れる）。 */
+.pc-page{flex:1;min-height:0;display:flex;flex-direction:column}
+.pc-page>.mm-tabbar.is-page{flex:none}
+.pc-page>.mm-tabbody.is-scroll{flex:1;min-height:0;overflow-y:auto;padding:var(--space-3) var(--space-4) var(--space-4)}
+.pc-save{flex:none;display:flex;align-items:center;gap:var(--space-3);margin:0;padding:var(--space-2) var(--space-4);
+ background:var(--surface);border-top:1px solid var(--line)}
+.pc-save[hidden]{display:none}
 /* ---------- データ引継ぎ: 現状 → 実行後 の見える化(§9.68) ----------
    PC引継ぎ専用の、取り消せない操作。押す前に「今どうなっていて、実行すると
    どうなるか」が読めることを最優先にする。 */
@@ -977,14 +966,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ds-now dt{margin:0;font-size:var(--fs-sm);color:var(--muted)}
 .ds-now dd{margin:0;font-size:var(--fs-sm);color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 共通設定に残す「いま何を読んでいるか」の並び。**ここでは変えられない**
-   （変えるのはデータ接続）ので、入力欄風の枠を付けない（§9.129）。 */
-.pc-source-list{display:grid;gap:var(--gap-hair)}
-.pc-source{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
-  font-size:var(--fs-sm);color:var(--ink-2)}
-.pc-source b{color:var(--ink)}
-.pc-source code{font-size:var(--fs-tiny);color:var(--muted);letter-spacing:.04em}
-.pc-source-next{font-style:normal;font-size:var(--fs-tiny);color:var(--ink);font-weight:var(--fw-ui)}
 /* 共有スケジュールの書き込み役(§9.192)。読み取り専用の状態表示なので
    入力欄風の枠を付けない（§9.129）。役が「このPC」かどうかは色だけで
    なく文で言い、色は補助に留める。 */
@@ -992,8 +973,8 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .pc-owner-who{color:var(--ink)}
 .pc-owner-who.is-me{color:var(--ink)}
 .pc-owner-off{color:var(--muted)}
-.pc-owner-lines{display:flex;flex-wrap:wrap;gap:var(--space-2);
-  font-size:var(--fs-tiny);color:var(--muted)}
+.pc-owner-lines{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);
+  font-size:var(--fs-sm);color:var(--ink-2)}
 /* ---------- 測定データの保存(§9.202) ----------
    **3つの置き場を左から右へ**並べる（流れの順＝視覚導線と作業導線を
    一致させる。§14）。矢印には「いつ動くか」を字で書く——色や形だけでは
@@ -3114,12 +3095,34 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    折り返す横並びと取り違えると必ずこれを踏む）。
    **縦積みでは`flex:0 0 auto`＋`width:100%`**——中身なりの高さで、幅は器いっぱい。
    パネルの中も**縦積み**（編集窓は欄の折り返しだが、ページは全幅の塊が並ぶ）。 */
-/* **器の直下とは限らない**——共通設定は`.mm-set-scroll`の中に置くので、
+/* **器の直下とは限らない**——共通設定は`.pc-page`の中に置くので（§9.583。以前は`.mm-set-scroll`）、
    `.mm-form >`で絞ると当たらない（実際に当たらず、札が1枚600pxに伸びた）。
    `is-page`はこの段専用の印なので、クラスだけで当てる。 */
 .mm-tabbar.is-page,
 .mm-tabbody.is-page{flex:0 0 auto;width:100%;min-width:0}
-.mm-tabbar.is-page{margin-bottom:var(--space-2)}
+/* 設定ページの札（§9.583、利用者の報告「タブがわかりにくい」）。直す前は札が器いっぱいに散り（名前どうしが
+   166〜205px離れる）、選んだ札だけが入力欄のような枠を持ち、字は12pxで中身を名乗らなかった（実測）。
+   **下線の札を中身なりの幅で左から並べる**——絵・名前（本文の大きさ）・要対応の数・いまの一言。
+   選んだ札は**下線と字の濃さ**の2つで言う（面を塗ると押せる欄に見える・§CLAUDE 10）。 */
+.mm-tabbar.is-page{gap:0;padding:0 var(--space-3);margin:0;border-bottom:1px solid var(--line-mid);background:var(--surface)}
+.mm-tabbar.is-page .mm-tab{flex:0 0 auto;display:grid;grid-template-columns:auto auto auto;column-gap:0;align-items:center;
+  padding:var(--space-2) var(--space-4) var(--space-1);margin-bottom:-1px;
+  border:0;border-bottom:3px solid transparent;border-radius:var(--radius-sm) var(--radius-sm) 0 0;
+  background:none;color:var(--ink-2)}
+.mm-tabbar.is-page .mm-tab:hover{background:var(--surface-2);color:var(--ink)}
+.mm-tabbar.is-page .mm-tab.is-on{border-bottom-color:var(--teal);background:none;color:var(--teal-ink)}
+.mm-tabbar.is-page .mm-tab>.mm-fieldgroup{grid-column:2;font-size:var(--fs);font-weight:var(--fw-ui)}
+.mm-tabbar.is-page .mm-tab.is-on>.mm-fieldgroup{font-weight:var(--fw-strong)}
+.mm-tabbar.is-page .mm-tab-sum{grid-column:2/4;font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2)}
+.mm-tab-icon{grid-column:1;grid-row:1/3;margin-right:var(--space-2);width:1.25em;text-align:center;
+  font-size:var(--fs-title);color:var(--muted)}
+.mm-tab.is-on .mm-tab-icon{color:var(--teal)}
+/* 要対応の数。**数だけで言わない**（札の`title`と一言が何の数かを言う・§CLAUDE 3）。 */
+.mm-tab-badge{grid-column:3;justify-self:start;min-width:18px;margin-left:var(--space-2);padding:0 var(--space-1);
+  border-radius:var(--radius-pill);font-size:var(--fs-sm);font-style:normal;font-weight:var(--fw-strong);
+  line-height:18px;text-align:center;background:var(--warn-bg);color:var(--warn-fg)}
+.mm-tab-badge.is-bad{background:var(--danger-bg);color:var(--danger)}
+.mm-tab-badge[hidden]{display:none}
 .mm-tabpanel.is-page{display:flex;flex-direction:column;flex-wrap:nowrap;
   gap:var(--space-3);align-items:stretch;min-width:0}
 /* **畳んだ段は必ず消す。** `.mm-tabpanel[hidden]{display:none}`と詳細度が同点
@@ -3130,19 +3133,21 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* ---- 畳み（アコーディオン）。既定は畳む ---- */
 .pc-acc{border:1px solid var(--line-soft);border-radius:var(--radius-sm);
   background:var(--surface);min-width:0}
-.pc-acc>summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2);
-  padding:var(--space-2);cursor:pointer;list-style:none;border-radius:var(--radius-sm)}
+.pc-acc>summary{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);
+  padding:var(--space-2) var(--space-3);cursor:pointer;list-style:none;border-radius:var(--radius-sm)}
 .pc-acc>summary::-webkit-details-marker{display:none}
 /* 開閉の合図は**形**（▸▾）。色だけで伝えない（§3）。 */
 .pc-acc>summary::before{content:'▸';color:var(--teal);font-size:var(--fs-sm);flex:none}
 .pc-acc[open]>summary::before{content:'▾'}
 .pc-acc>summary:hover{background:var(--surface-2)}
-.pc-acc>summary b{font-size:var(--fs-sm);color:var(--ink)}
+.pc-acc[open]>summary{border-bottom:1px solid var(--line-soft);border-radius:var(--radius-sm) var(--radius-sm) 0 0}
+.pc-acc>summary b{font-size:var(--fs);color:var(--ink)}
+.pc-acc-icon{width:1.25em;text-align:center;color:var(--teal);font-size:var(--fs-base-sm)}
 /* **畳んだままでも「いま何が効いているか」を出す**（§3・§9.125）。 */
 .pc-acc-now{font-size:var(--fs-sm);color:var(--ink-2);min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pc-acc-body{display:flex;flex-direction:column;gap:var(--gap-inline);
-  padding:0 var(--space-2) var(--space-2);min-width:0}
+  padding:var(--space-2) var(--space-3);min-width:0}
 /* くわしい説明は押すと開く（触る画面では`title`が読めない・§4）。 */
 .mm-more{
   display:inline-flex;align-items:center;justify-content:center;
