@@ -95,9 +95,14 @@ run('test_bootui: 起動オーバーレイ(#appBoot)の振る舞いを固定す�
   rec('最後は100%になる',pcts[pcts.length-1]===100,`${pcts[pcts.length-1]}%`);
 
   const lastSteps=(f.filter(x=>x.steps).pop()||{}).steps||[];
-  rec('段階リストは10項目',lastSteps.length===10,`${lastSteps.length}項目`);
-  rec('最後は全段階が完了になる',lastSteps.length===10&&lastSteps.every(c=>c.includes('is-done')),
+  /* 見せる段は4つ（§9.580・boot_status.PHASES）。途中の様子でも「いま」は1つだけ・最後は全部済み。 */
+  rec('段の並びは4つ',lastSteps.length===4,`${lastSteps.length}項目`);
+  rec('最後は全段が済みになる',lastSteps.length===4&&lastSteps.every(c=>c.includes('is-done')),
       lastSteps.join(' / '));
+  const midSteps=(f.find(x=>x.steps&&x.steps.some(c=>c.includes('is-current')))||{}).steps||[];
+  rec('途中は「いま」が1つだけで、前の2段は済み',
+      midSteps.filter(c=>c.includes('is-current')).length===1&&midSteps.slice(0,2).every(c=>c.includes('is-done')),
+      midSteps.join(' / '));
 
   /* バージョンはサーバー描画で埋めるので、最初の描画から正しい値が出る。 */
   const ver=await page.evaluate(async()=>(await (await fetch('/api/build')).json()).version);
@@ -132,6 +137,33 @@ run('test_bootui: 起動オーバーレイ(#appBoot)の振る舞いを固定す�
       await page2.evaluate(()=>{const b=document.getElementById('openSchedule');
         return !!b&&getComputedStyle(b).visibility==='visible'}));
   await page2.close();
+
+  /* ---- 窓の起動画面（desktop/splash・§9.580）: 窓の段 → 見せる4段 ----
+     窓（Rust）が呼ぶ順に splash.step を打ち、段の印・字・進み具合を見る。
+     Python の場所（窓の細かな字）は title にだけ残り、画面の字には出ない。 */
+  const sp=await browser.newPage({viewport:{width:1536,height:864}});
+  await sp.goto('file://'+require('path').resolve(__dirname,'..','desktop','splash','index.html'));
+  const seen=await sp.evaluate(()=>{
+   const cls=()=>['update','app','screen','ready'].map(k=>document.getElementById('p-'+k).className).join(',');
+   const out={};
+   splash.step('update','ok','版 2.474.0（配る版と同じ）');out.a=cls();
+   splash.step('python','ok','C:\\Python312\\pythonw.exe');out.b=cls();
+   out.bText=document.querySelector('#p-app').innerText;out.bTitle=document.querySelector('#p-app').title;
+   splash.step('backend','ok','版 2.474.0 ・ 1.2 秒');out.c=cls();
+   splash.step('open','now','画面を開いています…');out.d=cls();out.pct=document.getElementById('pct').textContent;
+   splash.fail('アプリの中身（Python）が起動できません','No module named flask');
+   out.fail=document.getElementById('fail').innerText;out.e=cls();
+   return out;
+  });
+  rec('窓の起動画面: 版がそろえば次の段へ',seen.a==='ok,now,wait,wait',seen.a);
+  rec('窓の起動画面: Python が見つかっても「アプリを起こす」は続く',seen.b==='ok,now,wait,wait',seen.b);
+  rec('窓の起動画面: Python の場所は画面に出さず title に残す',
+      !/Python312/.test(seen.bText)&&/Python312/.test(seen.bTitle),seen.bText.replace(/\s+/g,' '));
+  rec('窓の起動画面: 中身が起きたら「画面を組み立てる」へ（覆いが60%から引き継ぐ）',
+      seen.c==='ok,ok,now,wait'&&seen.d==='ok,ok,now,wait'&&seen.pct==='60%',`${seen.d} ${seen.pct}`);
+  rec('窓の起動画面: 失敗は段に×・次にすることと理由を字で',
+      seen.e==='ok,ok,bad,wait'&&/次にすること/.test(seen.fail)&&/No module named flask/.test(seen.fail),seen.e);
+  await sp.close();
 
  }catch(e){
   rec('FATAL',false,String(e&&e.message||e));

@@ -3053,31 +3053,26 @@ const bootGate=(()=>{
  const startedAt=Date.now();
  /* 段階ごとの一言。「何を待っているのか」が分かると、遅いときでも
     止まっているのか進んでいるのかを判断できる。 */
- const HINT={assets:'画面部品を読み込んでいます',permission:'この端末のモードを確認しています',
-             list:'仕掛一覧を取得しています',layout:'画面の寸法を確定しています'};
+ const HINT={assets:'画面の部品を読み込んでいます',permission:'この端末でできることを確かめています',
+             list:'一覧を読み込んでいます',layout:'画面を整えています'};
  const el=id=>overlay&&overlay.querySelector('#'+id);
- /* 帯はいまの段を**中央へ寄せる**(§9.411)。器の幅とマスの位置は描かれて
-    からでないと測れないので、次の描画の合図で測る(先に測ると0が返る)。
-    ずらす量はカスタムプロパティで渡す——見た目の指定はCSS側に残す。 */
- function centerBand(li){
-  const band=el('bootBand'),strip=el('bootSteps');
-  if(!band||!strip||!li)return;
-  requestAnimationFrame(()=>{
-   const x=li.offsetLeft+li.offsetWidth/2-band.clientWidth/2;
-   strip.style.setProperty('--boot-shift',(-x)+'px');
-  });
- }
+ /* 見せる段は4つ（§9.580・boot_status.PHASES）。覆いが出る時点で「版をそろえる」「アプリを起こす」は
+    済んでいる。進めるのは`data-boot-keys`を名乗る「画面を組み立てる」だけで、その中身（BROWSER_STEPS）が
+    全部済んだら最後の「準備完了」まで塗る。段の状態は`is-done`／`is-current`の2つの印で言う。 */
  function paint(){
   if(!overlay)return;
-  let current='',currentLi=null;
-  overlay.querySelectorAll('[data-boot-step]').forEach(li=>{
-   const key=li.dataset.bootStep,isDone=done.has(key);
+  const host=overlay.querySelector('[data-boot-keys]');
+  const keys=host instanceof HTMLElement?host.dataset.bootKeys:'';
+  const current=(keys?keys.split(' '):[]).find(k=>!done.has(k))||'';
+  let reached=false;
+  overlay.querySelectorAll('.boot-steps>li').forEach(li=>{
+   const own=li.hasAttribute('data-boot-keys');
+   /* 進める段より前は済み。進める段は中身が残っていれば「いま」で、それより後ろはまだ。全部済めば最後まで済み。 */
+   const isDone=!reached&&(!own||!current);
    li.classList.toggle('is-done',isDone);
-   const isCurrent=!isDone&&!current;
-   li.classList.toggle('is-current',isCurrent);
-   if(isCurrent){current=key;currentLi=li}
+   li.classList.toggle('is-current',own&&!!current);
+   if(own)reached=!!current;
   });
-  centerBand(currentLi);
   const pct=Math.min(100,Math.round((BOOT_SERVER_STEPS+done.size)/BOOT_TOTAL_STEPS*100));
   const bar=el('bootBar'),fill=el('bootFill'),
         pctEl=el('bootPct'),detail=el('bootDetail');
@@ -3085,7 +3080,7 @@ const bootGate=(()=>{
   if(fill)fill.style.setProperty('--boot-pct',pct+'%');
   if(bar)bar.setAttribute('aria-valuenow',String(pct));
   if(pctEl)pctEl.textContent=pct+'%';
-  /* いまの段の**名前は帯が出している**ので、ここは一言だけ
+  /* いまの段の**名前は並びが出している**ので、ここは一言だけ
      (同じ字を2箇所に出さない・§CLAUDE 8)。 */
   if(detail)detail.textContent=current?(HINT[current]||''):'起動しました';
  }

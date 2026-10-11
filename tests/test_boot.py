@@ -3,7 +3,7 @@
 # §9.548 でブラウザ版の起動の道（start_app.py・待機画面 loading.html・進捗ファイル boot_status.js）を外した。
 # 中身の起動の進み具合はデスクトップ版の起動画面が窓口の`progress`の知らせで出すので、ここで固定するのは:
 #   ① 起動画面（desktop/splash）の色が本体（00-base.css）と一致し、地が`#appBoot`と同じ指定
-#   ② 段の顔ぶれが2箇所（boot_status.py ／ アプリ内の起動の覆い）と base.js の分母で一致
+#   ② 見せる4段が boot_status.PHASES の1箇所から出て（覆いと窓の起動画面）、base.js の分母も一致
 #   ③ 本体を伏せる印と、base.js が読めなかったときの保険
 #   ④ 外した物（待機画面・進捗の書き手）が残っていない
 import re, sys
@@ -77,24 +77,19 @@ _said = _strip(SPLASH) + _strip(_boot_area) + ' '.join(re.findall(r'"([^"]*)"', 
 _old = [w for w in ('ブラウザ版', 'Webサーバー', '「desktop」を付け', '「desktop」から') if w in _said]
 rec('起動の画面と段の名前は、無くなったブラウザ版・Webサーバー・引数 desktop を言わない（§9.549）', not _old, '・'.join(_old))
 
-# --- ② 段の顔ぶれが2箇所（boot_status.py / アプリ内の起動の覆い）と base.js で一致する ---
-# ここがずれると、進捗バーの分母と段階リストが食い違って「90%のまま
-# 終わる」「一覧に無い段階が現在になる」といった表示になる(§9.76)。
-ALL_LABELS = [label for _, label in boot_status.STEPS] + \
-             [label for _, label in boot_status.BROWSER_STEPS]
-
-def li_labels(src, pattern):
-    return re.findall(pattern, src)
-
-STEP_LI = r'<li[^>]*data-step="\d+"[^>]*><span>([^<]+)</span></li>'
+# --- ② 見せる段の顔ぶれ（§9.580）が boot_status.PHASES の1箇所から出る ---
+# 覆い（index.html）はテンプレートが PHASES を回して描き、進める段の中身（BROWSER_STEPS）は data-boot-keys が名乗る。
+# 窓の起動画面（exe に入る・写し）は同じ4段を同じ言葉で持つ。片方だけ直すと、窓から覆いへ切り替わったとき段が入れ替わる。
 index = (ROOT / 'templates' / 'index.html').read_text(encoding='utf-8')
-over_labels = li_labels(index, STEP_LI)
-rec('アプリ内の起動オーバーレイの段階リストがboot_status.pyと一致する',
-    over_labels == ALL_LABELS, 'オーバーレイ=%s' % '/'.join(over_labels))
-# ブラウザ側の4段階だけがJSから進む(data-boot-step)。
-marked = re.findall(r'data-boot-step="([\w-]+)"', index)
-rec('ブラウザ側の段階だけにJSの進行印が付いている',
-    marked == [k for k, _ in boot_status.BROWSER_STEPS], '/'.join(marked))
+rec('アプリ内の起動の覆いは見せる段を boot_status.PHASES から描く',
+    '{% for key, label, hint in boot_phases %}' in index and 'data-boot-keys="{{boot_keys}}"' in index
+    and 'boot_phases=boot_status.PHASES' in core_src
+    and "boot_keys=' '.join(k for k, _ in boot_status.BROWSER_STEPS)" in core_src)
+splash_phases = re.findall(r'<li[^>]*id="p-(\w+)"[^>]*>.*?<b>([^<]+)</b><span class="d">([^<]*)</span></li>', SPLASH)
+rec('デスクトップ版の起動画面の4段が boot_status.PHASES と同じ（鍵・名前・一言）',
+    splash_phases == [tuple(p) for p in boot_status.PHASES], '/'.join(l for _, l, _ in splash_phases))
+rec('見せる段に技術の言葉（Python・窓口・ポート）を出さない',
+    not any(w in l + h for _, l, h in boot_status.PHASES for w in ('Python', '窓口', 'ポート', 'PATH')))
 # 印は2つ付く。`app-booting`が本体を伏せる印、`boot-cold`は「最初の1枚を
 # 描くまでレイアウトを省く」印(§9.86)。後者は最初の描画で外れるので、
 # ここでは初期状態として両方が付いていることだけを見る。

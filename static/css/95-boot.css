@@ -21,11 +21,13 @@
    組み立てている箇所(一覧のグリッド等)が壊れる。visibility:hidden なら
    レイアウトはそのまま進むので、裏側で完成させてから見せられる。
 
-   ■ 意匠は「流れる帯」(§9.411、利用者が選んだ形)
-   10段の名前を1本の帯の中で横に流し、いまの段だけを中央で大きく出す。
-   進み具合に答えるのは**ステータスバー1本だけ**で、段の目盛りを別に
-   持たない(同じ数字を2箇所に出さない・§CLAUDE 8)。
-   波紋はヘッダーの帯の中だけで完結させる(利用者の指示)。
+   ■ 意匠は「分割カード」(§9.580、7案→組合せ7案で選んだ H4)
+   左＝ブランド（teal→紺の面・マーク・名前・ひとこと・版）、右＝白地に4段の
+   縦の並びと進み具合の棒。デスクトップ版の起動画面(desktop/splash)と**同じ形・
+   同じ4段**なので、窓から覆いへ切り替わっても続いて見える。段の名前は技術の
+   言葉を出さない（Python・窓口は言わない）。§9.411 の「流れる帯」は撤回した
+   （左の段の字が帯の端で切れ、窓の起動画面と別の意匠だった）。波紋は残し、
+   ブランドの面の中だけで完結させる（利用者の指示・§9.411）。
    ============================================================= */
 
 @layer component {
@@ -53,39 +55,31 @@
  opacity:1; transition:opacity .34s ease;
 }
 .boot-card{
- width:min(94vw,680px); border-radius:calc(var(--radius-lg) + var(--space-1));
- overflow:hidden; background:var(--surface);
- border:1px solid var(--line);   /* 待機画面と**同じ値**。薄めると引き継ぎで枠の色が変わる */
- box-shadow:var(--elev-modal);
+ width:min(94vw,880px); display:grid; grid-template-columns:5fr 6fr;
+ border-radius:calc(var(--radius-lg) + var(--space-1)); overflow:hidden;
+ background:var(--surface); box-shadow:var(--elev-modal);
 }
 
-/* ---- 見出し(マーク・アプリ名・バージョン) ＝ **波紋の器** ----
-   波紋はこの帯の中だけで完結する。`overflow:hidden`で切るので白い本文へは
-   1pxも出ない。文字・版・マークは`z-index:2`で、輪は必ず文字の下をくぐる。 */
-.boot-head{
- display:flex; align-items:center; gap:var(--gap-section);
- padding:var(--space-4) calc(var(--space-5) + var(--space-1));
- background:var(--nav); color:white; position:relative; overflow:hidden;
+/* ---- 左: ブランドの面 ＝ **波紋の器** ----
+   波紋はこの面の中だけで完結する。`overflow:hidden`で切るので白い右へは
+   1pxも出ない。マーク・名前・版は`z-index:2`で、輪は必ず字の下をくぐる。 */
+.boot-brand{
+ position:relative; overflow:hidden; color:white;
+ display:grid; align-content:space-between; gap:var(--space-6);
+ padding:calc(var(--space-6) + var(--space-2)) var(--space-6);
+ background:linear-gradient(160deg, var(--teal), var(--nav));
 }
-.boot-head>.boot-logo,.boot-head>.boot-title,.boot-head>.boot-ver{position:relative; z-index:2}
-.boot-logo{width:40px; height:40px; flex:0 0 auto; display:block}
-.boot-title{min-width:0; flex:1 1 auto}
-.boot-title h1{margin:0; font-size:var(--fs-title); font-weight:var(--fw-strong); letter-spacing:.01em}
-.boot-title p{margin:2px 0 0; font-size:var(--fs-micro); letter-spacing:.16em; color:var(--teal-soft)}
-.boot-ver{
- flex:0 0 auto; white-space:nowrap;
- padding:var(--pad-chip); border-radius:var(--radius-pill);
- font-size:var(--fs-micro); font-variant-numeric:tabular-nums;
- color:var(--teal-soft);
- background:color-mix(in srgb, white 6%, transparent);
- border:1px solid color-mix(in srgb, var(--teal-soft) 45%, transparent);
-}
+.boot-brand>.boot-logo,.boot-brand>.boot-title,.boot-brand>.boot-ver{position:relative; z-index:2}
+.boot-logo{width:64px; height:64px; display:block}
+.boot-title h1{margin:0; font-size:calc(var(--fs-xl) + 4px); font-weight:var(--fw-strong); letter-spacing:.04em; line-height:1.3}
+.boot-title p{margin:var(--space-1) 0 0; font-size:var(--fs-sm); color:var(--pale)}
+.boot-ver{justify-self:start; font-size:var(--fs-sm); font-variant-numeric:tabular-nums; color:var(--teal-soft)}
 /* 波紋(§9.411、利用者の指示)。**輪の太さを一定にするため`transform:scale()`を
    使わず幅と高さを動かす**——scaleだと線まで一緒に拡大され、遠くへ行くほど
-   輪が太くなって狙いの逆になる。広がりは`linear`（加速する曲線だと、
-   不透明度が上がりきる前に輪が遠くへ行き、立ち上がる瞬間が見えない）。 */
+   輪が太くなって狙いの逆になる。中心はマークの中心。 */
 .boot-ring{
- position:absolute; left:42px; top:50%; transform:translate(-50%,-50%);
+ position:absolute; left:calc(var(--space-6) + 32px); top:calc(var(--space-6) + var(--space-2) + 32px);
+ transform:translate(-50%,-50%);
  width:34px; height:34px; border-radius:var(--radius-round);
  border:1.5px solid var(--teal-soft); opacity:0; z-index:0; pointer-events:none;
  animation:bootRipple 4.6s linear infinite; animation-delay:var(--d,0s);
@@ -97,39 +91,29 @@
  100%{width:1080px; height:1080px; opacity:0}
 }
 
-.boot-body{padding:var(--space-5) calc(var(--space-5) + var(--space-1)) var(--space-4)}
-
-/* ---- 帯(いま何をしているか) ---- */
-.boot-band{
- background:linear-gradient(90deg, var(--teal-dark), var(--teal));
- border-radius:var(--radius-lg); padding:var(--space-4) 0; margin:0 0 var(--space-2);
- position:relative; overflow:hidden;
+/* ---- 右: 4段の縦の並び ---- */
+.boot-body{
+ display:grid; align-content:center; gap:var(--space-4);
+ padding:calc(var(--space-6) + var(--space-2)) var(--space-6);
+ color:var(--ink);
 }
-.boot-edge{position:absolute; top:0; bottom:0; width:132px; z-index:4; pointer-events:none}
-.boot-edge--l{left:0;  background:linear-gradient(90deg, var(--teal-dark), transparent)}
-.boot-edge--r{right:0; background:linear-gradient(270deg, var(--teal), transparent)}
-.boot-steps{
- list-style:none; margin:0; padding:0 50%;
- display:flex; align-items:center; gap:var(--space-5);
- white-space:nowrap; position:relative; z-index:3;
- /* 中央へ寄せる量は base.js の bootGate が --boot-shift で渡す
-    (器の幅とマスの位置は描かれてからでないと測れない)。 */
- transform:translateX(var(--boot-shift,0px));
- transition:transform .55s cubic-bezier(.2,.75,.3,1);
-}
+.boot-lead{margin:0; font-size:var(--fs-lg); font-weight:var(--fw-strong)}
+.boot-steps{list-style:none; margin:0; padding:0; display:grid; gap:var(--space-3)}
 .boot-steps li{
- font-size:var(--fs); color:color-mix(in srgb, white 50%, transparent);
- transition:color .25s, font-size .25s;
+ display:grid; grid-template-columns:22px 1fr; column-gap:var(--space-3); align-items:center;
+ font-size:var(--fs); color:var(--muted);
 }
-.boot-detail{
- margin:0; text-align:center; min-height:1.6em;
- font-size:var(--fs-sm); color:var(--ink-2);
-}
+.boot-steps li>b{font-weight:var(--fw-ui)}
+.boot-dot{width:20px; height:20px; border-radius:var(--radius-round); border:2px solid var(--line);
+ display:grid; place-items:center; color:white; font-size:var(--fs-micro); font-style:normal; font-weight:var(--fw-strong)}
+/* いまの一言は**いまの段の下にだけ**（同じ字を2箇所に出さない・§CLAUDE 8）。 */
+.boot-detail{grid-column:2; display:none; min-height:1.5em; font-size:var(--fs-sm); color:var(--ink-2)}
+@keyframes bootSpin{to{transform:rotate(360deg)}}
 
 /* ---- ステータスバー(進み具合に答えるのは**この1本だけ**) ---- */
 .boot-bar{
- height:12px; border-radius:var(--radius-pill); overflow:hidden; position:relative;
- margin:var(--space-3) 0 0; background:var(--surface-3);
+ height:6px; border-radius:var(--radius-pill); overflow:hidden; position:relative;
+ margin:var(--space-1) 0 0; background:var(--surface-3);
 }
 .boot-bar i{
  /* 満ちている割合はJSが --boot-pct で渡す(見た目の指定はここに残す)。
@@ -148,10 +132,10 @@
 }
 @keyframes bootSheen{to{transform:translateX(100%)}}
 .boot-meta{
- display:flex; align-items:baseline; gap:var(--gap-inline); margin:var(--space-2) 0 0;
+ display:flex; align-items:baseline; gap:var(--gap-inline); margin:calc(-1 * var(--space-2)) 0 0;
  font-size:var(--fs-sm); color:var(--ink-2); font-variant-numeric:tabular-nums;
 }
-.boot-pct{font-size:var(--fs-lg); font-weight:var(--fw-strong); color:var(--teal-dark); line-height:1}
+.boot-pct{font-weight:var(--fw-strong); color:var(--teal-ink)}
 .boot-elapsed{margin-left:auto}
 
 }
@@ -183,10 +167,22 @@ html.app-booting.boot-cold body>*:not(#appBoot){content-visibility:hidden}
    本体は`visibility:hidden`なので、そもそも素の部品が見えない。 */
 html.app-booting{background:color-mix(in srgb, var(--nav) 70%, black)}
 
-/* 実行中の段階。**帯の中で大きくなる**のが「いまここ」の合図。 */
-.boot-steps li.is-current{font-size:var(--fs-xl); font-weight:var(--fw-strong); color:white}
-/* 済んだ段階。通り過ぎた側をわずかに濃くして、来ていない側と見分ける。 */
-.boot-steps li.is-done{color:color-mix(in srgb, white 62%, transparent)}
+/* 段の状態（§9.580）。済み＝塗りの丸に✓・いま＝回る輪と一言・まだ＝灰の輪と灰の字。
+   **色だけで言わない**——印の形（✓・回る輪・空の輪）と字の濃さの3つで分ける。 */
+.boot-steps li.is-done{color:var(--ink)}
+.boot-steps li.is-done .boot-dot{background:var(--teal); border-color:var(--teal)}
+.boot-steps li.is-done .boot-dot::after{content:"✓"}
+.boot-steps li.is-current{color:var(--ink)}
+.boot-steps li.is-current>b{font-weight:var(--fw-strong)}
+.boot-steps li.is-current .boot-dot{border-color:var(--teal); border-top-color:transparent; animation:bootSpin .9s linear infinite}
+.boot-steps li.is-current .boot-detail{display:block}
+@media (prefers-reduced-motion:reduce){.boot-steps li.is-current .boot-dot,.boot-ring{animation:none}}
+/* 狭い窓では左の面を上の帯へ畳む（中身の並びは変えない）。 */
+@media screen and (max-width:720px){
+ .boot-card{grid-template-columns:1fr}
+ .boot-brand{grid-template-columns:auto 1fr; align-items:center; padding:var(--space-4) var(--space-5)}
+ .boot-ver{display:none}
+}
 
 /* 解除。本体が見えるのと同時に消えていくので、切り替わりが継ぎ目に見えない。 */
 #appBoot.is-hiding{opacity:0; pointer-events:none}

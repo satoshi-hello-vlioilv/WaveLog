@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, jsonify, Response
 import subprocess, time
 
 from ..config import APP_ID, PORT
-from .. import app_icon, app_update, desktop_shell, desktop_shortcut, terminal_store
+from .. import app_icon, app_update, boot_status, desktop_shell, desktop_shortcut, terminal_store
 # 更新者IDは名乗るだけ・答えるのは1箇所（§9.276 ③）。**読み込み時に入れる**
 # ——関数の中の import を増やさない（§9.349）。輪は作らない（access_mode は
 # routes を知らない）。
@@ -124,6 +124,8 @@ JS_FILES=[
  # §9.502: 作業スケジュールの過去履歴（段「履歴」）。schedule-view.js が段を切り替えたときに
  # `WL.scheduleHistory.show()` を呼ぶ（読み込んだ時点では何もしない）。
  'schedule/schedule-history.js',
+ # §9.580: 初期画面（仕掛一覧）の上の「作業予定」の帯。数え方と始め方は`WL.scheduleView`の口を読むので、その後。
+ 'schedule/plan-strip.js',
  # 刃組ガイダンス（§9.377）。計算（`blade-core.js`）→ 画面（`blade-view.js`）の順。
  # 画面は`WL.bladeSet`を呼ぶので、この順でしか動かない。
  'bladeset/blade-core.js',
@@ -246,7 +248,9 @@ def home():
  # バージョンは起動オーバーレイが最初の描画で出すため、APIを待たずに埋め込む
  # (画面本体のバッジは従来どおり /api/build を読んで差し替える)。
  return render_template('index.html', build='current', asset_token=token, app_version=APP_VERSION,
-                        js_files=JS_FILES, terminal=_terminal_settings())
+                        js_files=JS_FILES, terminal=_terminal_settings(),
+                        boot_phases=boot_status.PHASES,
+                        boot_keys=' '.join(k for k, _ in boot_status.BROWSER_STEPS))
 
 
 def _terminal_settings():

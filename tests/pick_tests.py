@@ -225,7 +225,7 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density', 'test_smalltext',
                'test_uiux', 'test_headbar', 'test_uisize', 'test_bootui',
                'test_gridhead']
-G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache',
+G['起動'] = ['test_boot', 'test_bootui', 'test_planstrip', 'test_bootflash', 'test_assetcache',
              # §9.318・§9.496: ほかのプログラムが読むファイルの置き場の判定
              'test_faststart', 'test_browserdir',
              # §9.410: デスクトップの起動ショートカットとアイコン（入口を作る側）
@@ -302,7 +302,9 @@ RULES = [
     # §9.502: 段「履歴」の画面
     ('static/js/schedule/schedule-history.js', g('test_schistui', 'test_scale', 'test_theme')),
     ('static/js/schedule/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal',
-                                     'test_eqfeature')),
+                                     'test_eqfeature', 'test_planstrip')),
+    # §9.580: 初期画面の「作業予定」の帯（予定の要約と始め方は schedule-view.js の口）
+    ('static/js/schedule/plan-strip.js', g('test_planstrip', 'test_bootui', 'test_scale')),
     ('static/js/schedule/schedule-print.js', g('モーダル', 'test_scprint')),
     # §9.514: 実際の時刻を手で入れる小窓（予定の画面と段「履歴」が呼ぶ）
     ('static/js/schedule/schedule-times.js', g('test_sctimes', 'test_sctimesedit', 'test_schistui')),
@@ -599,7 +601,7 @@ RULES = [
     ('program/requirements.txt', g('起動', 'test_noaccess')),
     # デスクトップ版の窓（§9.544・Rust）。窓口の枠と起動画面の色を見る網を回す
     # （Rust そのものは cargo test と CI の自己診断・.github/workflows/desktop.yml）。
-    ('desktop/', g('test_sidecar', 'test_boot')),
+    ('desktop/', g('test_sidecar', 'test_boot', 'test_bootui')),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

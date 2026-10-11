@@ -342,6 +342,21 @@
 .equipment-setup-copy b{font-size:var(--fs-title)}
 .equipment-setup-copy span{color:var(--ink-2)}
 .equipment-setup-banner>button{min-width:160px;border-color:var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
+/* 初期画面の「作業予定」の帯（§9.580）。**1行・高さ固定**——字が変わっても一覧の上端を動かさない。
+   白地に teal の左の縁（読むだけの面なので入力欄風の枠は付けない・§CLAUDE 10）。押すのは右の2つだけで、
+   塗りは「次にすること」の1つ（§CLAUDE 2）。読めなかったときは縁を橙にし、理由は字が言う。 */
+.plan-strip{
+  display:flex;align-items:center;gap:var(--space-3);
+  height:calc(var(--ctl-h) + var(--space-3));margin:10px 14px 0;padding:0 var(--space-3) 0 var(--space-4);
+  background:var(--surface);border:1px solid var(--line-soft);border-left:4px solid var(--teal);border-radius:var(--radius-md);
+}
+.plan-strip[hidden]{display:none}
+.plan-strip.is-bad{border-left-color:var(--warn)}
+.ps-copy{min-width:0;flex:1 1 auto;display:flex;align-items:baseline;gap:var(--space-3);white-space:nowrap;overflow:hidden}
+.ps-title{font-size:var(--fs-title);flex:0 0 auto}
+.ps-meta{font-size:var(--fs-sm);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
+.ps-actions{flex:0 0 auto;display:flex;gap:var(--space-2)}
+.ps-actions .ps-go{border-color:var(--teal);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 /* ---------- 13. 保存オーバーレイ / トースト ----------
    待機モーダルは「見て飽きない・状況が伝わる」ことを目的に、
    (a) 二重リングのスピナー、(b) 実際に目視できる2ステップのドット表示、
