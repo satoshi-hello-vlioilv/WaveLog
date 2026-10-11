@@ -5237,6 +5237,12 @@ ${rpEdVisRow(k)}`;
   if(typeof WL.measureView.ensureMeasureShape==='function')WL.measureView.ensureMeasureShape(rec);
   rpReturnTo=RP_RETURNS.indexOf(opt.returnTo)>=0?opt.returnTo:'blocks';
   await openReportView();
+  /* **紙を描く前に、その設備の配置と自作の塊を読む**（§9.583 の追補）。`renderReport()`は手元の控えで先に
+     1枚描いて、届いたら描き直す作り。`openReportView()`は控えを捨てるので、読まずに描くと見本の最初の1枚は
+     **コードの既定の中身**になり、「見本を印刷」（2コマ後に刷る）ではマスタで直す前の中身が刷られうる
+     （通しで網が落ちて分かった・単独で6回中5回の再現）。読めなくても紙は出す（既定の中身で・fail-open）。 */
+  try{await Promise.all([WL.columnLayout.load(rpTargetOf(rec)),rpLoadUserBlocks(rpEquipmentOf(rec)||'')])}
+  catch(e){WL.quiet.note('見本の配置と自作の塊を取れない（既定の並びで出す）',e)}
   updateBackButton();
   syncArrangeButton();
   /* **先頭へ差し込む**（探させない・§2）。同じidが残っていたら入れ替える
