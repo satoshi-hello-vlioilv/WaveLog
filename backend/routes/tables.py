@@ -2,13 +2,13 @@
 
 app.pyから移設(Phase 3)。接続先は全てSQLite(Access接続は廃止)。
 
-SQL方言について: 検索・フィルタで使うCStr()/Val()はAccess方言のSQL関数で
-SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数として登録して
-吸収している。またVal()経由の数値範囲フィルタ(gt/gte/lt/lte)は、SQLiteが値の
-ストレージクラス優先で比較する仕様のため、パラメータ側もPythonで数値化してから
-渡す(そうしないとVal()が返す数値と文字列パラメータの比較が常に不成立になる)。
+SQL方言について: 検索・フィルタで使うCStr()はAccess方言のSQL関数で
+SQLiteには無いため、sqlite_io.connect()がユーザー定義関数として登録して
+吸収している。数値範囲フィルタ(gt/gte/lt/lte)は`NumOf()`（§9.581・`sort_order.num_of()`
+と同じ読み方）で読み、パラメータ側もPythonで数値化してから渡す（SQLiteは値の
+ストレージクラス優先で比較するので、文字列パラメータだと常に不成立になる）。
 """
-import json, re, time
+import json, time
 from flask import Blueprint, request, jsonify
 from .body import body, flag, any_
 
@@ -31,10 +31,6 @@ bp=Blueprint('tables',__name__)
 PAGE_SIZE_MAX=5000
 PAGE_SIZE_DEFAULT=1000
 
-def _numeric_value(value):
- # SQLiteのVal(?)相当。先頭の数値部分を取り出す(見つからなければ0)。
- m=re.match(r'^\s*[+-]?\d+(\.\d+)?',str(value or ''))
- return float(m.group(0)) if m else 0.0
 
 # ========================================================================
 # 結合(§9.193): 別のデータソースの列を、突合キーで一覧へ足す。
@@ -184,6 +180,10 @@ def _fetch_custom_sorted(c,t,cs,where,params,keys,size,start):
   if k['column'] in cs:need.add(k['column'])
   if k.get('spec') and k['spec'].get('on')=='display':
    k['ruleRows']=_display_rule_rows(k.get('rule'),rule_cache)
+   # 式（条件の式・「式が真なら」・表示の値が`=`で始まる）は画面の`WL.formula`だけが解く（§9.581）。
+   # ここで黙って字として扱うと、並びが画面の表示と食い違う——**できないと言って**ふだんの並びへ倒す。
+   if sort_order.rules_need_formula(k.get('ruleRows')):
+    raise ValueError(f'列「{k["column"]}」の表示ルールが式を使っているので、表示の値では並べ替えられません')
    # 条件が他の列を見ていることがある(「区分が3のときだけ」)。その列も引く。
    for r in (k.get('ruleRows') or []):
     for cd in sort_order.rule_leaves(r.get('conditions')):
@@ -428,11 +428,14 @@ def _build_filter_where(filters):
   elif op=='not_empty':parts.append(f'({col} IS NOT NULL AND CStr({col})<>\'\')')
   elif op in ('gt','gte','lt','lte'):
    sign={"gt":'>',"gte":'>=',"lt":'<',"lte":'<='}[op]
-   parts.append(f'Val(CStr({col})) {sign} ?')
-   # SQLiteは値の型(ストレージクラス)優先で比較するため、REALを返す
-   # Val()の結果と文字列パラメータを比べると常にREAL<TEXT扱いで不成立に
-   # なる。パラメータ側もこちらで数値化してから渡す。
-   params.append(_numeric_value(value))
+   # 数の読み方は`sort_order.num_of()`の1箇所（§9.581・画面の式と同じ決まり）。読めない値（空欄・
+   # '12A'・日付）は NULL＝当たらない。打った境の値も同じ読み方で、読めなければ何にも当たらない。
+   # パラメータは数値で渡す（SQLiteは型優先で比べるので、文字列だと常に REAL<TEXT で不成立）。
+   lim=sort_order.num_of(value)
+   if lim is None:parts.append('0=1')
+   else:
+    parts.append(f'NumOf({col}) {sign} ?')
+    params.append(lim)
  return parts,params
 
 
