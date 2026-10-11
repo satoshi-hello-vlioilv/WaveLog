@@ -194,3 +194,25 @@ def unlink(path, *, budget_sec=DEFAULT_BUDGET_SEC, label='', missing_ok=True):
 # paths は logging_setup より下にあるので、この向きの import だけが可能
 # (paths→atomic_io にすると logging_setup を挟んで循環する)。
 from .paths import cloud_sync_hint  # noqa: E402,F401 名前を引き継ぐためのimport（上の説明）
+
+
+# ------------------------------------------------------------------
+# 読み手の開き方（共有の写し方の約束 R4・docs/SHARED_READ.md）
+# ------------------------------------------------------------------
+_GENERIC_READ = 0x80000000
+_SHARE_ALL = 0x1 | 0x2 | 0x4          # FILE_SHARE_READ | WRITE | DELETE
+_OPEN_EXISTING = 3
+_SEQUENTIAL = 0x08000000              # FILE_FLAG_SEQUENTIAL_SCAN
+
+
+def open_shared_read(path):
+ """読むために開く（`with`で閉じる）。**Windowsでは、開いている間も書き手が置き換えられる開き方**
+ （`FILE_SHARE_DELETE`まで許す）にする——Pythonの`open()`はそれを付けないので、こちらが写している
+ 一瞬に DataRelay の置き換えが当たると「使用中」で待たされる（上の説明の WinError 5 と同じ理由）。
+ Quality-Analysis の`fsio.open_shared_read`と同じ作り。ほかのOSは`open()`。"""
+ if os.name != 'nt':
+  return open(path, 'rb')
+ import _winapi  # 遅延: Windows にしか無い
+ import msvcrt  # 遅延: Windows にしか無い
+ h = _winapi.CreateFile(str(path), _GENERIC_READ, _SHARE_ALL, 0, _OPEN_EXISTING, _SEQUENTIAL, 0)
+ return open(msvcrt.open_osfhandle(h, os.O_RDONLY | getattr(os, 'O_BINARY', 0)), 'rb')

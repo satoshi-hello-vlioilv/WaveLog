@@ -19,7 +19,8 @@
 ここで固定するのは次の7つ。
  1. 共有の設備ファイルが**写す対象**に載る
  2. 読む先は**写し**（写しがあれば）
- 3. **写しがまだ無ければ実物**（fail-open。写せるまで画面が止まらない）
+ 3. **写しがまだ無くても共有は直接読まない**（§9.582・docs/SHARED_READ.md の R8。以前は実物を読んでいた）。
+    背景の係がいない呼び出し（この網）は、その場で同じ作法で写してから読む
  4. **自分が書いたファイルは写さない・実物から読む**
     （写しは間隔ぶん古いので、自分の書込が自分に見えなくなる）
  5. **書く先・消す先は実物のまま**（写しへ書いて共有へ反映されない事故を防ぐ）
@@ -87,14 +88,14 @@ try:
     rec('この端末のDBは写す対象に入れない（自分が書くもの）',
         str(local) not in tg.values(), str(local))
 
-    # ---- 3. 写しがまだ無ければ実物（fail-open） -------------------
+    # ---- 3. 写しがまだ無くても共有は直接読まない（§9.582） -------------
     before = [str(p) for p in d.records_read_paths()]
-    rec('写しがまだ無ければ実物を読む（画面を止めない）',
-        str(share / 'LS4' / 'records.sqlite3') in before, ' / '.join(before))
+    rec('写しがまだ無くても共有を直接読まない（係がいなければその場で写して写しを読む）（§9.582）',
+        not any(str(share) in x for x in before) and any('records_LS4' in x for x in before), ' / '.join(before))
 
     # ---- 2. 写したら写しを読む -----------------------------------
     for k, p in m.records_targets():
-        m.refresh_one(k, p, force=True)
+        m.refresh_one(k, p)
     after = [str(p) for p in d.records_read_paths()]
     rec('写したあとは写しを読む（共有を直接開かない）',
         all('cache' in x for x in after if 'LS' in x)
@@ -119,13 +120,25 @@ try:
                 '2026-08-29 03:00:00', 'json', '{}'))
     c5.commit()
     c5.close()
-    d.invalidate_backup_rows_cache()
-    ids_m = {r['id'] for r in d.merged_backup_rows(force=True)}
+    # アプリでは背景の係が写す（読む側は写さない）。その形にして読む——係がいない呼び出しは読むたびに
+    # 確かめて写し直すので、食い違いが消えて見分けられない（§9.582）。
+    import threading as _th, time as _time
+    alive = _th.Thread(target=lambda: _time.sleep(1.0)); alive.start()
+    _orig_thread = m._thread
+    m._thread = alive
+    m._first.set()
+    try:
+        d.invalidate_backup_rows_cache()
+        ids_m = {r['id'] for r in d.merged_backup_rows(force=True)}
+    finally:
+        m._thread = _orig_thread
+        m._first.clear()
+        alive.join()
     rec('読むのは写し（共有だけにある行はまだ見えない）',
         'LS5|ONLY-IN-SHARE' not in ids_m,
         ','.join(sorted(x for x in ids_m if x.startswith('LS5'))))
     # 写し直せば見える（＝写しが古いだけで、取りこぼしではない）。
-    m.refresh_one('records:LS5', real5, force=True)
+    m.refresh_one('records:LS5', real5)
     d.invalidate_backup_rows_cache()
     ids_m2 = {r['id'] for r in d.merged_backup_rows(force=True)}
     rec('写し直せば見える（取りこぼしではなく、写しが古いだけ）',
@@ -160,7 +173,7 @@ try:
     # `records_path_for`、消す先を探すのは `records_paths_holding`。
     d._records_written_here.clear()
     for k, p in m.records_targets():
-        m.refresh_one(k, p, force=True)
+        m.refresh_one(k, p)
     w = d.records_path_for('LS5')
     rec('書く先は実物（写しではない）',
         str(w) == str(share / 'LS5' / 'records.sqlite3'), str(w))

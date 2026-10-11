@@ -81,7 +81,7 @@ try:
     # ---- 3) 元が変わったら追随する ----
     make_db(remote, [('L001', 'a'), ('L002', 'b'), ('L003', 'c')])
     prev = local
-    r3 = db_mirror.refresh_one(KEY, remote, force=True)
+    r3 = db_mirror.refresh_one(KEY, remote)
     rec('元が変わったら写し直す', r3['updated'], r3['reason'])
     local = db_mirror.mirror_path(KEY)
     rec('新しい内容が読める', len(read_rows(local)) == 3, f'{len(read_rows(local))}件')
@@ -95,7 +95,7 @@ try:
     broken = remote.read_bytes()
     # ヘッダーは残しつつ後半を潰す = 「途中まで書かれた」状態の代役
     remote.write_bytes(broken[:len(broken) // 2] + b'\x00' * (len(broken) // 2))
-    r4 = db_mirror.refresh_one(KEY, remote, force=True)
+    r4 = db_mirror.refresh_one(KEY, remote)
     rec('壊れた元は採用しない', not r4['updated'], r4['reason'])
     rec('前の写しをそのまま読み続けられる',
         db_mirror.mirror_path(KEY) == local and read_rows(local) == good,
@@ -103,7 +103,7 @@ try:
 
     # ---- 5) 元へ到達できなくても前の写しで読み続けられる ----
     missing = tmp / 'NOT_THERE.sqlite3'
-    r5 = db_mirror.refresh_one(KEY, missing, force=True)
+    r5 = db_mirror.refresh_one(KEY, missing)
     rec('元へ到達できなければ写しを維持する', not r5['updated'], r5['reason'])
     rec('到達できなくても写しは残る', local.exists() and read_rows(local) == good)
 
@@ -122,13 +122,13 @@ try:
     make_db(remote, [('L001', 'a'), ('L002', 'b'), ('L004', 'd')])
     # 待って取り直すのは**前は届いていた元**だけ（§9.495の追補）。実機でも一瞬消えるのは、こまめに書き直されて
     # いる＝ふだん届いている元。まず届く形で1回写してから、消す。
-    db_mirror.refresh_one(KEY, remote, force=True)
+    db_mirror.refresh_one(KEY, remote)
     make_db(remote, [('L001', 'a'), ('L002', 'b'), ('L004', 'd'), ('L005', 'e')])
     away = remote.with_suffix('.away')
     _os2.replace(remote, away)
     back = _th2.Timer(0.6, lambda: _os2.replace(away, remote)); back.start()
     t0 = _t2.time()
-    r5c = db_mirror.refresh_one(KEY, remote, force=True)
+    r5c = db_mirror.refresh_one(KEY, remote)
     back.join()
     rec('元が一瞬消えても（0.6秒）写せる（§9.495）', r5c['updated'], f"{r5c['reason']}（{_t2.time()-t0:.1f}秒）")
     local = db_mirror.mirror_path(KEY)
@@ -188,13 +188,16 @@ try:
 
     # ---- 7) 読み込み先を切り替えたら、前の元から作った写しは使わない ----
     # パス設定を変えた直後に前のファイルの写しを読み続けると、**別のデータを
-    # 出しているのに気づけない**。写しが出来るまでは元を直接読む。
+    # 出しているのに気づけない**。**共有も直接は読まない**（§9.582）——背景の係が
+    # いない呼び出し（この網）はその場で新しい元を写し、その写しを読む。
     other = tmp / 'OTHER.sqlite3'
     make_db(other, [('X999', 'z')])
-    rec('読み込み先を変えたら写しを使わない',
-        pathlib.Path(db_mirror.read_path(KEY, other)) == other,
-        str(db_mirror.read_path(KEY, other)))
-    db_mirror.refresh_one(KEY, other, force=True)
+    old_copy = db_mirror.mirror_path(KEY)
+    got7 = db_mirror.read_path(KEY, other)
+    rec('読み込み先を変えたら前の写しも共有も読まない（新しい元を写して読む）（§9.582）',
+        got7 is not None and pathlib.Path(got7) not in (old_copy, other) and read_rows(got7) == [('X999', 'z')],
+        str(got7))
+    db_mirror.refresh_one(KEY, other)
     local = db_mirror.mirror_path(KEY)
     rec('写し直したあとは新しい方の写しを読む',
         pathlib.Path(db_mirror.read_path(KEY, other)) == local
@@ -257,7 +260,7 @@ try:
                 probe.unlink(missing_ok=True)
             rec('（前提）開いている写しへの上書きは拒まれる', blocked)
 
-            r9 = db_mirror.refresh_one(KEY, other, force=True)
+            r9 = db_mirror.refresh_one(KEY, other)
             rec('開いている写しがあっても写し直せる', r9['updated'], r9['reason'])
             rec('開いたままの読み手は前の内容を読み続けられる',
                 reader.execute('SELECT COUNT(*) FROM [仕掛]').fetchone()[0] == 1)
@@ -294,8 +297,9 @@ try:
         str(db_mirror.read_path(OLD, other)))
     r10 = db_mirror.refresh_one(OLD, other)
     rec('旧い写しがあれば写し直さない', r10.get('skipped') is True, r10['reason'])
-    # 一度でも写し直せば世代名へ移り、決まった名前のほうは片付けられる。
-    db_mirror.refresh_one(OLD, other, force=True)
+    # 一度でも写し直せば世代名へ移り、決まった名前のほうは片付けられる（元が変わったとき）。
+    make_db(other, [('OLD1', 'p'), ('OLD2', 'q')])
+    db_mirror.refresh_one(OLD, other)
     moved = db_mirror.mirror_path(OLD)
     rec('写し直すと世代名へ移る', '.g' in moved.name, moved.name)
     rec('決まった名前の写しは片付けられる', not legacy_file.exists(), str(legacy_file))
@@ -315,10 +319,12 @@ try:
         for i in range(8):
             make_db(nremote, [(f'N{i}', 'a')])
             res = []
-            ths = [_th.Thread(target=lambda: res.extend(db_mirror.refresh_all(force=True))) for _ in range(2)]
+            ths = [_th.Thread(target=lambda: res.extend(db_mirror.refresh_all())) for _ in range(2)]
             [t.start() for t in ths]
             [t.join() for t in ths]
-            bad += sum(1 for r in res if not r.get('updated'))
+            # 1本ずつなので、先の1本が写し、後の1本は「変わっていない」で写さない（R2・R9）
+            bad += sum(1 for r in res if not (r.get('updated') or r.get('skipped')))
+            bad += 0 if sum(1 for r in res if r.get('updated')) == 1 else 1
             if read_rows(db_mirror.read_path(NK, nremote)) != [(f'N{i}', 'a')]:
                 bad += 1
         rec('写し直しが2本重なっても失敗・古いままにならない（1本ずつ）', bad == 0, f'{bad}件')
@@ -331,8 +337,8 @@ try:
         rec('手動のときは写さない（前の写しのまま）',
             read_rows(db_mirror.read_path(NK, nremote)) != [('NX', 'z')], str(read_rows(db_mirror.read_path(NK, nremote))))
         rec('手動のときは「新しい版あり」を言う', info.get('newer') is True and info.get('mode') == 'manual', str(info))
-        rw = db_mirror.refresh_all(force=True)
-        rec('再読込（force）なら手動でも写し、新しい版の印は消える',
+        rw = db_mirror.refresh_all()
+        rec('再読込なら手動でも（変わった元を）写し、新しい版の印は消える',
             rw and rw[0].get('updated') and db_mirror.source_info(NK).get('newer') is False, str(rw[:1]))
         # 起動して最初の周回が済むまでは、読む側が待つ（前回の写しを出さない）
         conf['db_mirror_update'] = 'auto'
@@ -353,6 +359,74 @@ try:
     finally:
         db_mirror.targets, db_access.path_config_value = _orig_targets, _orig_pcv
         db_mirror._first.clear()
+    # ---- 11) 共有の写し方の約束（§9.582・docs/SHARED_READ.md）----
+    from unittest import mock as _mock
+    from backend import atomic_io as _aio
+    CK = 'PROBE_CONTRACT'
+    croot = tmp / 'share2'
+    croot.mkdir()
+    cremote = croot / 'SIKA.sqlite3'
+    make_db(cremote, [('C1', 'a')])
+    rec('（前提）約束の元を写せる', db_mirror.refresh_one(CK, cremote)['updated'])
+    ccopy = db_mirror.mirror_path(CK)
+    def _opened(*a, **k):
+        raise AssertionError('共有を開いた')
+    # R2: 変わっていない元は「再読込」でも開かない
+    with _mock.patch.object(_aio, 'open_shared_read', side_effect=_opened):
+        r11 = db_mirror.refresh_one(CK, cremote)
+    rec('変わっていない元は再読込でも共有を開かない（R2）', r11.get('skipped') is True, r11['reason'])
+    # R3: 公開の途中（.incoming）は開かない・5秒で確かめ直す
+    make_db(cremote, [('C1', 'a'), ('C2', 'b')])
+    mark = croot / f'.{cremote.name}.4242.incoming'
+    mark.write_bytes(b'x')
+    with _mock.patch.object(_aio, 'open_shared_read', side_effect=_opened):
+        r12 = db_mirror.refresh_one(CK, cremote)
+    rec('公開の途中（.incoming）は共有を開かず見送る（R3）', r12.get('busy') and not r12['updated'], r12['reason'])
+    rec('見送ったら5秒で確かめ直す（R3）', db_mirror.next_wait_sec([r12]) == db_mirror.RETRY_AFTER_BUSY_SEC,
+        f'{db_mirror.next_wait_sec([r12])}秒')
+    mark.unlink()
+    # R5: 写している間に書き手の印が出たら、その写しは使わない
+    _real_copy = db_mirror._copy_shared
+    def _copy_then_journal(remote, dst):
+        _real_copy(remote, dst)
+        (croot / f'{cremote.name}-journal').write_bytes(b'j')
+    with _mock.patch.object(db_mirror, '_copy_shared', _copy_then_journal):
+        r13 = db_mirror.refresh_one(CK, cremote)
+    rec('写している間に書き手の印が出たら、その写しは使わない（R5）',
+        r13.get('busy') and not r13['updated'] and db_mirror.mirror_path(CK) == ccopy, r13['reason'])
+    (croot / f'{cremote.name}-journal').unlink()
+    rec('印が消えたら次の回で写す', db_mirror.refresh_one(CK, cremote)['updated'])
+    # R8: 背景の係が動いているときは、写しが無くても共有を直接読まない（Noneと理由）
+    fresh = croot / 'FRESH.sqlite3'
+    make_db(fresh, [('F1', 'x')])
+    (croot / f'.{fresh.name}.1.incoming').write_bytes(b'x')
+    db_mirror.refresh_one('PROBE_FRESH', fresh)
+    alive = _th.Thread(target=lambda: _time.sleep(0.5)); alive.start()
+    _orig_thread2 = db_mirror._thread
+    db_mirror._thread = alive
+    db_mirror._first.set()
+    try:
+        got = db_mirror.read_path('PROBE_FRESH', fresh)
+    finally:
+        db_mirror._thread = _orig_thread2
+        db_mirror._first.clear()
+        alive.join()
+    rec('写しが無いとき共有を直接読む場所を返さない（R8）', got is None, str(got))
+    txt = db_mirror.not_ready_text('PROBE_FRESH')
+    rec('まだ写せていない理由を言う（R8）', '写せていません' in txt and '.incoming' in txt, txt)
+    rec('まだ写せていないは 503・copying（画面は写し終えたら読み直す）',
+        db_mirror.error_status(db_mirror.NotCopiedYet(txt)) == ({'kind': 'copying'}, 503)
+        and db_mirror.error_status(ValueError('x'))[1] == 500)
+    # R4: 置き換えを許す開き方（Windows の作り・Linux では open と同じ）
+    import inspect as _insp
+    src4 = _insp.getsource(_aio.open_shared_read)
+    rec('写すときは置き換えを許す開き方で開く（R4）',
+        '_SHARE_ALL' in src4 and 'CreateFile' in src4 and 'open_shared_read' in _insp.getsource(db_mirror._copy_shared))
+    # 約束の文書（3つのリポジトリに同じ文）がこの実装の版を名乗る
+    doc = (ROOT / 'docs' / 'SHARED_READ.md').read_text(encoding='utf-8')
+    rec('約束の文書がこの実装の版を名乗り、決まりを全部持つ',
+        f'（第{db_mirror.CONTRACT_VERSION}版）' in doc.splitlines()[0]
+        and all(f'| {r} |' in doc for r in [f'R{i}' for i in range(1, 10)] + ['W1', 'W2', 'W3']))
 finally:
     db_mirror.cache_dir = _orig_cache
     import shutil

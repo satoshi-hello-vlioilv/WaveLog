@@ -1,4 +1,4 @@
-# データの置き場と共有（80件）
+# データの置き場と共有（82件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 共有の元は「共有の写し方の約束」（`docs/SHARED_READ.md`・3つのアプリに同じ文）で写す。目印を見る・置き換えを許す開き方・写した後に見直す | `test_dbmirror.py` | [§9.582](../../docs/decisions/9.582.md) |
+| 共有は直接読まない（写しが無ければ`NotCopiedYet`＝503・`copying`、画面は写し終えたら開き直す）。「再読込」は変わった元だけ写す（`force`は無い） | `test_dbmirror.py`・`test_listcache.js` | [§9.582](../../docs/decisions/9.582.md) |
 | 「報告する」は①失敗を選ぶ（同じ失敗は回数で1行）②書く③コピー。要約は送る内容の2行目に1回だけ、起動のログは末尾60行 | `test_feedback.js` | [§9.579](../../docs/decisions/9.579.md) |
 | 書込は全部`api()`から`WL.feedback.request()`へ控える（本文は識別子だけ）。失敗の1通には問い合わせ・そのときのサーバーの記録・共有の状態を入れる | `test_feedback.js`・`test_logs.py` | [§9.578](../../docs/decisions/9.578.md) |
 | 共有へ書き出せなかったマスタの変更は写しに残し、取り直す前に送り直す（`_settle_pending()`の1箇所）。共有が先に進んでいたら控えへ逃がして言う | `test_mastershare.py` | [§9.576](../../docs/decisions/9.576.md) |
@@ -21,7 +23,7 @@
 | 共有の元を見るのは`_remote_stat()`の1箇所。**前は届いていた元**だけ待って取り直す（合計2.5秒まで・`_known_good()`） | `test_dbmirror.py` | [§9.495](../../docs/decisions/9.495.md) |
 | 届かなかった理由は**元の名前とOSの答え**まで残す。早めるのは**自動・届かなくなった最初の1回**だけ（`next_wait_sec()`・`fails`） | `test_dbmirror.py` | [§9.495](../../docs/decisions/9.495.md) |
 | 写し直しは1本ずつ（錠）。起動は最初の周回を待って読む。更新は`update_mode()`（auto／manual） | `test_dbmirror.py` | [§9.463](../../docs/decisions/9.463.md) |
-| 再読込は`force`で写し直し、押した直後に知らせ・結果を字で。画面は写しの更新に気づいて読み直す | `test_listcache.js` | [§9.463](../../docs/decisions/9.463.md) |
+| 【§9.582で改めた】再読込は今すぐ確かめ（変わった元だけ写す）、押した直後に知らせ・結果を字で。画面は写しの更新に気づいて読み直す | `test_listcache.js` | [§9.463](../../docs/decisions/9.463.md) |
 | 【§9.568で改めた】ショートカットの名前と絵は**この PC の控え**（`runtime_dir()/shortcut.json`）。共有のマスタへ置かない | `test_shortcut.py` | [§9.568](../../docs/decisions/9.568.md) |
 | 起動ショートカットの設定を書くのは`desktop_shortcut.remember()`の1箇所（作れたときだけ・鍵は2つだけ） | `test_shortcut.py` | [§9.445](../../docs/decisions/9.445.md) |
 | 同じ名前のショートカットは上書きする。**自分が作った物**（行き先が`Start.vbs`）以外は`overwrite`が真のときだけ | `test_shortcut.py`・`test_uisize.js` | [§9.446](../../docs/decisions/9.446.md) |

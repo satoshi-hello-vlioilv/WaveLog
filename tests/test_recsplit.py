@@ -25,6 +25,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from backend import db_access as d  # noqa: E402
+from backend import db_mirror as m  # noqa: E402
 
 R = []
 def rec(name, ok, detail=''):
@@ -55,6 +56,10 @@ def ids(rows):
 
 tmp = pathlib.Path(tempfile.mkdtemp(prefix='wl-recsplit-'))
 _orig_dir, _orig_meas, _orig_exp = d.RECORDS_SHARE_DIR, d.MEAS_DB, d.RECORDS_BACKUP_EXPORT_PATH
+# ほかの端末が書く設備ファイルは**手元の写しから読む**（§9.268・共有は直接読まない §9.582）。写しは
+# この網の一時の置き場へ（本物の置き場へ試しのファイルを書かない・§9.504）。
+_orig_cache = m.cache_dir
+m.cache_dir = lambda: tmp / 'cache'
 try:
     # ---- 1. 未設定なら今までどおり ----------------------------------------
     local = tmp / 'db' / 'records.sqlite3'
@@ -144,8 +149,9 @@ try:
         put(p5, 'NEW-5b', 'LS5', 'L006', updated='2026-08-28 11:00:00')
         reads.clear()
         got2 = ids(d.merged_backup_rows(force=True))
+        # 読むのは LS5 の**手元の写し**（共有の実物ではない・§9.582）。1本だけ読み直すこと。
         rec('変わったファイルだけ読み直す',
-            reads == [str(p5)], str(reads))
+            len(reads) == 1 and 'records_LS5' in reads[0] and str(tmp / 'cache') in reads[0], str(reads))
         rec('変更はちゃんと拾う', 'NEW-5b' in got2, str(got2))
     finally:
         d.read_backup_rows = _orig_read
@@ -176,6 +182,7 @@ try:
         'records_share_dir' in PATH_CONFIG_STATIC_KEYS
         and 'records_share_dir' not in PATH_CONFIG_LIVE_KEYS)
 finally:
+    m.cache_dir = _orig_cache
     d.RECORDS_SHARE_DIR, d.MEAS_DB, d.RECORDS_BACKUP_EXPORT_PATH = _orig_dir, _orig_meas, _orig_exp
     d.invalidate_records_dirs_cache(); d.invalidate_backup_rows_cache()
     shutil.rmtree(tmp, ignore_errors=True)

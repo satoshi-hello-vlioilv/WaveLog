@@ -14,6 +14,7 @@ from .body import body, flag, any_
 
 from .. import query_join
 from .. import sort_order
+from .. import db_mirror
 from ..db_access import (DBS, qi, connect, cols, tables, cfg,
                          WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY)
 from ..logging_setup import app_logger
@@ -125,7 +126,6 @@ def api_db_mirror_source():
  """その一覧の元データの素性だけ（§9.463）。**共有を見に行かない**——背景の周回が
  控えた答えを返すだけなので軽い。画面はこれを間隔を置いて聞き、写しが
  新しくなっていれば一覧を読み直す／手動なら「新しい版あり」と出す。"""
- from .. import db_mirror  # 遅延: 同じ段の他のルートと同じく、起動の順に依らない
  k=str(request.args.get('db') or '').strip()
  if k not in DBS:return jsonify(error='データソースがありません。'),404
  try:path=cfg(k).get('path')
@@ -134,15 +134,14 @@ def api_db_mirror_source():
 
 @bp.post('/api/db-mirror/refresh')
 def api_db_mirror_refresh():
- """今すぐ写し直す(一覧の「再読込」から呼ぶ)。`wait`なら写し終えるまで待って
- 結果を返す（画面はそれを字で言う・§9.463）。`force`は元の時刻と大きさが同じでも
- 写し直す——共有の時刻は手元に控えられて遅れることがあり、「変わっていない」と
- 誤って読むと押した人の期待（最新を見たい）に応えられない。"""
- from .. import db_mirror
- x=body({'wait': flag, 'force': flag}, silent=True, strict=True)
+ """今すぐ確かめ、元が変わっていれば写し直す(一覧の「再読込」から呼ぶ)。`wait`なら終えるまで待って
+ 結果を返す（画面はそれを字で言う・§9.463）。**変わっていない元は写し直さない**（§9.582・
+ docs/SHARED_READ.md の R2。以前は`force`で必ず写し直しており、押す人・端末が増えるほど共有を
+ 時刻を選ばずに開いて、DataRelay の置き換えとぶつかる見込みを上げていた）。"""
+ x=body({'wait': flag}, silent=True, strict=True)
  if x.flag('wait'):
   return jsonify(ok=True,mode=db_mirror.update_mode(),
-                 results=db_mirror.refresh_all(force=x.flag('force')))
+                 results=db_mirror.refresh_all())
  db_mirror.wake()
  return jsonify(ok=True,queued=True)
 
@@ -285,8 +284,9 @@ def api_tables():
   # **必ずtracebackをログへ残す**。以前はstr(e)だけを返しており、別端末で
   # 「[WinError 59] 予期しないネットワークエラー」とパスだけが画面に出て、
   # どの行から出たのか(存在確認なのか接続なのか)を現地で切り分けられなかった。
-  app_logger().exception('/api/tables db=%s で失敗しました',k)
-  return jsonify(error=str(e),db=k,hint=_error_hint(e)),500
+  extra,status=db_mirror.error_status(e)
+  if status==500:app_logger().exception('/api/tables db=%s で失敗しました',k)
+  return jsonify(error=str(e),db=k,hint=_error_hint(e),**extra),status
 @bp.get('/api/table-columns')
 def api_table_columns():
  """列の名前だけを返す(§9.193)。**行は運ばない。**
@@ -587,8 +587,7 @@ def api_table():
   # **その一覧が読んだデータは「いつのものか」**（§9.286 ④）。この応答に
   # 添えるのは、**いま画面に出ている行と同じ問い合わせの答え**にするため
   # ——別の口で取りに行くと、一覧と鮮度が別のタイミングの話になりうる。
-  from .. import db_mirror as _dbm
-  try:src_info=_dbm.source_info(k,cf.get('path'))
+  try:src_info=db_mirror.source_info(k,cf.get('path'))
   except Exception as _e:quiet('元データの時刻を引けない（鮮度を出さない）',_e);src_info=None
   resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
                filters_applied=len(filters),joinQuality=join_info,joins=join_list,
@@ -597,4 +596,7 @@ def api_table():
   resp.headers['Server-Timing']=','.join(
    f'{n};dur={v}' for n,v in timing.items() if isinstance(v,int))
   return resp
- except Exception as e:return jsonify(error=str(e)),500
+ except Exception as e:
+  # まだ写せていない（共有は直接読まない・§9.582）なら 503 と`kind`。画面は写し終えたら読み直す。
+  extra,status=db_mirror.error_status(e)
+  return jsonify(error=str(e),**extra),status

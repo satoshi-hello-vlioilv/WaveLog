@@ -70,8 +70,10 @@
   if(m.enabled===null)return '確かめられません';
   if(m.enabled===false)return '共有を直接読む（写しは無効）';
   const mins=Math.max(1,Math.round(Number(m.intervalSec||60)/60));
-  if(!m.mirrored)return `写しの用意中（あと${mins}分以内）`;
-  return `写し${m.mirrored}本`+(m.direct?` ／ 実物${m.direct}本`:'');
+  /* まだ写せていない置き場は共有を直接読まず、写し終えるまで一覧に入らない（§9.582）。本数で言う。 */
+  const wait=m.waiting?` ／ まだ写せていない${m.waiting}本（写し終えると一覧に入ります）`:'';
+  if(!m.mirrored)return `写しの用意中（あと${mins}分以内）`+wait;
+  return `写し${m.mirrored}本`+(m.direct?` ／ この端末が書く${m.direct}本`:'')+wait;
  }
  function msSize(n){return (n===null||n===undefined)?'—':(n/1048576).toFixed(1)+'MB'}
  function renderMeasStorage(){
