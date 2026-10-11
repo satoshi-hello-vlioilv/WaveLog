@@ -5,7 +5,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 import json
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, cfg, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_paths, records_paths_holding, note_records_written, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
+from ..db_access import DBS, cfg, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_plan, records_paths_holding, note_records_written, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
 from ..access_mode import request_user_id, request_pc_name
 from .body import body, flag, any_
 # 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
@@ -20,6 +20,7 @@ from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from ..repositories import operation_repo as op
 from .. import records_export
 from ..logging_setup import app_logger
+from .. import db_mirror
 from ..quiet import quiet
 
 bp=Blueprint('measurement',__name__)
@@ -55,7 +56,10 @@ def _read_quality(lot,result):
  # 一覧は出るのに測定画面だけ開けない、という分かりにくい形になる）。
  # **登録が消えていても測定画面ごと落とさない**（§9.87）——`cfg()`は
  # 知らないキーで送出するので、`DBS`に居ることを先に見る。
- qcfg=(cfg(QUALITY_DB_KEY) if (QUALITY_DB_KEY and QUALITY_DB_KEY in DBS) else {})
+ # 品質データの写しがまだ無いときも測定画面は開く（共有は直接読まない・§9.582。品質の欄が空になるだけ）。
+ try:qcfg=(cfg(QUALITY_DB_KEY) if (QUALITY_DB_KEY and QUALITY_DB_KEY in DBS) else {})
+ except db_mirror.NotCopiedYet as _e:
+  quiet('品質データをまだ手元へ写せていない（品質の欄は空で開く）',_e);qcfg={}
  qpath=qcfg.get('path')
  # **開く前に存在確認をしない**（§9.108・§9.317）。`Path.exists()`が
  # 「無い」と読み替えるのは ENOENT/ENOTDIR/EBADF/ELOOP と WinError
@@ -498,19 +502,18 @@ def records_split():
 def _mirror_state():
  """閲覧が手元の写しから読めているか(§9.268)。画面はこれをそのまま出す。
 
- **「写している/いない」だけでなく、実物のまま読んでいるものも数える**
- ——写しがまだ無いあいだは実物を読む(fail-open)ので、そこを黙ると
- 「もう写しから読んでいる」と誤解される。
+ **写しから読む本数・実物を読む本数（この端末が書くファイル）・まだ写せていない本数**を分けて数える
+ ——まだ写せていない置き場は共有を直接読まず、写し終えるまで一覧に入らない（§9.582）ので、そこを
+ 黙ると「全部読めている」と誤解される。
  """
  try:
-  from .. import db_mirror
-  real=[str(p) for p in records_paths_all()]
-  read=[str(p) for p in records_read_paths()]
-  mirrored=[a for a,b in zip(real,read) if a!=b]
+  plan=records_read_plan()
+  mirrored=[r for r,u in plan if u is not None and u!=r]
+  waiting=[r for r,u in plan if u is None]
   return {'enabled':db_mirror.enabled(),
           'intervalSec':db_mirror.interval_sec(),
-          'mirrored':len(mirrored),'direct':len(real)-len(mirrored),
-          'paths':read}
+          'mirrored':len(mirrored),'direct':len(plan)-len(mirrored)-len(waiting),'waiting':len(waiting),
+          'paths':[str(u) for _r,u in plan if u is not None]}
  except Exception as e:
   # **読めなかったことを「写していない」と混同しない**(§9.211 ②)。
   return {'enabled':None,'error':str(e)}

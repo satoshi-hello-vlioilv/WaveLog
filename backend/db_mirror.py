@@ -22,18 +22,19 @@
   ・共有が一時的に不調でも、直前の写しで画面は動き続ける
   ・書き手の更新中に読んでも、壊れた状態が画面へ出ない
 
-写しの作り方(この順に試す)
+写し方は「共有の写し方の約束」(docs/SHARED_READ.md・§9.582)
 ------------------------------------------------------------
-1. **SQLiteのバックアップAPI**(`Connection.backup()`)。SQLite自身の
-   読み手として一貫したスナップショットを作る。書き手が動いていても
-   ページ単位で整合の取れた写しになるので、**これが第一候補**。
-2. 失敗したらバイト単位のコピー。共有側がファイルごと置き換える運用だと
-   1が使えないことがある(開いた瞬間に別のファイルへ差し替わる等)。
+Quality-Analysis・DataRelay（ビュワー）と**同じ文の約束**に従う（3つのリポジトリに同じ文を置く）。
+共有の元は DataRelay が丸ごと置き換えて出す。Windowsでは、こちらが開いている一瞬に置き換えが
+当たると書き手が待たされ（最大20秒）、待ちきれなければ15分後まで保留になる。そこで:
 
-どちらで作っても、**採用する前に必ず検査する**(`PRAGMA quick_check`)。
-壊れていたら捨てて、前の写しをそのまま使い続ける。**採用は
-os.replace() の1手**(同じフォルダー内の置き換えは不可分)なので、
-画面が中途半端な写しを開くことはない。
+1. 写す前に書き手の作業中の印（`.<名前>.*.incoming`・`-journal`・`-wal`）を見る。あれば写さない（R3）
+2. SQLiteとしては開かず、**置き換えを許す開き方**（`atomic_io.open_shared_read`）で、休まず丸ごと
+   1回で写してすぐ閉じる（R4。以前はSQLiteのバックアップAPIで、SQLiteとして開いて少しずつ写していた）
+3. 写し終えたら大きさ・更新時刻と印をもう一度見る。違えば捨てる（R5）
+4. **採用する前に必ず検査する**(`PRAGMA quick_check`)。壊れていたら捨てて、前の写しを使い続ける（R6）。
+   **採用はos.replace()の1手**なので、画面が中途半端な写しを開くことはない。
+1・3で見送ったときは`RETRY_AFTER_BUSY_SEC`だけ空けて確かめ直す。
 
 **写しは世代名で置く**(§9.108)
 ------------------------------------------------------------
@@ -57,11 +58,14 @@ Linuxではこれで何も起きないが、**Windowsでは置き換え先が開
 置き換えのポリシー
 ------------------------------------------------------------
 ・写す判断は元ファイルの更新時刻とサイズで行う(変わっていなければ写さない)。
+  **「再読込」も同じ**（R2）——今すぐ確かめるだけで、変わっていない元は写し直さない。変わっていない元を
+  写しても中身は同じで、共有を開く回数だけが端末の台数に比例して増え、置き換えとぶつかる見込みを上げる。
 ・**この判断は背景スレッドの中だけで行う**。画面のリクエストの中で共有へ
   stat を掛けない(CLAUDE.md「共有DBを開く前にPath.exists()/stat()を
   置かないこと」。共有が不調なとき、確認の1行が唯一の失敗原因になる)。
-・写しがまだ1つも無いときは、従来どおり共有を直接読む(fail-open)。
-  写しが出来た時点から手元を読むようになる。
+・**共有を直接読まない**（R8・§9.582。以前は写しが無いと共有を直接読んでいた）。写しがまだ無いときは
+  `NotCopiedYet`で「まだ写せていません（理由）」と言い、画面は写し終えたら読み直す。背景の係が
+  動いていない呼び出し（網・単発のスクリプト）だけは、その場で1回、同じ作法で写してから読む。
 """
 from __future__ import annotations
 
@@ -74,8 +78,6 @@ import time
 from pathlib import Path
 
 from . import atomic_io
-# 読み取り専用オープン用の file: URI の組み立てだけが要る（§9.329）。
-from .sqlite_io import _sqlite_ro_uri
 from .logging_setup import app_logger
 from .quiet import quiet
 
@@ -87,6 +89,16 @@ _SIGNATURE_FILE = '_mirror.json'
 # 既定の写し直し間隔。短くしても共有への負荷は「statを1回」なので軽い。
 DEFAULT_INTERVAL_SEC = 60
 MIN_INTERVAL_SEC = 10
+# 従っている「共有の写し方の約束」の版（docs/SHARED_READ.md の題。Quality-Analysis・DataRelay と同じ文）。
+CONTRACT_VERSION = 1
+# 書き手が作業中・写す間に元が変わったときは、少し空けて確かめ直す（約束の R3・R5）。
+RETRY_AFTER_BUSY_SEC = 5
+# 休まず一気に写す（開いている時間を短くする・R4）。
+COPY_CHUNK = 4 * 1024 * 1024
+
+
+class NotCopiedYet(RuntimeError):
+ """共有の元を、まだ手元へ写せていない（共有は直接読まない・R8）。文はそのまま画面へ出す。"""
 
 _lock = threading.RLock()
 _state: dict[str, dict] = {}      # キー -> 直近の結果(画面へ出す診断用)
@@ -314,8 +326,11 @@ def next_wait_sec(results=None):
   with _lock:
    results = list(_state.values())
  base = interval_sec()
- if update_mode() == 'auto' and any((r or {}).get('unreachable') and int((r or {}).get('fails') or 1) == 1
-                                    for r in results):
+ if update_mode() != 'auto':
+  return base
+ if any((r or {}).get('busy') for r in results):
+  return min(base, RETRY_AFTER_BUSY_SEC)
+ if any((r or {}).get('unreachable') and int((r or {}).get('fails') or 1) == 1 for r in results):
   return min(base, RETRY_AFTER_UNREACHABLE_SEC)
  return base
 
@@ -323,23 +338,38 @@ def next_wait_sec(results=None):
 # ------------------------------------------------------------------
 # 写しを作る
 # ------------------------------------------------------------------
-def _snapshot_via_backup(remote, tmp):
- """SQLiteのバックアップAPIで一貫した写しを作る。"""
- src = sqlite3.connect(_sqlite_ro_uri(remote), uri=True, timeout=15)
+def writer_marks(remote):
+ """書き手が作業中の印（元ファイルと同じフォルダ）。あれば名前の並び、無ければ []（約束の R3）。
+ DataRelay の公開の書きかけ（`.<名前>.<番号>.incoming`）と、SQLite の中を書き換える書き手
+ （ほかの端末の測定データ）の`-journal`・`-wal`。Quality-Analysis の`writer_marks`と同じ。"""
+ p = Path(remote)
+ name, low = p.name, p.name.lower()
+ if not name:
+  return []
  try:
-  dst = sqlite3.connect(str(tmp))
-  try:
-   # 書き手が動いていても取れるよう、少しずつ写して衝突時は待つ。
-   src.backup(dst, pages=256, sleep=0.05)
-  finally:
-   dst.close()
- finally:
-  src.close()
+  with os.scandir(p.parent) as it:
+   names = [e.name for e in it]
+ except OSError:
+  return []
+ return sorted(n for n in names if (n.lower().startswith(f'.{low}.') and n.lower().endswith('.incoming'))
+               or n.lower() in (f'{low}-journal', f'{low}-wal'))
 
 
-def _snapshot_via_copy(remote, tmp):
- """バイト単位のコピー。バックアップAPIが使えないときの控え。"""
- shutil.copyfile(remote, tmp)
+def _copy_shared(remote, tmp):
+ """元をファイルとして丸ごと写す（SQLiteとして開かない・置き換えを許す開き方・休まない。R4）。"""
+ with atomic_io.open_shared_read(remote) as src, open(tmp, 'wb') as dst:
+  shutil.copyfileobj(src, dst, COPY_CHUNK)
+
+
+def _settled(remote, sig):
+ """写し終えた後も、元が写す前と同じで、書き手の印も無いか（R5）。ダメなら見送る理由、良ければNone。"""
+ after, _ = _remote_stat(remote, retry=False)
+ if after != sig:
+  return '写しているあいだに元ファイルが入れ替わったため、見送りました。少し空けて写し直します'
+ marks = writer_marks(remote)
+ if marks:
+  return f'写しているあいだに書き手が書き始めたため、見送りました（{marks[0]}）。少し空けて写し直します'
+ return None
 
 
 def _verify(tmp):
@@ -364,11 +394,11 @@ def _verify(tmp):
  return None
 
 
-def refresh_one(key, remote, force=False):
- """1つのデータソースの写しを作り直す。
+def refresh_one(key, remote):
+ """1つのデータソースを確かめ、元が変わっていれば写し直す（「再読込」も同じ道・約束の R2）。
 
  戻り値: {'updated':bool,'reason':str,...}。**例外は投げない**——
- 写せなくても画面は前の写し(または共有)で動き続けるほうがよい。"""
+ 写せなくても画面は前の写しで動き続けるほうがよい。"""
  remote = Path(remote)
  local = mirror_path(key)
  result = {'key': key, 'remote': str(remote), 'local': str(local),
@@ -380,7 +410,7 @@ def refresh_one(key, remote, force=False):
   _unreachable(key, remote, result, '共有の元ファイルへ到達できず、写しもまだありません', err)
   _record(key, result)
   return result
- if sig is not None and not force and _signature_of(key) == sig and local.exists():
+ if sig is not None and _signature_of(key) == sig and local.exists():
   result['reason'] = '元ファイルは変わっていません'
   result['skipped'] = True
   result['newer'] = False
@@ -392,6 +422,9 @@ def refresh_one(key, remote, force=False):
   _unreachable(key, remote, result, '共有の元ファイルへ到達できないため、前の写しを使い続けます', err)
   _record(key, result)
   return result
+ marks = writer_marks(remote)
+ if marks:
+  return _busy(key, result, f'書き手が公開している途中のため、写すのを見送りました（{marks[0]}）。少し空けて写し直します')
 
  cache_dir().mkdir(parents=True, exist_ok=True)
  # **今と違う名前**へ書く。上書きしないので、読み手が今の写しを開いていても
@@ -399,21 +432,18 @@ def refresh_one(key, remote, force=False):
  target = _generation_path(key, _next_generation(key))
  tmp = target.with_suffix('.sqlite3.tmp')
  atomic_io.unlink(tmp, budget_sec=1.0, label='mirror.tmp')
- how = ''
  try:
-  try:
-   _snapshot_via_backup(remote, tmp)
-   how = 'backup'
-  except Exception as e:
-   app_logger().info('%s: バックアップAPIで写せなかったのでコピーします: %s', key, e)
-   _snapshot_via_copy(remote, tmp)
-   how = 'copy'
+  _copy_shared(remote, tmp)
  except Exception as e:
   result['reason'] = f'写せませんでした: {e}'
   app_logger().warning('%s の写しを作れませんでした: %s', key, e)
   _cleanup(tmp)
   _record(key, result)
   return result
+ moved = _settled(remote, sig)
+ if moved:
+  _cleanup(tmp)
+  return _busy(key, result, moved)
 
  bad = _verify(tmp)
  if bad:
@@ -441,12 +471,19 @@ def refresh_one(key, remote, force=False):
 
  _save_entry(key, sig, target.name)
  result['local'] = str(target)
- result.update(updated=True, how=how,
-               newer=False,
-               reason=f'写しを更新しました({"バックアップAPI" if how=="backup" else "コピー"})')
- app_logger().info('%s: 共有から手元へ写しました(%s, %d bytes, %s)',
-                   key, how, sig.get('size', 0), target.name)
+ result.update(updated=True, how='copy', newer=False, reason='写しを更新しました')
+ app_logger().info('%s: 共有から手元へ写しました(%d bytes, %s)', key, sig.get('size', 0), target.name)
  _sweep_old_generations(key, target)
+ _record(key, result)
+ return result
+
+
+def _busy(key, result, reason):
+ """書き手が作業中・写す間に元が変わった（R3・R5）。今回は見送り、少し空けて確かめ直す（自動のとき）。"""
+ global _retry_at
+ result.update(busy=True, reason=reason)
+ if update_mode() == 'auto':
+  _retry_at = time.time() + RETRY_AFTER_BUSY_SEC
  _record(key, result)
  return result
 
@@ -670,37 +707,57 @@ def interval_sec():
  return max(MIN_INTERVAL_SEC, n)
 
 
-def read_path(key, remote):
- """実際に読む場所。**その元ファイルから作った写し**があればそれ、
- 無ければ元(fail-open)。
-
- 元のパスまで照合するのが要点。読み込み先を切り替えた直後は、写しの中身が
- まだ前のファイルのものなので使ってはいけない(背景スレッドが写し直すまでは
- 元を直接読む)。"""
- if not enabled():
-  return Path(remote)
- # **起動して最初の周回が済むまでは待つ**（§9.463）。前回の起動の写しを出さない。
- # 背景が動いていないとき（網・単発の呼び出し）は待たない。
- if not _first.is_set() and _thread is not None and _thread.is_alive():
-  _first.wait(FIRST_WAIT_SEC)
+def _copied(key, remote):
+ """その元ファイルから作った写し（無ければNone）。元のパスまで照合する——読み込み先を切り替えた
+ 直後は、写しの中身がまだ前のファイルのものなので使ってはいけない。"""
  entry = _entry(key) or {}
  sig = entry.get('signature') or {}
  if sig.get('source') and str(sig['source']) != str(remote):
-  return Path(remote)
+  return None
  local = mirror_path(key)
  try:
-  if not local.exists():
-   return Path(remote)
+  return local if local.exists() else None
  except OSError:
+  return None
+
+
+def read_path(key, remote):
+ """実際に読む場所＝**その元ファイルから作った写し**。まだ無ければNone（**共有は直接読まない**・約束の R8）。
+
+ 背景の係が動いていない呼び出し（網・単発のスクリプト）だけは、読むたびにその場で同じ作法で確かめ、
+ 変わっていれば写してから答える（写す係がいないので、待っても写しは出来ず、古い写しのままになる。
+ 変わっていなければ stat 1回だけで共有は開かない＝R2）。写して読むのを切った端末（`db_mirror_enabled`）は元。"""
+ if not enabled():
   return Path(remote)
- return local
+ running = _thread is not None and _thread.is_alive()
+ # **起動して最初の周回が済むまでは待つ**（§9.463）。前回の起動の写しを出さない。
+ if not _first.is_set() and running:
+  _first.wait(FIRST_WAIT_SEC)
+ # 手動（§9.463）は写しを自分では新しくしない——写しが1つも無いときだけ写す。
+ if not running and (_copied(key, remote) is None or update_mode() == 'auto'):
+  with _refresh_lock:
+   refresh_one(key, remote)
+ return _copied(key, remote)
 
 
-def refresh_all(force=False):
+def not_ready_text(key):
+ """写しがまだ無いときに画面へ出す文（なぜ無いか＋写し終えたら出ること）。Quality-Analysis と同じ文。"""
+ with _lock:
+  why = str((_state.get(key) or {}).get('reason') or '')
+ return '共有の元ファイルを、まだ手元へ写せていません' + (f'（{why}）' if why else '') + '。写し終えると一覧が出ます。'
+
+
+def error_status(e):
+ """ルートが例外を返すときの (足す鍵, 状態コード)。まだ写せていないなら 503 と`kind:'copying'`（画面は写し
+ 終えたら読み直す）。それ以外は 500。"""
+ return ({'kind': 'copying'}, 503) if isinstance(e, NotCopiedYet) else ({}, 500)
+
+
+def refresh_all():
  out = []
  with _refresh_lock:
   for key, remote in targets():
-   out.append(refresh_one(key, remote, force=force))
+   out.append(refresh_one(key, remote))
  return out
 
 

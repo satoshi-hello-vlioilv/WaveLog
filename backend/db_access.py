@@ -69,12 +69,11 @@ def cfg(k):
                    'マスタ管理 > データソースの「キー」と合っているか確認してください。')
  entry=DBS[k]
  if entry.get('role')!='readonly':return entry
- try:
-  from . import db_mirror
-  local=db_mirror.read_path(k,entry['path'])
- except Exception as _e:
-  quiet('写しの場所を引けない（元のパスをそのまま読む）',_e)
-  return entry
+ # **共有は直接読まない**（§9.582・docs/SHARED_READ.md の R8）。写しがまだ無ければ理由を言って断る
+ # （以前は写しが無い・引けないと共有の元を返していた＝DataRelay の置き換えを止めうる読み方）。
+ from . import db_mirror  # 遅延: db_mirror は起動時にこのモジュールの設定を読む（循環を避ける）
+ local=db_mirror.read_path(k,entry['path'])
+ if local is None:raise db_mirror.NotCopiedYet(db_mirror.not_ready_text(k))
  if Path(local)==Path(entry['path']):return entry
  out=dict(entry);out['path_remote']=entry['path'];out['path']=Path(local);out['mirrored']=True
  return out
@@ -865,33 +864,31 @@ def records_written_here():
  with _records_written_lock:
   return set(_records_written_here)
 
-def records_read_paths():
- """測定データを**読む**ときに実際に開くファイル（§9.268）。
+def records_read_plan():
+ """測定データの置き場ごとに (実物, 実際に開くファイル or None)（§9.268・§9.582）。
 
- 共有のファイルは**手元の写し**を指す。写しがまだ無ければ実物
- （fail-open。写しが出来た時点から手元を読むようになる）。
- **自分が書いたぶんと、この端末のMEAS_DBは常に実物。**
- """
+ ほかの端末が書くファイルは**手元の写し**を指す。写しがまだ無ければ None——**共有は直接読まない**
+ （docs/SHARED_READ.md の R8。以前は実物を読んでいた）。写し終えた周回から読む。
+ **自分が書いたぶんと、この端末のMEAS_DBは常に実物**（写す対象ではない）。"""
  mine=records_written_here()
- out=[];seen=set()
- try:
-  from . import db_mirror
-  by_path={str(remote):key for key,remote in db_mirror.records_targets()}
- except Exception as _e:
-  quiet('写しの対応表を引けない（実物をそのまま読む）',_e)
-  by_path={}
+ from . import db_mirror  # 遅延: db_mirror は起動時にこのモジュールの設定を読む（循環を避ける）
+ by_path={str(remote):key for key,remote in db_mirror.records_targets()}
+ out=[]
  for real in records_paths_all():
-  use=real
   key=by_path.get(str(real))
   if key and str(real) not in mine:
-   try:
-    use=Path(db_mirror.read_path(key,real))
-   except Exception as _e:
-    quiet('写しの場所を引けない（実物をそのまま読む）',_e)
-    use=real
-  k=str(use)
-  if k in seen:continue
-  seen.add(k);out.append(use)
+   local=db_mirror.read_path(key,real)
+   out.append((real,Path(local) if local is not None else None))
+  else:out.append((real,real))
+ return out
+
+def records_read_paths():
+ """測定データを**読む**ときに実際に開くファイル（§9.268）。まだ写せていない置き場は入らない
+ （数は`records_read_plan()`が答える）。同じファイルは1回だけ。"""
+ out=[];seen=set()
+ for _real,use in records_read_plan():
+  if use is None or str(use) in seen:continue
+  seen.add(str(use));out.append(use)
  return out
 
 def records_paths_all():

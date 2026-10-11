@@ -11,7 +11,7 @@ run('test_listcache: 一覧の写しと鮮度・再読込',async({page,rec,W,idl
  page.on('request',r=>{const u=r.url();if(u.includes('/api/table?'))calls.push('table');
    else if(u.includes('/api/tables?'))calls.push('tables')});
  const since=()=>{const n=calls.length;return ()=>calls.slice(n)};
- /* 写し直しの頼み方（§9.463）。本文を控えて`force`／`wait`を見る。 */
+ /* 写し直しの頼み方（§9.463・§9.582）。本文を控えて`wait`（と`force`を送らないこと）を見る。 */
  const mirrorPosts=[];
  page.on('request',r=>{if(r.url().includes('/api/db-mirror/refresh')){
   try{mirrorPosts.push(JSON.parse(r.postData()||'{}'))}catch(e){mirrorPosts.push({})}}});
@@ -73,10 +73,11 @@ run('test_listcache: 一覧の写しと鮮度・再読込',async({page,rec,W,idl
  rec('取り立てのときは「画面の写しは◯前」を言わない',
    !/画面に出ているのは/.test(fresh2.title),fresh2.title.slice(0,80));
  /* §9.463（利用者の報告「再読み込み押しても任意に取りに行った感じがなく最新版化
-    されません。行ったのであれば動き(反応)が欲しい」）。**必ず写し直し**（`force`）、
-    **結果を字で返す**（写した／最新だった／写せなかった）。 */
- rec('「再読込」は共有から必ず写し直す（force・待って結果を受け取る）',
-   mirrorPosts.some(b=>b.force===true&&b.wait===true),JSON.stringify(mirrorPosts));
+    されません。行ったのであれば動き(反応)が欲しい」）。今すぐ確かめて**結果を字で返す**
+    （写した／最新だった／公開の途中／写せなかった）。**変わっていない元は写し直さない**
+    （§9.582・docs/SHARED_READ.md の R2。`force`は送らない）。 */
+ rec('「再読込」は今すぐ確かめ、待って結果を受け取る（変わっていない元は写し直さない＝forceを送らない）（§9.582）',
+   mirrorPosts.some(b=>b.wait===true)&&!mirrorPosts.some(b=>'force' in b),JSON.stringify(mirrorPosts));
  const toast=await page.evaluate(()=>[...document.querySelectorAll('#toastArea .toast')].map(t=>t.textContent).join(' | '));
  rec('取り込み直した結果を字で返す（元データの時刻つき）',
    /元データ|一覧を読み直しました/.test(toast),toast.slice(0,160));
@@ -182,6 +183,30 @@ run('test_listcache: 一覧の写しと鮮度・再読込',async({page,rec,W,idl
  rec('キャッシュ命中の切替では待機オーバーレイが一度も出ない',
   !!flash,JSON.stringify(samples));
  console.log('  (参考) キャッシュ命中時の切替~描画完了 '+samples.map(x=>x.ms+'ms').join(' / '));
+
+ /* §9.582: まだ手元へ写せていない元は**共有を直接読まず**、503・`kind:'copying'`で断る。画面は
+    「開けない」でなく「写しています」と理由を言い、写し終えたら（素性の`mirrored`）開き直す。
+    サーバーの答えを差し替えて、写しがまだ無い状態を作る。 */
+ let copying=true;
+ await page.route('**/api/tables?db=SIKALOTDEF*',r=>copying
+   ?r.fulfill({status:503,contentType:'application/json',
+     body:JSON.stringify({error:'共有の元ファイルを、まだ手元へ写せていません（書き手が公開している途中のため、写すのを見送りました（.SIKA.sqlite3.1.incoming）。少し空けて写し直します）。写し終えると一覧が出ます。',kind:'copying'})})
+   :r.continue());
+ await page.route('**/api/db-mirror/source?db=SIKALOTDEF*',r=>r.fulfill({status:200,contentType:'application/json',
+   body:JSON.stringify({ok:true,source:{mirrored:!copying}})}));
+ /* 一覧の器の控え（テーブル構成・一覧の答え）を持たない形で開き直す（控えがあると問い合わせない）。 */
+ await page.evaluate(()=>localStorage.removeItem('listTablesCacheV1'));
+ await page.reload({waitUntil:'domcontentloaded'});
+ await W.booted(page);await idle();
+ await page.click('[data-db-key="SIKALOTDEF"]');
+ const err=await page.waitForSelector('#grid .load-error',{timeout:10000}).then(e=>e.evaluate(n=>({copying:n.hasAttribute('data-copying'),text:n.textContent})));
+ rec('まだ写せていない元は「写しています」と理由を言う（共有を直接読まない）（§9.582）',
+   err.copying&&/手元へ写しています/.test(err.text)&&/\.incoming/.test(err.text),err.text.slice(0,120));
+ copying=false;
+ /* 素性の見張り（20秒ごと）が写し終えたのに気づいたら開き直す。 */
+ const reopened=await page.waitForSelector('#grid table tbody tr',{timeout:30000}).then(()=>true,()=>false);
+ rec('写し終えたら自動で開き直す（§9.582）',reopened);
+ await page.unroute('**/api/tables?db=SIKALOTDEF*');await page.unroute('**/api/db-mirror/source?db=SIKALOTDEF*');
 
 },{viewport:{width:1600,height:1000},
    init:()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A')});

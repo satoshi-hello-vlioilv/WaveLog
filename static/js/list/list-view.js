@@ -1725,7 +1725,10 @@ async function selectDbCore(k,b){
    S.tables=result.tables;renderTabs();
    if(S.tables.length)await selectTable(S.tables[0],report);
    else $('#grid').textContent='表示可能なテーブルがありません。';
-  }catch(e){$('#grid').innerHTML=`<div class="load-error"><b>${esc(label)}を開けませんでした</b><span>${esc(e.message)}</span></div>`;throw e}
+  }catch(e){
+   /* まだ写せていない（共有は直接読まない・§9.582）は「開けない」でなく「写している」と言い、写し終えたら開き直す。 */
+   const copying=e&&e.kind==='copying';
+   $('#grid').innerHTML=`<div class="load-error"${copying?' data-copying':''}><b>${esc(label)}${copying?'を手元へ写しています':'を開けませんでした'}</b><span>${esc(e.message)}</span></div>`;throw e}
  });
 }
 /* reportは呼び出し元(selectDb)が待機表示を握っているときだけ渡ってくる。
@@ -3280,6 +3283,9 @@ function mirrorResultText(res,key){
  if(!r)return {ok:true,title:'一覧を読み直しました',detail:'この一覧は写しを使わず、置き場のファイルをそのまま読んでいます'};
  if(r.updated)return {ok:true,title:'元データを取り込み直しました',detail:'共有の元ファイルを手元へ写し直して読み直しました'};
  if(r.skipped)return {ok:true,title:'元データは最新です',detail:'共有の元ファイルは前回の取り込みから変わっていません'};
+ /* 書き手（DataRelay）が公開している途中・写す間に元が変わった（§9.582・約束の R3・R5）。失敗ではなく、
+    数秒あけて自動で取り込み直す。 */
+ if(r.busy)return {ok:true,title:'元データは公開の途中です',detail:(r.reason||'')+'（取り込めたら一覧を自動で読み直します）'};
  return {ok:false,title:'元データを取り込めませんでした',detail:(r.reason||'理由が分かりません')+'（前の写しで表示しています）'};
 }
 async function reloadList(){
@@ -3289,10 +3295,11 @@ async function reloadList(){
  chip?.classList.add('is-busy');chip?.setAttribute('aria-busy','true');
  let res=null,err=null;
  try{
-  res=await WL.records.withWaiting({title:'元データを取り込み直しています',
-    detail:'共有の元ファイルを手元へ写しています',progress:'共有から写しています',delayMs:0},
+  /* 変わっていない元は写し直さない（§9.582・約束の R2）。今すぐ確かめ、新しい版があれば写す。 */
+  res=await WL.records.withWaiting({title:'元データを確かめています',
+    detail:'共有の元ファイルに新しい版があれば手元へ写します',progress:'共有を確かめています',delayMs:0},
    ()=>api('/api/db-mirror/refresh',{quiet:true,method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({wait:true,force:true})}));
+     body:JSON.stringify({wait:true})}));
  }catch(e){err=e;WL.quiet.note('共有からの写しを更新できない（手元の写しで読み直す）',e)}
  try{invalidateTableCache();await load(true)}
  finally{reloadBusy=false;chip?.classList.remove('is-busy');chip?.removeAttribute('aria-busy')}
@@ -3311,6 +3318,14 @@ const MIRROR_POLL_MS=20000;
 let mirrorPollTimer=null;
 async function pollMirrorSource(){
  if(document.hidden||reloadBusy||!S.db)return;
+ /* まだ写せていなくて開けなかった一覧（§9.582・共有は直接読まない）は、写し終えたら開き直す。 */
+ if(document.querySelector('#grid .load-error[data-copying]')){
+  let c=null;
+  try{c=await api('/api/db-mirror/source?db='+encodeURIComponent(S.db),{quiet:true})}
+  catch(e){WL.quiet.note('元データの素性を聞けない（次の周回で聞き直す）',e);return}
+  if(c&&c.source&&c.source.mirrored)await selectDb(S.db).catch(WL.quiet('まだ開けない（次の周回で開き直す）'));
+  return;
+ }
  const el=document.querySelector('#listFreshness');
  if(!el||el.hidden||!el.offsetWidth)return;
  let d=null;
