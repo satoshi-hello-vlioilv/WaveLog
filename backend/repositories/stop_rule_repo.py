@@ -16,10 +16,15 @@
   prev.<列>（前のロットの値）・next.<列>（後ろのロットの値）・
   chg.<列>（前と後ろで「変わる／同じ」）・diff.<列>（後ろ−前の数）
 判定は画面（`static/js/schedule/stop-rules.js` → `WL.ruleCells.firstRule()`）の1本。ここは保存の前に整えるだけ。
+
+**§9.590 で行の条件を「式」でも持てるようにした**（利用者の指示「一覧表にある表示列の『この列の作り方』のような
+条件入力ができるとやりやすい」）。式は一覧の式と同じ書き方（`WL.formula`）で、名前は `[前.列]`（前のロット）・
+`[後.列]`（後ろのロット）。組み立てる画面の選んだ形（`build`）も一緒に残し、開き直したときに同じ文で出す。
+式を持つ行は式で判定し、セルの条件（`conditions`）は前の版の表のために読み続ける。
 """
 import json
 
-from ..db_access import add_missing_columns, ensure_audit_columns, tables
+from ..db_access import add_missing_columns, cols, ensure_audit_columns, tables
 from .. import rule_cells
 
 TABLE = '設備停止挿入条件マスタ'
@@ -38,6 +43,10 @@ ACTION_WARN = 'warn'
 STOP_RULE_ACTIONS = ((ACTION_WARN, '知らせる'), (ACTION_AUTO, '自動で入れる'))
 COUNT_MAX = 9
 MINUTES_MAX = 1440
+# 式（§9.590）。長さは一覧の式と同じ上限（`list-formula.js`の`MAX_LEN`）。名前の頭は`FORMULA_PREFIXES`の2つだけ。
+FORMULA_MAX = 2000
+FORMULA_PREFIXES = (('前.', '前のロット'), ('後.', '後ろのロット'))
+_BUILD_MAX = 4000
 
 
 def field_ok(f):
@@ -50,7 +59,8 @@ def vocab():
                      for k, p, l, d, t, o in STOP_RULE_SETS],
             'actions': [{'key': k, 'label': l} for k, l in STOP_RULE_ACTIONS],
             'ops': [{'op': o, 'label': l, 'two': o in rule_cells.RULE_OPS_2} for o, l in rule_cells.RULE_OPS],
-            'countMax': COUNT_MAX, 'minutesMax': MINUTES_MAX}
+            'countMax': COUNT_MAX, 'minutesMax': MINUTES_MAX,
+            'formulaPrefixes': [{'prefix': p, 'label': l} for p, l in FORMULA_PREFIXES]}
 
 
 def _int(v, lo, hi):
@@ -73,7 +83,23 @@ def normalize_answer(r):
 
 
 def _seed():
-    return [{'conditions': [], 'count': 0, 'minutes': [], 'action': ACTION_WARN, 'note': ''}]
+    return [{'conditions': [], 'formula': '', 'build': None, 'count': 0, 'minutes': [], 'action': ACTION_WARN, 'note': ''}]
+
+
+def normalize_formula(v):
+    """式（§9.590）。字の長さと改行だけ整える——**書き方を確かめるのは画面**（`WL.formula.check()`・一覧の式と同じ1本）。"""
+    return ' '.join(str(v or '').split())[:FORMULA_MAX]
+
+
+def normalize_build(v):
+    """組み立てる画面の選んだ形（§9.590）。辞書だけを、長すぎなければそのまま残す（中身を読むのは画面）。"""
+    if not isinstance(v, dict):
+        return None
+    try:
+        text = json.dumps(v, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    return v if len(text) <= _BUILD_MAX else None
 
 
 def _tidy(rows):
@@ -82,9 +108,11 @@ def _tidy(rows):
     for r in rows if isinstance(rows, list) else []:
         if not isinstance(r, dict):
             continue
-        row = dict(normalize_answer(r), conditions=rule_cells.normalize_conditions(r.get('conditions'), field_ok),
+        formula = normalize_formula(r.get('formula'))
+        row = dict(normalize_answer(r), conditions=[] if formula else rule_cells.normalize_conditions(r.get('conditions'), field_ok),
+                   formula=formula, build=normalize_build(r.get('build')) if formula else None,
                    note=str(r.get('note') or '').strip()[:200])
-        if row['conditions']:
+        if row['conditions'] or row['formula']:
             out.append(row)
         else:
             default = row
@@ -98,7 +126,7 @@ def ensure_table(c):
                   '[表示順] INTEGER, [有効] INTEGER, [登録日時] DATETIME, [更新日時] DATETIME)')
         c.execute(f'CREATE INDEX [IX_{TABLE}_停止] ON [{TABLE}] ([停止理由ID],[表示順])')
         c.commit()
-    add_missing_columns(c, TABLE, (('列JSON', 'TEXT'),))
+    add_missing_columns(c, TABLE, (('列JSON', 'TEXT'), ('式', 'TEXT'), ('組立JSON', 'TEXT')))
     ensure_audit_columns(c, TABLE)
 
 
@@ -115,12 +143,17 @@ def rules_all(c):
     if TABLE not in tables(c):
         return {}
     cur = c.cursor()
-    cur.execute(f'SELECT [停止理由ID],[条件JSON],[挿入数],[時間JSON],[動作],[備考],[列JSON] FROM [{TABLE}] '
+    # 式の2列は§9.590で足した——読み取り専用の接続では`ensure_table()`が足せないので、無ければ空として読む。
+    have = set(cols(c, TABLE, use_cache=False))
+    fx = '[式]' if '式' in have else "''"
+    bj = '[組立JSON]' if '組立JSON' in have else "''"
+    cur.execute(f'SELECT [停止理由ID],[条件JSON],[挿入数],[時間JSON],[動作],[備考],[列JSON],{fx},{bj} FROM [{TABLE}] '
                 'WHERE [有効] IS NULL OR [有効]<>0 ORDER BY [停止理由ID],[表示順],[条件ID]')
     by = {}
-    for sid, cj, n, mj, act, note, colj in cur.fetchall():
+    for sid, cj, n, mj, act, note, colj, fv, bv in cur.fetchall():
         b = by.setdefault(int(sid), {'rows': [], 'cols': _loads(colj, [])})
-        b['rows'].append({'conditions': _loads(cj, []), 'count': n, 'minutes': _loads(mj, []), 'action': act, 'note': note or ''})
+        b['rows'].append({'conditions': _loads(cj, []), 'formula': fv or '', 'build': _loads(bv, {}) or None,
+                          'count': n, 'minutes': _loads(mj, []), 'action': act, 'note': note or ''})
     out = {}
     for sid, b in by.items():
         rows = _tidy(b['rows'])
@@ -141,9 +174,10 @@ def rules_replace(c, stop_id, rows, cols, uid):
     cj = json.dumps(rule_cells.table_cols(cols, tidy, field_ok), ensure_ascii=False)
     c.execute(f'DELETE FROM [{TABLE}] WHERE [停止理由ID]=?', [int(stop_id)])
     for i, r in enumerate(tidy):
-        c.execute(f'INSERT INTO [{TABLE}] ([停止理由ID],[条件JSON],[挿入数],[時間JSON],[動作],[備考],[列JSON],[表示順],[有効],'
-                  '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
-                  [int(stop_id), json.dumps(r['conditions'], ensure_ascii=False), r['count'],
+        c.execute(f'INSERT INTO [{TABLE}] ([停止理由ID],[条件JSON],[式],[組立JSON],[挿入数],[時間JSON],[動作],[備考],[列JSON],'
+                  '[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
+                  [int(stop_id), json.dumps(r['conditions'], ensure_ascii=False), r['formula'],
+                   json.dumps(r['build'], ensure_ascii=False) if r['build'] else '', r['count'],
                    json.dumps(r['minutes']), r['action'], r['note'], cj, (i + 1) * 10, uid, uid])
     return len(tidy)
 

@@ -1,4 +1,4 @@
-# マスタ管理の画面（36件）
+# マスタ管理の画面（37件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,7 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 挿入の条件の盤は設備停止マスタの3つのペインの下に全幅（`WL.stopRuleBoard`）。停止内容の行に「条件 N行」。捨てる前に聞く | `test_stoprulemaster.js` | [§9.588](../../docs/decisions/9.588.md) |
+| 設備停止マスタは左＝分類 → 停止内容の木／右＝選んだ停止内容の段（基本・内訳・挿入の条件）。段の札がいまの値を言う（`SSB_TABS`の1箇所） | `test_stopsubui.js`・`test_stoprulemaster.js` | [§9.590](../../docs/decisions/9.590.md) |
+| 挿入の条件は決まりの札（文で読む）＋押した札の中で「組み立てる｜式を書く」＋右に「いまの予定の境目で試す」（`WL.stopRuleBoard`）。使えない式は保存の前に止める | `test_stoprulemaster.js` | [§9.590](../../docs/decisions/9.590.md) |
 | 操業データ項目の設定窓は決める順の3列。行の置き場所は`OP_SECS`の1箇所（`main`／`more`／`danger`）、行は`data-op-row`で名乗る | `test_opui.js` | [§9.587](../../docs/decisions/9.587.md) |
 | 細部は「細かい設定」に畳む（見出しはいまの値・開け閉めは`opState.more`）。長い説明は ⓘ、選ばせ方の盤は開かずに並べる | `test_opui.js` | [§9.587](../../docs/decisions/9.587.md) |
 | 共通設定は5段。札は絵・名前・要対応の数・いまの一言で、段が`data-tab-sum`／`data-tab-badge`で名乗る | `test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |
@@ -28,7 +29,7 @@
 | 【§9.531で盤へ移した】刃組基準値は専用の盤（節ごと・既定値の薄字・離れたら保存）。汎用の窓の`formLayout`等は持たない | `test_partboards.js` | [§9.463](../../docs/decisions/9.463.md)・[§9.531](../../docs/decisions/9.531.md) |
 | 段の札の一言は**見えている欄だけ**から作る（伏せた欄を数えない。判定は`[hidden]`） | `test_setpage.js` | [§9.433](../../docs/decisions/9.433.md) |
 | 設備停止の内訳は「左＝停止内容（分類ごと）／右＝内訳」の2ペイン。時間は札＋スライダーの見本 | `test_stopsubui.js` | [§9.389](../../docs/decisions/9.389.md) |
-| 設備停止マスタは**1枚の3ペイン**（左＝分類／中＝停止内容／右＝内訳）。タブを分けない | `test_stopsubui.js`・`test_master.js` | [§9.397](../../docs/decisions/9.397.md) |
+| 【§9.590で木＋段に改めた】設備停止マスタは**1枚の3ペイン**（左＝分類／中＝停止内容／右＝内訳）。タブを分けない | `test_stopsubui.js`・`test_master.js` | [§9.397](../../docs/decisions/9.397.md) |
 | 他へ統合した定義は消さずに`navHidden`で伏せる（APIとCRUDの見張りは残す） | `test_crudroutes.py`・`test_master.js` | [§9.397](../../docs/decisions/9.397.md) |
 | `COVERED_BY`の行き先は**実在するタブ**を指す（伏せたタブを指さない） | `test_rawmaster.py` | [§9.397](../../docs/decisions/9.397.md) |
 | 2段目を作る道は1段目の行の「＋ 下へ」。**足す先を先に言う**（押してから気づかせない） | `test_stopsubui.js` | [§9.390](../../docs/decisions/9.390.md) |

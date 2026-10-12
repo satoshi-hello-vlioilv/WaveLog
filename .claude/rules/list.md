@@ -1,4 +1,4 @@
-# 一覧と列（158件）
+# 一覧と列（163件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,11 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 帯は1段目＝絞る（検索→プリセット→条件→列→スライサー→色付け）｜見せ方、2段目＝状態｜拡大・ページ | `test_listtoolsui.js`・`test_listbar.js` | [§9.591](../../docs/decisions/9.591.md) |
+| スライサー・色付けの数はサーバーが一覧と同じ絞り込み（`_table_where`）の全件で数える。スライサーは自分の列を外す | `test_listtools.py` | [§9.591](../../docs/decisions/9.591.md) |
+| スライサーの値は`filters`へ`in`で足すだけ（絞り込みの条件・表示の設定のファイルに焼き付けない） | `test_listtoolsui.js` | [§9.591](../../docs/decisions/9.591.md) |
+| 一覧の拡大は表に`zoom`（60〜200%・この窓のあいだ）。空行は拡大前の高さ。並べた狭い器では拡大しない | `test_listtoolsui.js` | [§9.591](../../docs/decisions/9.591.md) |
+| Excel に出力は一覧と同じ見え方（`WL.list.exportTable()`）を絞った全件で。保存は`saveBlob()` | `test_listtoolsui.js` | [§9.591](../../docs/decisions/9.591.md) |
 | 数の読み方は`WL.formula`の2つ（looseNum／strictNum）・サーバーは`num_of()`。字の全体だけ・3桁区切りは正しい位置だけ | `test_formula.js`・`test_displayrule.py` | [§9.581](../../docs/decisions/9.581.md) |
 | 大小は空欄を比べない（`ordered()`）。式を使う表示ルールはサーバーで表示の値の並べ替えをしない | `test_formula.js`・`test_displayrule.py` | [§9.581](../../docs/decisions/9.581.md) |
 | 表示ルールの行の中は「かつ／または」と**かっこ（2段まで）**。組の答えは`groupsOf()`／`rule_groups()`の1組 | `test_colrule.js`・`test_displayrule.py` | [§9.523](../../docs/decisions/9.523.md) |

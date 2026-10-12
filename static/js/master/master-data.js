@@ -4054,7 +4054,7 @@
     **どこへ足すのかは字で出す**——同じ「追加」ボタンが2つの意味を持つので、
     押す前に読めないと取り違える（§CLAUDE 2「推測させない」）。
     `cat`＝左で選んでいる分類（`null`＝すべて）。`ruleVocab`＝挿入の条件の語彙（列の群・入れ方・上限・§9.588）。 */
- const ssbState={stops:[],subs:[],defaults:{},cats:[],picked:0,q:'',minutes:[],addUnder:0,cat:null,ruleVocab:null};
+ const ssbState={stops:[],subs:[],defaults:{},cats:[],picked:0,q:'',minutes:[],addUnder:0,ruleVocab:null,fold:new Set(),tab:'subs'};
  function ssbSay(text,bad){
   const el=$('#ssbState');if(!el)return;
   el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
@@ -4072,9 +4072,7 @@
  }
  /* 分類ごとの停止内容。**分類なしは空文字の群**でまとめる（§CLAUDE 3）。 */
  function ssbStopsOfCat(){
-  const all=ssbState.stops||[];
-  if(ssbState.cat===null)return all;
-  return all.filter(s=>String(s.category||'').trim()===ssbState.cat);
+  return ssbState.stops||[];
  }
  function ssbPickedId(){
   const ids=ssbStopsOfCat().filter(ssbStopMatches).map(s=>Number(s.id));
@@ -4121,101 +4119,112 @@
   list.classList.add('is-fill');
   list.parentElement&&list.parentElement.classList.add('is-fill');
   form.innerHTML=`<div class="op-bar">`
-   +`<span class="op-bar-note">左から<b>分類</b>→<b>停止内容</b>→<b>内訳</b>の順に決めます。`
+   +`<span class="op-bar-note">左の<b>分類 → 停止内容</b>で選び、右の段で<b>基本・内訳・挿入の条件</b>を決めます。`
    +`内訳は<b>集計のときだけ</b>分かれ、名称（例: 刃組待ち）では1つにまとまります。</span>`
    +`<span class="op-bar-state" id="ssbState"></span></div>`;
-  /* 挿入の条件（§9.588・7案から M3）は3つのペインの**下に全幅**——右のペインでは答えの列が切れる。 */
-  list.innerHTML=`<div class="ssb-edit has-rules">${ssbCatPaneHtml()}${ssbStopPaneHtml(picked)}${ssbSubPaneHtml(picked)}`
-   +'<section class="ssb-rules" id="ssbRules" aria-label="挿入の条件"></section></div>';
+  /* 7案→組合せ7案から H1（§9.590）: 左＝分類 → 停止内容の木、右＝選んだ停止内容の段（基本・内訳・挿入の条件）。
+     段の札がいまの値（30分・内訳2件・条件2）を言うので、開かずに3つの子の状態が読める。 */
+  list.innerHTML=`<div class="ssb-edit is-tree">${ssbTreeHtml(picked)}${ssbDetailHtml(picked)}</div>`;
   bindStopSub();
-  ssbMountRules();
+  if(ssbState.tab==='rules')ssbMountRules();
  }
  /* 選んでいる停止内容の挿入の条件（`WL.stopRuleBoard`）。保存したら一覧ごと読み直す（「条件 N行」の札も変わる）。 */
  function ssbMountRules(){
   const host=$('#ssbRules');if(!host||!WL.stopRuleBoard)return;
   WL.stopRuleBoard.mount(host,ssbStop(ssbState.picked),ssbState.ruleVocab,()=>loadStopSubMaint(true));
  }
- /* 左＝分類（3階層の1段目）。**件数はその分類の停止内容の数**で、
-    内訳までは数えない（同じ言葉が2箇所で違う数を言わない・§CLAUDE 8）。 */
- function ssbCatPaneHtml(){
+ /* 左＝分類 → 停止内容の木（3階層の1段目と2段目・§9.590）。**件数はその分類の停止内容の数**で、内訳までは数えない
+    （同じ言葉が2箇所で違う数を言わない・§CLAUDE 8）。分類の行は押すと畳む・開く。 */
+ function ssbCatNames(){
   const all=ssbState.stops||[];
   const names=[];
   (ssbState.cats||[]).forEach(c=>{const n=String(c.name||'').trim();if(n&&!names.includes(n))names.push(n)});
-  /* **どこにも属さない分類を消さない**——マスタに無いのに使われている分類が
-     あれば、それも出す（消せない行を画面から隠さない・§9.390 3）。 */
+  /* **どこにも属さない分類を消さない**——マスタに無いのに使われている分類も出す（§9.390 3）。 */
   all.forEach(s=>{const n=String(s.category||'').trim();if(n&&!names.includes(n))names.push(n)});
-  const blank=all.filter(s=>!String(s.category||'').trim()).length;
-  const row=(key,label,n,extra)=>{
-   const on=ssbState.cat===key;
-   return `<button type="button" class="ssb-cat-row${on?' is-on':''}" data-ssb-cat="${key===null?'*':esc(key)}"
-     title="${esc(label)}｜停止内容 ${n}件">
-    <b>${esc(label)}</b><span class="ssb-cat-n">${n}</span>${extra||''}</button>`;
+  return names;
+ }
+ function ssbStopRowHtml(s,picked){
+  /* 数えるのは**1段目だけ**（§9.390）。その下の件数は`title`で言う。 */
+  const subs=ssbSubsOf(s.id);
+  const n=subs.filter(x=>!Number(x.parentSubId||0)).length;
+  const deep=subs.length-n;
+  const m=s.standardMinutes;
+  const blank=(m===null||m===undefined||m==='');
+  const rule=WL.stopRuleBoard&&WL.stopRuleBoard.chipText(s);
+  return `<button type="button" class="ssb-stop${Number(s.id)===Number(picked)?' is-on':''}" data-ssb-pick="${s.id}"
+     title="${esc(s.name||'')}／${esc(s.equipmentLabel||'')}／内訳${n}件${deep?`（その下にさらに${deep}件）`:''}">
+    <b>${esc(s.name||'')}</b><span class="ssb-stop-min">${blank?'—':esc(WL.duration.text(Number(m)))}</span>
+    <span class="ssb-stop-sub"><span class="ssb-stop-n${n?'':' is-blank'}">${n?`内訳${n}件`:'内訳なし'}</span>${
+     rule?`<span class="ssb-stop-rule">${esc(rule)}</span>`:''}<span class="ssb-stop-eq">${esc(s.equipmentLabel||'')}</span></span></button>`;
+ }
+ function ssbTreeHtml(picked){
+  const all=(ssbState.stops||[]).filter(ssbStopMatches);
+  const reg=new Set((ssbState.cats||[]).map(c=>String(c.name||'').trim()));
+  const group=(key,label,rows,canDel)=>{
+   const open=!ssbState.fold.has(key)||!!ssbState.q;
+   return `<div class="ssb-group" data-ssb-group="${esc(key)}">
+     <div class="ssb-cat-head"><button type="button" class="ssb-cat-row${open?' is-open':''}" data-ssb-cat="${esc(key)}" aria-expanded="${open}"
+       title="${esc(label)}｜停止内容 ${rows.length}件（押すと${open?'畳みます':'開きます'}）"><i class="ssb-caret" aria-hidden="true">${open?'▾':'▸'}</i><b>${esc(label)}</b><span class="ssb-cat-n">${rows.length}</span></button>
+      <button type="button" class="ssb-ic" data-ssb-add-in="${esc(key)}" title="「${esc(label)}」に停止内容を足します">＋</button>${
+      canDel?`<button type="button" class="ssb-ic danger" data-ssb-cat-del="${esc(key)}" title="分類「${esc(label)}」をマスタから消します（停止内容そのものは消えません）">×</button>`:''}</div>
+     ${open?(rows.map(s=>ssbStopRowHtml(s,picked)).join('')
+       ||`<p class="mm-empty ssb-empty">${ssbState.q?'絞り込みに当たる停止内容がありません。':'この分類の停止内容はまだありません。右の「＋」で足せます。'}</p>`):''}
+    </div>`;
   };
-  const rows=row(null,'すべて',all.length)
-   +names.map(n=>row(n,n,all.filter(s=>String(s.category||'').trim()===n).length,
-     `<span class="ssb-cat-del" data-ssb-cat-del="${esc(n)}" role="button" tabindex="-1"
-       title="分類「${esc(n)}」をマスタから消します（停止内容そのものは消えません）">×</span>`)).join('')
-   +(blank?row('','分類なし',blank):'');
-  return `<div class="ssb-cats">
-    <div class="ssb-pane-head"><b>分類</b><span class="ssb-count">${names.length}件</span></div>
-    <div class="ssb-cat-list">${rows}</div>
+  const names=ssbCatNames();
+  const blank=all.filter(s=>!String(s.category||'').trim());
+  const groups=names.map(n=>group(n,n,all.filter(s=>String(s.category||'').trim()===n),reg.has(n))).join('')
+   +(blank.length?group('','分類なし',blank,false):'');
+  return `<div class="ssb-cats ssb-tree" aria-label="分類と停止内容">
+    <div class="ssb-pane-head"><b>設備停止</b><span class="ssb-count">${(ssbState.stops||[]).length}件</span>
+     <input type="search" id="ssbSearch" value="${esc(ssbState.q||'')}" placeholder="名称・設備・内訳で絞る" autocomplete="off"></div>
+    <div class="ssb-stop-list ssb-stops">${groups||'<p class="mm-empty">設備停止マスタがまだ空です。下の「＋ 停止内容を足す」から作れます。</p>'}</div>
     <div class="ssb-add ssb-add-cat">
-     <input type="text" id="ssbNewCat" placeholder="分類名（例: 保全）" autocomplete="off" maxlength="40">
-     <button type="button" id="ssbAddCat" class="mm-btn-primary">分類を追加</button>
-     <small class="ssb-add-note">分類は<b>全設備で共通</b>です。停止内容の「分類」欄の選択肢になります。</small>
+     <button type="button" id="ssbAddStop" class="mm-btn-primary">＋ 停止内容を足す</button>
+     <span class="ssb-add-row"><input type="text" id="ssbNewCat" placeholder="新しい分類（例: 保全）" autocomplete="off" maxlength="40">
+      <button type="button" id="ssbAddCat" class="mm-btn-ghost sm" title="分類は全設備で共通です。停止内容の「分類」欄の選択肢になります">分類を足す</button></span>
     </div>
    </div>`;
  }
- /* 中＝その分類の停止内容。**設備名も出す**（§CLAUDE 6）——設備が違えば
-    同じ名前の停止が並ぶので、名前だけでは選べない。 */
- function ssbStopPaneHtml(picked){
-  const rows=ssbStopsOfCat().filter(ssbStopMatches);
-  const items=rows.map(s=>{
-   /* 数えるのは**1段目だけ**（§9.390）。合計にすると、同じ言葉が2箇所で
-      違う数を言う（§CLAUDE 8）。その下の件数は`title`で言う。 */
-   const subs=ssbSubsOf(s.id);
-   const n=subs.filter(x=>!Number(x.parentSubId||0)).length;
-   const deep=subs.length-n;
-   const m=s.standardMinutes;
-   const blank=(m===null||m===undefined||m==='');
-   return `<div class="ssb-stop-row" data-ssb-stop="${s.id}">
-    <button type="button" class="ssb-stop${Number(s.id)===Number(picked)?' is-on':''}" data-ssb-pick="${s.id}"
-      title="${esc(s.name||'')}／${esc(s.equipmentLabel||'')}／内訳${n}件${deep?`（その下にさらに${deep}件）`:''}">
-     <b>${esc(s.name||'')}</b>
-     <span class="ssb-stop-sub">
-      <span class="ssb-stop-eq">${esc(s.equipmentLabel||'')}</span>
-      <span class="ssb-stop-n${n?'':' is-blank'}">${n?`内訳${n}件`:'内訳なし'}</span>
-      <span class="ssb-stop-min">${blank?'標準所要分なし':esc(WL.duration.text(Number(m)))}</span>
-      ${WL.stopRuleBoard&&WL.stopRuleBoard.chipText(s)?`<span class="ssb-stop-rule">${esc(WL.stopRuleBoard.chipText(s))}</span>`:''}
-     </span></button>
-    <button type="button" class="mm-btn-ghost sm" data-ssb-edit="${s.id}"
-      title="対象設備・分類・名称・標準所要分・連携機能を直します">編集</button>
-    <button type="button" class="mm-btn-ghost sm danger" data-ssb-stop-del="${s.id}"
-      title="この停止内容と、その内訳をまとめて消します">×</button>
+ /* 右＝選んだ停止内容の段（§9.590）。頭が名前と出どころ、段の札がいまの値を言う。 */
+ const SSB_TABS=[['basic','基本'],['subs','内訳'],['rules','挿入の条件']];
+ function ssbTabNow(stop,key){
+  if(key==='basic'){const m=stop.standardMinutes;return [(m===null||m===undefined||m==='')?'標準所要分なし':WL.duration.text(Number(m)),stop.linkKey?stop.linkLabel:''].filter(Boolean).join('・')}
+  if(key==='subs'){const n=ssbSubsOf(stop.id).filter(x=>!Number(x.parentSubId||0)).length;return n?`${n}件`:'なし'}
+  return (WL.stopRuleBoard&&WL.stopRuleBoard.chipText(stop))||'なし';
+ }
+ function ssbDetailHtml(id){
+  const stop=ssbStop(id);
+  if(!stop)return '<div class="ssb-detail"><p class="mm-empty">左の一覧で<b>停止内容</b>を選ぶと、その基本・内訳・挿入の条件がここに出ます。</p></div>';
+  const tab=SSB_TABS.some(t=>t[0]===ssbState.tab)?ssbState.tab:'subs';
+  const m=stop.standardMinutes;
+  const body=tab==='basic'?ssbBasicHtml(stop):tab==='subs'?ssbSubPaneHtml(id)
+   :'<section class="ssb-rules" id="ssbRules" aria-label="挿入の条件"></section>';
+  return `<div class="ssb-detail">
+    <div class="ssb-detail-head"><b class="ssb-title">${esc(stop.name||'')}</b>
+     <span class="ssb-meta">${esc([stop.category||'分類なし',stop.equipmentLabel||'',(m===null||m===undefined||m==='')?'':WL.duration.text(Number(m))].filter(Boolean).join('・'))}</span>
+     <span class="ssb-detail-tools"><button type="button" class="mm-btn-ghost sm" data-ssb-edit="${stop.id}" title="対象設備・分類・名称・標準所要分・連携機能を直します">基本を直す…</button>
+      <button type="button" class="mm-btn-ghost sm danger" data-ssb-stop-del="${stop.id}" title="この停止内容と、その内訳・挿入の条件をまとめて消します">消す</button></span></div>
+    <div class="ssb-tabs" role="tablist" aria-label="停止内容の段">${SSB_TABS.map(([k,l])=>
+     `<button type="button" role="tab" class="ssb-tab${k===tab?' is-on':''}" data-ssb-tab="${k}" aria-selected="${k===tab}">${l}<i class="ssb-tab-now">${esc(ssbTabNow(stop,k))}</i></button>`).join('')}</div>
+    <div class="ssb-tab-body" data-ssb-body="${tab}">${body}</div>
    </div>`;
-  }).join('');
-  return `<div class="ssb-stops">
-    <div class="ssb-pane-head">
-     <b>停止内容</b><span class="ssb-count">${rows.length}件</span>
-     <input type="search" id="ssbSearch" value="${esc(ssbState.q||'')}" placeholder="名称・設備・内訳で絞る" autocomplete="off">
-    </div>
-    <div class="ssb-stop-list">${items
-      ||`<p class="mm-empty">${ssbState.q?'絞り込みに当たる停止内容がありません。'
-         :(ssbState.cat===null?'設備停止マスタがまだ空です。下の「＋ 停止内容を足す」から作れます。'
-           :'この分類の停止内容はまだありません。下の「＋ 停止内容を足す」から作れます。')}</p>`}</div>
-    <div class="ssb-add">
-     <button type="button" id="ssbAddStop" class="mm-btn-primary">＋ 停止内容を足す</button>
-     <small class="ssb-add-note">対象設備・分類・標準所要分・連携機能を決める窓が開きます${
-       ssbState.cat?`（分類は「<b>${esc(ssbState.cat)}</b>」で開きます）`:''}。</small>
-    </div>
-   </div>`;
+ }
+ /* 基本の段: 読むだけの値（直すのは汎用の編集窓1枚・§9.397）。 */
+ function ssbBasicHtml(stop){
+  const m=stop.standardMinutes;
+  const kv=[['名称',stop.name],['分類',stop.category||'分類なし'],['対象設備',stop.equipmentLabel],
+   ['標準所要分',(m===null||m===undefined||m==='')?'未設定（内訳の分か、予定へ入れるときに選ぶ）':WL.duration.text(Number(m))],
+   ['連携機能',stop.linkLabel||'なし']];
+  return `<div class="ssb-basic"><dl class="ssb-kv">${kv.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v||'')}</dd>`).join('')}</dl>
+   <p class="ssb-add-note">直すときは右上の「基本を直す…」（汎用の編集窓）。内訳の分を空欄にすると、ここの標準所要分になります。</p></div>`;
  }
  /* 右＝その停止の内訳。**親の標準所要分をここに出す**（§CLAUDE 6「出どころを
     画面に出す」）——内訳の分を空欄にしたとき何分になるのかが、見なくても
     分かる形にしておく。 */
  function ssbSubPaneHtml(id){
   const stop=ssbStop(id);
-  if(!stop)return `<div class="ssb-subs"><p class="mm-empty">中の一覧で<b>停止内容</b>を選ぶと、その内訳がここに出ます。</p></div>`;
+  if(!stop)return `<div class="ssb-subs"><p class="mm-empty">左の一覧で<b>停止内容</b>を選ぶと、その内訳がここに出ます。</p></div>`;
   const rows=ssbSubsOf(id);
   const base=stop.standardMinutes;
   const blank=(base===null||base===undefined||base==='');
@@ -4231,8 +4240,6 @@
   const underBase=(um===null||um===undefined||um==='')?'':WL.duration.text(Number(um));
   return `<div class="ssb-subs">
     <div class="ssb-pane-head">
-     <b class="ssb-title">${esc(stop.name||'')}</b>
-     <span class="ssb-eq">${esc(stop.equipmentLabel||'')}</span>
      <span class="ssb-base">標準所要分 <b>${esc(baseText)}</b><small>内訳の分を空欄にすると、この時間になります</small></span>
     </div>
     <div class="ssb-table" role="table">
@@ -4335,9 +4342,9 @@
   const search=$('#ssbSearch');
   if(search){
    search.oninput=()=>{ssbState.q=search.value;
-    const pane=list.querySelector('.ssb-stops');
+    const pane=list.querySelector('.ssb-tree');
     if(!pane)return;
-    pane.outerHTML=ssbStopPaneHtml(ssbPickedId());
+    pane.outerHTML=ssbTreeHtml(ssbPickedId());
     bindStopSub();
     const s2=$('#ssbSearch');
     if(s2){try{s2.focus({preventScroll:true})}catch(err){WL.quiet.note('絞り込み欄へ戻せない（打ち直せる）',err);s2.focus()}
@@ -4345,19 +4352,20 @@
    };
   }
  }
- /* 左＝分類（選ぶ・消す・足す）。 */
+ /* 左＝分類（畳む・開く・消す・足す・その分類に停止内容を足す）。 */
  function ssbWireCats(list){
-  /* 分類を選ぶと、**中と右を描き直す**（左はそのまま）。選んでいる分類の
-     停止内容が1件も無ければ右は案内に戻る——見えていない行の設定を
-     出したままにしない。 */
+  /* 分類の行は**畳む／開く**（§9.590）。選んでいる停止内容と右の段はそのまま。 */
   list.querySelectorAll('[data-ssb-cat]').forEach(btn=>{
-   btn.onclick=e=>{
-    if(e.target.closest('[data-ssb-cat-del]'))return;
-    const v=btn.dataset.ssbCat;
-    ssbState.cat=(v==='*')?null:v;
-    ssbState.picked=0;ssbState.addUnder=0;
-    renderStopSub();
+   btn.onclick=()=>{
+    const k=btn.dataset.ssbCat;
+    if(ssbState.fold.has(k))ssbState.fold.delete(k);else ssbState.fold.add(k);
+    const pane=list.querySelector('.ssb-tree');
+    if(pane){const top=(pane.querySelector('.ssb-stop-list')||{}).scrollTop||0;pane.outerHTML=ssbTreeHtml(ssbPickedId());bindStopSub();
+     const l2=list.querySelector('.ssb-tree .ssb-stop-list');if(l2)l2.scrollTop=top}
    };
+  });
+  list.querySelectorAll('[data-ssb-add-in]').forEach(btn=>{
+   btn.onclick=()=>ssbOpenNewStop(btn.dataset.ssbAddIn);
   });
   list.querySelectorAll('[data-ssb-cat-del]').forEach(el=>{
    el.onclick=async ev=>{
@@ -4374,7 +4382,7 @@
      await api('/api/schedule/stop-category-master/delete',
        {method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({id:row.id,user_id:uid})});
-     if(ssbState.cat===name)ssbState.cat=null;
+     ssbState.fold.delete(name);
      await loadStopSubMaint(true);
      ssbSay(`分類「${name}」を消しました`);
     }catch(e){ssbSay(`消せませんでした: ${e.message||String(e)}`,true)}
@@ -4391,9 +4399,9 @@
      await api('/api/schedule/stop-category-master',
        {method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({name,user_id:uid})});
-     ssbState.cat=name;
+     ssbState.fold.delete(name);
      await loadStopSubMaint(true);
-     ssbSay(`分類「${name}」を足しました`);
+     ssbSay(`分類「${name}」を足しました（右の「＋」でこの分類に停止内容を足せます）`);
      const again=$('#ssbNewCat');
      if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
     }catch(e){ssbSay(`足せませんでした: ${e.message||String(e)}`,true)}
@@ -4402,32 +4410,54 @@
   const nc=$('#ssbNewCat');
   if(nc)nc.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addCat&&addCat.click()}};
  }
- /* 中＝停止内容（選ぶ・直す・足す・消す）。 */
+ /* 新しい停止内容の窓（汎用の編集窓）。**分類を連れて行く**（§CLAUDE 2「思い出させない」）。 */
+ function ssbOpenNewStop(cat){
+  if(!WL.mm.openMaintEditor)return;
+  WL.mm.openMaintEditor(null);
+  if(cat){
+   const el=document.querySelector('#maintEditorForm [data-field="category"]');
+   if(el){el.value=cat;el.dispatchEvent(new Event('change',{bubbles:true}))}
+  }
+ }
+ /* 挿入の条件に保存していない変更があれば、捨てる前に聞く（§9.588）。 */
+ async function ssbMayLeaveRules(){
+  if(!(WL.stopRuleBoard&&WL.stopRuleBoard.dirty()))return true;
+  if(!await confirmModal({title:'保存していない条件',eyebrow:'挿入の条件',
+    message:'いま開いている停止内容の挿入の条件に、保存していない変更があります。捨てて移りますか？',
+    confirmLabel:'捨てて移る',cancelLabel:'やめる'}))return false;
+  WL.stopRuleBoard.forget();
+  return true;
+ }
+ /* 右の段だけ差し替える（左の木の`scrollTop`を保つ・§9.226 ①）。 */
+ function ssbPaintDetail(list){
+  const pane=list.querySelector('.ssb-detail');
+  if(!pane){renderStopSub();return}
+  pane.outerHTML=ssbDetailHtml(ssbState.picked);
+  bindStopSub();
+  if(ssbState.tab==='rules')ssbMountRules();
+ }
+ /* 木の停止内容（選ぶ）・右の段（切り替える・基本を直す・消す）。 */
  function ssbWireStops(list){
-  /* 中を押したとき**右だけ差し替える**（§9.226 ①）——一覧を作り直すと
-     `scrollTop`が0へ戻り、上から数え直すことになる。 */
   list.querySelectorAll('[data-ssb-pick]').forEach(btn=>{
    btn.onclick=async()=>{
     const id=Number(btn.dataset.ssbPick);
     if(Number(ssbState.picked)===id)return;
-    /* 挿入の条件に保存していない変更があれば、捨てる前に聞く（§9.588）。 */
-    if(WL.stopRuleBoard&&WL.stopRuleBoard.dirty()&&!await confirmModal({title:'保存していない条件',eyebrow:'挿入の条件',
-      message:'いま開いている停止内容の挿入の条件に、保存していない変更があります。捨てて別の停止内容を開きますか？',
-      confirmLabel:'捨てて開く',cancelLabel:'やめる'}))return;
-    WL.stopRuleBoard&&WL.stopRuleBoard.table&&(WL.stopRuleBoard.table.dirty=false);
+    if(!await ssbMayLeaveRules())return;
     ssbState.picked=id;ssbState.addUnder=0;
-    const pane=list.querySelector('.ssb-subs');
-    if(!pane){renderStopSub();return}
-    pane.outerHTML=ssbSubPaneHtml(id);
     list.querySelectorAll('[data-ssb-pick]').forEach(b=>
       b.classList.toggle('is-on',Number(b.dataset.ssbPick)===id));
-    bindStopSub();
-    ssbMountRules();
+    ssbPaintDetail(list);
    };
   });
-  /* 停止内容そのものの編集は**汎用の編集窓**（§9.397）。欄が5つ
-     （対象設備・分類・名称・標準所要分・連携機能）あるので、その場の
-     入力欄では収まらない——同じマスタの編集の作法を2通り持たない。 */
+  list.querySelectorAll('[data-ssb-tab]').forEach(btn=>{
+   btn.onclick=async()=>{
+    if(ssbState.tab===btn.dataset.ssbTab)return;
+    if(ssbState.tab==='rules'&&!await ssbMayLeaveRules())return;
+    ssbState.tab=btn.dataset.ssbTab;
+    ssbPaintDetail(list);
+   };
+  });
+  /* 停止内容そのものの編集は**汎用の編集窓**（§9.397）。欄が5つあるので、その場の欄では収まらない。 */
   list.querySelectorAll('[data-ssb-edit]').forEach(btn=>{
    btn.onclick=()=>{
     const row=ssbStop(Number(btn.dataset.ssbEdit));
@@ -4435,16 +4465,7 @@
    };
   });
   const addStop=$('#ssbAddStop');
-  if(addStop)addStop.onclick=()=>{
-   if(!WL.mm.openMaintEditor)return;
-   /* **いま見ている分類を連れて行く**（§CLAUDE 2「思い出させない」）。
-      「すべて」を見ているときは空のまま開く。 */
-   WL.mm.openMaintEditor(null);
-   if(ssbState.cat){
-    const el=document.querySelector('#maintEditorForm [data-field="category"]');
-    if(el){el.value=ssbState.cat;el.dispatchEvent(new Event('change',{bubbles:true}))}
-   }
-  };
+  if(addStop)addStop.onclick=()=>{const cur=ssbStop(ssbState.picked);ssbOpenNewStop(cur?String(cur.category||'').trim():'')};
   list.querySelectorAll('[data-ssb-stop-del]').forEach(btn=>{
    btn.onclick=async()=>{
     const row=ssbStop(Number(btn.dataset.ssbStopDel));

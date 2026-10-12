@@ -945,23 +945,25 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   grid.parentNode.insertBefore(gridAnchor,grid);
   return gridAnchor;
  }
- // 一覧に属する3点(絞り込みバー・ツールバー・表本体)は必ずこの順で一緒に動かす。
+ // 一覧に属する4点(絞り込みバー・ツールバー・スライサーの面・表本体)は必ずこの順で一緒に動かす。
  // #listToolbarはlist-view.jsが#gridの直前へ差し込むため、移動時に置いていくと
  // 元の画面に取り残されて「一覧が無いのにツールバーだけ残る」ことになる。
  function moveGridTo(host){
   if(!ensureGridAnchor()||!host)return;
-  const grid=document.getElementById('grid'),filterBar=document.getElementById('genericFilterBar'),toolbar=document.getElementById('listToolbar');
+  const grid=document.getElementById('grid'),filterBar=document.getElementById('genericFilterBar'),toolbar=document.getElementById('listToolbar'),slicer=document.getElementById('listSlicer');
   if(filterBar)host.appendChild(filterBar);
   if(toolbar)host.appendChild(toolbar);
+  if(slicer)host.appendChild(slicer);
   if(grid)host.appendChild(grid);
   gridHost=host;
  }
  function returnGridHome(){
   if(!gridHost||!gridAnchor)return;
-  const grid=document.getElementById('grid'),filterBar=document.getElementById('genericFilterBar'),toolbar=document.getElementById('listToolbar');
+  const grid=document.getElementById('grid'),filterBar=document.getElementById('genericFilterBar'),toolbar=document.getElementById('listToolbar'),slicer=document.getElementById('listSlicer');
   const main=gridAnchor.parentNode;
   if(filterBar)main.insertBefore(filterBar,gridAnchor);
   if(toolbar)main.insertBefore(toolbar,gridAnchor);
+  if(slicer)main.insertBefore(slicer,gridAnchor);
   if(grid)main.insertBefore(grid,gridAnchor);
   gridHost=null;
  }
@@ -11408,6 +11410,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
 
  WL.scheduleView={
   equipment:()=>scState.equipment||'',
+  /* 予定の行のその列の値（結合 → 完了突合 → 写しの順・`entryValueOf()`）。設備停止マスタの「試した結果」が
+     予定の判定（足りない設備停止）と同じ値で数えるための口（§9.590）。 */
+  valueOf:(e,key)=>entryValueOf(e,key),
   /* 設備停止の選択肢を取り直す（§9.397）。**既定の内訳はサーバーが答える**
      （§9.163）ので、マスタを直したあとに画面へ届けるにはここを通す。
      網が「既定を付けたら最初から選ばれる」を確かめるのにも使う——画面の

@@ -1978,7 +1978,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const svg = document.querySelector('#bsStage3 .bs-t3v');
      if (!svg) return null;
      const ts = [...svg.querySelectorAll('text')];
-     const sp = ts.filter(e => !e.classList.contains('is-ring'));
+     /* 有効長の寸法線の字（`is-span`）は部材の字ではない——スペーサーに数えると、ゴムリングの字と同じ高さに
+        来ただけで「混ざった」と読む（そのうえ本当の欠陥＝字が線の上に乗っていることは見ていなかった）。 */
+     const sp = ts.filter(e => !e.classList.contains('is-ring') && !e.classList.contains('is-span'));
      const rg = ts.filter(e => e.classList.contains('is-ring'));
      const ys = a => a.map(e => Math.round(+e.getAttribute('y')));
      /* 引き出し線は必ず対象へ届いている（宙に浮いた線を作らない）。 */
@@ -2000,14 +2002,23 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        if (p.a < q.b - 0.5 && q.a < p.b - 0.5 && p.c < q.d - 0.5 && q.c < p.d - 0.5) hit++;
       }
      }
-     return { sp: sp.length, rg: rg.length, spY: ys(sp), rgY: ys(rg), lines: ln.length,
+     const rgYs = ys(rg);
+     const same = sp.filter(e => rgYs.indexOf(Math.round(+e.getAttribute('y'))) >= 0)
+      .map(e => `${e.textContent}@${e.getAttribute('x')},${e.getAttribute('y')}`);
+     /* 寸法線（有効長）の線・立て線に重なる字。線が字を貫くと、どちらも読めない。 */
+     const spanLn = [...svg.querySelectorAll('.bs-span')].map(box).filter(Boolean);
+     const onSpan = ts.filter(e => !e.classList.contains('is-span')).filter(e => { const p = box(e); return p && spanLn.some(q =>
+       p.a < q.b && q.a < p.b && p.c <= q.d && q.c <= p.d); }).map(e => e.textContent + '@' + e.getAttribute('x'));
+     return { onSpan, same, sp: sp.length, rg: rg.length, spY: ys(sp), rgY: rgYs, lines: ln.length,
               loose: ln.filter(l => len(l) < 3).length, over: hit, texts: bs.length,
               dims: window.WL.bladeSolid.view().dims };
     });
     rec('スペーサーとゴムリングの字が同じ高さに混ざらない',
         !!mix && mix.sp > 0 && mix.rg > 0
         && mix.spY.every(y => mix.rgY.indexOf(y) < 0),
-        mix ? `スペーサー ${mix.sp} / ゴムリング ${mix.rg}` : '読めない');
+        mix ? `スペーサー ${mix.sp} / ゴムリング ${mix.rg}・同じ高さ ${mix.same.join(' ')}` : '読めない');
+    rec('寸法の字は有効長の寸法線の線に乗らない（線ぜんたいも席を取る）',
+        !!mix && mix.onSpan.length === 0, mix ? `線の上 ${mix.onSpan.length}件 ${mix.onSpan.slice(0, 6).join(' ')}` : '読めない');
     rec('引き出し線は対象まで届いている（宙に浮かせない）',
         !!mix && mix.loose === 0, mix ? `${mix.lines}本中 ${mix.loose}本が宙ぶらりん` : '読めない');
     /* **数え落としはしない。置けない字は数えて言う**（§9.429 → §9.443 で

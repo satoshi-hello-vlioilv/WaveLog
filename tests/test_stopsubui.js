@@ -10,12 +10,12 @@
     設定して登録できるように」
 
    固定すること:
-    1. **3階層が1枚で見える**——左＝分類／中＝停止内容／右＝内訳の3ペイン
+    1. **3階層が1枚で見える**——左＝分類 → 停止内容の木／右＝選んだ停止内容の段（基本・内訳・挿入の条件。§9.590）
        （分類・内訳の独立したタブは無い）
     2. 分類はこの画面で足せる（タブを移らずに階層を作れる）
     3. 内訳を足せて、**別の停止に同じ名前の内訳**も足せる（親で割れている）
     4. 内訳の分の欄に**親の標準所要分**が出ている（空欄にすると何分かが読める）
-    5. 中を押し替えても**中のスクロール位置が飛ばない**（右だけ差し替える）
+    5. 木の停止内容を押し替えても**木のスクロール位置が飛ばない**（右だけ差し替える）
     6. 停止内容の行に内訳の件数が出て、**0件は「内訳なし」**（0のままにしない）
     7. **既定の内訳**を印で決められる（1件しか無い段では押せなくして理由を書く）
     8. 時間の画面は札＋スライダーの見本で、**範囲は選択肢の最小〜最大**
@@ -78,12 +78,14 @@ H.run('test_stopsubui: 設備停止マスタの画面（§9.397）',
   const stops=[...document.querySelectorAll('[data-ssb-pick]')].map(x=>x.querySelector('b').textContent.trim());
   return {cats,stops,mine:stops.filter(s=>s.startsWith(t)).length,
           hasCat:cats.includes(t+'待ち'),
-          cols:[...document.querySelectorAll('.ssb-edit>div')].map(x=>x.className.split(' ')[0])};
+          cols:[...document.querySelectorAll('.ssb-edit>div')].map(x=>x.className.split(' ')[0]),
+          tabs:[...document.querySelectorAll('[data-ssb-tab]')].map(x=>x.dataset.ssbTab)};
  },TAG);
- rec('左のペインに分類が並ぶ（3階層の1段目）',shape.hasCat,shape.cats.slice(0,6).join('/'));
- rec('中のペインに作った停止内容が2件並ぶ',shape.mine===2,`${shape.mine}件`);
- rec('左＝分類／中＝停止内容／右＝内訳の3ペインになっている',
-     shape.cols.join('/')==='ssb-cats/ssb-stops/ssb-subs',shape.cols.join('/'));
+ rec('左の木に分類が並ぶ（3階層の1段目）',shape.hasCat,shape.cats.slice(0,6).join('/'));
+ rec('木に作った停止内容が2件並ぶ',shape.mine===2,`${shape.mine}件`);
+ /* §9.590（7案→組合せ7案から H1）: 左＝分類 → 停止内容の木／右＝選んだ停止内容の段（基本・内訳・挿入の条件）。 */
+ rec('左＝分類 → 停止内容の木／右＝選んだ停止内容の段（基本・内訳・挿入の条件）',
+     shape.cols.join('/')==='ssb-cats/ssb-detail'&&shape.tabs.join('/')==='basic/subs/rules',shape.cols.join('/')+' '+shape.tabs.join('/'));
 
  // ---- ①b 分類はこの画面で足せる（タブを移らない・§9.397） --------------
  const CAT=TAG+'新分類';

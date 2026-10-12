@@ -12,6 +12,8 @@
     M6. 前から在る境目には自動で入れない（人が外した設備停止を入れ直さない）
    ほかに固定すること:
     1. 判定（`WL.stopRules.evaluate`）: 前・後ろ・変わったか・差の4つの列、挿入数・それぞれの時間、足りている境目は出さない
+    1b. 式の行（§9.590）: 同じ決まりを式（`[前.列]`・`[後.列]`）で書いても同じ境目に当たる。前の版のセルの条件は
+        `fromCells()`で同じ意味の式になる。理由は組み立ての文に実際の値を添える
     2. 帯は後ろのロットの行のすぐ上・既定は黄（行表示マスタ「足りない設備停止」）・字で「足りません」と理由
     3. 「入れる」で1手（後ろのロットの前・決まりの分）、入れたら帯が消える。外すとまた出る（状態を持たない）
     4. 「今回は入れない」はその境目だけ・読み直しても残る・「元に戻す」で戻る
@@ -87,6 +89,28 @@ run('test_stoprules: 足りない設備停止（§9.588）', async ({page,rec,B,
       JSON.stringify(pure));
   rec('1: 理由はその境目の実際の値を添える',pure.some(s=>s.pair==='1>2'&&/A5052 → A1100/.test(s.reason)),
       JSON.stringify(pure.map(s=>s.reason)));
+
+  // ---- 1b. 式の行（§9.590） ----
+  const fx=await page.evaluate(()=>{
+   const L=(id,v)=>({id,kind:'作業',state:'予定',lotNo:'L'+id,detail:v});
+   const S=(id,t)=>({id,kind:'設備停止',state:'予定',title:t,detail:{}});
+   const es=[L(1,{製造材質:'A5052',製造板厚:'0.5'}),L(2,{製造材質:'A1100',製造板厚:'0.8'}),S(3,'段'),
+             L(4,{製造材質:'A1100',製造板厚:'0.8'}),L(5,{製造材質:'A1100',製造板厚:'1.5'})];
+   const cells=[{field:'chg.製造材質',op:'eq',value:'変わる'}],cells2=[{field:'diff.製造板厚',op:'ge',value:'0.5'}];
+   const c1=WL.stopRules.fromCells(cells),c2=WL.stopRules.fromCells(cells2);
+   const stop={id:9,name:'段',standardMinutes:30,insertRule:{stored:true,cols:[],rows:[
+    {formula:c1.formula,build:c1.build,conditions:[],count:2,minutes:[40,15],action:'warn'},
+    {formula:c2.formula,build:c2.build,conditions:[],count:1,minutes:[],action:'auto'},
+    {conditions:[],count:0,minutes:[],action:'warn'}]}};
+   const val=(e,k)=>e.detail[k];
+   return {f1:c1.formula,f2:c2.formula,hits:WL.stopRules.evaluate(es,[stop],val,null).map(s=>({pair:s.pair,need:s.need,action:s.action,reason:s.reason}))};
+  });
+  rec('1b: セルの条件は同じ意味の式になる（変わる → <>・差 → num(後)−num(前)）',
+      fx.f1==='[前.製造材質] <> [後.製造材質]'&&fx.f2==='(num([後.製造板厚]) - num([前.製造板厚])) >= 0.5',`${fx.f1} / ${fx.f2}`);
+  rec('1b: 式の行でもセルの行と同じ境目に当たる（1>2 は2本・4>5 は自動・2>4 は当たらない）',
+      JSON.stringify(fx.hits.map(h=>[h.pair,h.need,h.action]))===JSON.stringify(pure.map(h=>[h.pair,h.need,h.action])),JSON.stringify(fx.hits));
+  rec('1b: 理由は組み立ての文に実際の値を添える',fx.hits.some(h=>h.pair==='1>2'&&/製造材質 が変わる（製造材質 A5052 → A1100）/.test(h.reason)),
+      JSON.stringify(fx.hits.map(h=>h.reason)));
 
   // ---- 材料: 停止内容と挿入の条件 ----
   const reg=await post('/api/schedule/stop-reason-master',{equipment:EQ,name:TAG+'段取り',category:'段取り',standardMinutes:30});

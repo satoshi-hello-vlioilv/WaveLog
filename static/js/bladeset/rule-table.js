@@ -40,10 +40,9 @@
  }
  /* 幅を決めた列のセルの`style`（見出し・試す・条件のセルで同じ）。 */
  const widthStyle=w=>w?` style="width:${w}px;min-width:${w}px;max-width:${w}px"`:'';
- /* **外から足す列の組**（§9.588で一般化）: 名前がデータに依る列（仕掛の列名）に接頭辞を付けて読む。刃組は
-    `source.`（1本目のコイルの行）の1組、設備停止の挿入条件は`prev.`／`next.`／`chg.`／`diff.`（前後のロット・
-    変わったか・差）の4組。呼ぶ側は`sourceSets()`で組を渡す（渡さなければ`sourceCols()`から`source.`の1組を作る）。
-    組: {key, prefix, label, kind, options, desc(列名,見本)}。 */
+ /* **外から足す列の組**: 名前がデータに依る列（仕掛の列名）に接頭辞を付けて読む。刃組は`source.`（1本目のコイルの行）の1組
+    （`sourceCols()`から作る）。§9.588 で設備停止の挿入条件の4組も受けていたが、§9.590 で挿入条件は式（`WL.formulaBuilder`）に
+    移したので、組を渡す口（`sourceSets`）は外した。組: {key, prefix, label, kind, options, desc(列名,見本)}。 */
  const SOURCE_SET=cols=>({key:'source',prefix:'source.',label:'',kind:'auto',cols,
   desc:(n,ex)=>`仕掛の列「${n}」（1本目のコイルの行）${ex.length?`・例 ${ex.join(' / ')}`:''}`});
 
@@ -116,18 +115,18 @@
   fields(){return this.o.fields()||[]}
   fieldOf(f){return this.fields().find(x=>x.field===f)||null}
   /* 外から足す列の組（並び）と、その列が属する組（無ければ null）。 */
-  sets(){return this.o.sourceSets?(this.o.sourceSets()||[]):[SOURCE_SET((this.o.sourceCols&&this.o.sourceCols())||[])]}
+  sets(){return [SOURCE_SET((this.o.sourceCols&&this.o.sourceCols())||[])]}
   setOf(f){return this.sets().find(x=>String(f).startsWith(x.prefix))||null}
   colName(f){const x=this.setOf(f);return x?String(f).slice(x.prefix.length):''}
   colLabel(f){const x=this.setOf(f);return x?(x.labelOf?x.labelOf(this.colName(f)):this.colName(f)):((this.fieldOf(f)||{}).label||f)}
   kindOf(f){const x=this.setOf(f);return ((this.fieldOf(f)||{}).kind)||(x?(x.kind||'auto'):'text')}
   /* その列のセルの条件（並びのまま・`or`つき）。空の配列＝問わない。 */
   condsOf(row,f){return (row.conditions||[]).filter(c=>c.field===f)}
-  /* 答えの欄（§9.588で複数に）。呼ぶ側が`answerCols()`で`[{key, head, kind:'select'|'text', options(r), get(r), set(r,v), placeholder, title}]`を
-     渡す。渡さなければ`answers`／`answerOf`／`setAnswer`から1つの選択の欄を作る（刃組の表は今までのまま）。 */
+  /* 答えの欄（`[{key, head, kind:'select'|'text', options(r), get(r), set(r,v), placeholder, title}]`）。刃組の表は
+     `answers`／`answerOf`／`setAnswer`の1つの選択の欄（§9.588 の複数の欄は §9.590 で挿入条件が式へ移ったので外した）。 */
   ansCols(){
    const o=this.o;
-   return o.answerCols?o.answerCols():[{key:'answer',head:o.answerHead,kind:'select',options:r=>o.answers(r),get:r=>o.answerOf(r),set:(r,v)=>o.setAnswer(r,v)}];
+   return [{key:'answer',head:o.answerHead,kind:'select',options:r=>o.answers(r),get:r=>o.answerOf(r),set:(r,v)=>o.setAnswer(r,v)}];
   }
   /* 既定の行＝条件の無い行。**足したばかりで条件をまだ書いていない行**（`fresh`）は違う。 */
   isDefault(r){return !(r.conditions||[]).length&&!r.fresh}
@@ -729,7 +728,7 @@
     .map(r=>Object.assign(this.o.rowOut(r),{conditions:r.conditions||[],note:r.note||''}));
    this.busy=true;this.render();
    try{
-    const eq=this.o.savedWord?this.o.savedWord():(this.o.payload().equipment||'');
+    const eq=this.o.payload().equipment||'';
     if(!await this.send({rows,cols:this.cols.slice()}))throw new Error('更新者IDが決まっていません');
     showToast&&showToast(`${this.label}の表を保存しました`,`${eq}・${rows.length}行`,2600);
    }

@@ -186,6 +186,8 @@ body.qa-mode #listToolbar{display:none}
 body.qa-mode.qa-view-raw #grid{display:block}
 body.qa-mode.qa-view-raw #genericFilterBar{display:block}
 body.qa-mode.qa-view-raw #listToolbar{display:flex}
+/* スライサーの面（§9.591）も`#grid`の道具。出すのは開いているとき（`hidden`でない）だけなので、出す側は書かない。 */
+body.qa-mode:not(.qa-view-raw) #listSlicer{display:none}
 /* ---------- 一覧の道具は、一覧を出していない画面では伏せる（§9.288 ⑥） ----------
    利用者の報告「実績データ確認時に、フィルタバーが下部に落ちている不具合を
    発見しました」。
@@ -203,7 +205,7 @@ body.qa-mode.qa-view-raw #listToolbar{display:flex}
    一覧の道具を**出す**ので、伏せる側の一覧に入れられない）。
    固定は`tests/test_actuals.js`（実際に開いて、器の外へ出ていないことを見る）。 */
 body:is(.rp-mode,.db-mode,.rec-mode,.cal-mode,.sc-mode,.mm-mode,.lg-mode,.ac-mode,.bs-mode)
- :is(#grid,#listToolbar,#tabs,#genericFilterBar,.qa-v7,#planStrip){display:none}
+ :is(#grid,#listToolbar,#tabs,#genericFilterBar,#listSlicer,.qa-v7,#planStrip){display:none}
 /* ---------- 一覧を広く使う（§9.292 ⑦、利用者の指示） ----------
    「スケジュール作成時に、とにかく仕掛のデータを多く表示したいです。
     その時上部のメニューのほぼすべてを畳んで最大限広いスペースで仕掛の
@@ -238,10 +240,12 @@ body.cal-mode #masterMaintPanel,body.sc-mode #masterMaintPanel,body.qa-mode #mas
    body.sc-mode単体より上げて確実に上書きする(qa-view-rawと同じ考え方)。 */
 body.sc-mode.sc-split #grid,body.sc-mode.sc-split #genericFilterBar{display:block}
 body.sc-mode.sc-split #listToolbar{display:flex}
+body.sc-mode.sc-split #listSlicer:not([hidden]){display:flex}
 /* 仕掛一覧のポップアップ表示(§9.14新設)。分割表示と同じ理由(body.sc-mode
    #grid{display:none!important}の上書き)でbodyへクラスを付ける方式にする。 */
 body.sc-mode.sc-list-modal-open #grid,body.sc-mode.sc-list-modal-open #genericFilterBar{display:block}
 body.sc-mode.sc-list-modal-open #listToolbar{display:flex}
+body.sc-mode.sc-list-modal-open #listSlicer:not([hidden]){display:flex}
 /* 品質データの「元データ表示」(qa-view-raw)は#grid等を強制的に再表示する
    詳細度3のルール(body.qa-mode.qa-view-raw #grid)を持つため、上のrp-mode/
    db-mode/rec-mode/cal-mode/sc-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
@@ -282,6 +286,7 @@ body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none}
    左端に残る(実際にそう見えていた)。畳む側にもbody側の条件を付けて上回る。 */
 body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #genericFilterBar,
 body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #listToolbar,
+body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #listSlicer,
 body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #grid{display:none}
 /* バーの高さぶん本文を押し下げ、ヘッダーが隠れないようにする。 */
 body.connection-lost .layout{padding-top:52px}
@@ -570,7 +575,6 @@ body.sc-mode #headerContextSource{display:none}
   /* 濃い面（字は各自）（5族） */
   .bs-tg.is-on::before,
   .oc-group.is-on,
-  .ssb-cat-row.is-on,
   .ssb-stop.is-on,
   .op-span-pick button.is-on,
   .rly-paper.is-on,
@@ -606,6 +610,8 @@ body.sc-mode #headerContextSource{display:none}
   .bs-sc.is-on,
   .lg-problem.is-on,
   .lg-pick-row.is-on,
+  .lt-tool-btn.is-active,
+  .lt-tool-btn[aria-expanded="true"],
   .sc-frame-shift.is-on,
   .sp-pat.is-on,
   .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}

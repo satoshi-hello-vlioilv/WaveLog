@@ -8,13 +8,14 @@ SQLiteには無いため、sqlite_io.connect()がユーザー定義関数とし�
 と同じ読み方）で読み、パラメータ側もPythonで数値化してから渡す（SQLiteは値の
 ストレージクラス優先で比較するので、文字列パラメータだと常に不成立になる）。
 """
-import json, time
-from flask import Blueprint, request, jsonify
+import io, json, time
+from flask import Blueprint, request, jsonify, send_file
 from .body import body, flag, any_
 
 from .. import query_join
 from .. import sort_order
 from .. import db_mirror
+from .. import xlsx_io
 from ..db_access import (DBS, qi, connect, cols, tables, cfg,
                          WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY)
 from ..logging_setup import app_logger
@@ -391,16 +392,25 @@ def api_query_join_resolve():
   app_logger().warning('/api/query-join/resolve db=%s で失敗しました: %s',k,e)
   return jsonify(error=str(e)),500
 
+IN_MAX=300          # 「どれかと同じ」の値の数の上限（スライサーの1列ぶん）
+SLICER_MAX=200       # スライサーが返す値の数の上限（越えたら`truncated`）
+MARK_RULES_MAX=8     # 色付けの決まりの数の上限（§9.591）
+MARK_CONDS_MAX=6     # 1つの決まりの条件の数の上限
+
+
 def _safe_filters(text,columns):
  if not text:return []
  try:items=json.loads(text)
  except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);return []
  if not isinstance(items,list):return []
- allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty'}
+ allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty','in'}
  out=[]
  for item in items[:20]:
   if not isinstance(item,dict):continue
-  col=str(item.get('column') or '').strip();op=str(item.get('op') or 'contains').strip();value=str(item.get('value') or '').strip()
+  col=str(item.get('column') or '').strip();op=str(item.get('op') or 'contains').strip()
+  raw=item.get('value')
+  # 「どれかと同じ」（`in`・§9.591 スライサー）は値の並び。字で来ても並びで来ても受け、JSONの字にそろえる。
+  value=json.dumps([str(x) for x in raw][:IN_MAX],ensure_ascii=False) if op=='in' and isinstance(raw,list) else str(raw if raw is not None else '').strip()
   if col in columns and op in allowed_ops:out.append({'column':col,'op':op,'value':value})
  return out
 
@@ -424,6 +434,15 @@ def _build_filter_where(filters):
     parts.append('('+' OR '.join(f'CStr({col}) LIKE ?' for _ in vals)+')')
     params += [f'{v}%' for v in vals]
   elif op=='ends':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}')
+  elif op=='in':
+   # 「どれかと同じ」（§9.591 スライサー）。空の字は「空欄」（NULL も''も）。並びが読めなければ何にも当たらない。
+   try:vals=[str(x) for x in json.loads(value)][:IN_MAX] if value else []
+   except (TypeError,ValueError):vals=[]
+   words=[v for v in vals if v!='']
+   alts=[f'CStr({col}) IN ('+','.join('?'*len(words))+')'] if words else []
+   params += words
+   if '' in vals:alts.append(f'({col} IS NULL OR CStr({col})=\'\')')
+   parts.append('('+' OR '.join(alts)+')' if alts else '0=1')
   elif op=='empty':parts.append(f'({col} IS NULL OR CStr({col})=\'\')')
   elif op=='not_empty':parts.append(f'({col} IS NOT NULL AND CStr({col})<>\'\')')
   elif op in ('gt','gte','lt','lte'):
@@ -437,6 +456,61 @@ def _build_filter_where(filters):
     parts.append(f'NumOf({col}) {sign} ?')
     params.append(lim)
  return parts,params
+
+
+def _table_where(cs,q,filter_payload):
+ """一覧の絞り込み（検索の字・条件）→ `(' WHERE …', 値, 効いた条件)`。一覧・スライサー・色付けの数が同じ答えを読む（§9.591）。"""
+ where_parts=[];params=[]
+ if q:
+  where_parts.append('('+' OR '.join(f'CStr({qi(x)}) LIKE ?' for x in cs)+')');params += [f'%{q}%']*len(cs)
+ filters=_safe_filters(filter_payload,cs);fp,filter_params=_build_filter_where(filters);where_parts += fp;params += filter_params
+ return ((' WHERE '+' AND '.join(where_parts)) if where_parts else ''),params,filters
+
+
+def _mark_rules(text,cs):
+ """色付けの決まり（§9.591）→ `[(条件の WHERE の字, 値) | None]`。列が表に無い決まりは None（当てない・数えない）。"""
+ try:items=json.loads(text) if text else []
+ except (TypeError,ValueError):return []
+ out=[]
+ for conds in (items if isinstance(items,list) else [])[:MARK_RULES_MAX]:
+  conds=conds if isinstance(conds,list) else []
+  ok=_safe_filters(json.dumps(conds[:MARK_CONDS_MAX]),cs)
+  if not ok or len(ok)!=len(conds[:MARK_CONDS_MAX]):out.append(None);continue
+  parts,params=_build_filter_where(ok)
+  out.append(('('+' AND '.join(parts)+')',params))
+ return out
+
+
+def _mark_hits(c,cs,rows,rules):
+ """そのページの行のうち、決まりごとに当たる行の番号（§9.591）。**判定はSQLの1本**（一覧の絞り込みと同じ`_build_filter_where`）
+ ——ページの行を`VALUES`の表にして、同じ字の条件で引く。"""
+ out=[[] for _ in rules]
+ live=[(i,r) for i,r in enumerate(rules) if r]
+ if not live or not rows:return out
+ cur=c.cursor()
+ names=','.join(['__i']+[qi(x) for x in cs])
+ step=max(1,min(400,30000//(len(cs)+1)))
+ for at in range(0,len(rows),step):
+  part=rows[at:at+step]
+  vals=','.join('('+','.join('?'*(len(cs)+1))+')' for _ in part)
+  base=[v for k,row in enumerate(part) for v in [at+k]+list(row)]
+  for i,(w,p) in live:
+   cur.execute(f'WITH v({names}) AS (VALUES {vals}) SELECT __i FROM v WHERE {w}',base+p)
+   out[i] += [int(x[0]) for x in cur.fetchall()]
+ return out
+
+
+def _mark_counts(c,t,where,params,rules):
+ """絞り込んだ全件のうち、決まりごとに当たる件数（凡例の数）。"""
+ live=[(i,r) for i,r in enumerate(rules) if r]
+ out=[None]*len(rules)
+ if not live:return out
+ cur=c.cursor()
+ sel=','.join(f'SUM(CASE WHEN {w} THEN 1 ELSE 0 END)' for _i,(w,_p) in live)
+ cur.execute(f'SELECT {sel} FROM {qi(t)}'+where,[v for _i,(_w,p) in live for v in p]+params)
+ got=cur.fetchone() or []
+ for (i,_r),n in zip(live,got):out[i]=int(n or 0)
+ return out
 
 
 def _table_order(cs):
@@ -537,11 +611,7 @@ def api_table():
    lap('open',t_open)
    t_cols=time.perf_counter()
    cs=cols(c,t,source=cf['path']);lap('cols',t_cols)
-   where_parts=[];params=[]
-   if q:
-    where_parts.append('('+' OR '.join(f'CStr({qi(x)}) LIKE ?' for x in cs)+')');params += [f'%{q}%']*len(cs)
-   filters=_safe_filters(filter_payload,cs);fp,filter_params=_build_filter_where(filters);where_parts += fp;params += filter_params
-   where=(' WHERE '+' AND '.join(where_parts)) if where_parts else ''
+   where,params,filters=_table_where(cs,q,filter_payload)
    order,order_keys=_table_order(cs)
    t_count=time.perf_counter()
    cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
@@ -554,6 +624,10 @@ def api_table():
    start=(page-1)*size
    rows,sort_note=_table_fetch_page(c,cur,t,cs,where,params,order,order_keys,size,start)
    lap('fetch',t_fetch)
+   # 色付け（§9.591）。行は落とさない——ページの行の番号と、絞り込んだ全件の当たる数だけ返す。
+   rules=_mark_rules(request.args.get('marks','').strip(),cs)
+   marks=_mark_hits(c,cs,rows,rules) if rules else []
+   mark_counts=_mark_counts(c,t,where,params,rules) if rules else []
   # **どの列を出すかはサーバーが決めない**(§9.165)。以前はここで「表示マスタ」
   # (DB単位・行の存在=非表示)を引いて列を落としていたが、同じことを列レイアウト
   # マスタが対象(`list:<DB>:<表>`)ごとに、並び・幅・表示名・書式・読み替えまで
@@ -591,7 +665,7 @@ def api_table():
   except Exception as _e:quiet('元データの時刻を引けない（鮮度を出さない）',_e);src_info=None
   resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
                filters_applied=len(filters),joinQuality=join_info,joins=join_list,
-               timing=timing,sortNote=sort_note,source=src_info)
+               timing=timing,sortNote=sort_note,source=src_info,marks=marks,markCounts=mark_counts)
   # 開発者ツールのネットワーク欄でも同じ内訳が読めるようにする。
   resp.headers['Server-Timing']=','.join(
    f'{n};dur={v}' for n,v in timing.items() if isinstance(v,int))
@@ -600,3 +674,51 @@ def api_table():
   # まだ写せていない（共有は直接読まない・§9.582）なら 503 と`kind`。画面は写し終えたら読み直す。
   extra,status=db_mirror.error_status(e)
   return jsonify(error=str(e),**extra),status
+
+
+@bp.get('/api/table/slicer')
+def api_table_slicer():
+ """スライサーの1列ぶん（§9.591・LotScope と同じ作り）: その列の値ごとの件数。
+ `count`＝**ほかの絞り込み**（検索・条件・ほかのスライサー）に当たる件数、`all`＝絞り込む前の件数。
+ 自分の列の選択は呼ぶ側が`filters`から外して渡す（選んでいない値も数が見えるように）。空欄は''。"""
+ try:
+  k=request.args['db'];t=request.args['table'];col=str(request.args.get('column') or '').strip()
+  q=request.args.get('search','').strip();cf=cfg(k)
+  with connect(cf['path'],cf['role']=='readonly') as c:
+   cs=cols(c,t,source=cf['path'])
+   if col not in cs:return jsonify(error=f'この表に「{col}」という列はありません。',values=[]),400
+   where,params,_f=_table_where(cs,q,request.args.get('filters','').strip())
+   cond=where[len(' WHERE '):] if where else '1=1'
+   x=qi(col)
+   cur=c.cursor()
+   cur.execute(f'SELECT CStr({x}) v,SUM(CASE WHEN {cond} THEN 1 ELSE 0 END) n,COUNT(*) a FROM {qi(t)} '
+               f'GROUP BY 1 ORDER BY v IS NULL, NumOf(v) IS NULL, NumOf(v), v LIMIT {SLICER_MAX*2+2}',params)
+   got={}
+   order=[]
+   for v,n,a in cur.fetchall():
+    key='' if v is None or str(v).strip()=='' else str(v)
+    if key not in got:got[key]=[0,0];order.append(key)
+    got[key][0]+=int(n or 0);got[key][1]+=int(a or 0)
+   # 空欄は最後（数として読めない値の後ろ）。
+   order=[x for x in order if x!='']+([''] if '' in got else [])
+   values=[{'value':v,'count':got[v][0],'all':got[v][1]} for v in order[:SLICER_MAX]]
+  return jsonify(column=col,values=values,truncated=len(order)>SLICER_MAX)
+ except Exception as e:
+  extra,status=db_mirror.error_status(e)
+  return jsonify(error=str(e),**extra),status
+
+
+@bp.post('/api/table/export-xlsx')
+def api_table_export_xlsx():
+ """一覧を Excel に書き出す（§9.591）。**値は画面が見えている形で渡す**（書式・読み替え・式の列は画面の答え）。
+ 書くのは`xlsx_io.write_sheet()`の1箇所。数で来た値は数のセル、字は字のセル（数にしてよいかは画面の`exportCell()`が決める）。"""
+ x=body({'name':str,'sheet':str,'header':any_,'rows':any_,'widths':any_})
+ header=[str(h) for h in (x.get('header') or [])]
+ rows=[list(r) for r in (x.get('rows') or []) if isinstance(r,list)]
+ widths=[w if isinstance(w,(int,float)) else None for w in (x.get('widths') or [])] or None
+ try:data=xlsx_io.write_sheet(header,rows,widths=widths,sheet_name=x.get('sheet') or '一覧')
+ except xlsx_io.XlsxError as e:return jsonify(error=str(e)),400
+ stamp=time.strftime('%Y%m%d-%H%M')
+ stem=''.join('_' if ch in '\\/:*?"<>|' else ch for ch in (x.get('name') or '一覧')).strip() or '一覧'
+ return send_file(io.BytesIO(data),as_attachment=True,download_name=f'{stem}_{stamp}.xlsx',
+                  mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

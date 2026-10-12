@@ -305,6 +305,8 @@
   function opLabel(op){return OPS.find(x=>x[0]===op)?.[1]||op}
   function opShort(op){return (OPS.find(x=>x[0]===op)?.[1]||op).split(' ')[0]}
   function noValueOp(op){return ['empty','not_empty'].includes(op)}
+  /* 比べ方の語彙を外へも出す（§9.591）。色付けの条件は絞り込みと**同じ比べ方**（サーバーの`_build_filter_where`の1本）。 */
+  WL.filterOps={OPS,opLabel,noValueOp};
   function filterKey(f){return [f.column,f.op,f.value].join('\u001f')}
   function formatTol(kind,v){return typeof fixedToleranceValue==='function'?fixedToleranceValue(kind,v):(Number.isFinite(Number(v))?String(v):'-')}
   /* db/tableが完全一致するプリセットのみを対象とする(厳密一致)。以前は
@@ -1541,7 +1543,8 @@
     if(toggle){
       /* **畳んでいても効いていることを名乗る**(§9.175)。見えない場所で
          絞り込みが効いているのは「勝手に絞られている」としか読めない。 */
-      toggle.textContent=on?`列で絞り込み中: ${adhocLabel()}`:'列で絞り込む';
+      /* 字は印の隣の`.lt-tool-t`だけ書き換える（狭い器は効いていないとき印だけにする・§9.591）。 */
+      const t=toggle.querySelector('.lt-tool-t');if(t)t.textContent=on?`列で絞り込み中: ${adhocLabel()}`:'列で絞り込む';
       toggle.classList.toggle('active',adhocOpen||on);
       toggle.classList.toggle('is-on',on);
       toggle.setAttribute('aria-expanded',adhocOpen?'true':'false');

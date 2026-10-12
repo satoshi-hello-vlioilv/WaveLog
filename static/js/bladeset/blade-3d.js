@@ -1905,6 +1905,8 @@
  /* **現物に貼れるものはできるだけ貼る**（§9.418 追補、利用者の指示「引き出し線
     だらけにならないためにも」）。中へ書くのに要る余白は左右1pxまで詰める。 */
  const DIM_PAD = 1, DIM_SLOT = 4;
+/* 有効長の寸法線の端の立て線の半分の長さ（描く`dimSpan()`と席を取る`dimRoom()`が同じ値を見る）。 */
+const SPAN_TICK = 7;
  /* 寸法の字の大きさ（§9.482、利用者の指示「寸法のラベルが小さいので1サイズ上げて」「今のサイズを小さいサイズの
     下限として、4段階くらい上げられるように…今あるトークンに合わせて」）。段は**文字サイズのトークン**の名前で
     持ち、px は描く器に当てて**計算された値を読む**（表示サイズ`--ui-scale`も効く・値を2箇所に書かない）。
@@ -1983,7 +1985,7 @@
   return list;
  }
  /* 置ける場所の答え（帯・記号の札・有効長の字の席）。以降の段はこの`R`だけを見る。 */
- function dimRoom(w, h, P) {
+ function dimRoom(w, h, P, list) {
   /* **引き出した字も、部材の中の字も帯を避ける**（§9.443、利用者の指示「図の
      縦方向の表示エリアが30%小さくなっても表示ラベルなどが重ならないように」）。
      §9.437 で帯よけ（`hudBox`）を入れたのは**HTMLの札（OS・DS）だけ**で、
@@ -2018,21 +2020,32 @@
   }
   const boxOf = (x, y, tw) => ({ x0: x - tw / 2 - 2, x1: x + tw / 2 + 2,
                                  y0: y - dimFs * 0.6 - 1, y1: y + dimFs * 0.6 + 1 });
-  const why = { hud: 0, chip: 0, text: 0, wide: 0 };
+  const why = { hud: 0, chip: 0, text: 0, wide: 0, span: 0 };
   const hitOf = b => taken.find(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
   const free = b => !hitOf(b);
   /* **有効長の寸法線の字も先に席を取る**（§9.443）。描くのは下の ③ だが、
      **後から描く物は席を取れない**——実際に 70% の高さで寸法の字が2件
      この上へ乗った。場所は`pack`だけで決まるので、ここで確保できる。 */
+  /* **線ぜんたいも席を取る**（利用者の指示「test_bladeui の落ちる原因を調べて直して」で見つけた）。
+     字の席だけを取っていたので、下の軸のゴムリングの外の段の字（実測 9.5px で9件）が**寸法線の線の上**に
+     置かれていた。高さも`h - 54`の決め打ちをやめ、**下の軸の字の段のすぐ下**（器に入る範囲）へ置く。 */
   const pk0 = D3.pack;
   let span0 = null;
   if (pk0 && pk0.arbor) {
    const ha = pk0.arbor / 2;
    const sa = P(-ha, 0), sb2 = P(ha, 0);
    const st0 = `有効長 ${dmm(pk0.arbor)}`;
-   span0 = { cx: (sa.x + sb2.x) / 2, y: h - 54, t: st0,
+   const low = (list || []).filter(q => !q.up)
+    .reduce((m, q) => Math.max(m, q.hit, ...(q.rows || [])), -Infinity);
+   const room = Math.max(SPAN_TICK, dimFs * 0.6);
+   const y = Math.round(Math.min(dimBot - room,
+    Number.isFinite(low) ? low + dimFs * 0.6 + room + 2 : h - 54));
+   span0 = { cx: (sa.x + sb2.x) / 2, y, t: st0,
              tw: dimTextW(st0, dimFs), a: sa, b: sb2 };
    taken.push(boxOf(span0.cx, span0.y, span0.tw + 10));
+   const x0 = Math.min(sa.x, sb2.x), x1 = Math.max(sa.x, sb2.x);
+   taken.push({ x0: x0 - 1, x1: x1 + 1, y0: y - 1.5, y1: y + 1.5, k: 'span' });
+   [x0, x1].forEach(x => taken.push({ x0: x - 1.5, x1: x + 1.5, y0: y - SPAN_TICK, y1: y + SPAN_TICK, k: 'span' }));
   }
   return { w, hudD, dimTop, dimBot, taken, boxOf, why, hitOf, free, span0 };
  }
@@ -2163,7 +2176,7 @@
       その上へ置く（§9.420）。重ねると線が札の裏へ隠れる。
       **席は上で確保済み**（§9.443）——ここは描くだけ。 */
    const y = span0.y;
-   const tick = 7;
+   const tick = SPAN_TICK;
    const t = span0.t;
    const tw = span0.tw / 2 + 5;
    const cx = span0.cx;
@@ -2212,7 +2225,7 @@
    return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
   };
   const list = dimList(P, w);
-  const R = dimRoom(w, h, P);
+  const R = dimRoom(w, h, P, list);
   const ins = dimInside(list, R);
   const ld = dimLeads(ins.outs, R);
   const o = dimCutLines(P) + ins.o + ld.ln + ld.tx + dimSpan(R.span0);

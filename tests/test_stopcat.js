@@ -206,6 +206,10 @@ run('test_stopcat: 設備停止分類マスタ(§5.3.1)と入力支援(§9.49)�
   nums:document.querySelectorAll('#masterMaintForm .mm-num-input').length,
   rne:!!document.querySelector('#rnePanel'),
   runBtn:!!document.querySelector('#rneRunBtn'),
+  /* 落ちたときに「何を見ていたか」を言う（開いていたタブ・器の印・中身の頭）。 */
+  at:((document.querySelector('#masterMaintNav .active')||{}).dataset||{}).master||'',
+  form:(document.getElementById('masterMaintForm')||{}).className||'',
+  head:((document.getElementById('masterMaintList')||{}).textContent||'').replace(/\s+/g,' ').slice(0,60),
  }));
  /* §9.202で「測定データバックアップの複製先」を共通設定から
     「測定データの保存」タブへ移したので、ここのパス欄は3つ

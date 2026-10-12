@@ -1,4 +1,4 @@
-# マスタ（サーバー側）（35件）
+# マスタ（サーバー側）（36件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -11,6 +11,7 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止の挿入条件は`設備停止挿入条件マスタ`（停止内容ごとの判定表）。列の群は`STOP_RULE_SETS`の1箇所、整えるのは`rule_cells.py` | `test_stoprule.py` | [§9.588](../../docs/decisions/9.588.md) |
+| 挿入条件の行は式（`[式]`・`[前.列]`／`[後.列]`）と組み立て（`[組立JSON]`）を持てる。式の行はセルの条件を持たない | `test_stoprule.py` | [§9.590](../../docs/decisions/9.590.md) |
 | 運用モードは設備ごと（`[運用モード]`・空欄＝通常）。読むのは`read_equipment_run_mode()`、語彙は`RUN_MODES`の1箇所 | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 換算係数の因子の呼び名と単位は`FACTOR_LABELS`の1箇所（画面へ英字のキーを出さない） | `test_lfpoints.py` | [§9.543](../../docs/decisions/9.543.md) |
 | 外したら何が起き何が残るかはサーバーの語彙（`EQUIPMENT_FEATURE_EFFECTS`・`MEASURE_ITEM_EFFECT`）。画面へ写さない | `test_equse.js` | [§9.542](../../docs/decisions/9.542.md) |

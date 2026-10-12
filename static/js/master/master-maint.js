@@ -2900,9 +2900,11 @@
        新しいマスタで、中身は前の盤（実際に「設備停止マスタ」の見出しの下に
        操業データ項目の盤が出て、「追加」が押せなくなった）。
        **負けたほうが今のタブを描き直す**（応答を捨てるだけでは、上書き済みの
-       画面が戻らない）。 */
+       画面が戻らない）。**描き直しは取り直さない**（§9.590 で測った）——今のタブは勝った側が
+       もう取ってあるので、控えから描けば足りる。取り直すと、描き終えた今のタブが
+       「読み込んでいます…」へ1度戻る（共通設定で、数えた網が6回中3回0件を見た）。 */
     return Promise.resolve(sp.load(force)).then(()=>{
-     if(gen!==maintState.loadGen)return loadMaintInner(force);
+     if(gen!==maintState.loadGen)return loadMaintInner(false);
     });}
    console.error('専用画面が登録されていません: '+def.special);
   }

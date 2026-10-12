@@ -407,7 +407,7 @@
   const o=opt||{};
   WL.popMenu.suggest(inp,el=>suggestItems(el,o));
  }
- window.WL.formula={compile,check,parse,sigs:SIGS,truthy,cmp,ordered,looseNum,MAX_LEN,suggest,
+ window.WL.formula={compile,check,parse,sigs:SIGS,truthy,cmp,ordered,looseNum,strictNum,MAX_LEN,suggest,
              /* 説明文をパネルとドキュメントで共用する(2箇所に書かない)。 */
              help:[
               ['[列名]','その行のその列の値'],

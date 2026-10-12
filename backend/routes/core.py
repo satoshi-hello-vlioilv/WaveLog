@@ -86,6 +86,8 @@ JS_FILES=[
  'core/rule-cells.js',
  'list/list-view.js',
  'list/list-formula.js',
+ # §9.590: 式を文のように選んで組み立てる部品（`WL.formulaBuilder`）。式の計算器（list-formula）の後。
+ 'core/formula-builder.js',
  'list/list-columns.js',
  'list/list-rules.js',
  'measure/measure-view.js',
@@ -98,6 +100,10 @@ JS_FILES=[
  'measure/measure-steps.js',
  'measure/defect-locator.js',
  'list/filters.js',
+ # §9.591: 一覧の道具（LotScope と同じ作り）。絞り込みのバー（filters.js）の後——問い合わせの`filters`へ後から足す。
+ 'list/list-slicer.js',  # スライサー（値の一覧と件数・押した値で絞る）
+ 'list/list-marks.js',   # 色付け（条件に当たるセル・行に色・凡例）
+ 'list/list-tools.js',   # ファイル（Excel に出力・表示の設定）と一覧の拡大
  'measure/measure-worklog.js',
  'master/master-defs.js',      # マスタ管理: 定義（MASTER_DEFS / MASTER_GROUPS）
  'master/master-maint.js',     # マスタ管理: 盤（WL.mm を作る）

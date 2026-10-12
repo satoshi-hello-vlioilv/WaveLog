@@ -357,6 +357,12 @@
   --ctl-h-sm:calc(var(--fs-sm) * var(--lh) + var(--ctl-pad-y-sm) * 2);  /* ≒30px */
   --ctl-h:calc(var(--fs) * var(--lh) + var(--ctl-pad-y) * 2);           /* ≒36px */
   --ctl-h-lg:calc(var(--fs) * var(--lh) + var(--ctl-pad-y-lg) * 2);     /* ≒40px */
+  /* 帯（ヘッダー・一覧の帯・画面の操作列）の寸法の置き場（§9.591）。押す物の高さ1つ・字1つ・横の余白1つ。
+     前はヘッダーが36px・14px、一覧の帯と操作列が30px・12px、表の札が26px・12pxで、同じ高さの帯に
+     3つの大きさが並んでいた。狭い器（作業スケジュールの分割）は`--lt-*`だけ宣言し直す。 */
+  --bar-h:var(--ctl-h-sm);
+  --bar-fs:var(--fs-base-sm);
+  --bar-px:var(--ctl-pad-x-sm);
 
   /* 一覧(#grid)の行の高さ・余白も表示サイズへ連動させる。以前は作業スケジュール
      画面だけの「高密度」トグル(#grid.sc-dense)で切り替えていたが、

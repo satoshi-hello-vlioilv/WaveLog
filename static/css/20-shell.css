@@ -285,9 +285,9 @@ main>header{gap:var(--space-4)}
    積んでおり、白地とのコントラストが2.6〜2.9:1で読めなかった。押せるものだけ枠が反応する。 */
 .hd-chip{
  display:inline-flex;align-items:center;gap:var(--gap-inline);
- height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-sm);
+ height:var(--bar-h);padding:0 var(--bar-px);border:1px solid var(--line);border-radius:var(--radius-sm);
  background:#fff;color:var(--ink-2);white-space:nowrap;line-height:1.15;
- font-family:inherit;font-size:var(--fs);text-align:left;
+ font-family:inherit;font-size:var(--bar-fs);text-align:left;
 }
 .hd-chip[hidden]{display:none}
 .hd-chip-key{font-weight:var(--fw-body);color:var(--ink-2)}
@@ -305,20 +305,20 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    橙は`90-state.css`の`.is-warn`＝「設定要」だけが使う。 */
 /* 操作: 高さ・角丸・枠を揃えた四角い部品で統一する */
 .hd-actions .hd-btn{
- height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
+ height:var(--bar-h);padding:0 var(--bar-px);font-size:var(--bar-fs);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
 }
 .hd-actions .hd-btn{font-weight:var(--fw-strong);color:var(--ink-2);cursor:pointer;
  display:inline-flex;align-items:center;gap:var(--gap-inline);transition:border-color .12s,background .12s}
 .hd-actions .hd-btn:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
-.hd-btn-icon{padding:0 var(--ctl-pad-x)}
 /* 「表示」バッジの印（§9.341）。以前は`A`の字だったが、いまは文字の
    大きさと時間の書き方の2つが入るので、片方だけを指す字はやめた。 */
 .hd-size-a{font-size:var(--fs-sm);color:var(--ink-2);line-height:1}
 /* 「一覧を検索」は一覧の帯へ移した（§9.505・`.lt-search`）。ヘッダーの`.hd-field`・`#pageSize`・
    `#reload`は§9.286 で帯へ移したあとも器の規則だけ残っていたので、一緒に消した。 */
 /* quality-analysis.jsが後から差し込む「画面を印刷」も同じ見た目へ揃える */
-.hd-actions #printCurrentView{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
- border-radius:var(--radius-sm);background:#fff;font-size:var(--fs);font-weight:var(--fw-strong);color:var(--ink-2);cursor:pointer}
+.hd-actions #printCurrentView{height:var(--bar-h);padding:0 var(--bar-px);border:1px solid var(--line);
+ border-radius:var(--radius-sm);background:#fff;font-size:var(--bar-fs);font-weight:var(--fw-strong);color:var(--ink-2);cursor:pointer}
 .hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
 @media screen and (max-width:1180px){   /* 画面だけ（刷るときの紙の幅で畳まない・§9.525） */
  .hd-context #fileName{max-width:22vw}
