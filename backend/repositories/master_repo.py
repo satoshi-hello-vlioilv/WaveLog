@@ -33,6 +33,51 @@ def normalize_equipment_kind(value):
  """入力を保存値へ。選択肢に無いものは未設定('')として扱う。"""
  s=str(value or '').strip()
  return s if s in EQUIPMENT_KINDS else ''
+
+# ---------------------------------------------------------------------------
+# 作業スケジュールの運用モード（§9.588、利用者の指示「運用のモードを現状が『通常モード』だとすると
+# 『厳密モード』というものを作り、ロットの開始を作業スケジュール一覧の一番上のロットからしか
+# できないようにする」）。**設備ごと**——ラインごとに運用の仕方が違ってよい（全部を厳密にしたければ
+# 全部の設備で選ぶ）。保存値は鍵（'strict'）で、**空欄＝通常**（既存の設備は今までどおり動く）。
+# 語彙と説明はサーバーが答える（§9.163・画面へ書き写さない）。
+# ---------------------------------------------------------------------------
+RUN_MODE_COLUMN='運用モード'
+RUN_MODE_NORMAL='normal'
+RUN_MODE_STRICT='strict'
+RUN_MODES=(
+ (RUN_MODE_NORMAL,'通常','作業スケジュールのどのロットからでも開始できます。仕掛の一覧から直接ロットを開始することもできます。'),
+ (RUN_MODE_STRICT,'厳密','開始できるのは作業スケジュールの**一番上のロットだけ**です。段取りを変えるときは、並べ替えて一番上へ持ってきてから開始します。'
+                        '開始すると、その上の設備停止に実際の時刻（前のロットの終わり〜開始）が自動で入ります。仕掛の一覧から予定に無いロットを開始することはできません。'),
+)
+RUN_MODE_KEYS=tuple(k for k,_l,_n in RUN_MODES)
+
+def normalize_run_mode(value):
+ """入力を保存値へ。鍵・呼び名のどちらでも受け、知らないもの・空は通常（保存は空）。"""
+ s=str(value or '').strip()
+ for k,l,_n in RUN_MODES:
+  if s in (k,l):return '' if k==RUN_MODE_NORMAL else k
+ return ''
+
+def _read_equipment_value(c,equipment,column,normalize,default,what):
+ """設備名から1列の値を引く（**読み方はここ1箇所**・§9.588で4本の写しを畳んだ）。
+ 有効な行の正規化した設備名で突き合わせ、`normalize`を通す。表・列が無い・読めなければ`default`。
+ 読み取り専用接続でも使う。"""
+ name=normalize_equipment_name(equipment)
+ if not name or EQUIPMENT_MASTER_TABLE not in tables(c):return default
+ try:
+  if column not in set(cols(c,EQUIPMENT_MASTER_TABLE)):return default
+  cur=c.cursor()
+  cur.execute(f'SELECT {qi("設備名")},{qi(column)},{qi("有効")} FROM {qi(EQUIPMENT_MASTER_TABLE)}')
+  for r in cur.fetchall():
+   active=True if r[2] is None else bool(r[2])
+   if active and normalize_equipment_name(r[0])==name:return normalize(r[1])
+ except Exception as _e:quiet(f'列を読めない（{what}）',_e)
+ return default
+
+def read_equipment_run_mode(c,equipment):
+ """この設備の運用モード（'normal'／'strict'）。**答えはここ1箇所**——予定の応答・開始の口が同じ答えを見る。"""
+ return _read_equipment_value(c,equipment,RUN_MODE_COLUMN,lambda v:normalize_run_mode(v) or RUN_MODE_NORMAL,
+                              RUN_MODE_NORMAL,'運用モードは通常として扱う')
 # 測定データの構造上の上限。測定値の配列も画面の条ストリップ(20行×2列)も40条で
 # 組んであるため、設備ごとの設定はこれを超えられない。
 STRIP_LIMIT=40
@@ -242,19 +287,7 @@ def normalize_max_line_speed(value):
 def read_equipment_max_line_speed(c,equipment):
  """設備名から最大ライン速度(m/min)を引く。未設定・不正ならNone。
  読み取り専用接続でも使う(テーブル・列が無ければNone)。"""
- name=normalize_equipment_name(equipment)
- if not name or EQUIPMENT_MASTER_TABLE not in tables(c):return None
- try:
-  if MAX_LINE_SPEED_COLUMN not in set(cols(c,EQUIPMENT_MASTER_TABLE)):return None
-  cur=c.cursor()
-  cur.execute(f'SELECT {qi("設備名")},{qi(MAX_LINE_SPEED_COLUMN)},{qi("有効")} '
-              f'FROM {qi(EQUIPMENT_MASTER_TABLE)}')
-  for r in cur.fetchall():
-   active=True if r[2] is None else bool(r[2])
-   if active and normalize_equipment_name(r[0])==name:
-    return normalize_max_line_speed(r[1])
- except Exception as _e:quiet('列を読めない（最大ライン速度は無いものとして扱う）',_e)
- return None
+ return _read_equipment_value(c,equipment,MAX_LINE_SPEED_COLUMN,normalize_max_line_speed,None,'最大ライン速度は無いものとして扱う')
 
 def normalize_standard_minutes(value):
  """入力を保存値へ。空欄・数にならないもの・0以下はNone(=未設定)。
@@ -270,18 +303,7 @@ def normalize_standard_minutes(value):
 def read_equipment_standard_minutes(c,equipment):
  """設備名から1ロットあたりの標準時間(分)を引く。未設定・不正ならNone。
  読み取り専用接続でも使う(テーブル・列が無ければNone)。"""
- name=normalize_equipment_name(equipment)
- if not name or EQUIPMENT_MASTER_TABLE not in tables(c):return None
- try:
-  if STANDARD_MINUTES_COLUMN not in set(cols(c,EQUIPMENT_MASTER_TABLE)):return None
-  cur=c.cursor()
-  cur.execute(f'SELECT {qi("設備名")},{qi(STANDARD_MINUTES_COLUMN)},{qi("有効")} '
-              f'FROM {qi(EQUIPMENT_MASTER_TABLE)}')
-  for r in cur.fetchall():
-   active=True if r[2] is None else bool(r[2])
-   if active and normalize_equipment_name(r[0])==name:return normalize_standard_minutes(r[1])
- except Exception as _e:quiet('列を読めない（標準時間は無いものとして扱う）',_e)
- return None
+ return _read_equipment_value(c,equipment,STANDARD_MINUTES_COLUMN,normalize_standard_minutes,None,'標準時間は無いものとして扱う')
 
 def ensure_equipment_master_table(c):
  names=tables(c);created=False
@@ -298,23 +320,15 @@ def ensure_equipment_master_table(c):
                       ((MAX_STRIPS_COLUMN,'INTEGER'),(EQUIPMENT_KIND_COLUMN,'TEXT'),
                        (STANDARD_MINUTES_COLUMN,'REAL'),(MAX_LINE_SPEED_COLUMN,'REAL'),
                        (EQUIPMENT_DISABLED_COLUMN,'TEXT'),
-                       (MEASURE_ITEM_DISABLED_COLUMN,'TEXT')))
+                       (MEASURE_ITEM_DISABLED_COLUMN,'TEXT'),
+                       (RUN_MODE_COLUMN,'TEXT')))
  except Exception as _e:quiet('後から足した列を用意できない（在る列だけで読む）',_e)
  ensure_audit_columns(c,EQUIPMENT_MASTER_TABLE)
  return created
 
 def read_equipment_max_strips(c,equipment):
  """設備名から最大条数を引く。読み取り専用接続でも使う(テーブルが無ければ既定)。"""
- name=normalize_equipment_name(equipment)
- if not name or EQUIPMENT_MASTER_TABLE not in tables(c):return DEFAULT_MAX_STRIPS
- try:
-  if MAX_STRIPS_COLUMN not in set(cols(c,EQUIPMENT_MASTER_TABLE)):return DEFAULT_MAX_STRIPS
-  cur=c.cursor();cur.execute(f'SELECT {qi("設備名")},{qi(MAX_STRIPS_COLUMN)},{qi("有効")} FROM {qi(EQUIPMENT_MASTER_TABLE)}')
-  for r in cur.fetchall():
-   active=True if r[2] is None else bool(r[2])
-   if active and normalize_equipment_name(r[0])==name:return clamp_max_strips(r[1])
- except Exception as _e:quiet('列を読めない（最大条数は既定で扱う）',_e)
- return DEFAULT_MAX_STRIPS
+ return _read_equipment_value(c,equipment,MAX_STRIPS_COLUMN,clamp_max_strips,DEFAULT_MAX_STRIPS,'最大条数は既定で扱う')
 
 def read_equipment_kind(c,equipment):
  """設備名から区分(コイル／板)を引く。読み取り専用接続でも使う。
@@ -324,32 +338,20 @@ def read_equipment_kind(c,equipment):
     **画面側は未設定を「板」と決め付けない**——出どころの分からない公差を
     出すより、出さないほうがよい。
  """
- name=normalize_equipment_name(equipment)
- if not name or EQUIPMENT_MASTER_TABLE not in tables(c):return ''
- try:
-  if EQUIPMENT_KIND_COLUMN not in set(cols(c,EQUIPMENT_MASTER_TABLE)):return ''
-  cur=c.cursor()
-  cur.execute(f'SELECT {qi("設備名")},{qi(EQUIPMENT_KIND_COLUMN)},{qi("有効")} '
-              f'FROM {qi(EQUIPMENT_MASTER_TABLE)}')
-  for r in cur.fetchall():
-   active=True if r[2] is None else bool(r[2])
-   if active and normalize_equipment_name(r[0])==name:return normalize_equipment_kind(r[1])
- except Exception as _e:quiet('列を読めない（設備区分は空として扱う）',_e)
- return ''
-
+ return _read_equipment_value(c,equipment,EQUIPMENT_KIND_COLUMN,normalize_equipment_kind,'','設備区分は空として扱う')
 
 def equipment_master_rows(c,feature=None):
  """有効な設備の行。**`feature`を渡すのは「人に選ばせる候補」を作るときだけ**
  （§9.302）——名前の綴り寄せ・改名の追跡・存在確認では渡さないこと。
  絞ると、その機能を切った設備のロールや過去の設定が引けなくなる。
 
- 戻り値の末尾に`[無効機能]`・`[無効入力内容]`が付く（既存の添字は1つも
- 動かさない。§9.392で1つ足した）。"""
+ 戻り値の末尾に`[無効機能]`・`[無効入力内容]`・`[運用モード]`が付く（既存の添字は1つも
+ 動かさない。§9.392・§9.588で1つずつ足した）。"""
  ensure_equipment_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
  cur.execute('SELECT [設備ID],[設備名],[表示順],[有効],[更新日時],[更新者ID],[最大条数],[区分],[標準時間分],'
-             '[最大ライン速度],[無効機能],[無効入力内容] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
+             '[最大ライン速度],[無効機能],[無効入力内容],[運用モード] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[3] is None else bool(r[3])

@@ -67,6 +67,8 @@ MARKER_FILENAME='schedule.owner.json'
 RELAY_PATHS=(
  '/api/schedule/plan/add','/api/schedule/plan/update','/api/schedule/plan/delete',
  '/api/schedule/plan/reorder','/api/schedule/plan/batch',
+ # 厳密モードの開始(§9.588)。書くのは開始判定と設備停止の時刻——共有へ書くので**書込役へ頼む**。
+ '/api/schedule/plan/start',
 )
 # 中継されてきたことを示すヘッダ。**誰が・どの端末で・どのモードで**操作
 # したかを運ぶ。

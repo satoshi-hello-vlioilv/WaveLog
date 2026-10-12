@@ -23,7 +23,7 @@ from . import actual_match
 from . import load_factor
 from . import schedule_sync
 from .repositories import schedule_repo as sr
-from .repositories.master_repo import normalize_equipment_name
+from .repositories.master_repo import normalize_equipment_name, read_equipment_run_mode, RUN_MODE_STRICT
 from .db_access import merged_backup_rows, connect as _sqlite_connect
 from .quiet import quiet
 
@@ -565,6 +565,9 @@ def derive_state(stored_state,actual):
 # ========================================================================
 MANUAL_END_FROM_INPUT='手入力'
 MANUAL_END_FROM_ESTIMATE='見積'
+# 厳密モードの開始で入れた時刻（§9.588）。`[手入力実績JSON]`の`source`——人が入れた時刻と見分ける。
+MANUAL_SOURCE_START='開始で自動'
+MANUAL_FROM_PREV_END='前のロットの終わり〜開始'
 
 def manual_times(raw):
  """`[手入力実績JSON]`を読む。無い・読めない・開始が無いならNone。"""
@@ -653,10 +656,19 @@ def _times_prompts(entries,minutes_of):
     fx=_parse_dt(e['fixedStart'])
     if fx is not None:hint['start']=fx.isoformat(timespec='minutes');hint['startFrom']='固定した開始'
    e['timesHint']=hint
-  end=a.get('endAt') or man.get('endAt') or e.get('finishedAt')
-  if end:
-   dt=_parse_dt(end)
-   if dt is not None:prev_end=dt
+  dt=entry_end_at(e)
+  if dt is not None:prev_end=dt
+
+def entry_end_at(e):
+ """終わった行の終わりの時刻（測定の実績 → 手で入れた時刻 → 完了突合の完了日時）。無ければNone。
+ **答えはここ1箇所**——時刻の登録の手がかり（`_times_prompts`）と厳密モードの開始（`strict_start_plan`）が読む。"""
+ a=e.get('actual') or {}
+ m=e.get('manual') or {}
+ end=a.get('endAt') or m.get('endAt') or e.get('finishedAt')
+ if not end:return None
+ try:return _parse_dt(end)
+ except Exception as _e:
+  quiet('終わりの時刻を読めない（分からないとして扱う）',_e);return None
 
 # ========================================================================
 # 見積分の解決(§6.1、一律見積(係数1.0)段階)
@@ -915,6 +927,9 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
  if include_unplanned:
   unplanned_running,unplanned_done=unplanned_entries(actual_index,equipment,matched_keys,now,history_hours)
   entries=unplanned_running+entries+unplanned_done
+ # 運用モード（§9.588）。「一番上のロット」は**時刻を置く前の並び**で決める（計画外の作業中も数える）。
+ run_mode=read_equipment_run_mode(mc,equipment)
+ top=strict_top(entries) if run_mode==RUN_MODE_STRICT else None
 
  # アンカー決定(§7.2): 展開対象(完了/取消を除く)の先頭を見る
  active=[e for e in entries if e['state'] not in PLAN_TERMINAL_STATES]
@@ -942,7 +957,8 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
          # さかのぼり(§9.366)。`historyFrom`が None なら「制限しない」。
          'historyKey':(history_mode(history)['key'] if history is not None else None),
          'historyFrom':history_from_at.isoformat() if history_from_at else None,
-         'historyHours':history_hours}
+         'historyHours':history_hours,
+         'runMode':run_mode,'strictTop':top}
 
 
 def _plan_entries(raw_rows,actual_index):
@@ -965,9 +981,179 @@ def _plan_entries(raw_rows,actual_index):
   # 手で入れた実際の時刻（§9.514）。**測定データの実績があればそちらが正**。
   entry['manual']=manual_times(r[23] if len(r)>23 else None) if actual is None else None
   if actual is not None:matched_keys.add(actual['key'])
+  _apply_start_flag(entry,actual,r[24] if len(r)>24 else None)
+  entry['stopSkips']=stop_skips(r[25] if len(r)>25 else None)
   entry['advanceNote']=advance_note(entry,detail,lots)
   entries.append(entry)
  return entries,matched_keys
+
+
+# ========================================================================
+# 厳密モード（§9.588、利用者の指示「ロットの開始を作業スケジュール一覧の一番上のロットからしか
+# できないようにするモード」「スタートしたロットより上の設備停止は前のロットの終了時間とスタートした
+# ロットの開始時刻の間の時間で実時間を登録を自動的にできるので、設備停止が残留してしまうということを
+# 避けられます」「作業スケジュールの中で開始判定フラグを設け、管理する」）
+#
+# ・開始判定（`[開始判定JSON]`）を持つ行は、測定の開始時刻がまだ無くても**着手**（押した時点で予定が動く）
+# ・「一番上のロット」は`strict_top()`の1箇所。開始で書く物は`strict_start_plan()`の1箇所（純粋な関数）
+# ========================================================================
+START_FLAG_FROM='開始判定'
+
+def start_flag(raw):
+ """`[開始判定JSON]`を読む。無い・読めない・時刻が無いならNone。"""
+ if not raw:return None
+ try:m=json.loads(raw)
+ except Exception as _e:
+  quiet('開始判定を読めない（開始していないとして扱う）',_e);return None
+ return m if isinstance(m,dict) and m.get('at') else None
+
+def stop_skips(raw):
+ """`[停止見送りJSON]`を読む → `[{'stopId':int,'prevId':int}]`。読めない・形の違う物は落とす。"""
+ if not raw:return []
+ try:items=json.loads(raw)
+ except Exception as _e:
+  quiet('見送りを読めない（見送りなしとして扱う）',_e);return []
+ out=[]
+ for x in items if isinstance(items,list) else []:
+  try:out.append({'stopId':int(x['stopId']),'prevId':int(x['prevId'])})
+  except Exception as _e:quiet('見送りの1件を読めない（その1件だけ落とす）',_e)
+ return out
+
+def stop_skips_merge(current,stop_id,prev_id,on=True):
+ """見送りの並びへ1件を足す（`on`）・外す。**同じ組は1つ**。読めない鍵は断る。"""
+ try:sid,pid=int(stop_id),int(prev_id)
+ except (TypeError,ValueError):raise ValueError('見送る設備停止（停止理由ID）と前のロット（予定ID）を指定してください。')
+ rest=[x for x in (current or []) if not (x['stopId']==sid and x['prevId']==pid)]
+ return rest+[{'stopId':sid,'prevId':pid}] if on else rest
+
+def _apply_start_flag(entry,actual,raw):
+ """開始判定を持つ予定の作業ロットを着手にする。**測定データの実績（完了・開始）が先**——
+ 実績で着手・完了になった行は触らない（同じ状態を2つの根拠で決めない）。"""
+ flag=start_flag(raw)
+ entry['startFlag']=({'at':flag['at'],'by':str(flag.get('by') or ''),'pc':str(flag.get('pc') or '')} if flag else None)
+ if not flag or entry['kind']!='作業' or entry.get('parentId') is not None:return
+ if entry['state']!=sr.PLAN_REORDERABLE_STATE:return
+ entry['state']='着手'
+ # 測定の記録（開始時刻の無い下書き）があれば、その身元は残す（帳票・再開の道）。**索引の値は書き換えない**——写しを作る。
+ base=dict(actual) if actual else {'id':'','endAt':None,'status':'','key':None}
+ entry['actual']=dict(base,startAt=flag['at'],startFrom=START_FLAG_FROM)
+
+def _strict_work(e):
+ return e['kind']=='作業' and e.get('parentId') is None
+
+def strict_top(entries):
+ """厳密モードの「一番上のロット」（§9.588）。**答えはここ1箇所**（予定の応答・開始の口が同じ答えを見る）。
+
+ 予定の並び（表示順）で最初の、完了・取消でない親の作業ロット（計画外を除く）。開始できるのは
+ それが「予定」で、**ほかに作業中のロットが無い**とき（1台の設備は1本ずつ流す——前のロットを終えてから）。
+ 戻り値: {'id','lotNo','state','startable','reason','busy'} か、作業ロットが無ければ None。"""
+ top=next((e for e in entries if _strict_work(e) and not e.get('unplanned') and e['state'] not in PLAN_TERMINAL_STATES),None)
+ if top is None:return None
+ busy=next((e for e in entries if _strict_work(e) and e['state']=='着手'),None)
+ out={'id':top['id'],'lotNo':str(top.get('lotNo') or ''),'state':top['state'],'startable':False,'reason':'','busy':None}
+ if busy is not None:
+  out['busy']={'id':busy['id'],'lotNo':str(busy.get('lotNo') or ''),'unplanned':bool(busy.get('unplanned'))}
+  out['reason']=(f'ロット {out["lotNo"]} は作業中です。' if busy is top else
+                 f'{"予定に無いロット" if busy.get("unplanned") else "ロット"} {out["busy"]["lotNo"]} が作業中です。'
+                 '測定画面で完了するか、実際の時刻を入れて終えてから開始してください。')
+  return out
+ if top['state']!=sr.PLAN_REORDERABLE_STATE:
+  out['reason']=f'ロット {out["lotNo"]} は{top["state"]}です。'
+  return out
+ out['startable']=True
+ return out
+
+def strict_start_plan(entries,target_id,now,minutes_of):
+ """厳密モードで`target_id`を開始するときに書く物（§9.588）。**純粋な関数**——書くのは呼ぶ側。
+
+ 断る: 予定に無い・一番上でない・ほかに作業中のロットがある。既に開始・完了した行は`already`（何も書かない）。
+ 書く物: その行の開始判定と、**前の完了ロットとのあいだの設備停止**の実際の時刻。設備停止は前のロットの
+ 終わり〜開始を**見積の比で**分ける（並びの順に・最後はちょうど開始で終わる）。前の終わりが分からない
+ （前のロットが無い・終わりの時刻が無い・開始より後）ときは、開始から見積ぶん遡る（出どころは「見積」）。
+ 戻り値: {'ok','code','error','already','top','start','stops':[{'id','title','startAt','endAt','minutes','endFrom'}],'prev'}"""
+ start=now.replace(second=0,microsecond=0)
+ target=next((e for e in entries if e['id']==target_id and not e.get('unplanned')),None)
+ top=strict_top(entries)
+ base={'ok':False,'code':'','error':'','already':False,'top':top,'start':start.isoformat(timespec='minutes'),'stops':[],'prev':None}
+ if target is None or not _strict_work(target):
+  return dict(base,code='notPlanned',error='このロットは作業スケジュールにありません。厳密モードでは、予定に入れて一番上へ並べてから開始します。')
+ if target['state'] in ('着手','完了'):return dict(base,ok=True,already=True)
+ if target['state']=='取消':return dict(base,code='cancelled',error='このロットの予定は取り消されています。')
+ if top is None or top['id']!=target_id:
+  name=top['lotNo'] if top else ''
+  return dict(base,code='notTop',error=(f'厳密モードでは、一番上のロット（{name}）から開始します。このロットを始めるときは、'
+                                       '作業スケジュールで一番上へ並べ替えてください。'))
+ if not top['startable']:return dict(base,code='busy',error=top['reason'])
+ planned=[e for e in entries if not e.get('unplanned') and e.get('parentId') is None]
+ i=planned.index(target)
+ prev=None;between=[]
+ for e in reversed(planned[:i]):
+  if e['kind']=='作業' and e['state']!='取消':prev=e;break
+  if e['kind']=='設備停止' and e['state']!='取消':between.append(e)
+ between.reverse()
+ timed=[e for e in between if e.get('manual') or (e.get('actual') or {}).get('startAt')]
+ stops=[e for e in between if e not in timed]
+ prev_end=entry_end_at(prev) if prev is not None else None
+ # 手で時刻を入れた設備停止が間にあれば、その終わりより後ろから分ける（重ねない）。
+ for e in timed:
+  t=entry_end_at(e)
+  if t is not None and (prev_end is None or t>prev_end):prev_end=t
+ mins=[max(0.0,float(minutes_of(e) or 0.0)) for e in stops]
+ total=sum(mins)
+ if prev_end is not None and prev_end<=start:
+  origin,end_from=prev_end,MANUAL_FROM_PREV_END
+ else:
+  origin,end_from=start-timedelta(minutes=total),MANUAL_END_FROM_ESTIMATE
+ gap=(start-origin).total_seconds()
+ weights=[m/total for m in mins] if total>0 else [1.0/len(stops)]*len(stops) if stops else []
+ out=[];acc=0.0;cur=origin
+ for e,w in zip(stops,weights):
+  acc+=w
+  en=(origin+timedelta(seconds=gap*acc)).replace(second=0,microsecond=0) if e is not stops[-1] else start
+  if en<cur:en=cur
+  out.append({'id':e['id'],'title':str(e.get('title') or ''),'startAt':cur.isoformat(timespec='minutes'),
+              'endAt':en.isoformat(timespec='minutes'),'minutes':round((en-cur).total_seconds()/60.0),'endFrom':end_from})
+  cur=en
+ prev_view=({'id':prev['id'],'lotNo':str(prev.get('lotNo') or ''),
+             'endAt':prev_end.isoformat(timespec='minutes') if prev_end is not None and end_from==MANUAL_FROM_PREV_END else None}
+            if prev is not None else None)
+ return dict(base,ok=True,stops=out,prev=prev_view)
+
+def plan_states(c,mc,equipment,now,actual_index=None):
+ """時刻を置く前の予定の状態（測定の実績・手で入れた時刻・開始判定・終わった設備停止・計画外の作業中）。
+ 開始の口が「一番上のロット」と書く物を決めるのに使う（展開の①〜③と同じ段を同じ順で通る）。
+ 戻り値: (予定の並び, 見積の分を引く関数, 実績の索引)。"""
+ idx=actual_index if actual_index is not None else build_actual_index()
+ entries,matched=_plan_entries(sr.plan_rows(c,equipment),idx)
+ memo={}
+ minutes_of=lambda e:resolve_estimate(mc,equipment,e,memo=memo)['minutes']
+ _settle_passed_stops(entries,now,minutes_of)
+ running,_done=unplanned_entries(idx,equipment,matched,now,None)
+ return running+entries,minutes_of,idx
+
+def find_plan_target(entries,plan_id=None,lot_no='',casting_no='',mfg_material=''):
+ """開始するロットの予定の行（計画外を除く親の作業）。IDがあればそれ、無ければ
+ ロット番号＋鋳造番号＋製造材質（実績の突き合わせと同じ正規化）、鍵が欠けていればロット番号が1本だけ合うとき。"""
+ work=[e for e in entries if _strict_work(e) and not e.get('unplanned')]
+ if plan_id not in (None,''):
+  return next((e for e in work if str(e['id'])==str(plan_id)),None)
+ lot=normalize_match_key(lot_no)
+ if not lot:return None
+ def keys(e):
+  d=e.get('detail') or {}
+  return (normalize_match_key(d.get('lotNo') or e.get('lotNo')),normalize_match_key(d.get('castingNo') or e.get('castingNo')),
+          normalize_match_key(d.get('mfgMaterial')))
+ cast,mat=normalize_match_key(casting_no),normalize_match_key(mfg_material)
+ if cast and mat:
+  hit=next((e for e in work if keys(e)==(lot,cast,mat)),None)
+  if hit is not None:return hit
+ same=[e for e in work if keys(e)[0]==lot]
+ return same[0] if len(same)==1 else None
+
+def strict_stop_payload(stop,uid='',pc=''):
+ """`strict_start_plan()`の設備停止1件 → `[手入力実績JSON]`の形（出どころは「開始で自動」）。"""
+ return {'startAt':stop['startAt'],'endAt':stop['endAt'],'endFrom':stop['endFrom'],'minutes':stop['minutes'],
+         'source':MANUAL_SOURCE_START,'by':str(uid or ''),'pc':str(pc or ''),'at':datetime.now().isoformat(timespec='seconds')}
 
 
 def _entry_of_row(r):
@@ -1288,7 +1474,8 @@ def _actual_view(e,actual,now):
  if e['state']=='着手' and actual and actual.get('startAt'):
   try:
    started=_parse_dt(actual['startAt'])
-   return {'startAt':actual['startAt'],'endAt':None,'elapsedMinutes':round(max(0.0,_minutes_between(started,now)),1)}
+   return {'startAt':actual['startAt'],'endAt':None,'elapsedMinutes':round(max(0.0,_minutes_between(started,now)),1),
+           'startFrom':actual.get('startFrom') or ''}
   except Exception:
    return {'startAt':actual.get('startAt'),'endAt':None,'elapsedMinutes':None}
  if e['state']=='完了' and actual and actual.get('startAt') and actual.get('endAt'):
@@ -1310,7 +1497,7 @@ def _actual_view(e,actual,now):
    est=(e.get('estimate') or {}).get('minutes')
    return {'startAt':m['startAt'],'endAt':m['endAt'],'minutes':mins,
            'varianceMinutes':(round(mins-est,1) if est is not None else None),
-           'source':MANUAL_END_FROM_INPUT,'endFrom':m.get('endFrom') or MANUAL_END_FROM_INPUT,
+           'source':m.get('source') or MANUAL_END_FROM_INPUT,'endFrom':m.get('endFrom') or MANUAL_END_FROM_INPUT,
            'by':m.get('by') or ''}
   except Exception as _e:
    quiet('手で入れた時刻を読めない（未登録として出す）',_e)

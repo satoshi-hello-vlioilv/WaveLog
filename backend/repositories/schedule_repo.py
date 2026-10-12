@@ -70,6 +70,15 @@ PLAN_OP_ID_COLUMN='操作ID'
 # JSON 1つ: {'startAt','endAt','endFrom':'手入力'|'見積','minutes','by','pc','at'}。
 # 読むのは`schedule_calc.manual_times()`の1箇所。
 PLAN_MANUAL_TIMES_COLUMN='手入力実績JSON'
+# 開始判定（§9.588、利用者の指示「作業スケジュールの中で開始判定フラグを設け、管理する」）。
+# 厳密モードの設備でロットを**開始した事実**。JSON 1つ: {'at','by','pc'}。測定の開始時刻が
+# まだ無くても、この行は着手として扱う（開始を押した時点で予定が動く）。書くのは開始の口だけ
+# （`plan_set_start_flag()`）、読むのは`schedule_calc.start_flag()`の1箇所。
+PLAN_START_FLAG_COLUMN='開始判定JSON'
+# 「今回は入れない」と決めた設備停止の提案（§9.588）。**後ろのロットの行**が持つ:
+# [{'stopId': 停止理由ID, 'prevId': 前のロットの予定ID}]。前のロットが変われば（並べ替えた）
+# 境目が別物になるので効かない。書くのは`plan_set_stop_skips()`の1箇所。
+PLAN_STOP_SKIP_COLUMN='停止見送りJSON'
 # 共有DBは既に現場で動いているため、作り直さず「無ければ足す」で移行する
 # (master_repo.ensure_audit_columns 等と同じ方式)。列が増えても
 # plan_rows/plan_row は列名を明示して読むので、古い版のアプリが書いた
@@ -78,7 +87,8 @@ _PLAN_COLUMNS=('予定ID','設備名','表示順','種別','ロット番号','�
                '予定名称','明細JSON','固定開始日時','見積分','状態','実績測定ID','備考',
                '有効','登録日時','更新日時','更新者ID',PLAN_PARENT_COLUMN,
                '登録者ID',PLAN_CREATED_PC_COLUMN,PLAN_UPDATED_PC_COLUMN,
-               PLAN_ACTUAL_JSON_COLUMN,PLAN_MANUAL_TIMES_COLUMN)
+               PLAN_ACTUAL_JSON_COLUMN,PLAN_MANUAL_TIMES_COLUMN,
+               PLAN_START_FLAG_COLUMN,PLAN_STOP_SKIP_COLUMN)
 
 def _plan_select(c_share):
  """読む側のSELECT。**読む側は書かない**（§9.325）。
@@ -113,7 +123,9 @@ def ensure_plan_table(c_share):
                       (PLAN_CREATED_PC_COLUMN,'TEXT'),(PLAN_UPDATED_PC_COLUMN,'TEXT'),
                       (PLAN_ACTUAL_JSON_COLUMN,'TEXT'),
                       (PLAN_OP_ID_COLUMN,'TEXT'),
-                      (PLAN_MANUAL_TIMES_COLUMN,'TEXT')))
+                      (PLAN_MANUAL_TIMES_COLUMN,'TEXT'),
+                      (PLAN_START_FLAG_COLUMN,'TEXT'),
+                      (PLAN_STOP_SKIP_COLUMN,'TEXT')))
  return created
 
 def plan_by_op_id(c_share,op_id):
@@ -549,6 +561,33 @@ def plan_set_manual_times(c_share,plan_id,uid,payload,pc=''):
   raise ValueError('実際の時刻を入れられるのは作業と設備停止だけです。')
  cur.execute(f'UPDATE [作業予定] SET [{PLAN_MANUAL_TIMES_COLUMN}]=?,[状態]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
              [_json.dumps(payload,ensure_ascii=False),"完了",uid,pc,plan_id])
+ return cur.rowcount
+
+def plan_set_start_flag(c_share,plan_id,uid,payload,pc=''):
+ """開始判定を書く（§9.588）。**作業の親の行だけ**・**既に開始した行は書き直さない**
+ （2台から同時に押しても、最初に開始した時刻が残る）。戻り値: 書いた行数。"""
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
+ cur.execute(f'SELECT [種別],[{PLAN_PARENT_COLUMN}],[{PLAN_START_FLAG_COLUMN}] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ row=cur.fetchone()
+ if not row:raise ValueError('指定の予定が見つかりません。')
+ if str(row[0] or '')!='作業' or row[1] is not None:raise ValueError('開始できるのは作業ロット（親の行）だけです。')
+ if str(row[2] or '').strip():return 0
+ cur.execute(f'UPDATE [作業予定] SET [{PLAN_START_FLAG_COLUMN}]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
+             [_json.dumps(payload,ensure_ascii=False),uid,pc,plan_id])
+ return cur.rowcount
+
+def plan_set_stop_skips(c_share,plan_id,uid,skips,pc=''):
+ """後ろのロットの「今回は入れない」を丸ごと書き替える（§9.588）。作業の親の行だけ。
+ `skips`は`[{'stopId','prevId'}]`——形を整えるのは呼ぶ側（`schedule_calc.stop_skips()`）。"""
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
+ cur.execute(f'SELECT [種別],[{PLAN_PARENT_COLUMN}] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ row=cur.fetchone()
+ if not row:raise ValueError('指定の予定が見つかりません。')
+ if str(row[0] or '')!='作業' or row[1] is not None:raise ValueError('見送りを持てるのは作業ロット（親の行）だけです。')
+ cur.execute(f'UPDATE [作業予定] SET [{PLAN_STOP_SKIP_COLUMN}]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
+             [_json.dumps(skips,ensure_ascii=False) if skips else None,uid,pc,plan_id])
  return cur.rowcount
 
 def plan_delete(c_share,plan_id,uid,pc=''):

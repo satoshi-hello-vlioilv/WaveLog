@@ -489,7 +489,7 @@ RULES = [
     # §9.333で段（`equipment.py`/`operation.py`…）へ分けた。**末尾の`/`で丸ごと**
     # 見る——段ごとに書き分けると、段を1つ足したときだけ当たらずに全件へ倒れる。
     ('backend/routes/masters/', g('マスタ', '列', 'test_modeguard', 'test_apiguard',
-                                  'test_mastershare', 'test_body')),
+                                  'test_mastershare', 'test_body', 'test_stoprule')),
     ('backend/routes/common.py', g('マスタ', 'test_modeguard', 'test_crudroutes', 'test_error')),
     # §9.324 R1: 表の列定義（CREATE・足す・読む・書く）の器。3つのRepoが乗る。
     ('backend/repositories/table_def.py', g('マスタ', '操業データ', '異常位置', 'test_rpmaster',
@@ -497,6 +497,11 @@ RULES = [
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes', 'test_lfui')),
     # §9.502: 作業スケジュールの過去履歴（読むだけの口・組み立て）
     ('backend/routes/schedule_history.py', g('test_schedhist', 'test_schistui', 'test_routesplit')),
+    # §9.588: 設備停止の挿入条件（判定表の保存・見送り）と、判定表の共通の部品
+    ('backend/repositories/stop_rule_repo.py', g('test_stoprule')),
+    ('backend/rule_cells.py', g('test_stoprule', 'test_bladeset', 'test_holdpick', 'test_bladepick')),
+    # §9.588: 厳密モードの開始の口（一番上のロット・上の設備停止の時刻）
+    ('backend/routes/schedule_start.py', g('test_strictstart', 'test_modeguard', 'test_routesplit')),
     ('backend/schedule_history.py', g('test_schedhist', 'test_schistui')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
                                         # §9.317: 参照データが読めなくても測定は始められる
@@ -545,14 +550,14 @@ RULES = [
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource', 'test_cleanup')),
     # 権限区分・マスタ編集の判定もここが持つ（§9.272/§9.322）ので「権限」ごと。
-    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit')),
+    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
-                                   'test_actualmatch', 'test_finishjoin')),
+                                   'test_actualmatch', 'test_finishjoin', 'test_strictstart')),
     # 仕掛から消えたロットの突合（§9.364・§9.365）。
     ('backend/actual_match.py', g('test_actualmatch', 'test_finishjoin',
                                   'test_datasource', 'test_dscap')),
