@@ -279,7 +279,7 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
     ========================================================= */
  await page.setViewportSize({width:1600,height:950});
  for(const [label,nav,barId] of VIEWS){
-  await page.click('#'+nav);
+  await W.nav(page,'#'+nav);
   await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},barId,{ms:10000,what:label+'の操作列がヘッダーへ載る'});
   await idle();
   const s=await page.evaluate(id=>{
