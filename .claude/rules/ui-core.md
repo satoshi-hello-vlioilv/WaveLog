@@ -1,4 +1,4 @@
-# 画面の土台（51件）
+# 画面の土台（52件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 式を文のように組み立てる部品は`WL.formulaBuilder`の1箇所（節＝列・見方・値・比べ方を「かつ／または」で）。式の字へ変えるだけ、見方の語彙は呼ぶ側（`hows`） | `test_stoprulemaster.js` | [§9.590](../../docs/decisions/9.590.md) |
 | 押し続けると続けて動くボタンは`WL.base.holdRepeat()`の1箇所（押下で1回→400ms後からくり返し・`fn()`が`false`で止まる・鍵盤は1回ずつ） | `test_opwidget.js` | [§9.585](../../docs/decisions/9.585.md) |
 | 打つたびに描き直す欄は`WL.base.onTyped()`の1箇所（日本語の変換中は待ち、確定で1回）。候補の器は変換中の ↑↓・Enter を取らない | `test_bladepick.js` | [§9.573](../../docs/decisions/9.573.md) |
 | ファイルの保存は`WL.base.saveBlob()`／`saveFrom()`の1箇所。添付へページを移さない（断られると画面が JSON に置き換わる） | `test_saveio.js` | [§9.551](../../docs/decisions/9.551.md) |

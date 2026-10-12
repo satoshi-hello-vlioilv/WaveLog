@@ -314,6 +314,7 @@ RULES = [
     ('static/js/schedule/strict-start.js', g('test_strictmode', 'test_startwork', 'test_planstrip', 'test_flows')),
     # §9.588: 判定表のセルの書き方と判定（刃組と設備停止の挿入条件が共有）
     ('static/js/core/rule-cells.js', g('刃組', 'test_stoprules', 'test_stoprulemaster')),
+    ('static/js/core/formula-builder.js', g('test_stoprules', 'test_stoprulemaster')),  # §9.590: 式を組み立てる部品
     # §9.588: 設備停止マスタの挿入条件の盤
     ('static/js/master/master-stoprule.js', g('test_stoprulemaster', 'test_stopsubui', 'test_holdpick')),
     ('static/js/schedule/schedule-print.js', g('モーダル', 'test_scprint')),

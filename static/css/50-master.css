@@ -2331,50 +2331,49 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    したくない。器→ペイン→一覧の3段に`flex:1;min-height:0`を通し、
    スクロールは内側だけにする（§9.222 ⑤）。
    ================================================================ */
-.ssb-edit{display:grid;
-  grid-template-columns:minmax(var(--w-md),var(--w-lg)) minmax(var(--w-lg),var(--w-2xl)) minmax(0,1fr);
+.ssb-edit{display:grid;grid-template-columns:minmax(var(--w-lg),300px) minmax(0,1fr);
   gap:var(--space-3);flex:1;min-height:0;align-items:stretch}
-.ssb-edit.has-rules{grid-template-rows:minmax(0,2fr) minmax(0,3fr)}
-/* 挿入の条件（§9.588）: 3つのペインの下に全幅。表は中でだけ流す。 */
-.ssb-rules{grid-column:1 / -1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--radius-md);
-  background:var(--surface);padding:var(--pad-card)}
-.ssb-stop-rule{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
+/* §9.590（7案→組合せ7案から H1）: 左＝分類 → 停止内容の木、右＝選んだ停止内容の段（基本・内訳・挿入の条件）。 */
+.ssb-stop-rule{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--teal-ink)}
 .ssb-stop.is-on .ssb-stop-rule{color:inherit}
-.ssb-cats,.ssb-stops,.ssb-subs{display:flex;flex-direction:column;gap:var(--space-2);
+.ssb-tree,.ssb-detail{display:flex;flex-direction:column;gap:var(--space-2);
   min-width:0;min-height:0;border:1px solid var(--line);border-radius:var(--radius-md);
   background:var(--surface);padding:var(--pad-card)}
-/* ペインの見出しは**3つとも同じ形**（§CLAUDE 「同じ役割には同じ形」）。 */
+.ssb-subs{display:flex;flex-direction:column;gap:var(--space-2);flex:1;min-width:0;min-height:0}
+/* ペインの見出しは**同じ形**（§CLAUDE 「同じ役割には同じ形」）。 */
 .ssb-pane-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
 .ssb-pane-head>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
 .ssb-count{font-size:var(--fs-sm);color:var(--muted);font-weight:var(--fw-ui)}
 .ssb-pane-head input[type=search]{flex:1 1 100%;height:var(--ctl-h-sm);min-width:0;
   padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
   font-size:var(--fs-sm)}
-/* ---- 左＝分類（§9.397） ---- */
-.ssb-cat-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto}
-.ssb-cat-row{display:flex;align-items:center;gap:var(--gap-inline);width:100%;
-  min-height:var(--ctl-h-sm);padding:var(--space-1) var(--space-2);text-align:left;
+/* ---- 左＝分類 → 停止内容の木（§9.590） ---- */
+.ssb-group{display:flex;flex-direction:column;gap:2px}
+.ssb-cat-head{display:flex;align-items:center;gap:var(--gap-tight)}
+.ssb-cat-row{display:flex;align-items:center;gap:var(--gap-tight);flex:1;min-width:0;
+  min-height:var(--ctl-h-sm);padding:var(--space-1) var(--space-1);text-align:left;
   border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;cursor:pointer}
 .ssb-cat-row:hover{background:var(--surface-2)}
+.ssb-caret{flex:none;width:1em;font-style:normal;color:var(--muted);font-size:var(--fs-sm)}
 .ssb-cat-row>b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
+  font-size:var(--fs-sm);font-weight:var(--fw-strong);color:var(--ink-2)}
 /* 件数は**その分類の停止内容の数**（内訳までは数えない・§CLAUDE 8）。 */
 .ssb-cat-n{flex:none;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted)}
-/* 消す道は**行の中の小さな的**（§CLAUDE 5「危ない操作を主要動線に置かない」）
-   ——選ぶ的（行いっぱい）とは別の物であることが、大きさの違いで読める。 */
-.ssb-cat-del{flex:none;width:var(--ctl-h-xs);text-align:center;border-radius:var(--radius-xs);
-  font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted);cursor:pointer}
-.ssb-cat-del:hover{background:var(--danger-bg);color:var(--danger)}
-.ssb-cat-row.is-on .ssb-cat-n,.ssb-cat-row.is-on .ssb-cat-del{color:inherit}
-.ssb-add-cat input{flex:1 1 100%}
-/* ---- 中＝停止内容（§9.397） ---- */
+/* 分類の行の小さな的（足す・消す）。消すは行の中の小さな的で、選ぶ的と大きさで見分ける（§CLAUDE 5）。 */
+.ssb-ic{flex:none;width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;border:1px solid transparent;
+  border-radius:var(--radius-xs);background:transparent;font-size:var(--fs-sm);font-weight:var(--fw-ui);
+  color:var(--muted);cursor:pointer}
+.ssb-ic:hover{border-color:var(--teal);color:var(--teal-dark);background:var(--teal-tint)}
+.ssb-ic.danger:hover{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger)}
+.mm-empty.ssb-empty{margin:0 0 var(--space-1) calc(1em + var(--space-2));padding:var(--space-1) var(--space-2);text-align:left;
+  border:0;background:transparent;font-size:var(--fs-sm)}
+.ssb-add-row{display:flex;gap:var(--gap-tight);flex:1 1 100%;min-width:0}
+.ssb-add-row input{flex:1;min-width:0}
+/* ---- 停止内容の札（木の葉） ---- */
 .ssb-stop-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto}
-/* 1行＝停止内容1件。**選ぶ的（名前）と直す・消すを横に分ける**——
-   同じ行に並べても、押す物が違えば大きさと位置で見分けられる（§CLAUDE 5）。 */
-.ssb-stop-row{display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;
-  align-items:center;gap:var(--gap-tight);border-radius:var(--radius-sm)}
-/* **1件は2行**（§9.222 ⑤）。3行にすると器いっぱいでも10件しか見えない。 */
-.ssb-stop{display:grid;gap:0;width:100%;text-align:left;padding:2px var(--space-2);
+/* **1件は2行**（§9.222 ⑤）。3行にすると器いっぱいでも10件しか見えない。木の中なので分類の名前の位置まで字下げする。 */
+.ssb-stop{display:grid;grid-template-columns:minmax(0,1fr) max-content;gap:0 var(--space-2);width:100%;text-align:left;
+  padding:3px var(--space-2) 3px calc(1em + var(--space-2));
   border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;
   cursor:pointer}
 .ssb-stop:hover{background:var(--surface-2)}
@@ -2384,17 +2383,33 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ssb-stop.is-on>b,.ssb-stop.is-on .ssb-stop-eq,
 .ssb-stop.is-on .ssb-stop-n,.ssb-stop.is-on .ssb-stop-min{color:inherit}
 .ssb-stop>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
-.ssb-stop-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
+.ssb-stop-sub{grid-column:1 / -1;display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
 .ssb-stop-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ssb-stop-eq{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
 /* **持っていないことも文字で言う**（§CLAUDE 3）——色や空欄だけだと
    「内訳を作っていない」のか「読めていない」のかが分からない。 */
 .ssb-stop-n{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--teal-dark)}
 .ssb-stop-n.is-blank{font-weight:var(--fw-body);color:var(--muted)}
-.ssb-title{font-size:var(--fs);font-weight:var(--fw-strong);color:var(--ink)}
-.ssb-eq{font-size:var(--fs-sm);font-weight:var(--fw-ui);line-height:1;white-space:nowrap;
-  padding:2px var(--space-2);border:1px solid var(--teal);border-radius:var(--radius-sm);
-  background:var(--pale);color:var(--teal-dark)}
+.ssb-title{font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink)}
+/* ---- 右＝選んだ停止内容の段（§9.590） ---- */
+.ssb-detail-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--gap-inline);flex:none}
+.ssb-meta{font-size:var(--fs-sm);color:var(--ink-2)}
+.ssb-detail-tools{margin-left:auto;display:flex;gap:var(--gap-tight)}
+/* 段の札は**いまの値**を添える（開かずに3つの子の状態が読める）。 */
+.ssb-tabs{display:flex;gap:var(--space-1);border-bottom:1px solid var(--line-soft);flex:none}
+.ssb-tab{display:inline-flex;align-items:center;gap:var(--space-2);height:var(--ctl-h-sm);padding:0 var(--space-3);
+  border:0;border-bottom:3px solid transparent;background:transparent;font-size:var(--fs-base-sm);
+  font-weight:var(--fw-strong);color:var(--ink-2);cursor:pointer;margin-bottom:-1px}
+.ssb-tab:hover{color:var(--teal-dark)}
+.ssb-tab.is-on{border-bottom-color:var(--teal);color:var(--teal-ink)}
+.ssb-tab-now{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui);padding:1px var(--space-2);
+  border-radius:var(--radius-pill);background:var(--surface-3);color:var(--ink-2)}
+.ssb-tab.is-on .ssb-tab-now{background:var(--teal-tint);color:var(--teal-ink)}
+.ssb-tab-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto}
+.ssb-basic{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-2) 0}
+.ssb-kv{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2) var(--space-3);margin:0}
+.ssb-kv dt{text-align:right;font-size:var(--fs-sm);color:var(--ink-2)}
+.ssb-kv dd{margin:0;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink)}
 /* **出どころを画面に出す**（§CLAUDE 6）——内訳の分を空欄にしたとき
    何分になるのかを、別の画面を開かずに読めるようにする。 */
 .ssb-base{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-tight);
@@ -2460,6 +2475,105 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    ——欄の中の説明は器の幅で切れる（実測「分（空欄なら…」で途切れていた）。 */
 .ssb-add-note{flex:1 1 100%;font-size:var(--fs-sm);color:var(--ink-2)}
 .ssb-add-note>b{color:var(--ink-2)}
+
+/* ================================================================
+   挿入の条件（§9.590・7案→組合せ7案から H1）
+   ----------------------------------------------------------------
+   左＝決まりの札（上から順に・最初に当たった1枚）。札は文で読め、押すとその場で開いて
+   「組み立てる｜式を書く」と答えの欄。右＝いまの予定の境目で試した結果。
+   ================================================================ */
+.srb{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,min(300px,34%));gap:var(--space-3);flex:1;min-height:0;padding-top:var(--space-2)}
+.srb-main{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;overflow:auto}
+.srb-bar{display:flex;align-items:center;justify-content:flex-end;gap:var(--gap-inline);flex-wrap:wrap}
+.srb-lead{flex:1 1 100%;min-width:0;margin:0;font-size:var(--fs-sm);color:var(--ink-2)}
+.srb-state{font-size:var(--fs-sm);color:var(--muted)}
+.srb-state.is-dirty{color:var(--warn-fg);font-weight:var(--fw-strong)}
+.srb-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--space-1)}
+.srb-rule{border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface)}
+.srb-rule.is-on{border-color:var(--teal);box-shadow:inset 3px 0 0 var(--teal)}
+.srb-rule.is-def{background:var(--surface-2)}
+.srb-rule.is-ng{border-color:var(--warn-border)}
+.srb-head{display:grid;grid-template-columns:2.4em minmax(0,1fr) auto;grid-template-areas:'rk say tools' 'rk ans ans';
+  align-items:center;gap:var(--space-1) var(--space-2);padding:var(--space-2);cursor:pointer;border-radius:var(--radius-sm)}
+/* 文（条件）は行いっぱい、答えの札はその下——器が狭くても文が1字ずつ折れない（実測 1536×864 で縦書きになった）。 */
+.srb-head>.srb-rk{grid-area:rk}.srb-head>.srb-say{grid-area:say}.srb-head>.srb-tools{grid-area:tools}.srb-head>.srb-ans{grid-area:ans}
+.srb-head:hover{background:var(--surface-2)}
+.srb-head:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.srb-rk{text-align:center;font-size:var(--fs-sm);font-weight:var(--fw-strong);color:var(--ink-2)}
+.srb-say{min-width:0;font-size:var(--fs-base-sm);color:var(--ink)}
+.srb-say b{color:var(--teal-ink)}
+.srb-mut{color:var(--muted);font-weight:var(--fw-body)}
+.srb-ng{display:block;font-size:var(--fs-sm);color:var(--warn-fg);font-weight:var(--fw-ui)}
+.srb-fx{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--fs-sm);background:var(--surface-3);
+  padding:1px var(--space-1);border-radius:var(--radius-xs);overflow-wrap:anywhere}
+.srb-ans{display:flex;gap:var(--space-1);flex-wrap:wrap}
+.srb-chip{font-style:normal;display:inline-flex;align-items:center;height:20px;padding:0 var(--space-2);border-radius:var(--radius-pill);
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);background:var(--surface-3);color:var(--ink-2);white-space:nowrap}
+.srb-chip.t{background:var(--teal-tint);color:var(--teal-ink)}
+.srb-chip.a{background:var(--look-amber-pale);color:var(--look-amber-dark)}
+.srb-tools{display:flex;gap:2px}
+.srb-ic{width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;border:1px solid transparent;border-radius:var(--radius-xs);
+  background:transparent;color:var(--muted);font-size:var(--fs-sm);cursor:pointer}
+.srb-ic:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark);background:var(--teal-tint)}
+.srb-ic.danger:hover{border-color:var(--danger-border);color:var(--danger);background:var(--danger-bg)}
+.srb-ic:disabled{opacity:var(--op-disabled);cursor:default}
+.srb-edit{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2) var(--space-3) var(--space-3);
+  border-top:1px dashed var(--line-soft)}
+.srb-tabs{display:inline-flex;align-self:flex-start;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.srb-tabs>button{height:var(--ctl-h-xs);padding:0 var(--space-3);border:0;background:var(--surface);
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);cursor:pointer}
+.srb-tabs>button.is-on{background:var(--look-blue-dark);color:#fff}
+.srb-text{width:100%;min-height:3.2em;resize:vertical;padding:var(--space-1) var(--space-2);border:1px solid var(--line);
+  border-radius:var(--radius-sm);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--fs-sm)}
+.srb-check{margin:0;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+.srb-check.is-ok{color:var(--success)}
+.srb-check.is-ng{color:var(--warn-fg)}
+.srb-note{margin:0;font-size:var(--fs-sm);color:var(--ink-2)}
+.srb-note.is-ng{color:var(--warn-fg)}
+.srb-answer{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);padding:var(--space-2);
+  border-radius:var(--radius-sm);background:var(--teal-tint)}
+.srb-w{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
+.srb-sel,.srb-min,.srb-memo{height:var(--ctl-h-xs);font-size:var(--fs-sm);border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);padding:0 var(--space-1)}
+.srb-min{width:4.5em;text-align:right}
+.srb-memo{flex:1 1 10em;min-width:8em}
+.srb-addrule{align-self:flex-start;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px dashed var(--teal);
+  border-radius:var(--radius-sm);background:var(--surface);color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
+.srb-addrule:hover{border-style:solid;background:var(--teal-tint)}
+/* 試した結果（いまの予定の境目）。当たる境目は淡い琥珀、開いている札に当たる境目は縁。 */
+.srb-try{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;overflow:auto;
+  padding:var(--space-2);border-radius:var(--radius-sm);background:var(--surface-2)}
+.srb-try-head{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;font-size:var(--fs-sm)}
+.srb-sum{margin:0;font-size:var(--fs-sm);color:var(--ink-2)}
+.srb-tries{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.srb-tries>li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 var(--space-2);padding:var(--space-1) var(--space-2);
+  border:1px solid transparent;border-radius:var(--radius-xs);font-size:var(--fs-sm);cursor:pointer}
+.srb-tries>li>.srb-mut{grid-column:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srb-tries>li>.srb-hit{grid-column:2;grid-row:1 / span 2;align-self:center;text-align:right;font-weight:var(--fw-ui);color:var(--ink-2)}
+.srb-tries>li.is-hit{background:var(--look-amber-pale)}
+.srb-tries>li.is-on{border-color:var(--look-amber)}
+.srb-hit em{display:block;font-style:normal;font-size:var(--fs-sm);color:var(--warn-fg)}
+.srb-hit em.ok{color:var(--success)}
+/* 組み立てる（`WL.formulaBuilder`・§9.590）。選ぶ欄は淡い琥珀（選べる＝変えられる）。 */
+.fxb-sentence{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);padding:var(--space-2);
+  border-radius:var(--radius-sm);background:var(--surface-2)}
+.fxb-clause{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--space-1)}
+.fxb-w{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
+.fxb-sel,.fxb-val{height:var(--ctl-h-xs);font-size:var(--fs-sm);border:1px solid var(--warn-border);border-radius:var(--radius-sm);
+  color:var(--ink);font-weight:var(--fw-ui);padding:0 var(--space-1)}
+.fxb-sel{background:var(--look-amber-pale)}
+.fxb-val{width:7em;background:var(--surface)}
+.fxb-x{width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;border:1px solid transparent;border-radius:var(--radius-xs);
+  background:transparent;color:var(--muted);cursor:pointer}
+.fxb-x:hover{border-color:var(--danger-border);color:var(--danger);background:var(--danger-bg)}
+.fxb-add{height:var(--ctl-h-xs);padding:0 var(--space-2);border:1px dashed var(--teal);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
+.fxb-out{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-top:var(--space-2)}
+.fxb-lab{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
+.fxb-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--fs-sm);background:var(--surface-3);
+  padding:2px var(--space-2);border-radius:var(--radius-xs);overflow-wrap:anywhere}
+.fxb-code.is-ng{color:var(--warn-fg)}
+.fxb-ng{font-size:var(--fs-sm);color:var(--warn-fg)}
 
 /* ================================================================
    設備停止の時間（§9.389）— 「あくまで選択肢を作るマスタ」

@@ -17,6 +17,12 @@
     ・「ロットがもと居た場所の前後と新しく挿入された前後」は、操作の前後で**境目の組が新しくできたもの**
       （`newPairs()`）と同じ——外せば元の前後がつながり、入れれば新しい前後が2つできる。自動で入れるのはここだけ。
    画面（黄色の帯・入れる／直して入れる／今回は入れない・自動で入れる）は`schedule-view.js`。
+
+   **§9.590 で行の条件を式でも持てるようにした**（利用者の指示「『この列の作り方』のような条件入力」）。
+    ・式は一覧の式（`WL.formula`）と同じ書き方。名前は `[前.列]`（前のロット）・`[後.列]`（後ろのロット）。
+    ・組み立てる画面の「見方」（変わる・同じ・差・前のロット・後ろのロット）と、その式の字は`HOWS`の1箇所。
+    ・前の版のセルの条件は`fromCells()`が同じ意味の式（と、組み立てられる形なら組み立て）へ直す。
+    ・どの行に当たるかは`ruleHit()`の1箇所（予定の判定と、設備停止マスタの「試した結果」が同じ答えを読む）。
    ============================================================ */
 (function(){
  'use strict';
@@ -80,6 +86,107 @@
    return `${s.col}の差（後ろ−前）が ${say}（${v(a)} → ${v(b)}）`;
   }).join(' かつ ');
  }
+ /* ---------- 式（§9.590） ---------- */
+ const PRE = '前.', POST = '後.';
+ const ref = (p, col) => `[${p}${col}]`;
+ const FB = () => WL.formulaBuilder;
+ /* 組み立てる画面の「見方」。**式の字へ変える関数もここ**（組み立ての部品は語彙を知らない）。 */
+ const HOWS = [
+  { key: 'chg', label: 'が変わる', cmps: null, build: col => `${ref(PRE, col)} <> ${ref(POST, col)}` },
+  { key: 'same', label: 'が同じ', cmps: null, build: col => `${ref(PRE, col)} = ${ref(POST, col)}` },
+  { key: 'diff', label: 'の差（後ろ−前）が', get cmps() { return FB().NUM_CMPS; },
+    build: (col, op, v, v2) => FB().compare(`(num(${ref(POST, col)}) - num(${ref(PRE, col)}))`, op, v, v2) },
+  { key: 'prev', label: '（前のロット）が', get cmps() { return FB().CMPS; }, build: (col, op, v, v2) => FB().compare(ref(PRE, col), op, v, v2) },
+  { key: 'next', label: '（後ろのロット）が', get cmps() { return FB().CMPS; }, build: (col, op, v, v2) => FB().compare(ref(POST, col), op, v, v2) },
+ ];
+ /* セルの比べ方 → 組み立ての比べ方（組み立てに無い物は式だけにする）。 */
+ const CELL_CMP = { eq: '=', ne: '<>', ge: '>=', gt: '>', le: '<=', lt: '<', between: 'between', contains: 'contains',
+  startsWith: 'startswith', endsWith: 'endswith', empty: 'empty', notEmpty: 'notempty' };
+ const CELL_NOT = { notContains: 'contains', notStartsWith: 'startswith', notEndsWith: 'endswith' };
+ /* 前の版のセルの条件 → {build, formula}。組み立てで書けない形（セルの中の「または」・否定・正規表現）は
+    式だけ（`build`は null＝「式を書く」で開く）。意味は`firstRule()`と同じ。 */
+ function fromCells(conds) {
+  const list = (conds || []).filter(c => c && splitField(c.field));
+  if (!list.length) return { build: null, formula: '' };
+  let buildable = !list.some(c => c.or);
+  const clauses = list.map(c => {
+   const sf = splitField(c.field);
+   if (sf.set === 'chg') {
+    const chg = (c.op === 'eq') === (String(c.value).trim() === CHANGED);
+    if (!['eq', 'ne'].includes(c.op)) buildable = false;
+    return { col: sf.col, how: chg ? 'chg' : 'same', cmp: '', val: '', val2: '', join: 'and' };
+   }
+   if (!CELL_CMP[c.op]) buildable = false;
+   return { col: sf.col, how: sf.set, cmp: CELL_CMP[c.op] || '=', val: c.value ?? '', val2: c.value2 ?? '', join: 'and' };
+  });
+  if (buildable) { const build = { kind: 'cond', clauses }; return { build, formula: FB().build(build, HOWS) }; }
+  /* 式だけ: 同じ列の続き（`or`）は（ ）でまとめ、列どうしは かつ。 */
+  const one = c => {
+   const sf = splitField(c.field);
+   if (sf.set === 'chg') {
+    const a = `if(${ref(PRE, sf.col)} <> ${ref(POST, sf.col)}, '${CHANGED}', '${SAME}')`;
+    return FB().compare(a, CELL_CMP[c.op] || '=', c.value, c.value2);
+   }
+   const a = sf.set === 'diff' ? `(num(${ref(POST, sf.col)}) - num(${ref(PRE, sf.col)}))` : ref(sf.set === 'prev' ? PRE : POST, sf.col);
+   if (CELL_NOT[c.op]) return `not(${FB().compare(a, CELL_NOT[c.op], c.value)})`;
+   if (c.op === 'regex') return `match(${a}, ${FB().quote(String(c.value ?? ''))})`;
+   return FB().compare(a, CELL_CMP[c.op] || '=', c.value, c.value2);
+  };
+  const groups = WL.ruleCells.condGroups(list).map(g => {
+   /* セルの中は かつ が先（`chainsOf()`＝`firstRule()`と同じ読み方）。 */
+   const chains = WL.ruleCells.chainsOf(g.terms).map(ch => ch.map(t => one(Object.assign({}, t, { field: g.field }))).join(' and '));
+   return chains.length > 1 ? `(${chains.map(x => (x.includes(' and ') ? `(${x})` : x)).join(' or ')})` : chains[0];
+  });
+  return { build: null, formula: groups.join(' and ') };
+ }
+ /* 式が使う名前 → 境目の値（前.／後.の頭の無い名前は空）。 */
+ function formulaRow(cols, prev, next, valueOf) {
+  /** @type {Record<string, any>} */
+  const row = {};
+  cols.forEach(n => {
+   if (n.startsWith(PRE)) row[n] = valueOf(prev, n.slice(PRE.length));
+   else if (n.startsWith(POST)) row[n] = valueOf(next, n.slice(POST.length));
+  });
+  return row;
+ }
+ const compiled = new Map();
+ function compileOf(f) {
+  if (!compiled.has(f)) {
+   let c = null;
+   try { c = WL.formula.compile(f); } catch (e) { c = null; }   // 書き方の誤りは「当たらない」（盤が理由を言う）
+   if (compiled.size > 400) compiled.clear();
+   compiled.set(f, c);
+  }
+  return compiled.get(f);
+ }
+ const hasCond = r => !!(r && (String(r.formula || '').trim() || (r.conditions || []).length));
+ /* どの行に当たるか（上から最初・条件の無い行は既定）。`defs`はセルの条件の型（前の版の表のため）。 */
+ function ruleHit(rows, cols, defs, prev, next, valueOf) {
+  const RC = WL.ruleCells;
+  for (let i = 0; i < (rows || []).length; i++) {
+   const r = rows[i];
+   if (!hasCond(r)) return { row: r, index: i };
+   const f = String(r.formula || '').trim();
+   if (f) {
+    const c = compileOf(f);
+    if (c && WL.formula.truthy(c.run(formulaRow(c.columns, prev, next, valueOf)))) return { row: r, index: i };
+    continue;
+   }
+   if (RC && RC.firstRule([r], ctxOf(cols, prev, next, valueOf), defs, false)) return { row: r, index: i };
+  }
+  return null;
+ }
+ /* 当たった行の決まりを1文で、実際の値を添えて。 */
+ function ruleReason(r, prev, next, valueOf) {
+  if (!hasCond(r)) return 'どれにも当てはまらないとき（既定の行）';
+  if (!String(r.formula || '').trim()) return reasonOf(r.conditions, prev, next, valueOf);
+  const v = x => (blank(x) ? '空' : String(x));
+  if (r.build && (r.build.clauses || []).length) {
+   const cols = [...new Set(r.build.clauses.map(c => c.col).filter(Boolean))];
+   return `${FB().read(r.build, HOWS)}（${cols.map(c => `${c} ${v(valueOf(prev, c))} → ${v(valueOf(next, c))}`).join('・')}）`;
+  }
+  return `式「${r.formula}」に当たる`;
+ }
  const isLot = e => !!e && e.kind === '作業' && e.parentId == null && !e.unplanned && e.state !== '取消';
  /* 境目（作業ロットと次の作業ロット）。`between`はあいだの行（設備停止・申し送り・枠・取消を除く）。並びは予定の順。 */
  function boundaries(entries) {
@@ -108,7 +215,7 @@
  function tablesOf(stops, vocab) {
   return (stops || []).filter(s => s && s.insertRule && s.insertRule.stored && (s.insertRule.rows || []).length)
    .map(s => {
-    const conds = s.insertRule.rows.flatMap(r => r.conditions || []);
+    const conds = s.insertRule.rows.flatMap(r => (String(r.formula || '').trim() ? [] : r.conditions || []));
     const cols = [...new Set((s.insertRule.cols || []).concat(conds.map(c => c.field)))];
     return { stop: s, rows: s.insertRule.rows, cols, defs: fieldDefs(cols, vocab) };
    });
@@ -122,7 +229,7 @@
   boundaries(entries).forEach(b => {
    if (b.next.state !== '予定') return;
    tables.forEach(t => {
-    const hit = RC.firstRule(t.rows, ctxOf(t.cols, b.prev, b.next, valueOf), t.defs, true);
+    const hit = ruleHit(t.rows, t.cols, t.defs, b.prev, b.next, valueOf);
     const need = hit ? +hit.row.count || 0 : 0;
     if (!need) return;
     const have = b.between.filter(e => e.kind === '設備停止' && norm(e.title) === norm(t.stop.name)).length;
@@ -134,11 +241,12 @@
                   `stopPickDefaultMinutes()`——手で入れるときと同じ答え）。 */
                minutes: Array.from({ length: need - have }, (_, i) => { const m = (hit.row.minutes || [])[have + i]; return m ? +m : null; }),
                action: hit.row.action === 'auto' ? 'auto' : 'warn', rowIndex: hit.index,
-               reason: (hit.row.conditions || []).length ? reasonOf(hit.row.conditions, b.prev, b.next, valueOf) : 'どれにも当てはまらないとき（既定の行）',
+               reason: ruleReason(hit.row, b.prev, b.next, valueOf),
                skipped: (b.next.stopSkips || []).some(x => +x.stopId === +t.stop.id && String(x.prevId) === String(b.prev.id)) });
    });
   });
   return out;
  }
- WL.stopRules = { evaluate, boundaries, pairsOf, newPairs, ctxOf, fieldDefs, reasonOf, splitField, sameValue, CHANGED, SAME };
+ WL.stopRules = { evaluate, boundaries, pairsOf, newPairs, ctxOf, fieldDefs, reasonOf, splitField, sameValue, CHANGED, SAME,
+  HOWS, PRE, POST, fromCells, ruleHit, ruleReason, hasCond, tablesOf };
 })();

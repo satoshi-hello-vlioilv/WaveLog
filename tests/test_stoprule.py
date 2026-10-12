@@ -14,6 +14,7 @@
  5. 見送り（今回は入れない）は「停止×前のロット」の組で1つ。外せる。読めない物は落とす
  6. 刃組の表の整え方（`bladeset_repo`）は共通の部品へ移しても同じ答え
  7. 語彙（列の群・動作・上限）はサーバーが答える
+ 8. 行の条件は式でも持てる（§9.590）: 式のある行は条件の行・組み立ての形も残る・式の行はセルの条件を持たない
 
 **材料は自分で作る**（一時フォルダの設定DB）。サーバーは要らない（1段目・純粋な網）。
 ============================================================
@@ -64,7 +65,7 @@ rec('答え: 挿入数2・時間は挿入数ぶん（30, 15）・自動', (tidy[
 rec('挿入数は 9 まで・時間が足りなければ空（標準の分）・知らない動作は知らせるだけ',
     (tidy[1]['count'], tidy[1]['minutes'], tidy[1]['action']) == (9, [None] * 9, 'warn'), tidy[1])
 rec('既定の行が無い表には「0本（要らない）」の既定を足す',
-    rr._tidy([rows[0]])[-1] == {'conditions': [], 'count': 0, 'minutes': [], 'action': 'warn', 'note': ''})
+    rr._tidy([rows[0]])[-1] == {'conditions': [], 'formula': '', 'build': None, 'count': 0, 'minutes': [], 'action': 'warn', 'note': ''})
 rec('時間は 1〜1440 分に丸める', rr.normalize_answer({'count': 2, 'minutes': [0, 9999]})['minutes'] == [1, 1440])
 
 # ---- 4: 保存・読み直し・未登録・複製 ----
@@ -78,11 +79,27 @@ rec('列の並びは保存した順（群の外は落とし、条件にあって
 rr.rules_copy(mc, 7, 8, 'tester')
 mc.commit()
 rec('停止内容を複製すると表も写る', rr.rules_for(mc, 8)['rows'] == tidy)
+
+# ---- 8: 式の行（§9.590） ----
+fx = '[前.製造材質] <> [後.製造材質]'
+frows = [{'formula': '  ' + fx + '\n', 'build': {'kind': 'cond', 'clauses': [{'subj': 'chg', 'col': '製造材質', 'cmp': 'changed'}]},
+          'conditions': [{'field': 'chg.製造材質', 'op': 'eq', 'value': '変わる'}], 'count': 1, 'minutes': [45], 'action': 'auto'},
+         {'formula': '', 'build': {'x': 1}, 'count': 0}]
+ft = rr._tidy(frows)
+rec('式のある行は条件の行（前後の空白と改行を整える）・セルの条件は持たない',
+    len(ft) == 2 and ft[0]['formula'] == fx and ft[0]['conditions'] == [] and ft[-1]['formula'] == '', ft)
+rec('組み立ての形は式のある行だけ残る', ft[0]['build']['clauses'][0]['subj'] == 'chg' and ft[-1]['build'] is None, ft)
+rr.rules_replace(mc, 9, frows, [], 'tester')
+mc.commit()
+g9 = rr.rules_for(mc, 9)
+rec('式と組み立ての形を保存して同じ形で読み直す', g9['rows'] == ft, g9['rows'])
+rec('式は一覧の式と同じ長さまで', len(rr.normalize_formula('a' * 5000)) == rr.FORMULA_MAX)
+rec('語彙は式の名前の頭（前.・後.）も答える', [x['prefix'] for x in rr.vocab()['formulaPrefixes']] == ['前.', '後.'])
 rec('登録の無い停止内容を写しても何も作らない', (rr.rules_copy(mc, 99, 100, 't'), rr.rules_for(mc, 100)['stored'])[1] is False)
 rr.rules_reset(mc, 7)
 mc.commit()
 rec('未登録に戻せる（写した側は残る）', not rr.rules_for(mc, 7)['stored'] and rr.rules_for(mc, 8)['stored'])
-rec('一覧は停止理由IDごと', set(rr.rules_all(mc)) == {8})
+rec('一覧は停止理由IDごと', set(rr.rules_all(mc)) == {8, 9})
 
 # ---- 5: 見送り ----
 m = sc.stop_skips_merge([], 3, 11)

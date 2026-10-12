@@ -86,6 +86,8 @@ JS_FILES=[
  'core/rule-cells.js',
  'list/list-view.js',
  'list/list-formula.js',
+ # §9.590: 式を文のように選んで組み立てる部品（`WL.formulaBuilder`）。式の計算器（list-formula）の後。
+ 'core/formula-builder.js',
  'list/list-columns.js',
  'list/list-rules.js',
  'measure/measure-view.js',

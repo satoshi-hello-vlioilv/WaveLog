@@ -1,4 +1,4 @@
-# 作業スケジュール（106件）
+# 作業スケジュール（107件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -15,6 +15,7 @@
 | 断るときは理由の種類と一番上のロット・次の一手（作業スケジュールを開く）。作業中のロットがあれば「作業中」で断る（並べ替えに行かせない） | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 開始で上の設備停止へ「前のロットの終わり〜開始」を見積の比で入れる（出どころ「開始で自動」）。開始判定は2回目で上書きしない | `test_strictstart.py` | [§9.588](../../docs/decisions/9.588.md) |
 | 足りない設備停止の判定は`WL.stopRules.evaluate()`の1箇所（状態を持たない・境目＝作業ロットの隣どうし）。帯は行ではない | `test_stoprules.js` | [§9.588](../../docs/decisions/9.588.md) |
+| どの決まりに当たるかは`WL.stopRules.ruleHit()`の1箇所。見方と式の字は`HOWS`、前の版のセルは`fromCells()`で式へ | `test_stoprules.js` | [§9.590](../../docs/decisions/9.590.md) |
 | 自動で入れるのは**この端末の操作で新しくできた境目だけ**（`autoInsertStops()`）。前から在る境目は帯で知らせるだけ | `test_stoprules.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 「今回は入れない」は後ろのロットの`[停止見送りJSON]`に「停止×前のロット」で1つ（前のロットが替われば効かない） | `test_stoprule.py`・`test_stoprules.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 初期画面の「作業予定」の帯は1行・高さ固定。数え方と始め方は`WL.scheduleView.digest()`／`start()`の1箇所 | `test_planstrip.js` | [§9.580](../../docs/decisions/9.580.md) |
