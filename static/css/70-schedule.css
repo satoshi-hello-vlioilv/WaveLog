@@ -256,12 +256,14 @@
 .sc-split-wrap{
  flex:1;min-height:0;margin:9px 14px;overflow:hidden;
  display:grid;grid-template-columns:var(--sc-list-w,380px) 10px 1fr;
- grid-template-rows:auto auto 1fr;
- grid-template-areas:"filter filter panel" "toolbar toolbar panel" "list divider panel";
- gap:var(--gap-inline) 0;
+ grid-template-rows:auto auto auto 1fr;
+ grid-template-areas:"filter filter panel" "toolbar toolbar panel" "slicer slicer panel" "list divider panel";
+ gap:0;
 }
-.sc-split-wrap #genericFilterBar{grid-area:filter;margin:0}
-.sc-split-wrap #listToolbar{grid-area:toolbar;margin:0}
+/* 縦の間は行の間隔（gap）でなく器の下の余白で空ける——伏せたスライサー（§9.591）の行が間隔だけ残さない。 */
+.sc-split-wrap #genericFilterBar{grid-area:filter;margin:0 0 var(--gap-inline)}
+.sc-split-wrap #listToolbar{grid-area:toolbar;margin:0 0 var(--gap-inline)}
+.sc-split-wrap #listSlicer{grid-area:slicer;margin:0 0 var(--gap-inline)}
 .sc-split-wrap #grid{grid-area:list;margin:0;min-height:0}
 .sc-split-wrap .sc-split-divider{grid-area:divider}
 .sc-split-wrap .sc-panel{grid-area:panel;margin:0;min-height:0}
@@ -274,7 +276,7 @@
    グリッドの区画を両方入れ替える**——片方だけだと、幅は入れ替わったのに
    中身が元の側に残る。 */
 .sc-split-wrap.sc-swap{grid-template-columns:1fr 10px var(--sc-list-w,380px);
- grid-template-areas:"panel filter filter" "panel toolbar toolbar" "panel divider list"}
+ grid-template-areas:"panel filter filter" "panel toolbar toolbar" "panel slicer slicer" "panel divider list"}
 .sc-split-wrap.sc-swap.sc-list-collapsed{grid-template-columns:1fr 26px 0}
 .sc-split-divider{position:relative;cursor:col-resize;background:transparent}
 .sc-split-divider::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line);transform:translateX(-50%)}
@@ -300,7 +302,7 @@
  letter-spacing:.14em;color:var(--muted);font-weight:var(--fw-ui);white-space:nowrap}
 .sc-split-wrap:not(.sc-list-collapsed) .sc-split-collapse-label{display:none}
 @media(max-width:1280px){
- .sc-split-wrap{grid-template-columns:1fr;grid-template-rows:auto auto minmax(220px,38vh) minmax(260px,1fr);grid-template-areas:"filter" "toolbar" "list" "panel"}
+ .sc-split-wrap{grid-template-columns:1fr;grid-template-rows:auto auto auto minmax(220px,38vh) minmax(260px,1fr);grid-template-areas:"filter" "toolbar" "slicer" "list" "panel"}
  .sc-split-divider{display:none}
 }
 /* フィルタバーのコンパクト表示(§9.15新設)。分割表示・ポップアップ表示は
@@ -313,17 +315,23 @@
 :is(.sc-split-wrap,.sc-float-body) :is(#genericFilterBar,#listToolbar){--lt-h:var(--ctl-h-xs);--lt-fs:var(--fs-micro);--lt-px:var(--space-1)}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row-actions{gap:var(--gap-tight)}
 /* 1段目に入れるため（幅380px・§9.468の「2段」を守る）、**名前の一部を印へ畳む**——「条件」の字（漏斗の印と
-   数が残る）・「表示列」の字（表の印が残る）・「表の見せ方」の「表の」。全文は`title`と読み上げ（`aria-label`）に残す。
+   数が残る）・「表示列」の字（表の印が残る）・道具の字（`.lt-tool-t`＝列で絞り込む・スライサー・色付け・見せ方・ファイル。
+   §9.591 で3つ足して4段に折れた）。全文は`title`と読み上げ（`aria-label`）に残す。
    検索欄は最小の幅から、余りを受けて伸びる（§9.229 ⑤「縮んでよいのは入力欄」）。 */
-:is(.sc-split-wrap,.sc-float-body) :is(.fb-cond-key,.lt-cols-t,.lt-view-pre){display:none}
+:is(.sc-split-wrap,.sc-float-body) :is(.fb-cond-key,.lt-cols-t,.lt-tool-t){display:none}
+/* 「列で絞り込む」は効いているときだけ字を出す（効いていることは字で言う・§CLAUDE 画面基準 3）。 */
+:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-toggle.is-on .lt-tool-t{display:inline;max-width:8em;overflow:hidden;text-overflow:ellipsis}
+/* 一覧の拡大（§9.591）は単独の一覧だけ。並べた狭い器では表を拡大しない（つまみも出さない＝効かない物を残さない）。 */
+:is(.sc-split-wrap,.sc-float-body) .lt-zoom-slot{display:none}
+:is(.sc-split-wrap,.sc-float-body) #grid>table{zoom:1}
 :is(.sc-split-wrap,.sc-float-body) .lt-search{flex:1 1 4em;min-width:4em}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row{min-height:var(--ctl-h-sm);padding:var(--pad-row);gap:var(--gap-tight);flex-wrap:wrap}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row>b{font-size:var(--fs-micro)}
 /* 並べたときは1段目・2段目をそれぞれ1行に収める（§9.468、実測: 幅380pxで5段・236px）。
-   プリセットは**名前だけ**（何の札かは`title`と位置が言う）、結合は**短い名乗り**
+   プリセットは**印＋名前**（何の札かは印・`title`・位置が言う）、結合は**短い名乗り**
    （`data-short`・全文は`title`）。どちらも見える字を減らすだけで、読み上げは全文。 */
-:is(.sc-split-wrap,.sc-float-body) .fb-preset-btn:not(.is-none) .fb-preset-key{display:none}
-/* 当てていないときは「なし」ではなく**役の名前**だけ（「プリセット▾」＝押して選ぶ札）。 */
+:is(.sc-split-wrap,.sc-float-body) .fb-preset-btn .fb-preset-key{display:none}
+/* 当てていないときは「なし」を出さず**印だけ**（栞の印▾＝押して選ぶ札・§9.591）。 */
 :is(.sc-split-wrap,.sc-float-body) .fb-preset-btn.is-none #filterPresetName{display:none}
 :is(.sc-split-wrap,.sc-float-body) .list-join-chip[data-short]{font-size:0}
 :is(.sc-split-wrap,.sc-float-body) .list-join-chip[data-short]::after{content:attr(data-short);font-size:var(--fs-micro)}
@@ -2343,7 +2351,7 @@
 .sc-tools{display:inline-flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
 .sc-tools[hidden]{display:none}
 .sc-tools-label{
- font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2);white-space:nowrap;
+ font-size:var(--bar-fs);font-weight:var(--fw-body);color:var(--ink-2);white-space:nowrap;
  padding-right:var(--space-1);border-right:1px solid var(--line-soft);
 }
 /* 表示範囲の起点(§9.198)。数字だけでは「いつからか」が分からない。 */
@@ -2498,26 +2506,28 @@ div.sc-view-row{cursor:default}
 .sc-view-menu-btn{display:inline-flex;align-items:center;gap:var(--gap-tight);min-width:0;white-space:nowrap}
 .sc-view-menu-btn>i{font-style:normal;line-height:1}
 /* **しきい値はemで置く**——`em`はコンテナ自身の文字サイズで解ける。
-   `.hd-viewbar`が`--fs-sm`(=12px×--ui-scale)を持つので、表示サイズを
+   `.hd-viewbar`が`--bar-fs`(=13px×--ui-scale・§9.591)を持つので、表示サイズを
    上げると**しきい値も同じ比で上がる**。pxで書くと、中身だけが1.1倍に
    なってしきい値は据え置きになり、大きい表示でだけ溢れる(§9.127)。
-   98em≒1176px / 87em≒1044px（表示サイズ「中」のとき）。 */
-@container schead (max-width: 111.5em){
+   109.2em≒1420px / 93.4em≒1214px（表示サイズ「中」のとき）。 */
+@container schead (max-width: 109.2em){
  /* ---------- 「追加」の塊は先に文字を落とす(§9.238 ②→§9.505) ----------
     §9.505（利用者の選択「案A」）で表の見せ方の状態の要約（約190px）を帯から外し、読込の
     チップも「読込 23:14」へ縮めた。**字を全部出して要る幅**を測り直すと（1728／1920／1600／
     1440／1366px × 表示サイズ 小・中・大）**91.8〜111.1em**（前は約126em）。しきい値はその
     最大の少し上。利用者の常用（1728px・中＝121em）では「追加」の4つが字つきで出る
     （前は130emで落ちていた）。**しきい値は測って決めること**——`em`は器自身の文字サイズで解ける
-    （表示サイズを変えると同じ窓幅でもem数が変わる・§9.199）。 */
+    （表示サイズを変えると同じ窓幅でもem数が変わる・§9.199）。
+    §9.591 で帯の字を12→13px（`--bar-fs`）にしたので測り直した: 字を全部出して要る幅は **100.0〜109.0em**
+    （同じ窓でも1emが大きくなったぶんem数は下がる）。1728px・中は器111.7em で字つきのまま。 */
  #scToolsAdd .sc-ico-btn>span{display:none}
  #scToolsAdd .sc-ico-btn{padding:0 var(--ctl-pad-x-xs)}
 }
-@container schead (max-width: 96.7em){
+@container schead (max-width: 93.4em){
  /* 次に**塊の見出しと文字**を落としてアイコンだけにする。意味は`title`が持っているので、
     押す前に読める手立ては残る。§9.505で測り直した「追加」の字を落としたあとに要る幅は
     **84.4〜96.6em**——その最大の少し上（前は91em。1366px・中＝90.8emは前から字なし・1440px・中＝97.0emは
-    字が残る）。 */
+    字が残る）。§9.591（13px）で測り直すと **84.7〜93.3em**——その最大の少し上。 */
  .sc-tools-label{display:none}
  .sc-ico-btn>span{display:none}
  .sc-ico-btn{padding:0 var(--ctl-pad-x-xs)}

@@ -79,7 +79,9 @@ G['一覧'] = ['test_nav', 'test_navwords', 'test_popmenu', 'test_listcache', 't
              # §9.239 ⑤: 子ロットの畳み込みと列の一時的な色
              'test_gridchild', 'test_coltint',
              # §9.468: 一覧の道具の帯は2段（すぐ使う操作／常に見る状態）・「☰ 表示」
-             'test_listbar']
+             'test_listbar',
+             # §9.591: 一覧の道具（スライサー・色付け・拡大・ファイル）
+             'test_listtools', 'test_listtoolsui']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice', 'test_oplimit', 'test_oprange', 'test_opmother', 'test_opunit',
@@ -300,6 +302,10 @@ RULES = [
     # §9.256 式で作る自動値も同じ評価器を使う（片方だけ直した状態を作らない）
     ('static/js/list/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
                                     'test_opformula')),
+    # §9.591: 一覧の道具（スライサー・色付け・拡大・Excel に出力・表示の設定）
+    ('static/js/list/list-slicer.js', g('一覧')),
+    ('static/js/list/list-marks.js', g('一覧')),
+    ('static/js/list/list-tools.js', g('一覧')),
     ('static/js/list/filters.js', g('モーダル', 'フィルタ',
                                'test_listcache', 'test_allrows', 'test_nav')),
     # §9.302: 設備の使える機能で予定の設備の候補を絞る

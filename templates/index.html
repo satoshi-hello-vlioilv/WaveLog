@@ -718,7 +718,7 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
         </label>
         <button id="filterPresetBtn" class="fb-preset-btn" type="button"
                 aria-haspopup="true" aria-expanded="false">
-          <span class="fb-preset-key">プリセット</span><b id="filterPresetName">なし</b><em id="filterPresetNote" hidden></em><i class="hd-caret" aria-hidden="true">▾</i>
+          <i class="fa-solid fa-bookmark fb-preset-ico" aria-hidden="true"></i><span class="fb-preset-key">プリセット</span><b id="filterPresetName">なし</b><em id="filterPresetNote" hidden></em><i class="hd-caret" aria-hidden="true">▾</i>
         </button>
         <!-- **数えているのは条件の数**（§9.505）——「0件」だと2段目の「全 2,003件」（行の数）と
              同じ単位に読める。名前「条件」＋数の札にした。0でも押せる（足す・作るの入口もこの面）。 -->
@@ -728,7 +728,7 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
           <span class="fb-cond-key">条件</span><b id="filterCount" class="fb-cond-n">0</b><i class="hd-caret" aria-hidden="true">▾</i>
         </button>
         <!-- 名前は**することを動詞で**言う（§9.505。旧「その場フィルタ」は中身を言わない）。 -->
-        <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">列で絞り込む</button>
+        <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow" aria-label="列で絞り込む"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span class="lt-tool-t">列で絞り込む</span></button>
         <div class="filter-token-input" id="filterTokenInput" hidden>
           <span class="filter-token-key" aria-hidden="true">＋条件</span>
           <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="列名・値を打つと候補が出ます" aria-label="条件を検索して足す">

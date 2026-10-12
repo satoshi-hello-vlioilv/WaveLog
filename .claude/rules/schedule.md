@@ -1,4 +1,4 @@
-# 作業スケジュール（107件）
+# 作業スケジュール（108件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 帯の字を落とすしきい値（em）は字の大きさを変えたら測り直す（13pxで109.2em／93.4em） | `test_scbar.js` | [§9.591](../../docs/decisions/9.591.md) |
 | 厳密モードの一番上のロットは`strict_top()`の1箇所（予定の応答の`strictTop`・開始の口）。画面は数え直さず「開始」を一番上だけに | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 開始の口は`/api/schedule/plan/start`の1本。測定画面を開く関門が予定・帯・仕掛のどの道でも聞く（通常モードは書かない） | `test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 断るときは理由の種類と一番上のロット・次の一手（作業スケジュールを開く）。作業中のロットがあれば「作業中」で断る（並べ替えに行かせない） | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |

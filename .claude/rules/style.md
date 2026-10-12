@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（72件）
+# 見た目（CSS・寸法・色）（74件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 帯（ヘッダー・一覧の帯・操作列）の寸法は`--bar-h`／`--bar-fs`／`--bar-px`（30px・13px）の1箇所 | `test_listtoolsui.js`・`test_headbar.js` | [§9.591](../../docs/decisions/9.591.md) |
+| `:is()`の詳細度は中のいちばん強い物。打ち消したい部品は束ねた規則に入れず自前で書く | `test_typescale.js` | [§9.591](../../docs/decisions/9.591.md) |
 | 同じファイル・同じレイヤで同じセレクタのプロパティを違う値で重ねない（後勝ちで前が死ぬ・`.bk-mini`で踏んだ）。前からの重ねは上限表で下げる方向だけ | `test_csslint.py` | [§9.573](../../docs/decisions/9.573.md) |
 | トークンと見分けられない色（ΔE<2）はトークンで書く。淡い teal の字と地は`--teal-ink`／`--teal-tint` | `test_csslint.py` | [§9.572](../../docs/decisions/9.572.md) |
 | 使えない・外した物の薄さは`--op-disabled`の1つ。字を控えめにするのは透明度でなく灰色の3段 | `test_csslint.py` | [§9.570](../../docs/decisions/9.570.md) |

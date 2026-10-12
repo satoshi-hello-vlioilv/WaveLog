@@ -434,6 +434,8 @@ function bindColumnWidthGrip(grip,o){
      入れ替わっている。0のまま使うと幅が下限へ飛ぶので、そのときは動かさない
      （下の`w`が入らないので保存もしない）。 */
   const startW=Math.max(0,Math.round(o.startWidth()||0));
+  /* 一覧の拡大（§9.591）。マウスの動きは画面の上の量、幅は表の中の量なので倍率で割る（LotScope と同じ）。 */
+  const tb=grip.closest('table'),zk=(tb&&tb.offsetWidth)?(tb.getBoundingClientRect().width/tb.offsetWidth)||1:1;
   let w=0;
   /* 掴んだ時点の横位置を覚え、細くできるぶんだけ右へ余白を確保しておく
      （§9.208 ⑦）。**掴む前に置く**——引き始めてからでは、最初の1pxで
@@ -448,7 +450,7 @@ function bindColumnWidthGrip(grip,o){
   gripHeld++;document.body.classList.add('col-resizing');
   const move=ev=>{
    if(!startW)return;
-   w=Math.max(GRIP_W_MIN,Math.min(GRIP_W_MAX,Math.round(startW+(ev.clientX-startX))));
+   w=Math.max(GRIP_W_MIN,Math.min(GRIP_W_MAX,Math.round(startW+(ev.clientX-startX)/zk)));
    o.preview(w);
    /* 掴んだ側が動くように、器の横位置は**動かさない**。 */
    if(sc&&sc.scrollLeft!==keep)sc.scrollLeft=keep;
@@ -1345,6 +1347,7 @@ function applyTableData(d){
  if(d&&Object.prototype.hasOwnProperty.call(d,'source'))listSourceInfo=d.source||null;
  Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});
  S.joinQuality=d.joinQuality||null;
+ runListHooks('data',{d,offset:0});
  const info=(S.catalog||[]).find(x=>x.key===S.db)||{};
  // 主は画面名(仕掛一覧/品質データ)、副にファイル名。以前はファイル名だけを
  // 出しており、他画面へ移ってもそのまま残っていた(§9.60)。
@@ -1464,6 +1467,7 @@ async function continueAllRows(key){
    return;
   }
   if(run!==allRowsRun)return;
+  runListHooks('data',{d,offset:rows.length});
   rows.push(...(d.rows||[]));
   allRowsProgress(rows.length,total);
  }
@@ -1532,7 +1536,7 @@ window.fetchTableData=fetchTableData;
      query : 問い合わせの組み立て後に呼ばれる。URLSearchParamsを受け取り、
              条件を足す(戻り値は不要)
      after : 一覧を描き終えた後に呼ばれる */
-const listHooks={query:[],after:[],tabs:[],grid:[],beforeSelectTable:[],select:[],narrow:[]};
+const listHooks={query:[],after:[],tabs:[],grid:[],beforeSelectTable:[],select:[],narrow:[],data:[],row:[]};
 WL.listHooks={
  /* narrow : 「いま何が行を絞っているか」を名乗る（0件の案内が読む・§9.453）。
              `{items:[{source,text,locked}],clear:async()=>{}}` か null を返す。
@@ -1544,6 +1548,10 @@ WL.listHooks={
  onGrid:fn=>{if(typeof fn==='function')listHooks.grid.push(fn)},
  onBeforeSelectTable:fn=>{if(typeof fn==='function')listHooks.beforeSelectTable.push(fn)},
  onSelect:fn=>{if(typeof fn==='function')listHooks.select.push(fn)},
+ /* 届いた1回ぶんの応答（§9.591・色付けの当たり）。`{d, offset}`——全件の続きは offset が後ろへずれる。 */
+ onData:fn=>{if(typeof fn==='function')listHooks.data.push(fn)},
+ /* 描いた1行（§9.591・色付けの印）。`{tr, row}`。行を作るたびに呼ぶので軽く。 */
+ onRow:fn=>{if(typeof fn==='function')listHooks.row.push(fn)},
  count:()=>Object.fromEntries(Object.keys(listHooks).map(k=>[k,listHooks[k].length])),
 };
 function runListHooks(kind,arg){
@@ -2165,6 +2173,27 @@ function gridColumnView(g){
  g.numCol=c=>colFmt.get(c)?.kind==='number';
 }
 
+/* 書き出す形（§9.591 Excel に出力）: **画面の一覧と同じ並び・同じ見え方**（`gridScope()`＋`gridColumnView()`の1本）。
+   出すのはデータ列だけ（番号・ボタンの列は出さない）。`rows`は全ページぶんを呼ぶ側が集めて渡す。 */
+/* 書き出すセルの値。**書いてある通りに数**（`WL.formula.strictNum`＝先頭0の番号は字のまま）で15桁までなら数のセル、
+   ほかは見えている字のまま（16桁以上の番号を数にすると桁が落ちる）。 */
+function exportCell(text){
+ const n=WL.formula.strictNum(text);
+ return n!==null&&String(text).replace(/[^0-9]/g,'').length<=15?n:text;
+}
+function exportTable(rows){
+ const g=gridScope();gridColumnView(g);
+ const cols=g.dataCols;
+ const header=cols.map(c=>WL.columnLayout.label(g.layoutTarget,c));
+ /* 一覧で伏せているロット（予定に居る・仕掛から消えた・§9.368）は書き出しでも伏せる（画面と同じ行）。 */
+ const hide=g.canPlan?WL.scheduleView?.hiddenLotSet?.():null;
+ const list=(hide&&hide.size)?(rows||[]).filter(r=>!hide.has(pick(r,'lotNo'))):(rows||[]);
+ const body=list.map(r=>cols.map(c=>{
+  const calc=g.colCalc.get(c),nr=g.namedRow(r);
+  return exportCell(WL.cellFormat.cell({raw:calc?calc.run(nr):r[c],format:g.colFmt.get(c),rule:g.colRule.get(c),row:nr,column:c,view:g.ruleView}).text);
+ }));
+ return {header,rows:body,columns:cols};
+}
 /* ③ 列幅。**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
    「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
 function gridColumnWidths(g){
@@ -2304,6 +2333,7 @@ function makeGridRowBuilder(g,b,targets){
   if(g.canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
   bindGridRowActions(g,tr,r,b);
   bindGridChildFold(g,tr,r,rowLot);
+  if(listHooks.row.length)runListHooks('row',{tr,row:r});
   b.append(tr);
  };
 }
@@ -2730,6 +2760,86 @@ WL.listChildFold={
    **IDは変えない**——`#pageSize`/`#prev`/`#page`/`#next`/`#count`/
    `#listFreshness`は既存の配線と網がそのまま効く。
    並びは決める順（§CLAUDE 14）: いつのデータか → 何件ずつ → 何ページ目。 */
+/* 一覧の帯（`#listToolbar`）の骨組み。配線は`ensureListToolbar()`が持つ。 */
+function listToolbarHtml(){
+ /* ツールバーは**3つの群**に分ける(§9.90)。以前は「表示列・行間・並びの札・
+    いつも使う並び(選択)・保存・削除・結合の状態」が同じ高さで一列に並び、
+    どれが設定でどれが状態なのか、どこまでが1つのまとまりなのかが
+    読み取れなかった。近接と囲みで群を作る(ゲシュタルトの近接・共通領域)。
+      [ 見せ方 ] 表示列・行間      … この一覧の見た目を決める
+      [ 並び   ] 今の並び・いつも使う並び … 並べ替えに関するものだけ
+      [ 状態   ] 品質データ結合     … 操作ではなく結果。右端へ寄せる
+    「いつも使う並び」は**選択+保存+削除の3つを1つのメニューへ畳んだ**。
+    常に出しておく必要があるのは「今どの並びか」だけで、保存・削除は
+    必要になったときに開けばよい(段階的な開示)。固定幅のselectを
+    やめたので、長い名前が途中で切れることも無くなる。 */
+ /* ---------- 2段にする（§9.468、利用者の指示） ----------
+    「すぐに必要な機能とそうでもない機能、常に見えていないといけない表示と調べて
+     わかればよい表示に分けて、機能を維持しつつ使いやすいUIUX設計でメニュー構成を
+     見直してほしい」。スケジュールと並べた幅380pxで**5段・236px**に折れていた。
+      1段目（すぐ使う操作）… 絞り込みのバー（filters.js）＋「☰ 表示」
+      2段目（常に見る状態）… 元データの時刻・件数とページ・結合・色の印
+    **決めたら触らない設定**（表示列・行間・並び・表示件数・子ロット）は「☰ 表示」の
+    浮きパネルへ畳む。IDは変えない（配線と網がそのまま効く）。群を枠で囲むのは
+    やめた——枠の中に枠を作らない（§CLAUDE 画面基準 10）。
+    「☰ 表示」のボタンは絞り込みのバーの席（`#filterBarSlot`）へ移して1段目に置く
+    （`placeViewButton()`）。バーが無い一覧ではこの帯の先頭に残る。 */
+ /* ---------- 「表示列」は帯へ直に、残りは「表の見せ方」（§9.505、利用者の指示） ----------
+    §9.476 で「表示列の編集はよく使う」を受けてパネルのいちばん上へ置いたが、まだ
+    「開く→押す」の2手だった。**よく使うものは畳まない**（§9.207）——帯の右端に直に置き、
+    データ一覧・実績・作業スケジュールと**同じ印・同じ名前**にそろえる。
+    パネルの名前は「☰ 表示」をやめて**表の見せ方**——ヘッダーの「表示」（この端末の見え方）と
+    同じ名前が2つあった（§9.444 で1つにしたのが §9.468 で戻っていた）。作業スケジュールの
+    同じ役のボタンも「表の見せ方」。 */
+ return `<button type="button" id="listColumnBtn" class="list-toolbar-btn lt-cols-btn"
+   title="この一覧に出す列・並び・幅・書式・読み替えをまとめて設定します" aria-label="表示列"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span class="lt-cols-t">表示列</span></button>
+  <button type="button" id="listViewBtn" class="list-toolbar-btn lt-view-btn"
+   aria-haspopup="dialog" aria-expanded="false" aria-controls="listViewPanel"
+   title="行間・並び・表示件数・子ロットの畳みを決めます" aria-label="表の見せ方"><i class="fa-solid fa-bars" aria-hidden="true"></i><span class="lt-tool-t"><span class="lt-view-pre">表の</span>見せ方</span><i class="hd-caret" aria-hidden="true">▾</i></button>
+  <!-- 下の行は**同じ字の大きさ・同じ高さ・同じ左端**（名前の列は固定幅）で並べる（§9.476）。 -->
+  <div class="wl-menu lt-view-panel" id="listViewPanel" role="dialog" aria-label="表の見せ方" hidden>
+   <label class="lvp-row list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span class="lvp-k">行間</span>
+    <span class="lvp-v"><input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔">
+    <output id="listRowGapVal" class="lvp-note" for="listRowGap">ふつう</output></span></label>
+   <div class="lvp-row list-sort" id="listSort" role="group" aria-label="並び" hidden>
+    <span class="lvp-k list-sort-label">並び</span>
+    <span class="lvp-v lvp-sort">
+    <span class="list-sort-keys" id="listSortKeys"></span>
+    <span class="list-sort-preset-wrap">
+     <button type="button" id="listSortPresetBtn" class="list-toolbar-btn" role="button" aria-haspopup="true" aria-expanded="false"
+      title="いつも使う並びを選ぶ・今の並びを保存する">★ いつも使う並び<i>▾</i></button>
+    </span>
+    </span>
+    <div class="list-sort-menu" id="listSortMenu" hidden></div>
+   </div>
+   <label class="lvp-row list-pagesize" title="1ページに出す件数です（多くすると1回の読み込みが重くなります）">
+    <span class="lvp-k">表示件数</span>
+    <select id="pageSize" aria-label="表示件数">${PAGE_SIZES.map(n=>
+      `<option value="${n}"${String(n)===DEFAULT_PAGE_SIZE?' selected':''}>${Number(n).toLocaleString()}</option>`).join('')}
+     <option value="${ALL_ROWS}">全件</option></select></label>
+   <div class="lvp-row lvp-child"><span class="lvp-k">子ロット</span><span class="list-child-chip" id="listChildChip" hidden></span></div>
+  </div>
+  <!-- 2段目＝**常に見る状態**。左から「いつのデータか → 何件のどこを見ているか →
+       何が足されているか（結合・色）」。バッククォートを書かないこと（§9.211 ③）。 -->
+  <span class="lt-state" role="group" aria-label="元データと表示している範囲">
+   <span class="list-count" id="count"></span>
+   <button type="button" class="list-fresh-chip" id="listFreshness"
+    aria-haspopup="true" aria-expanded="false" hidden></button>
+   <span class="lt-sums" id="listToolSums"></span>
+   <span class="list-join-chip" id="listJoinChip" hidden></span>
+   <button type="button" class="list-tint-chip" id="listTintChip" hidden></button>
+   <span class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" hidden></span>
+   <!-- 右端＝見ている範囲を動かす道具（§9.591・LotScope と同じ並び）: 一覧の拡大 → ページめくり。 -->
+   <span class="lt-state-right">
+    <span class="lt-zoom-slot" id="listZoomSlot"></span>
+    <span class="list-pager" id="listPager">
+     <button type="button" id="prev" class="list-page-btn" aria-label="前のページ" title="前のページ">‹</button>
+     <b id="page">1</b>
+     <button type="button" id="next" class="list-page-btn" aria-label="次のページ" title="次のページ">›</button>
+    </span>
+   </span>
+  </span>`;
+}
 function ensureListToolbar(){
  let bar=document.getElementById('listToolbar');
  const grid=$('#grid');
@@ -2739,78 +2849,7 @@ function ensureListToolbar(){
   /* 行間(§9.88)は**動かした瞬間に反映**する。数値を入れて確定させる形にすると、
      どの値が自分に合うのかを試せない(見て決めるものなので、見ながら動かす)。
      保存は離した時点で1回だけ(動かしている間ずっと書きに行かない)。 */
-  /* ツールバーは**3つの群**に分ける(§9.90)。以前は「表示列・行間・並びの札・
-     いつも使う並び(選択)・保存・削除・結合の状態」が同じ高さで一列に並び、
-     どれが設定でどれが状態なのか、どこまでが1つのまとまりなのかが
-     読み取れなかった。近接と囲みで群を作る(ゲシュタルトの近接・共通領域)。
-       [ 見せ方 ] 表示列・行間      … この一覧の見た目を決める
-       [ 並び   ] 今の並び・いつも使う並び … 並べ替えに関するものだけ
-       [ 状態   ] 品質データ結合     … 操作ではなく結果。右端へ寄せる
-     「いつも使う並び」は**選択+保存+削除の3つを1つのメニューへ畳んだ**。
-     常に出しておく必要があるのは「今どの並びか」だけで、保存・削除は
-     必要になったときに開けばよい(段階的な開示)。固定幅のselectを
-     やめたので、長い名前が途中で切れることも無くなる。 */
-  /* ---------- 2段にする（§9.468、利用者の指示） ----------
-     「すぐに必要な機能とそうでもない機能、常に見えていないといけない表示と調べて
-      わかればよい表示に分けて、機能を維持しつつ使いやすいUIUX設計でメニュー構成を
-      見直してほしい」。スケジュールと並べた幅380pxで**5段・236px**に折れていた。
-       1段目（すぐ使う操作）… 絞り込みのバー（filters.js）＋「☰ 表示」
-       2段目（常に見る状態）… 元データの時刻・件数とページ・結合・色の印
-     **決めたら触らない設定**（表示列・行間・並び・表示件数・子ロット）は「☰ 表示」の
-     浮きパネルへ畳む。IDは変えない（配線と網がそのまま効く）。群を枠で囲むのは
-     やめた——枠の中に枠を作らない（§CLAUDE 画面基準 10）。
-     「☰ 表示」のボタンは絞り込みのバーの席（`#filterBarSlot`）へ移して1段目に置く
-     （`placeViewButton()`）。バーが無い一覧ではこの帯の先頭に残る。 */
-  /* ---------- 「表示列」は帯へ直に、残りは「表の見せ方」（§9.505、利用者の指示） ----------
-     §9.476 で「表示列の編集はよく使う」を受けてパネルのいちばん上へ置いたが、まだ
-     「開く→押す」の2手だった。**よく使うものは畳まない**（§9.207）——帯の右端に直に置き、
-     データ一覧・実績・作業スケジュールと**同じ印・同じ名前**にそろえる。
-     パネルの名前は「☰ 表示」をやめて**表の見せ方**——ヘッダーの「表示」（この端末の見え方）と
-     同じ名前が2つあった（§9.444 で1つにしたのが §9.468 で戻っていた）。作業スケジュールの
-     同じ役のボタンも「表の見せ方」。 */
-  bar.innerHTML=`<button type="button" id="listColumnBtn" class="list-toolbar-btn lt-cols-btn"
-    title="この一覧に出す列・並び・幅・書式・読み替えをまとめて設定します" aria-label="表示列"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span class="lt-cols-t">表示列</span></button>
-   <button type="button" id="listViewBtn" class="list-toolbar-btn lt-view-btn"
-    aria-haspopup="dialog" aria-expanded="false" aria-controls="listViewPanel"
-    title="行間・並び・表示件数・子ロットの畳みを決めます" aria-label="表の見せ方"><span class="lt-view-pre">表の</span>見せ方<i class="hd-caret" aria-hidden="true">▾</i></button>
-   <!-- 下の行は**同じ字の大きさ・同じ高さ・同じ左端**（名前の列は固定幅）で並べる（§9.476）。 -->
-   <div class="wl-menu lt-view-panel" id="listViewPanel" role="dialog" aria-label="表の見せ方" hidden>
-    <label class="lvp-row list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span class="lvp-k">行間</span>
-     <span class="lvp-v"><input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔">
-     <output id="listRowGapVal" class="lvp-note" for="listRowGap">ふつう</output></span></label>
-    <div class="lvp-row list-sort" id="listSort" role="group" aria-label="並び" hidden>
-     <span class="lvp-k list-sort-label">並び</span>
-     <span class="lvp-v lvp-sort">
-     <span class="list-sort-keys" id="listSortKeys"></span>
-     <span class="list-sort-preset-wrap">
-      <button type="button" id="listSortPresetBtn" class="list-toolbar-btn" role="button" aria-haspopup="true" aria-expanded="false"
-       title="いつも使う並びを選ぶ・今の並びを保存する">★ いつも使う並び<i>▾</i></button>
-     </span>
-     </span>
-     <div class="list-sort-menu" id="listSortMenu" hidden></div>
-    </div>
-    <label class="lvp-row list-pagesize" title="1ページに出す件数です（多くすると1回の読み込みが重くなります）">
-     <span class="lvp-k">表示件数</span>
-     <select id="pageSize" aria-label="表示件数">${PAGE_SIZES.map(n=>
-       `<option value="${n}"${String(n)===DEFAULT_PAGE_SIZE?' selected':''}>${Number(n).toLocaleString()}</option>`).join('')}
-      <option value="${ALL_ROWS}">全件</option></select></label>
-    <div class="lvp-row lvp-child"><span class="lvp-k">子ロット</span><span class="list-child-chip" id="listChildChip" hidden></span></div>
-   </div>
-   <!-- 2段目＝**常に見る状態**。左から「いつのデータか → 何件のどこを見ているか →
-        何が足されているか（結合・色）」。バッククォートを書かないこと（§9.211 ③）。 -->
-   <span class="lt-state" role="group" aria-label="元データと表示している範囲">
-    <button type="button" class="list-fresh-chip" id="listFreshness"
-     aria-haspopup="true" aria-expanded="false" hidden></button>
-    <span class="list-count" id="count"></span>
-    <span class="list-pager" id="listPager">
-     <button type="button" id="prev" class="list-page-btn" aria-label="前のページ" title="前のページ">‹</button>
-     <b id="page">1</b>
-     <button type="button" id="next" class="list-page-btn" aria-label="次のページ" title="次のページ">›</button>
-    </span>
-    <span class="list-join-chip" id="listJoinChip" hidden></span>
-    <button type="button" class="list-tint-chip" id="listTintChip" hidden></button>
-    <span class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" hidden></span>
-   </span>`;
+  bar.innerHTML=listToolbarHtml();
   grid.parentNode.insertBefore(bar,grid);
   /* 列の設定はこの一覧の設定パネルへ集約する(§9.88 段2)。名前・並び・幅・
      表示を1箇所で決められるので、ボタンの行き先もここ1つでよい。 */
@@ -2893,7 +2932,7 @@ function renderTintChip(bar){
    （filters.js）が作るので、**あれば**そこへ移し、無ければこの帯の先頭に残す。並びは
    「表示列 → 表の見せ方」（よく使うほうが先）。描くたびに呼んでよい。 */
 function placeViewButton(bar){
- const btns=['listColumnBtn','listViewBtn'].map(id=>bar.querySelector('#'+id)||document.getElementById(id)).filter(Boolean);
+ const btns=['listColumnBtn','listViewBtn','listFileBtn'].map(id=>bar.querySelector('#'+id)||document.getElementById(id)).filter(Boolean);
  if(!btns.length)return;
  const slot=document.getElementById('filterBarSlot');
  const home=(slot&&slot.closest('#genericFilterBar')&&!slot.closest('[hidden]'))?slot:bar;
@@ -3058,10 +3097,13 @@ function applyPendingScroll(){
 function setupVirtualRows({gen,grid,tbody,rows,colCount,overscan,buildRow,reset,afterRows}){
  if(!grid)return;
  const probe=tbody.querySelector('tr');
- const rowH=Math.max(1,Math.round((probe?probe.getBoundingClientRect().height:0)||24));
+ const rowH=Math.max(1,(probe?probe.getBoundingClientRect().height:0)||24);
+ /* **一覧の拡大（§9.591・表に`zoom`）**: 測った高さは画面の上の高さ（拡大後）、空行の高さは表の中の高さ（拡大前）。
+    割り戻さないと、拡大したぶん空行が伸びてスクロールバーと行がずれる。 */
+ const zoom=(probe&&probe.offsetHeight)?(probe.getBoundingClientRect().height/probe.offsetHeight)||1:1;
  const spacer=h=>{
   const tr=document.createElement('tr');tr.className='grid-virtual-spacer';
-  const td=document.createElement('td');td.colSpan=colCount;td.style.height=h+'px';
+  const td=document.createElement('td');td.colSpan=colCount;td.style.height=(h/zoom)+'px';
   tr.appendChild(td);return tr;
  };
  /* ---------- 速いスクロールに追いつく（§9.297、利用者の指摘「仕掛データなどの
@@ -3414,7 +3456,7 @@ async function openReloadMenu(anchor){
    足すときは、まず「本当に外から要るのか」を見る（中で済むなら載せない）。
    閉じたので、載せ忘れは `no-undef` が教える（§9.354）。
    ============================================================ */
-WL.list={init,load,renderGrid,renderGridInner,renderTabs,renderDbNav,selectDb,
+WL.list={init,load,renderGrid,renderGridInner,renderTabs,renderDbNav,selectDb,exportTable,
  listLayoutTarget,listColumnKeys,fmtStamp,applyTableData,estimateColumnWidth,
  tableCacheGet,tableCacheSet,checkParentLookupRows,checkSplitRowsForMissingChildren,
  setSplitCellText};

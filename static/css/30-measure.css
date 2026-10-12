@@ -25,10 +25,10 @@
 #tabs[hidden]{display:none}
 .hd-table-badge{
   display:inline-flex;align-items:center;gap:var(--gap-hair);
-  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
-  border:1px solid var(--line);border-radius:var(--radius-pill);
+  height:var(--bar-h);padding:0 var(--bar-px);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--ink-2);
-  font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;
+  font-size:var(--bar-fs);font-weight:var(--fw-ui);white-space:nowrap;
 }
 .hd-table-badge:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
 .hd-table-badge:disabled{opacity:var(--op-disabled);cursor:default}
@@ -115,14 +115,14 @@
    真ん中が「いま何件目から何件目か」で、両脇が前後。 */
 .list-pager{display:inline-flex;align-items:center;gap:2px;
   border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
-  padding:1px}
+  padding:1px;font-size:var(--lt-fs)}
 .list-pager>b{min-width:var(--w-sm);padding:0 var(--space-1);text-align:center;
   font-size:var(--lt-fs);font-weight:var(--fw-ui);color:var(--ink);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 /* 内側の2つは器（枠1px＋余白1px）の内へ収める——**ページめくり全体で`--lt-h`**。 */
 .list-page-btn{min-width:calc(var(--lt-h) - 4px);height:calc(var(--lt-h) - 4px);padding:0;
   border:0;border-radius:var(--radius-xs);background:transparent;cursor:pointer;
-  font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);line-height:1}
+  font-size:var(--lt-fs);font-weight:var(--fw-ui);color:var(--ink);line-height:1}
 .list-page-btn:hover:not(:disabled){background:var(--surface-3)}
 /* **押せないことは形で言う**（§CLAUDE 4）——最後のページで「次へ」が
    押せるのに何も起きない、を作らない。理由は`title`が持つ。 */
@@ -177,6 +177,8 @@
  font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;cursor:help}
 .list-child-chip.is-off{color:var(--muted)}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar{margin:4px 6px 0;gap:var(--gap-tight)}
+/* 2段目の中も詰める（§9.591 で右端の群を器に包み、幅380pxで1pxはみ出して3段になった）。 */
+:is(.sc-split-wrap,.sc-float-body) :is(.lt-state,.lt-state-right){gap:var(--gap-tight)}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar-btn{padding:0 var(--ctl-pad-x-xs)}
 /* **行の高さと行内ボタンの高さは #grid で解決させる。** カスタム
    プロパティは**定義した場所で値が解決される**ため、:root の

@@ -192,7 +192,8 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
  rec('幅1100pxでは札の名前を畳み、名前は説明が持つ（§9.508）',keys.length>0&&keys.every(k=>k.key==='none'&&k.title),JSON.stringify(keys));
  /* 題の器に中身が**入りきらない**幅で見る——画面名は縮ませず、譲るのは出どころの1行だけ。題が札の下へ
     重なっていないこと（§9.508 で踏んだ・最大76px）。1100pxではこの網の状態だと余りが大きく（札2枚・設備名
-    が短い）、欠陥を入れても通ったので、器を狭めて確かめる。字が大きいほど厳しいので「大」でも見る。 */
+    が短い）、欠陥を入れても通ったので、器を狭めて確かめる。字が大きいほど厳しいので「大」でも見る。
+    幅は 820px（§9.591 で札とボタンが 36px・14px → 帯の 30px・13px になり、880px では入りきるようになった）。 */
  const fitOf=()=>page.evaluate(()=>{
   const ctx=document.querySelector('header .hd-context'),st=document.querySelector('header .hd-status');
   const name=document.getElementById('fileName');
@@ -208,12 +209,12 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
   await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
   await page.click(`#uiSizeMenu [data-ui-size-option="${sz}"]`);await W.until(page,s=>document.documentElement.dataset.uiSize===s&&document.querySelector('header').getAnimations({subtree:true}).filter(a=>a instanceof CSSTransition).length===0,sz,{ms:4000,what:'表示サイズが'+sz+'になる'});
  };
- await page.setViewportSize({width:880,height:900});
+ await page.setViewportSize({width:820,height:900});
  await paint();
  const fitMd=await fitOf();
  await setSize('lg');const fitLg=await fitOf();await setSize('md');
  const fits={中:fitMd,大:fitLg};
- rec('前提: 880pxでは出どころの1行が譲っている（器に入りきらない状態で見ている）',fitMd.srcCut&&fitLg.srcCut,JSON.stringify(fits));
+ rec('前提: 820pxでは出どころの1行が譲っている（器に入りきらない状態で見ている）',fitMd.srcCut&&fitLg.srcCut,JSON.stringify(fits));
  rec('題が入りきらなくても画面名は切れない（中・大・§9.508）',!fitMd.nameCut&&!fitLg.nameCut,JSON.stringify(fits));
  rec('題が状態の札に重ならない（中・大・§9.508）',fitMd.overlap<=0&&fitLg.overlap<=0,JSON.stringify(fits));
  /* **必ず戻す。** ②③は元の広さで測る。 */
