@@ -82,6 +82,8 @@ JS_FILES=[
  # 浮きメニューの器のふるまい（§9.448）。置き場所・外クリック・Esc・
  # 矢印キー・role を1箇所で持つ。**画面より先**——どの面も開くときに呼ぶ。
  'core/pop-menu.js',
+ # 判定表のセルの書き方と判定（§9.588）。刃組（blade-core）と設備停止の挿入条件（schedule）が使う。**どちらより先**。
+ 'core/rule-cells.js',
  'list/list-view.js',
  'list/list-formula.js',
  'list/list-columns.js',

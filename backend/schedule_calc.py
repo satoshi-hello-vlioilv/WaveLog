@@ -927,9 +927,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
  if include_unplanned:
   unplanned_running,unplanned_done=unplanned_entries(actual_index,equipment,matched_keys,now,history_hours)
   entries=unplanned_running+entries+unplanned_done
- # 運用モード（§9.588）。「一番上のロット」は**時刻を置く前の並び**で決める（計画外の作業中も数える）。
- run_mode=read_equipment_run_mode(mc,equipment)
- top=strict_top(entries) if run_mode==RUN_MODE_STRICT else None
+ strict=_strict_view(mc,equipment,entries)
 
  # アンカー決定(§7.2): 展開対象(完了/取消を除く)の先頭を見る
  active=[e for e in entries if e['state'] not in PLAN_TERMINAL_STATES]
@@ -957,8 +955,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
          # さかのぼり(§9.366)。`historyFrom`が None なら「制限しない」。
          'historyKey':(history_mode(history)['key'] if history is not None else None),
          'historyFrom':history_from_at.isoformat() if history_from_at else None,
-         'historyHours':history_hours,
-         'runMode':run_mode,'strictTop':top}
+         'historyHours':history_hours,**strict}
 
 
 def _plan_entries(raw_rows,actual_index):
@@ -1063,6 +1060,11 @@ def strict_top(entries):
  out['startable']=True
  return out
 
+def _strict_view(mc,equipment,entries):
+ """予定の応答に載せる運用モード（§9.588）。「一番上のロット」は**時刻を置く前の並び**で決める（計画外の作業中も数える）。"""
+ mode=read_equipment_run_mode(mc,equipment)
+ return {'runMode':mode,'strictTop':strict_top(entries) if mode==RUN_MODE_STRICT else None}
+
 def strict_start_plan(entries,target_id,now,minutes_of):
  """厳密モードで`target_id`を開始するときに書く物（§9.588）。**純粋な関数**——書くのは呼ぶ側。
 
@@ -1084,20 +1086,32 @@ def strict_start_plan(entries,target_id,now,minutes_of):
   return dict(base,code='notTop',error=(f'厳密モードでは、一番上のロット（{name}）から開始します。このロットを始めるときは、'
                                        '作業スケジュールで一番上へ並べ替えてください。'))
  if not top['startable']:return dict(base,code='busy',error=top['reason'])
+ prev,stops,prev_end=_strict_between(entries,target)
+ out,end_from=_strict_allocate(stops,prev_end,start,minutes_of)
+ prev_view=({'id':prev['id'],'lotNo':str(prev.get('lotNo') or ''),
+             'endAt':prev_end.isoformat(timespec='minutes') if prev_end is not None and end_from==MANUAL_FROM_PREV_END else None}
+            if prev is not None else None)
+ return dict(base,ok=True,stops=out,prev=prev_view)
+
+def _strict_between(entries,target):
+ """`target`のすぐ上の完了ロットと、そのあいだの**時刻の無い**設備停止（並びの順）と、分け始める時刻。
+ 手で時刻を入れた設備停止が間にあれば、その終わりより後ろから分ける（重ねない）。"""
  planned=[e for e in entries if not e.get('unplanned') and e.get('parentId') is None]
- i=planned.index(target)
  prev=None;between=[]
- for e in reversed(planned[:i]):
+ for e in reversed(planned[:planned.index(target)]):
   if e['kind']=='作業' and e['state']!='取消':prev=e;break
   if e['kind']=='設備停止' and e['state']!='取消':between.append(e)
  between.reverse()
  timed=[e for e in between if e.get('manual') or (e.get('actual') or {}).get('startAt')]
- stops=[e for e in between if e not in timed]
  prev_end=entry_end_at(prev) if prev is not None else None
- # 手で時刻を入れた設備停止が間にあれば、その終わりより後ろから分ける（重ねない）。
  for e in timed:
   t=entry_end_at(e)
   if t is not None and (prev_end is None or t>prev_end):prev_end=t
+ return prev,[e for e in between if e not in timed],prev_end
+
+def _strict_allocate(stops,prev_end,start,minutes_of):
+ """設備停止へ「前の終わり〜開始」を**見積の比で**分ける（最後はちょうど開始で終わる）。前の終わりが分からない
+ ・開始より後なら、開始から見積ぶん遡る。戻り値: (設備停止ごとの時刻の並び, 出どころ)。"""
  mins=[max(0.0,float(minutes_of(e) or 0.0)) for e in stops]
  total=sum(mins)
  if prev_end is not None and prev_end<=start:
@@ -1114,10 +1128,7 @@ def strict_start_plan(entries,target_id,now,minutes_of):
   out.append({'id':e['id'],'title':str(e.get('title') or ''),'startAt':cur.isoformat(timespec='minutes'),
               'endAt':en.isoformat(timespec='minutes'),'minutes':round((en-cur).total_seconds()/60.0),'endFrom':end_from})
   cur=en
- prev_view=({'id':prev['id'],'lotNo':str(prev.get('lotNo') or ''),
-             'endAt':prev_end.isoformat(timespec='minutes') if prev_end is not None and end_from==MANUAL_FROM_PREV_END else None}
-            if prev is not None else None)
- return dict(base,ok=True,stops=out,prev=prev_view)
+ return out,end_from
 
 def plan_states(c,mc,equipment,now,actual_index=None):
  """時刻を置く前の予定の状態（測定の実績・手で入れた時刻・開始判定・終わった設備停止・計画外の作業中）。
