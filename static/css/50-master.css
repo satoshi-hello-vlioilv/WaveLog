@@ -1008,7 +1008,9 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ms-stage-head{display:flex;align-items:baseline;gap:var(--gap-tight);flex-wrap:wrap;min-width:0}
 .ms-stage-head b{font-size:var(--fs-base-sm);color:var(--ink)}
 .ms-stage-head small{font-size:var(--fs-sm);color:var(--muted)}
-.ms-no{flex:none;font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--teal-dark);line-height:1}
+/* 行の高さは本文と同じ`--lh`（§9.594）。`line-height:1`だと字の上下の高さ（書体のascent＋descent・1emより高い）が
+   箱から2px溢れていた。見出しの行は基準線でそろえているので、並びの位置は変わらない。 */
+.ms-no{flex:none;font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--teal-dark);line-height:var(--lh)}
 /* ラベル列は固定幅でそろえる（§9）。 */
 .ms-kv{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:2px var(--space-2);margin:0;
   min-width:0}

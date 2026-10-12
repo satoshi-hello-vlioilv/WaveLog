@@ -170,12 +170,18 @@ _CHOICES = {
 }
 # テストが作って片付けなかった行。**名前で見分けられるものだけ**片付ける
 # （反復のたびに増え、実測で設備131件・勤務体系140件まで育っていた）。
+# `機能テスト設備%`は test_eqfeature の設備（§9.594）——その網が途中で落ちると有効なまま残り、設備の数・
+# 札・俯瞰ボードの行を数える別の網（test_equse・test_workable・test_shift・test_scbalance…）を次々に落とした。
 _JUNK_EQUIPMENT = ("設備名 LIKE 'RT%新設備'", "設備名 LIKE 'RT%消える設備'",
-                   "設備名 LIKE '回帰_%'")
+                   "設備名 LIKE '回帰_%'", "設備名 LIKE '機能テスト設備%'")
 _JUNK_SHIFT = ("名称 LIKE '回帰_%'", "名称 LIKE '複数設備テスト%'")
 # テストが作った設備停止の屑（§9.389）。**名前で見分けられるものだけ**
 # （§9.284）——内訳を持つ親を消し残すと、次の実行の「件数」がずれる。
-_JUNK_STOP = ("[名称] LIKE 'FLW%'", "[名称] LIKE 'SSB%'", "[名称] LIKE 'CAP%'")
+# `連動テスト検査%`（test_stopcat）・`RTT%`／`RTE%`（test_sctimes／test_sctimesedit）・`RTM%`（test_stoprulemaster）・
+# `RTS%`（test_strictmode）も同じ（§9.594）——網が途中で落ちると有効なまま残り、設備停止の一覧が伸びて
+# 「一覧はスクロールしない」（test_scstop）を落とした。どれも頭の字＋数字（プロセス番号・時刻）なので見分けられる。
+_JUNK_STOP = ("[名称] LIKE 'FLW%'", "[名称] LIKE 'SSB%'", "[名称] LIKE 'CAP%'",
+              "[名称] LIKE '連動テスト検査%'", "[名称] GLOB 'RT[TEMS][0-9]*'")
 # 時間の選択肢の種（`schedule_repo.STOP_MINUTES_SEEDS`と同じ並び）。
 _STOP_MINUTES_SEEDS = (10, 15, 20, 30, 45, 60, 90, 120, 180, 240)
 # テストが作った操業データ項目の屑（§9.362 ⑤の続き）。**通しの開始時に

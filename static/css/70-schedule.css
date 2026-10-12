@@ -1344,7 +1344,11 @@
 /* 区切りの上に置いた小計（§9.503①）は**下に**線を引く——数える行の側に区切りの線が来る（「ここからの合計」）。 */
 .sc-subtotal.is-top{border-top-color:var(--line-soft);border-bottom-color:var(--line-mid)}
 /* 名前の器と集計の器は**横1列**。縮むのは区切りの名前だけ（数は縮めない・名前の全文は行の`title`）。 */
-.sc-subtotal-head,.sc-st-in{display:flex;align-items:center;gap:var(--space-3);min-width:0}
+.sc-subtotal-head,.sc-st-in{display:flex;align-items:center;min-width:0}
+/* 隙間は**部品どうしの関係で1つ**（§9.594）: 名前の器の中（札・名前・ロット数）は`--space-2`、集計どうしは`--space-3`。
+   前は名前の器が置き場で違い（列の器の中は`--space-2`・単独は`--space-3`）、単独のときだけ8px広く、名前が3px詰められていた。 */
+.sc-st-in{gap:var(--space-3)}
+.sc-subtotal-head{gap:var(--space-2)}
 .sc-subtotal-head>*,.sc-st-in>*{flex:none}
 /* 集計の器は右隣の列まで広がるが、**揃えはその列の1マスの中**（`subgrid`で表と同じ列の線を持ち、
    中身の器`.sc-st-in`は1マス目に載る）。中身の器は「1マスの幅以上・中身なり」——入るときは列の揃え
@@ -1353,7 +1357,6 @@
 .sc-subtotal-cell{display:grid;grid-template-columns:subgrid;align-items:center;min-width:0}
 .sc-st-in{grid-column:1;justify-self:start;width:max-content;min-width:100%}
 .sc-subtotal-head>.sc-subtotal-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.sc-st-in>.sc-subtotal-head{gap:var(--space-2)}
 .sc-subtotal-tag{flex:none;padding:var(--pad-chip);border:1px solid var(--teal);border-radius:var(--radius-pill);
  color:var(--teal-dark);font-size:var(--fs-badge);line-height:1.2}
 .sc-subtotal-name{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}

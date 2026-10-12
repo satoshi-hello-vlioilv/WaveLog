@@ -623,11 +623,14 @@ run('test_sctimecols: スケジュール表の列も列レイアウトマスタ�
      赤いままだった。**赤いまま残っている網は網ではない**・§9.200）。
      約束は「狭めたぶんが他の列へ回らず、右の空きが増えること」なので、
      上の`moved.length===0`と合わせて**狭めた量の半分以上が空きへ回る**で見る。 */
-  const cut=before.列-narrow.列;
-  rec('空きは右（セルを持たない1本）にできる',
-      narrow.余り-before.余り>=cut*0.5,
-      JSON.stringify({前:before.余り,後:narrow.余り,狭めた:cut,
-                      空きの増分:narrow.余り-before.余り,列:`${before.列}->${narrow.列}`}));
+  /* **目安（半分以上）ではなく等式で見る**（§9.594）。行（見出しの行）は列幅の合計に合わせて縮むので、狭めた量は
+     まず行が縮むぶんに使われ、**残り全部**が右の空きになる。目安だと、行がどれだけ広かったか（列の既定の幅で変わる）で
+     答えが揺れた（時刻の列が12px広がっただけで 49→37px になり落ちた）。 */
+  const cut=before.列-narrow.列,shrink=before.行-narrow.行;
+  rec('空きは右（セルを持たない1本）にできる（狭めた量から行が縮んだぶんを引いた全部）',
+      Math.abs((narrow.余り-before.余り)-(cut-shrink))<=2&&narrow.余り>0,
+      JSON.stringify({前:before.余り,後:narrow.余り,狭めた:cut,行の縮み:shrink,
+                      空きの増分:narrow.余り-before.余り,行:`${before.行}->${narrow.行}`,器:narrow.器,列:`${before.列}->${narrow.列}`}));
   rec('余りは「セルを持たない1本」が受ける（列は増えない）',
       before.トラック===before.列数+2,
       `トラック${before.トラック} / 列${before.列数}+取っ手+余り`);

@@ -1,4 +1,4 @@
-# 一覧と列（163件）
+# 一覧と列（164件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 自動の幅の見積りは描かずに数える。半角は書体で測った表（`calibrateCharEm()`）、余白は計算済みのpx（`gridMetrics()`） | `test_listperf.js` | [§9.594](../../docs/decisions/9.594.md) |
 | 帯は1段目＝絞る（検索→プリセット→条件→列→スライサー→色付け）｜見せ方、2段目＝状態｜拡大・ページ | `test_listtoolsui.js`・`test_listbar.js` | [§9.591](../../docs/decisions/9.591.md) |
 | スライサー・色付けの数はサーバーが一覧と同じ絞り込み（`_table_where`）の全件で数える。スライサーは自分の列を外す | `test_listtools.py` | [§9.591](../../docs/decisions/9.591.md) |
 | スライサーの値は`filters`へ`in`で足すだけ（絞り込みの条件・表示の設定のファイルに焼き付けない） | `test_listtoolsui.js` | [§9.591](../../docs/decisions/9.591.md) |

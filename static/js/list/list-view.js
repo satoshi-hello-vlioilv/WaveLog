@@ -1762,9 +1762,33 @@ function findColumnFor(key){return (WL.base.aliases[key]||[]).find(n=>S.columns.
      ・見出しは折り返さない約束(§9.90)なので、見出しは必ず入る幅にする
      ・データ側は青天井にしない(1列で画面が埋まると表として読めない) */
 const COL_W_MIN=52,COL_W_MAX=320,COL_W_SAMPLE=40;
+/* ---------- 半角の字幅は「いまの書体で字ごとに測った表」（§9.594） ----------
+   以前は半角を一律0.55emと見ていたが、大文字は約0.6〜0.7em・数字は約0.6emあり（書体で違う）、
+   「テスト設備A C1」のような値で自動の幅が2〜4px足りずに切れた。**描かずに数える**のは変えない
+   （§9.94）——半角（ASCIIと半角カナの158字）だけを`canvas`で1回測り、書体と大きさが同じなら使い回す。
+   全角（漢字・かな・全角記号）は1em。測れないときは今までの0.55emへ倒す。 */
+const CHAR_EM={font:'',map:null};
+function calibrateCharEm(cs){
+ const font=cs?`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`:'';
+ if(!font||CHAR_EM.font===font)return;
+ CHAR_EM.font=font;CHAR_EM.map=null;
+ try{
+  const ctx=document.createElement('canvas').getContext('2d'),px=parseFloat(cs.fontSize);
+  if(!ctx||!(px>0))return;
+  ctx.font=font;
+  const map=new Map();
+  const put=c=>{const ch=String.fromCodePoint(c);map.set(ch,ctx.measureText(ch).width/px)};
+  for(let c=0x20;c<0x7f;c++)put(c);
+  for(let c=0xff61;c<=0xff9f;c++)put(c);
+  CHAR_EM.map=map;
+ }catch(e){WL.quiet.note('字幅を測れない（半角は0.55emの見積りで続ける）',e)}
+}
 function textWidthEm(s){
  let w=0;
+ const map=CHAR_EM.map;
  for(const ch of String(s==null?'':s)){
+  const m=map&&map.get(ch);
+  if(m!=null){w+=m;continue}
   const c=ch.codePointAt(0);
   // ASCII・半角カナは狭い。それ以外(漢字・かな・全角記号)は1文字ぶん。
   w+=(c<0x2e80||(c>=0xff61&&c<=0xff9f))?0.55:1;
@@ -1794,11 +1818,22 @@ function estimateColumnWidth(label,values,fs,padX){
 }
 /* 表の文字サイズと左右余白は表示サイズ(--ui-scale)で変わるので、
    描くたびに1度だけ読む(セルごとに読むと数万回になる)。 */
+/* セルの左右の余白は**計算済みのpx**を読む（§9.594）。`--row-pad-x`は`calc(9px * var(--ui-scale))`という
+   式なので、変数のまま`parseFloat`すると`NaN`になり、決め打ちの6pxへ落ちていた（実際は9px・左右で6px足りない）。
+   器へ一度当てて読む（描くたびに1回）。 */
 function gridMetrics(){
  const g=document.getElementById('grid');
  const cs=g?getComputedStyle(g):null;
  const fs=parseFloat(cs&&cs.getPropertyValue('font-size'))||14;
- const px=parseFloat(cs&&cs.getPropertyValue('--row-pad-x'))||6;
+ let px=6;
+ if(g){
+  const probe=document.createElement('div');
+  probe.style.cssText='position:absolute;visibility:hidden;padding:0 var(--row-pad-x)';
+  g.appendChild(probe);
+  px=parseFloat(getComputedStyle(probe).paddingLeft)||6;
+  probe.remove();
+ }
+ calibrateCharEm(cs);
  return {fs,padX:px};
 }
 /* ---------- 列の窓(§9.104) ----------
