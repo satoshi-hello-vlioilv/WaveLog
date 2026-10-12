@@ -358,4 +358,12 @@
 .au-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .au-tag{font-style:normal;font-size:var(--fs-sm);color:var(--ink-2)}
 .au-tag.is-live{color:var(--teal-dark);font-weight:var(--fw-strong)}
+/* 版の一覧の頭（数・合計の量・整理の入口）と、整理中だけ出る「消す…」（§9.584）。 */
+.au-list-head{display:flex;align-items:center;gap:var(--space-3);margin:0 0 var(--space-1);font-size:var(--fs-sm)}
+.au-list-head>b{color:var(--ink-2);font-weight:var(--fw-strong)}
+.au-list-head>.mm-btn-ghost{margin-left:auto}
+.au-tidy-note,.au-muted{color:var(--ink-2);font-size:var(--fs-sm)}
+.au-act{white-space:nowrap;text-align:right}
+.au-table .au-del{color:var(--danger);border-color:var(--danger-border)}
+.au-table .au-del:hover{color:var(--danger);background:var(--danger-bg);border-color:var(--danger)}
 }

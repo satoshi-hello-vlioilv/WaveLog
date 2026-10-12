@@ -434,6 +434,20 @@ def app_update_release():
  out=app_update.set_release(x.text('version'),current_login_id())
  return jsonify(**out),(200 if out.get('ok') else 400)
 
+@bp.post('/api/app/update/delete')
+@api_guard('版を消せません')
+def app_update_delete():
+ """置いてある版を置き場から消す（§9.584）。配っている版は`app_update.delete_version()`が断る。
+    取り消せない操作なので、誰がどの版を消したかをログに残す。"""
+ role,can=_release_role()
+ if not can:
+  return jsonify(error=f'版を消せるのは開発者・メンテナンス者だけです（この端末は「{role}」）。'),403
+ x=body({'version':str},strict=True)
+ out=app_update.delete_version(x.text('version'))
+ if out.get('ok'):
+  app_logger().info('アプリの版 %s を置き場から消しました（%s）',out['version'],current_login_id() or '名乗りなし')
+ return jsonify(**out),(200 if out.get('ok') else 400)
+
 @bp.get('/api/changelog')
 def changelog():
  # 「開発の記録か」は changelog_data.is_dev() の1箇所が答える(§9.336)。

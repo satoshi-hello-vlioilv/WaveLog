@@ -15,6 +15,12 @@
    `progress()`（受け取る→確かめる→写す n/N→仕上げ）で、ここは問い合わせて共通の帯`WL.progress`へ描く。
    置いている最中に×で閉じるときは確かめる（`WL.closeGuard`）。閉じても書きかけは配られず、
    次に開いたときに片付く（`app_update.sweep_partial()`）。
+
+   **版を消す**（§9.584、利用者の指示「版を消すこともできるように」）。消すのは「版を整理する」を押した
+   **整理中だけ**——ふだんの表の行には「この版を配る」だけを置き、取り消せない「消す」を主要動線に並べない
+   （§CLAUDE 5）。整理中は「この版を配る」を伏せ、配っている版の行には消せない理由を字で書く。表の頭は
+   置いてある版の数と合計の量を言う（消す前に、どれだけ溜まっているかが見える）。配っている版を断るのは
+   サーバー（`app_update.delete_version()`）。
    ============================================================ */
 (function(){
  'use strict';
@@ -23,6 +29,8 @@
  const POLL_MS=400;
  /* 置いている最中の1本（この画面から送った物、または開き直したときにサーバーが「置いている」と答えた物） */
  let busy=null;
+ /* 整理中か（「版を整理する」を押した間だけ、行に「消す…」を出す）。消せる版が無くなったら自分で終える。 */
+ let tidy=false;
  /* 段ごとの題（何をしているか）。割合が分からない段は棒を往復させる（`WL.progress`）。 */
  const STAGE={
   send:'ZIP を送っています',
@@ -90,18 +98,31 @@
     <small>起動のとき、Python を起こす前にそろえます（db・config は触りません）</small></li>
   </ol>`;
  }
+ /* 消せる版（配っている版のほかの全部）。整理の入口を出すか・整理を終えるかはこの答えから決める。 */
+ const deletable=st=>st.versions.filter(v=>v.version!==(st.release&&st.release.version));
+ const sumBytes=vs=>vs.reduce((n,v)=>n+Number(v.bytes||0),0);
  function rowsHtml(st){
   const rel=st.release&&st.release.version,prev=st.release&&st.release.previous;
   if(!st.versions.length)return `<p class="au-empty">まだ版を置いていません。上の「ZIP から版を置く…」で置いてください。</p>`;
-  return `<table class="au-table"><thead><tr><th>版</th><th>状態</th><th>置いた日時・人</th><th>元の ZIP</th><th>コミット</th><th class="au-num">中身</th><th></th></tr></thead><tbody>${
+  const free=deletable(st),canTidy=st.canRelease&&!busy&&free.length>0;
+  if(!canTidy)tidy=false;
+  const tidyBtn=canTidy?`<button type="button" class="mm-btn-ghost" data-au-tidy>${tidy?'整理を終える':'版を整理する…'}</button>`:'';
+  /* 整理中は「消せる量」も言う（消す前に、どれだけ空けられるかが見える）。 */
+  const head=`<div class="au-list-head"><b>置いてある版 ${st.versions.length}・合計 ${MB(sumBytes(st.versions))}</b>${
+   tidy?`<span class="au-tidy-note">消せるのは ${free.length} 版・${MB(sumBytes(free))}</span><span class="au-tidy-note">整理中: 消す版の「消す…」を押してください。配っている版は消せません。</span>`:''}${tidyBtn}</div>`;
+  const act=v=>{
+   if(tidy)return v.version===rel?'<span class="au-muted">配っている版は消せません</span>'
+    :`<button type="button" class="mm-btn-ghost au-del" data-au-delete="${esc(v.version)}">消す…</button>`;
+   return (st.canRelease&&!busy&&v.version!==rel)
+    ?`<button type="button" class="mm-btn-ghost" data-au-release="${esc(v.version)}">この版を配る</button>`:'';
+  };
+  return `${head}<table class="au-table"><thead><tr><th>版</th><th>状態</th><th>置いた日時・人</th><th>元の ZIP</th><th>コミット</th><th class="au-num">中身</th><th></th></tr></thead><tbody>${
    st.versions.map(v=>{
     const state=v.version===rel?'<em class="au-tag is-live">配っている</em>'
      :(v.version===prev?'<em class="au-tag">前に配った</em>':'');
-    const act=(st.canRelease&&!busy&&v.version!==rel)
-     ?`<button type="button" class="mm-btn-ghost" data-au-release="${esc(v.version)}">この版を配る</button>`:'';
     return `<tr${v.version===rel?' class="is-live"':''}><td><b>${esc(v.version)}</b>${v.version===st.local?' <small>この PC</small>':''}</td><td>${state}</td>
      <td>${esc(v.placedAt)} ${esc(v.placedBy)}</td><td>${esc(v.source)}</td><td><code>${esc(v.commit||'—')}</code></td>
-     <td class="au-num">${v.files} ファイル・${MB(v.bytes)}</td><td>${act}</td></tr>`;
+     <td class="au-num">${v.files} ファイル・${MB(v.bytes)}</td><td class="au-act">${act(v)}</td></tr>`;
    }).join('')}</tbody></table>`;
  }
  function render(host,st){
@@ -160,7 +181,7 @@
  function showBusy(){
   const put=document.querySelector('#appUpdate .au-put');
   if(put){put.classList.add('is-busy');put.innerHTML=progressHtml()}
-  document.querySelectorAll('#appUpdate [data-au-release]').forEach(b=>b.remove());
+  document.querySelectorAll('#appUpdate [data-au-release],#appUpdate [data-au-delete],#appUpdate [data-au-tidy]').forEach(b=>b.remove());
   paintProgress();
  }
  function paintProgress(){
@@ -221,6 +242,23 @@
   }catch(e){await alertModal({title:'配る版を決められませんでした',message:e.message})}
   refresh();
  }
+ /* 版を消す（§9.584）。何が消え・何が残り・戻す道はあるかを先に言ってから聞く（取り消せない）。 */
+ async function remove(version,st){
+  const v=st.versions.find(x=>x.version===version);if(!v)return refresh();
+  const prev=st.release&&st.release.previous;
+  const why=[`置き場から版 ${version}（${v.files} ファイル・${MB(v.bytes)}）を消します。取り消せません。`,
+   version===prev?'前に配った版です。消すと、ここで選び直してこの版へ戻すことはできなくなります。':'',
+   version===st.local?'この PC はこの版で動いていますが、手元の写しで動いているので、消しても動き続けます。':'',
+   '各 PC の手元の版には触りません。同じ版の ZIP をもう一度置けば戻せます。'].filter(Boolean);
+  const ok=await confirmModal({title:`版 ${version} を消しますか？`,message:why.join('\n'),confirmLabel:'消す',danger:true});
+  if(!ok)return;
+  try{
+   const j=await api('/api/app/update/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version})});
+   showToast&&showToast(`版 ${j.version} を消しました`,`置き場が ${MB(j.bytes)} 空きました。`,5000);
+   if(j.notes&&j.notes.length)await alertModal({title:'消した版に注意があります',message:j.notes.join('\n')});
+  }catch(e){await alertModal({title:'版を消せませんでした',message:e.message})}
+  refresh();
+ }
  /* 配線は器に1回（委譲）。中身は描き直しても器は同じ。 */
  function wire(form){
   form.addEventListener('change',onChange);
@@ -232,9 +270,12 @@
  async function onClick(ev){
   const cp=ev.target.closest('[data-au-copy]');
   if(cp){ev.preventDefault();WL.base.copyText(cp.dataset.auCopy).then(()=>showToast&&showToast('アドレスをコピーしました',cp.dataset.auCopy,3600));return}
-  const b=ev.target.closest('[data-au-release]');if(!b)return;
+  if(ev.target.closest('[data-au-tidy]')){ev.preventDefault();tidy=!tidy;refresh();return}
+  const d=ev.target.closest('[data-au-delete]');
+  const b=d||ev.target.closest('[data-au-release]');if(!b)return;
   ev.preventDefault();
-  try{release(b.dataset.auRelease,await api('/api/app/update'))}
+  /* 押した時点の状態で確かめる（表を描いたあとに別の PC が配る版を変えているかもしれない） */
+  try{const st=await api('/api/app/update');d?remove(d.dataset.auDelete,st):release(b.dataset.auRelease,st)}
   catch(e){await alertModal({title:'更新の状態を読めません',message:e.message})}
  }
  WL.appUpdate={sectionHtml,refresh,wire};

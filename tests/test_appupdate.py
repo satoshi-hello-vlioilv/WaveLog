@@ -15,6 +15,8 @@
      共有の設定は窓の読む控え（config/update.json）へ**変わったときだけ**写す。窓も同じ順・同じ控えの名を読む
   7. 置いている間の進み具合（§9.556）: 確かめる→写す n/N（量）→仕上げ を順に言う・同時に2本は置かない・
      途中で終わった書きかけは**1時間より古い物だけ**片付ける（別の PC がいま置いている物を消さない）
+  11. 版を消す（§9.584）: **配っている版は消せない**・消している間に配る版に選ばれたら戻す・
+     消し切れない残りは一覧に出さず次の片付けで消す
 """
 import hashlib
 import io
@@ -360,6 +362,58 @@ rec('違えば写しを手放してから Python を止め、入れ替え、起�
     0 < body.find('drop(started);') < body.find('sup.stop();') < body.find('update::apply(') < body.find('Some(sup.get())'))
 rec('更新は「読むだけ」と「入れ替える」に分かれ、続けて呼ぶ口も残る',
     'pub fn peek(' in UPD and 'pub fn apply(' in UPD and 'pub fn check_and_apply(' in UPD)
+
+# ---- 11) 版を消す（§9.584、利用者の指示「版を消すこともできるように」） ----
+base11 = Path(tempfile.mkdtemp()) / 'share'
+for v in ('9.20.0', '9.21.0', '9.22.0'):
+    app_update.publish_zip(make_zip(v), v + '.zip', 'tester', base11)
+app_update.set_release('9.21.0', 'tester', base11)
+app_update.set_release('9.22.0', 'tester', base11)   # 配る版 9.22.0・前に配った版 9.21.0
+r = app_update.delete_version('9.22.0', base11)
+rec('配っている版は消せない（全 PC の更新が止まる）・次の一手を言う',
+    not r.get('ok') and '配っている版' in r.get('error', '') and 'この版を配る' in r.get('error', '')
+    and (base11 / 'versions' / '9.22.0' / 'manifest.json').is_file(), str(r))
+r = app_update.delete_version('9.21.0', base11)
+rec('前に配った版は消せる（消した量を返す）', r.get('ok') and r.get('files') > 0 and r.get('bytes') > 0 and r.get('notes') == [], str(r))
+rec('消した版は置き場からも一覧からも無くなる・消しかけも残さない',
+    not (base11 / 'versions' / '9.21.0').exists() and [v['version'] for v in app_update.versions(base11)] == ['9.22.0', '9.20.0']
+    and not [d for d in (base11 / 'versions').iterdir() if d.name.startswith('.')],
+    str(sorted(d.name for d in (base11 / 'versions').iterdir())))
+rec('配る版（release.json）は消しても変わらない', app_update.release(base11)['version'] == '9.22.0')
+r = app_update.delete_version('9.21.0', base11)
+rec('無い版は理由を言って断る', not r.get('ok') and '置き場にありません' in r.get('error', ''), str(r))
+r = app_update.delete_version('../share', base11)
+rec('置いてある版でない字（道）は断り、置き場の外を消さない', not r.get('ok') and base11.is_dir(), str(r))
+rec('消した版は配れない（もう置いていない）', not app_update.set_release('9.21.0', 't', base11).get('ok'))
+# 消している間に別の PC がこの版を配る版にした: 名前を戻して断る（配る版の中身を消さない）
+_orig_release = app_update.release
+_calls = []
+def _racing(b=None):
+    _calls.append(1)
+    return _orig_release(b) if len(_calls) == 1 else {'version': '9.20.0'}
+app_update.release = _racing
+try:
+    r = app_update.delete_version('9.20.0', base11)
+finally:
+    app_update.release = _orig_release
+rec('消している間に配る版に選ばれたら、名前を戻して断る',
+    not r.get('ok') and '配る版に選ばれた' in r.get('error', '') and (base11 / 'versions' / '9.20.0' / 'manifest.json').is_file()
+    and not [d for d in (base11 / 'versions').iterdir() if d.name.startswith('.')], str(r))
+# 中身を消し切れなかった版: 一覧から外れたまま、次の片付けで消える（古さを問わない）
+_orig_rmtree = app_update.shutil.rmtree
+def _stuck(p, *a, **k):
+    if str(p).endswith(app_update.DELETING):
+        raise OSError('使用中')
+    return _orig_rmtree(p, *a, **k)
+app_update.shutil.rmtree = _stuck
+try:
+    r = app_update.delete_version('9.20.0', base11)
+finally:
+    app_update.shutil.rmtree = _orig_rmtree
+left = [d for d in (base11 / 'versions').iterdir() if d.name.endswith(app_update.DELETING)]
+rec('消し切れなくても版は一覧から外れ、理由を言う',
+    r.get('ok') and r.get('notes') and '9.20.0' not in [v['version'] for v in app_update.versions(base11)] and len(left) == 1, str(r))
+rec('消しかけは次の片付けで消える（いま作った物でも）', app_update.sweep_partial(base11) == 1 and not left[0].exists())
 
 ok = sum(1 for _, x in R if x)
 print(f'\n== {ok}/{len(R)} PASS ==')
