@@ -44,6 +44,8 @@ run('test_oppad: 角丸ベースの意匠・設定窓の揺れ・空き（ダミ
     '#opItemModal [data-op-pop-panel]:not([hidden])'),null,{timeout:8000});
  };
  const openPop=async k=>{
+  /* 選ばせ方の盤は**開かずに並んでいる**（§9.587）。浮き出しは持たないので、盤が見えるまで待つだけ。 */
+  if(k==='widget'){await page.waitForSelector('#opItemModal [data-op-widget]',{timeout:8000});return}
   await page.evaluate(key=>{
    const b=document.querySelector(`#opItemModal [data-op-pop="${key}"]`);
    if(!b)throw Error('浮き出しの入口が無い: '+key);
@@ -75,6 +77,8 @@ run('test_oppad: 角丸ベースの意匠・設定窓の揺れ・空き（ダミ
   await page.waitForFunction(()=>{
    const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
   },null,{timeout:10000});
+  /* 「細かい設定」の畳みを開く（§9.587）。開け閉めは窓が覚えるので、開いた窓ごとに1回でよい。 */
+  await page.evaluate(()=>document.querySelectorAll('#opItemModal details[data-op-more]:not([open])').forEach(d=>{d.open=true}));
   await idle();
   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
   await openPop('widget');
@@ -324,6 +328,8 @@ run('test_oppad: 角丸ベースの意匠・設定窓の揺れ・空き（ダミ
    await page.waitForFunction(()=>{
     const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
    },null,{timeout:10000});
+  /* 「細かい設定」の畳みを開く（§9.587）。開け閉めは窓が覚えるので、開いた窓ごとに1回でよい。 */
+  await page.evaluate(()=>document.querySelectorAll('#opItemModal details[data-op-more]:not([open])').forEach(d=>{d.open=true}));
    await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
    await idle();
    const ids=await page.$$eval('#opModalForm [id^="opd"]',es=>es.map(e=>e.id));
@@ -489,6 +495,7 @@ run('test_oppad: 角丸ベースの意匠・設定窓の揺れ・空き（ダミ
    if(!m||m.hidden)return null;
    return {tabs:[...document.querySelectorAll('#opModalForm .op-form-sec')]
              .map(t=>(t.querySelector('.op-form-sec-head')||t).textContent.replace(/\s+/g,'')),
+           鍵:[...document.querySelectorAll('#opModalForm .op-form-sec')].map(t=>t.dataset.opSec),
            幅:!!document.querySelector('#opModalForm [data-op-span]'),
            削除:!!document.getElementById('opdDelete'),
            戻す:!!document.getElementById('opdPadOff')};
@@ -497,9 +504,10 @@ run('test_oppad: 角丸ベースの意匠・設定窓の揺れ・空き（ダミ
   rec('空きの窓で幅・削除・ふつうの項目へ戻すができる',
       !!padModal&&padModal.幅&&padModal.削除&&padModal.戻す,JSON.stringify(padModal));
   /* **決めることが無い列は出さない**（§4）——空きは名前も型も選ばせ方も持たない。 */
-  rec('空きの窓に「何を記録するか」「どう見せるか」は出さない',
-      !!padModal&&!padModal.tabs.some(t=>/記録|見せ/.test(t)),
-      JSON.stringify(padModal&&padModal.tabs));
+  /* 列は**鍵で**見る（§9.587で列の名前が「③ どこに・どう見せるか」になり、名前の字では見分けられない）。 */
+  rec('空きの窓に「何を記録するか」「どう選ばせるか」は出さない',
+      !!padModal&&padModal.鍵.join('/')==='place',
+      JSON.stringify(padModal&&padModal.鍵));
   await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
   await W.until(page,()=>{const m=document.getElementById('opItemModal');return !m||m.hidden},null,{ms:5000,what:'設定窓が閉じる'});
 

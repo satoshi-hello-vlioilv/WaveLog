@@ -50,6 +50,8 @@ run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①
     '#opItemModal [data-op-pop-panel]:not([hidden])'),null,{timeout:8000});
  };
  const openPop=async k=>{
+  /* 選ばせ方の盤は**開かずに並んでいる**（§9.587）。浮き出しは持たないので、盤が見えるまで待つだけ。 */
+  if(k==='widget'){await page.waitForSelector('#opItemModal [data-op-widget]',{timeout:8000});return}
   await page.evaluate(key=>{
    const b=document.querySelector(`#opItemModal [data-op-pop="${key}"]`);
    if(!b)throw Error('浮き出しの入口が無い: '+key);
@@ -77,6 +79,8 @@ run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①
   await page.waitForFunction(()=>{
    const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
   },null,{timeout:10000});
+  /* 「細かい設定」の畳みを開く（§9.587）。開け閉めは窓が覚えるので、開いた窓ごとに1回でよい。 */
+  await page.evaluate(()=>document.querySelectorAll('#opItemModal details[data-op-more]:not([open])').forEach(d=>{d.open=true}));
   await idle(250);  // 窓の中身（見本）を描き終えるまで
  };
  /* 窓は画面を覆うので、左のタブへ戻る前に必ず閉じる（実機でも同じ）。 */
@@ -1114,6 +1118,64 @@ run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①
   rec('群に幅を与えると横に並ぶ（列でも区切れる）',
       !side.前提なし&&!!side.a&&!!side.b&&side.a.y===side.b.y&&side.b.x>side.a.x,
       JSON.stringify(side));
+
+  /* ---- 設定窓を決める順の3列に組み直した（§9.587、利用者の指示・7案→組合せ→3回目の I3） ----
+     「わかりにくく使いづらいので…階層構造化を適切に利用してサブ的情報はコンパクトに表示し、
+      メインコンテンツの表示領域を確保できているか」
+     物差し（1728×1152・選択の項目）: 常に見えている説明 640字→142字・同じ重さで並ぶ行 25→11（14は畳む）・
+     開かずに見える選ばせ方 0→15枚・削除が流れの中 あり→なし・見本とつながる欄 0→14。 */
+  await page.evaluate(()=>{const m=document.getElementById('opItemModal');if(m&&!m.hidden)document.getElementById('opModalClose').click()});
+  const choiceTile=await page.evaluate(()=>{
+   const t=[...document.querySelectorAll('#masterMaintList .op-tile')]
+     .find(x=>!x.querySelector('.op-chip-builtin')&&/選択/.test(x.textContent));
+   return t?t.dataset.opId:'';
+  });
+  rec('前提: 選択の項目のタイルがある',!!choiceTile,choiceTile);
+  await openTile(choiceTile);
+  /* 畳みは**一度閉じてから**見る（前の節が開けたままのことがある・開け閉めは窓が覚える）。 */
+  await page.evaluate(()=>document.querySelectorAll('#opItemModal details[data-op-more][open]').forEach(d=>{d.open=false}));
+  await W.until(page,()=>![...document.querySelectorAll('#opItemModal details[data-op-more]')].some(d=>d.open),null,{ms:3000,what:'畳みが閉じる'});
+  const shape=await page.evaluate(()=>{
+   const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect();if(r.width<1||r.height<1)return false;
+     const d=e.closest('details:not([open])');return !(d&&!e.closest('summary'))};
+   const del=document.getElementById('opdDelete');
+   return {
+    列:[...document.querySelectorAll('#opModalForm .op-cols>.op-form-sec')].map(x=>x.dataset.opSec),
+    盤:[...document.querySelectorAll('#opModalForm [data-op-widget]')].filter(vis).length,
+    浮き出しの入口:!!document.querySelector('#opItemModal [data-op-pop="widget"]'),
+    畳み:[...document.querySelectorAll('#opModalForm details[data-op-more]')].map(d=>({鍵:d.dataset.opMore,
+      今:(d.querySelector('.pc-acc-now')||{}).textContent||''})),
+    削除が見える:vis(del),削除は畳みの中:!!del&&!!del.closest('details[data-op-more$="-danger"]'),
+    長い説明:[...document.querySelectorAll('#opModalForm .op-form-row>.op-form-ctl>.op-form-note,#opModalForm .op-form-row>.op-form-note')]
+      .filter(n=>vis(n)&&n.textContent.replace(/\s+/g,'').length>20).map(n=>n.textContent.trim().slice(0,20)),
+    名前に混ざる字:[...document.querySelectorAll('#opModalForm .op-form-label')].map(l=>l.textContent.trim()).filter(t=>/i$/.test(t)),
+    説明の印:document.querySelectorAll('#opModalForm .op-form-label>.wl-tip-i[data-tip]').length};
+  });
+  rec('列は決める順（①何を記録するか→②どう選ばせるか→③どこに・どう見せるか）',
+      shape.列.join('/')==='data/look/place',JSON.stringify(shape.列));
+  rec('選ばせ方の盤は開かずに見えている（浮き出しの入口を持たない）',
+      shape.盤>=5&&!shape.浮き出しの入口,JSON.stringify({盤:shape.盤,入口:shape.浮き出しの入口}));
+  rec('細部は列ごとの「細かい設定」に畳み、見出しがいまの値を言う',
+      shape.畳み.filter(d=>!/danger/.test(d.鍵)).length===3&&shape.畳み.some(d=>d.今.trim()!==''),JSON.stringify(shape.畳み));
+  rec('削除は流れの外（「外す・消す」の畳みの中で、開くまで見えない）',
+      shape.削除は畳みの中&&!shape.削除が見える,JSON.stringify(shape));
+  rec('長い説明は常に見えていない（ⓘ へ畳む）',shape.長い説明.length===0&&shape.説明の印>0,JSON.stringify({長い:shape.長い説明,印:shape.説明の印}));
+  rec('ⓘ の印が行の名前の字に混ざらない',shape.名前に混ざる字.length===0,JSON.stringify(shape.名前に混ざる字));
+  /* 畳みを開いてから別の札を押しても**開いたまま**（押すたびに窓は組み直される）。 */
+  await page.evaluate(()=>{const d=document.querySelector('#opItemModal details[data-op-more="place"]');d.open=true});
+  await W.until(page,()=>document.querySelector('#opItemModal details[data-op-more="place"]').open,null,{ms:3000,what:'③の畳みが開く'});
+  await page.evaluate(()=>{const b=[...document.querySelectorAll('#opItemModal [data-op-look="size"]')].find(x=>!x.classList.contains('is-on'));if(b)b.click()});
+  const foldKept=await W.until(page,()=>{const d=document.querySelector('#opItemModal details[data-op-more="place"]');return !!d&&d.open},null,{ms:3000,what:'組み直しても畳みが開いたまま'});
+  rec('畳みは押して組み直しても開いたまま（窓が覚える）',foldKept);
+  /* 欄に乗せると見本の同じ所が光る（§CLAUDE 15）。 */
+  const wr=await page.$('#opModalForm [data-op-row="widget"]');
+  await wr.hover();
+  const hot=await W.until(page,()=>document.getElementById('opModalPreview').dataset.hot==='field',null,{ms:3000,what:'見本の欄が光る'});
+  const unit=await page.$('#opModalForm [data-op-row="unit"]');
+  await unit.hover();
+  const hotU=await W.until(page,()=>document.getElementById('opModalPreview').dataset.hot==='unit',null,{ms:3000,what:'見本の単位が光る'});
+  rec('欄に乗せると見本の同じ所が光る（選ばせ方→欄・見せ方→単位）',hot&&hotU);
+  await closeModal();
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){

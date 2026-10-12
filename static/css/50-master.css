@@ -1543,20 +1543,20 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* ---------- 選択肢のまとまり名のサジェスト（§9.220 ④） ----------
    **理由と実際の値を必ず添える**（§6）。名前だけを並べると「なぜこれが
    勧められているのか」が読めず、押す前に開いて確かめることになる。 */
-.op-suggest{display:flex;flex-wrap:wrap;gap:var(--gap-tight);flex:1 1 100%;min-width:0;
-  align-items:stretch}
-.op-suggest-lead{flex:1 1 100%;color:var(--ink-2);font-size:var(--fs-badge);font-weight:var(--fw-ui)}
+/* 使えそうなまとまり（名前が似ている・同じ群が使っている）は**札1行**（§9.587）。理由と値の覗きは札の`title`が持つ（以前は4枚×約75pxの縦の札で、
+   ①の列の主役より背が高かった）。 */
+.op-suggest{display:flex;flex-wrap:wrap;gap:var(--gap-tight);flex:1 1 100%;min-width:0;align-items:center}
+.op-suggest-lead{flex:0 0 auto;color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .op-suggest-btn{
-  display:flex;flex-direction:column;align-items:flex-start;gap:1px;
-  min-width:0;max-width:var(--w-lg);padding:var(--space-1) var(--space-2);
+  display:inline-flex;align-items:center;
+  min-width:0;max-width:var(--w-lg);padding:2px var(--space-2);
   border:1px dashed var(--line-mid);border-radius:var(--radius-sm);
   background:var(--surface);cursor:pointer;text-align:left;
 }
 .op-suggest-btn:hover{border-style:solid;border-color:var(--teal);background:var(--pale)}
-.op-suggest-btn>b{color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.op-suggest-btn>small{color:var(--ink-2);font-size:var(--fs-micro)}
-.op-suggest-btn>i{color:var(--muted);font-size:var(--fs-micro);font-style:normal;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.op-suggest-btn>b{color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-suggest-btn>small,.op-suggest-btn>i{display:none}
 /* 初期値が候補に無いことの断り書き（§9.220 ②）。**色だけで伝えない**ので
    文で理由まで書く（この帯は文が長いので折り返す）。 */
 .op-warn-chip{
@@ -1693,6 +1693,36 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-cols{flex:1 1 auto;min-height:0;display:grid;gap:0 var(--space-3);
   grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
 .op-cols.is-one{grid-template-columns:minmax(0,1fr)}
+/* 決める順の3列（§9.587）。まん中（②どう選ばせるか）は選ばせ方の盤を開かずに並べるので広く。 */
+.op-cols:not(.is-one){grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr)}
+/* 長い説明は ⓘ の中（元の字は読む網と支援技術のために伏せて残す）。 */
+.op-form-note.is-tipped{display:none}
+.op-form-label>.wl-tip-i{vertical-align:middle}
+.op-tip-i::before{content:"i"}
+/* 細部の畳み（共通の`.pc-acc`）。列の中では主役の下に置き、見出しはいまの値を言う。 */
+.op-cols .op-more{margin-top:var(--space-2)}
+.op-cols .op-more>.pc-acc-body{padding:var(--space-2) var(--space-1) var(--space-2) var(--space-2)}
+.op-cols .op-more>summary b{font-size:var(--fs-sm)}
+.op-cols .op-more.is-danger>summary b{color:var(--danger)}
+/* 選ばせ方の盤は開かずに並べる（§9.587）。札は絵と名前だけ（説明は札の`title`）、名前の見出しは
+   塊の見出し（②どう選ばせるか）が持つので行の名前は伏せる（同じ字を2箇所に出さない・§CLAUDE 8）。 */
+.op-form-row.op-widget-row{grid-template-columns:minmax(0,1fr)}
+.op-widget-row>.op-form-label{display:none}
+.op-widget-inline{display:block;width:100%;min-width:0}
+
+.op-widget-inline .op-widget-note,
+.op-widget-inline .op-widget-group-head>small,
+.op-widget-inline .op-widget-group-head>em{display:none}
+.op-widget-inline .op-widget-groups{gap:var(--space-2)}
+.op-widget-inline .op-widget-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap-tight)}
+.op-widget-inline .op-widget-tile{min-height:0;padding:var(--space-1) var(--space-2)}
+/* 欄に乗せると見本の同じ所が光る（§9.587・§CLAUDE 15）。光らせ方は焦点の輪と同じ。 */
+.op-modal-preview[data-hot="field"] .op-prev-field .opf-face,
+.op-modal-preview[data-hot="field"] .op-prev-field .opf-widget,
+.op-modal-preview[data-hot="name"] .op-prev-field .opf-name,
+.op-modal-preview[data-hot="unit"] .op-prev-field .opf-unit,
+.op-modal-preview[data-hot="card"] .op-prev-card{
+  box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal);border-radius:var(--radius-xs)}
 .op-cols>.op-form-sec{display:flex;flex-direction:column;gap:var(--gap-inline);
   min-width:0;min-height:0;overflow:auto;scrollbar-gutter:stable;
   padding:0 var(--space-3) 0 0;border-right:1px solid var(--line-soft);border-top:0}

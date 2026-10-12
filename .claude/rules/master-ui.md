@@ -1,4 +1,4 @@
-# マスタ管理の画面（33件）
+# マスタ管理の画面（35件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 操業データ項目の設定窓は決める順の3列。行の置き場所は`OP_SECS`の1箇所（`main`／`more`／`danger`）、行は`data-op-row`で名乗る | `test_opui.js` | [§9.587](../../docs/decisions/9.587.md) |
+| 細部は「細かい設定」に畳む（見出しはいまの値・開け閉めは`opState.more`）。長い説明は ⓘ、選ばせ方の盤は開かずに並べる | `test_opui.js` | [§9.587](../../docs/decisions/9.587.md) |
 | 共通設定は5段。札は絵・名前・要対応の数・いまの一言で、段が`data-tab-sum`／`data-tab-badge`で名乗る | `test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |
 | 共通設定の段の中は「1行＝名前｜欄｜状態」（`pcKit().row`）。説明は ⓘ、置き場の行の補足は ⋯ | `test_setpage.js`・`test_storageui.js` | [§9.583](../../docs/decisions/9.583.md) |
 | 置き場は群ごとに畳める表（みんなで使う→この端末の中→読むだけ）。見出しが件数と状態を言う | `test_storageui.js`・`test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |
