@@ -298,6 +298,10 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 /* モード: 状態そのものが意味を持つので色で区別する(編集=緑/閲覧=灰/スケジュール=青) */
 .hd-chip-mode{border-color:var(--success-border);background:var(--success-bg)}
 .hd-chip-mode .hd-chip-val{color:var(--success)}
+/* 運用モード（§9.592）。**いつも出す押せる札**。厳密は青緑の面（モードの1つで、手を打つ「設定要」の橙ではない・§9.338）。 */
+.hd-chip-run.is-strict{border-color:var(--teal);background:var(--teal-tint)}
+.hd-chip-run.is-strict .hd-chip-val{color:var(--teal-ink)}
+.hd-chip-run[aria-expanded="true"]{border-color:var(--teal)}
 /* 押せない状態チップ（`.hd-chip-static`＝現場段取り）。**正常のときは中立**——素の`.hd-chip`
    （白地・`--line`の枠）のまま色を足さない（§9.338）。以前はここで橙
    （`--warn-*`）を当てており、**正常な「並べ替え可」が全画面でずっと橙**で、

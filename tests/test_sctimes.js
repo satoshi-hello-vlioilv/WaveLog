@@ -26,6 +26,7 @@ const TAG='RTT'+process.pid;
 
 run('test_sctimes: 実際の時刻を入れる（§9.514）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const made=[];
+ let rid=null;   // 自分で作った停止内容（後片付けで消す）
  const post=(p,body)=>page.evaluate(async a=>{
   const t0=Date.now();let last=null;
   while(Date.now()-t0<20000){
@@ -62,9 +63,10 @@ run('test_sctimes: 実際の時刻を入れる（§9.514）', async ({page,rec,B
   await page.waitForSelector('.sc-row-line',{timeout:30000});
 
   /* 材料: 停止S1 → 仕掛落ちのロット → 停止S2（後ろの作業が始まった停止／対照） */
-  const reasons=await page.evaluate(async e=>((await (await fetch('/api/schedule/stop-reason-master?equipment='
-    +encodeURIComponent(e))).json()).items||[]),EQ);
-  const rid=(reasons[0]||{}).id;
+  /* 停止内容も**自分で作る**（§9.592 の追補）。前は「その設備に停止内容が1つ以上ある」ことを当てにしており、
+     別の物（撮影の台本）が作って消した置き土産が無くなった日から「材料を足せた」で落ち続けた。 */
+  const reason=await post('/api/schedule/stop-reason-master',{equipment:EQ,name:TAG+'停止',category:'段取り',standardMinutes:30});
+  rid=reason.body.id;
   const addStop=async name=>{const r=await post('/api/schedule/plan/add',{equipment:EQ,kind:'設備停止',
     title:TAG+name,stopReasonId:rid,estimateMinutes:30});if(r.body.id)made.push(r.body.id);return r.body.id};
   const s1=await addStop('S1');
@@ -162,6 +164,7 @@ run('test_sctimes: 実際の時刻を入れる（§9.514）', async ({page,rec,B
   rec('JSエラーが出ていない',!errs.length,errs.slice(0,2).join(' / '));
  }finally{
   for(const id of made)await post('/api/schedule/plan/delete',{equipment:EQ,id});
+  if(rid)await post('/api/schedule/stop-reason-master/delete',{id:rid});
   await post('/api/access-mode',{mode:'edit'});
  }
 },{viewport:{width:1728,height:1030}});

@@ -17,6 +17,10 @@
 ・編集セッション（§9.211）では止めない——開始はラインで起きた事実で、計画者が並びを直している
   最中でもラインは止められない（書き込みの排他はロックと改訂番号が受ける）。
 
+**運用モードの切り替え**（§9.592、利用者の指示「通常・厳密モードの切り替えはスケジュールから設備作業者権限でも
+できるようにしてください」→ 選択「並べ替えできる端末」）も同じ段に置く（`POST /api/schedule/run-mode`）。切り替えて
+よい端末は`routes/schedule.py`の`line_ops_allowed()`の1箇所（スケジュールモード／その設備の現場段取りを持つ編集モード）。
+
 `routes/schedule.py`はルートの数が上限（`test_routesplit`の`PINNED`）なので段を分けた。書込の共通処理
 （`_write_response`）・読むだけの取得（`_read`）はあちらの1箇所を使う。
 """
@@ -27,14 +31,18 @@ from flask import Blueprint, jsonify
 
 from .. import schedule_calc
 from ..repositories import schedule_repo as sr
-from ..repositories.master_repo import read_equipment_run_mode, RUN_MODE_STRICT
+from ..repositories.master_repo import read_equipment_run_mode, write_equipment_run_mode, RUN_MODE_STRICT
 from ..access_mode import request_user_id, request_pc_name
 from .body import body, any_
-from .schedule import _read, _write_response
+from .schedule import _read, _write_response, line_ops_allowed
+from .common import cfg_write_response
 
 bp = Blueprint('schedule_start', __name__)
 
 START_PATH = '/api/schedule/plan/start'
+RUN_MODE_PATH = '/api/schedule/run-mode'
+RUN_MODE_DENIED = ('この端末では運用モードを切り替えられません。切り替えられるのは、この設備を並べ替えられる端末'
+                   '（スケジュールモード、またはアクセス権限マスタの「現場段取り」でこの設備を持つ端末）です。')
 
 
 def _run_mode(equipment):
@@ -108,3 +116,17 @@ def _refusal_as_conflict(resp):
     if isinstance(j, dict) and j.get('refused'):
         return jsonify(error=j.get('error'), code=j.get('code'), top=j.get('top'), strict=True), 409
     return resp
+
+
+@bp.post(RUN_MODE_PATH)
+def run_mode_set():
+    """運用モード（通常／厳密）を作業スケジュールから切り替える（§9.592）。**その設備の全端末に効く**（設備マスタの1列）。"""
+    x = body({'equipment': any_, 'mode': any_})
+    equipment = x.text('equipment')
+    if not equipment:
+        return jsonify(error='どの設備の運用モードか指定してください。'), 400
+    if not line_ops_allowed(equipment):
+        return jsonify(error=RUN_MODE_DENIED), 403
+    mode, uid = x.text('mode'), request_user_id(x)
+    return cfg_write_response(lambda mc: {'equipment': equipment, 'runMode': mode,
+                                          'updated': write_equipment_run_mode(mc, equipment, mode, uid)})
