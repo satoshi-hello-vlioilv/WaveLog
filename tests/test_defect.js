@@ -44,7 +44,7 @@ run('test_defect: 異常位置判定・バリ揃え/コイル止めのマスタ�
    valuesOf('コイル止め').join(','));
 
   // マスタ管理画面では「選択肢の値」1枚にまとまっている
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master]',{timeout:10000});await idle();
   const menu=await page.$$eval('#masterMaintNav [data-master]',n=>n.map(x=>x.dataset.master));
   rec('マスタ管理に専用タブを残していない',
@@ -53,7 +53,7 @@ run('test_defect: 異常位置判定・バリ揃え/コイル止めのマスタ�
   rec('「選択肢の値」1枚にまとまっている',menu.includes('opChoice'),menu.join(','));
 
   /* ---------- 2) 測定画面の選択欄が他項目と同じ形 ---------- */
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:20000});
   const started=await page.evaluate(()=>{
    const r=[...document.querySelectorAll('.sc-row-line')].find(x=>x.querySelector('.sc-row-start'));
@@ -539,7 +539,7 @@ run('test_defect: 異常位置判定・バリ揃え/コイル止めのマスタ�
 
   // 仕掛一覧のセルも「Nロット/M条」で言い分ける
   await page.evaluate(()=>{document.getElementById('measureModal').hidden=true});
-  await page.click('aside [data-db-key="SIKALOTNOW"]');
+  await W.nav(page,'aside [data-db-key="SIKALOTNOW"]');
   await W.until(page,()=>document.querySelectorAll('.split-flag-cell').length>0,null,{ms:15000,what:'仕掛一覧の分割セルが描かれる'});
   await idle();
   const cell=await page.evaluate(()=>{

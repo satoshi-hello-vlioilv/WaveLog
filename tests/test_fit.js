@@ -113,7 +113,7 @@ run('test_fit: 中身が器から溢れていないかを、表示サイズ3段�
    await paint();
   };
 
-  await visit('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'));
+  await visit('仕掛一覧',()=>W.nav(page,'aside [data-db-key="SIKALOTNOW"]'));
   /* **既定で隠れているものも開いて測る(§9.80)。** ここが管理漏れだった——
      フィルタの詳細ビルダー(#filterBody)も登録フィルタ一覧も既定はhiddenで、
      「見えているものだけ」を測っていたため、表示サイズを上げたときに
@@ -150,7 +150,7 @@ run('test_fit: 中身が器から溢れていないかを、表示サイズ3段�
    document.querySelector('#filterToggle')?.click();
   });
   await paint();
-  await visit('品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'));
+  await visit('品質データ',()=>W.nav(page,'aside [data-db-key="SIKALOTDEF"]'));
   await visit('品質データ_グラフ',async()=>{
    await page.click('[data-qa-tab="graph"]');await idle();
    await page.evaluate(()=>document.querySelectorAll('.qa-acc:not(.open) .qa-acc-head').forEach(x=>x.click()));
@@ -170,12 +170,12 @@ run('test_fit: 中身が器から溢れていないかを、表示サイズ3段�
      `hidden`の付け外し（専用の×は無い）。 */
   await page.evaluate(()=>{const m=document.getElementById('recordModal');if(m)m.hidden=true});
   await paint();
-  await visit('作業スケジュール',()=>page.click('#openSchedule'));
-  await visit('ダッシュボード',()=>page.click('#openDashboard'));
-  await visit('測定実績カレンダー',()=>page.click('#openCalendar'));
-  await visit('マスタ管理',()=>page.click('#openMasterMaint'));
+  await visit('作業スケジュール',()=>W.nav(page,'#openSchedule'));
+  await visit('ダッシュボード',()=>W.nav(page,'#openDashboard'));
+  await visit('測定実績カレンダー',()=>W.nav(page,'#openCalendar'));
+  await visit('マスタ管理',()=>W.nav(page,'#openMasterMaint'));
   /* 測定画面。左ペインが一番きつい(VER1.85.0で3px溢れを踏んだ場所)。 */
-  await page.click('aside [data-db-key="SIKALOTNOW"]');
+  await W.nav(page,'aside [data-db-key="SIKALOTNOW"]');
   await page.waitForSelector('.measurement-action-button',{timeout:20000}).catch(()=>{});
   await idle();
   const opened=await page.evaluate(()=>{

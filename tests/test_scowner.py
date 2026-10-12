@@ -480,11 +480,11 @@ def main():
   finally:
    _ss.SCHEDULE_SHARE_PATH=_share_bak
 
-  # 9) 中継するのは共有DBを書く5本だけ
-  rec('中継するのは共有DBを書く5本だけ',
+  # 9) 中継するのは共有DBを書く6本だけ（§9.588 で開始の口が加わった——厳密モードの開始は上の設備停止へ時刻を書く）
+  rec('中継するのは共有DBを書く6本だけ',
       set(so.RELAY_PATHS)=={'/api/schedule/plan/add','/api/schedule/plan/update',
                             '/api/schedule/plan/delete','/api/schedule/plan/reorder',
-                            '/api/schedule/plan/batch'},so.RELAY_PATHS)
+                            '/api/schedule/plan/batch','/api/schedule/plan/start'},so.RELAY_PATHS)
  finally:
   # 後始末: 入れた予定を消す(§9.121。置き土産は遠いテストを落とす)
   try:

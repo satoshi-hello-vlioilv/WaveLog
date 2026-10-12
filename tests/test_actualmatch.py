@@ -34,6 +34,7 @@
 ============================================================
 """
 import json
+import os
 import pathlib
 import sys
 
@@ -56,7 +57,7 @@ def rec(name, ok, detail=''):
 
 client = flask_app.app.test_client()
 EQ = 'テスト設備A'
-TAG = 'AM' + str(pathlib.os.getpid())
+TAG = 'AM' + str(os.getpid())
 made = []
 mine = {}
 

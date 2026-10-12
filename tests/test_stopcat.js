@@ -16,7 +16,7 @@ run('test_stopcat: 設備停止分類マスタ(§5.3.1)と入力支援(§9.49)�
     間に合わず、**一覧が空のまま**「既定の分類が入っていない」と出る
     ——実際に通しの1本目でだけ落ちた。一覧が組み上がるまで待つ。 */
  const openTab=async key=>{
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await page.waitForSelector('#masterMaintForm',{timeout:10000});
   await page.evaluate(k=>{const b=document.querySelector(`[data-master="${k}"]`);if(b)b.click()},key);
   try{

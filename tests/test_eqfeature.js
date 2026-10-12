@@ -138,7 +138,7 @@ page=pg;
      await idle();
      };
   const openEquipTab=async()=>{
-   await page.click('#openMasterMaint');
+   await W.nav(page,'#openMasterMaint');
    await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:15000});
    await pickEquipTab();
   };
@@ -254,7 +254,7 @@ page=pg;
     body:JSON.stringify({mode:'schedule'})}));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await page.waitForSelector('#scModeToggle',{state:'visible',timeout:25000});
   /* scheduleモードの既定は全体俯瞰（`board`）で、そのあいだ設備の選択欄は
      伏せてある。**1設備ぶんの表へ切り替えてから見ること**——伏せた要素を
@@ -284,9 +284,9 @@ page=pg;
   const reloadEq=()=>page.evaluate(()=>{
    if(typeof WL.records.loadEquipmentMaster==='function')return WL.records.loadEquipmentMaster(true)});
   const reenterSchedule=async()=>{
-   await page.click('#openMasterMaint');
+   await W.nav(page,'#openMasterMaint');
    await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:15000});
-   await page.click('#openSchedule');
+   await W.nav(page,'#openSchedule');
    await page.waitForSelector('#scModeSingle',{state:'visible',timeout:25000});
    /* scheduleモードの既定は全体俯瞰なので、入り直すたびに個別へ戻す。 */
    await page.click('#scModeSingle');

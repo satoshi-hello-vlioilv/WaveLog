@@ -61,7 +61,7 @@ def master_defs():
     # §9.324 R3: 定義は master-defs.js（盤の master-maint.js とは別ファイル）
     js = (ROOT / 'static' / 'js' / 'master' / 'master-defs.js').read_text(encoding='utf-8')
     return re.findall(
-        r"\{group:'[^']*',key:'([A-Za-z]+)',label:'([^']*)',icon:'[^']*',"
+        r"\{group:'[^']*',key:'([A-Za-z]+)',label:'([^']*)',"
         r"endpoint:'([^']+)',hasDelete:true,", js)
 
 

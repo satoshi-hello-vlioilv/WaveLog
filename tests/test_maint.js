@@ -47,7 +47,7 @@ run('test_maint: メンテナンス導線(マスタ管理)の検証(§9.56)と�
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:15000});
  await W.booted(page);await idle();
- await page.click('#openMasterMaint');
+ await W.nav(page,'#openMasterMaint');
  await page.waitForSelector('#masterMaintForm',{timeout:10000});
  await idle();
  const tabs=await page.$$eval('#masterMaintNav [data-master]',ns=>ns.length);
@@ -57,7 +57,7 @@ run('test_maint: メンテナンス導線(マスタ管理)の検証(§9.56)と�
 
  // ---- (4) 左ペイン: スクロールバーが出ない ----
  await page.evaluate(()=>window.exitMasterMaint&&window.exitMasterMaint());
- await page.click('[data-db-key="SIKALOTNOW"]');
+ await W.nav(page,'[data-db-key="SIKALOTNOW"]');
  await page.waitForFunction(()=>document.querySelectorAll('#grid table tbody tr').length>0,{timeout:20000});
  await page.click('#grid table tbody tr:first-child .measurement-action-button');
  await page.waitForSelector('#measureModal:not([hidden])',{timeout:15000});

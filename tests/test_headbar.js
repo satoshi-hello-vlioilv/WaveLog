@@ -228,7 +228,7 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
    title:document.querySelector('#fileName').textContent.trim(),
    src:document.querySelector('#headerContextSource')?.hidden?'':document.querySelector('#headerContextSource').textContent.trim()}));
  /* 画面を開いて、その画面の読み込みが済むまで（以前は画面ごとに1.8〜2.5秒の固定待ち）。 */
- const go=async sel=>{await page.click(sel);await idle(400,10000)};
+ const go=async sel=>{await W.nav(page,sel);await idle(400,10000)};
 
  /* ヘッダーの画面名は**データソースマスタの表示名**を使う(§9.87)。
     以前は'SIKALOTNOW'なら'仕掛一覧'と固定で書いており、左メニュー
@@ -314,7 +314,7 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
  /* マスタ管理は移設(§9.100)の当事者なので、個別に確かめる。
     再読込がヘッダーにあり、パネルには見出しだけが残ること。絞り込みは§9.556で外した
     （利用者の指示「最上部の絞り込みの検索バーもあまり意味がないので基本的に削除」）。 */
- await page.click('#openMasterMaint');
+ await W.nav(page,'#openMasterMaint');
  await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},'mmHead',{ms:10000,what:'マスタ管理の操作列がヘッダーへ載る'});
  await idle();
  const mm=await page.evaluate(()=>{
@@ -349,7 +349,7 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
  rec('マスタ管理: 窓を戻すと1行目へ戻る（§9.509）',wideAgain.inline&&!wideAgain.ctxOver,JSON.stringify(wideAgain));
 
  // 画面を出たら元の場所へ戻る(次の画面のものと混ざらない)
- await page.click('#openSchedule');
+ await W.nav(page,'#openSchedule');
  await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},'scHead',{ms:10000,what:'作業スケジュールの操作列がヘッダーへ載る'});
  await idle();
  const back=await page.evaluate(()=>({

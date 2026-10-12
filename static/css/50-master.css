@@ -93,10 +93,11 @@
 /* 左の一覧（§9.593）: 頭に「マスタを探す」、下に群ごとの行き先。器は白地で、右の作業の面（淡い地）と分ける。
    **バーの場所は常に空けておく**（§9.227 ②）——出た瞬間に中身が15px狭くなると、そのときだけ文字が切れる。 */
 .mm-side{display:flex;flex-direction:column;min-height:0;background:var(--surface);border-right:1px solid var(--line)}
-.mm-find{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h-sm);margin:10px 10px 6px;
- padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);color:var(--muted);font-size:var(--fs-sm)}
-.mm-find:focus-within{border-color:var(--teal)}
-.mm-find input{flex:1;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:var(--fs-sm)}
+.mm-find{flex:0 0 auto;position:relative;margin:10px 10px 6px}
+.mm-find>i{position:absolute;left:var(--ctl-pad-x-sm);top:50%;transform:translateY(-50%);color:var(--muted);font-size:var(--fs-sm);pointer-events:none}
+.mm-find input{width:100%;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm) 0 calc(var(--ctl-pad-x-sm) * 3);border:1px solid var(--line-mid);
+ border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font-size:var(--fs-sm)}
+.mm-find input:focus{border-color:var(--teal);outline:0}
 .mm-nav{flex:1;min-height:0;display:flex;flex-direction:column;padding:2px 8px 12px;overflow:auto;scrollbar-gutter:stable}
 .mm-nav-empty{margin:8px 6px;color:var(--muted);font-size:var(--fs-sm)}
 /* マスタ種別のグループ見出し(情報アーキテクチャ)。左ナビのnav-group-labelと

@@ -45,7 +45,7 @@ run('test_recvalues: ③「記録した値」はマスタが決める（§9.242 
     他の設定まで既定へ落ちる。 */
  const toggleRecordShow=async name=>{
   await page.evaluate(()=>{const m=document.querySelector('#measureModal');if(m)m.hidden=true});
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="opItem"]',{timeout:20000});
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
   await page.click('#masterMaintNav [data-master="opItem"]');
@@ -78,7 +78,7 @@ run('test_recvalues: ③「記録した値」はマスタが決める（§9.242 
   return was;
  };
  const openMeasure=async()=>{
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:25000});
   const ok=await page.evaluate(()=>{
    const r=[...document.querySelectorAll('.sc-row-line')].find(x=>x.querySelector('.sc-row-start'))

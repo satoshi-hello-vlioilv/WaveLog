@@ -37,7 +37,7 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="dataSource"]',{timeout:20000});
   /* 更新者IDはマスタ更新の必須項目（requireMaintUser）。入れずに保存すると
      トーストが出るだけで**何も起きない**ので、先に入れておく。 */
@@ -282,7 +282,7 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
 
   /* ---- 3) 一覧の帯と、列の設定パネルの分類 ---- */
   await page.evaluate(()=>window.exitMasterMaint&&window.exitMasterMaint());
-  await page.click(`[data-db-key="${WORK}"]`);
+  await W.nav(page,`[data-db-key="${WORK}"]`);
   /* **行が出たことでは待てない。** マスタ管理から戻ると前の描画がDOMに
      残っているので、行数を見る待ちは即座に通る（結合前の写しを見て
      「帯が出ていない」と誤診断する）。結合した列が入るまで待つ。 */
@@ -331,7 +331,7 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   await call('POST','/api/access-mode',{mode:'schedule'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await page.waitForSelector('.sc-board-row',{timeout:20000});
   await page.evaluate(eq=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===eq);if(r)r.click()},EQ);
@@ -348,7 +348,7 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
     {equipment:EQ,items:['lotNo','UI_検査結果'],user_id:'test-qjoin'});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await page.waitForSelector('.sc-board-row',{timeout:20000});
   await page.evaluate(eq=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===eq);if(r)r.click()},EQ);
@@ -373,7 +373,7 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   await call('POST','/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="queryJoin"]',{timeout:20000});
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-qjoin');
   await page.click('#masterMaintNav [data-master="queryJoin"]');
@@ -472,7 +472,7 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
      出なくなってしまいました」「オーダー情報と結合できませんと出たとしても、仕掛一覧の
      データがあるのであれば表示すべき」「必須データがない場合もエラーが出ないのは問題」）。
      サーバーの応答を差し替えて見る。写し（tableCache）から描かないよう force で読み直す。 ---- */
-  await page.click(`aside [data-db-key="${WORK}"]`);
+  await W.nav(page,`aside [data-db-key="${WORK}"]`);
   await W.until(page,()=>document.querySelectorAll('#grid tbody tr').length>0,null,{ms:20000,what:'仕掛一覧が出る'});
   await idle();
   const REASON='相手の表「オーダー」にデータが1行もありません（オーダー情報のデータが届いていないか、置き場が違います）。';
