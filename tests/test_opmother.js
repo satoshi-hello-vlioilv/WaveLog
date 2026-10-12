@@ -40,6 +40,8 @@ run('test_opmother: 母材の欄も操業データの項目にする（§9.232�
     '#opItemModal [data-op-pop-panel]:not([hidden])'),null,{timeout:8000});
  };
  const openPop=async k=>{
+  /* 選ばせ方の盤は**開かずに並んでいる**（§9.587）。浮き出しは持たないので、盤が見えるまで待つだけ。 */
+  if(k==='widget'){await page.waitForSelector('#opItemModal [data-op-widget]',{timeout:8000});return}
   await page.evaluate(key=>{
    const b=document.querySelector(`#opItemModal [data-op-pop="${key}"]`);
    if(!b)throw Error('浮き出しの入口が無い: '+key);

@@ -121,6 +121,8 @@ run('test_oplimit: 設備マスタの最大ライン速度と、数の決まり�
    await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !!m&&!m.hidden},
      null,{timeout:10000});
    await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
+   /* 「細かい設定」の畳みを開く（§9.587）。開け閉めは窓が覚えるので、1回でよい。 */
+   await page.evaluate(()=>document.querySelectorAll('#opItemModal details[data-op-more]:not([open])').forEach(d=>{d.open=true}));
    await page.waitForSelector('#opdMaxFrom',{timeout:10000});
   };
   await openModal();

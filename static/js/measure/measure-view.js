@@ -604,10 +604,17 @@ function cutFaceNoteHtml(grades){
    +`<small>各丈の<b>値(mm)</b>をこの基準と比べて判定します。`
    +`<b>客先の個別要求は反映していません</b>——切断面等級とエッジ形状だけで判定しています。</small>`;
 }
+/* 表の見出しの上段（判定に効く群）の字（§9.586）。**基準の帯と同じ答え**から作る——級が読めないときは
+   判定しないので、そう言う（「揃いで判定」と書いたまま判定しない表にしない・§CLAUDE 4）。 */
+function judgeGroupText(grades){
+ const grade=cutFaceGrade(grades);
+ return cutFaceLimits(grades)?`揃い（切断面 ${grade}級）で判定`:'揃い（基準なし・判定しません）';
+}
 function renderCutFaceNote(){
  const el=$('#productRowsNote');if(!el)return;
  el.innerHTML=cutFaceNoteHtml();
  el.classList.toggle('is-none',!cutFaceLimits());
+ const head=$('#prtJudgeGroup');if(head)head.textContent=judgeGroupText();
 }
 /* ---------- 揃いの内訳(§9.205、利用者の指示「内訳と合否両方(デフォルト)と
    内訳のみ、合否のみを切り替えほしい」) ----------
@@ -800,13 +807,15 @@ function productRowHtml(r,i){
  const detail=productDetailRowHtml(r,i,folded,note);
  const noteBtn=productNoteBtnHtml(i,note,folded);
  return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td>`
-  +`<td><span class="product-judge${productJudgeClass(judge)}" data-product-judge="${i}"`
-  +` title="${esc(judgeReasonOf(r,judge))}">${esc(judge)}</span>`
-  +(oldCode?`<small class="prt-old" title="4桁の揃いコードで記録された旧データです。エッジ形状を選び直すと、そちらが判定に使われます">旧 ${esc(oldCode)}</small>`:'')+`</td>`
   /* 外観・巻ズレOS/DS（§9.393）。**判定には効かない**——揃いの合否は
      エッジ形状と値(mm)から出す（§9.204）ので、ここで色を付けない。 */
   +`<td>${sel('appearance')}</td><td>${field('offsetOs','number')}</td><td>${field('offsetDs','number')}</td>`
-  +`<td>${sel('edgeShape')}</td><td class="prt-note-cell">${noteBtn}</td></tr>`+detail;
+  /* 判定は**根拠（エッジ形状）の右隣**（§9.586）。左から右へ「選ぶ→結果」の順に読める。 */
+  +`<td>${sel('edgeShape')}</td>`
+  +`<td><span class="product-judge${productJudgeClass(judge)}" data-product-judge="${i}"`
+  +` title="${esc(judgeReasonOf(r,judge))}">${esc(judge)}</span>`
+  +(oldCode?`<small class="prt-old" title="4桁の揃いコードで記録された旧データです。エッジ形状を選び直すと、そちらが判定に使われます">旧 ${esc(oldCode)}</small>`:'')+`</td>`
+  +`<td class="prt-note-cell">${noteBtn}</td></tr>`+detail;
 }
 function wireProductFields(body,m){
  body.querySelectorAll('[data-product-field]').forEach(el=>{

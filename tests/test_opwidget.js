@@ -24,6 +24,8 @@
     6. 切替は押すたびに次へ進み、**一巡する**。いま何番目・次を文字で出す
     7. 意匠の「形」（角丸）が**素のプルダウンと浮き窓まで**届く
     8. カードは説明が無いとき**背の高い空箱にならない**
+    9. 浮き面は**外の**スクロールでだけ閉じる（中の一覧を送っても閉じない・§9.585）
+   10. スピナーは押し続けると続けて動き、上限で止まる（§9.585）
 
    **見本の絵ではなく本物の部品を見る**——`WL.opData.previewWidget()`は
    測定画面と同じ`buildWidget()`（§9.218 ①）なので、ここを通せば実物の
@@ -640,6 +642,64 @@ run('test_opwidget: トグルの作り直しと、足した2つの選ばせ方�
   rec('素のプルダウンで選んでも数える',
       hits.length===1&&hits[0].value==='あ',JSON.stringify(hits));
   await page.unroute('**/api/operation-choice-master/used');
+
+  /* ==========================================================
+     9) 浮き面は「外の」スクロールでだけ閉じる（§9.585、利用者の報告）
+     ---------------------------------------------------------
+     「選択肢の選び方を『メニュー』にして、スクロールバーを触るとメニューが閉じてしまう」
+     **本物のホイール**でメニューの一覧を送る（スクロールバーを掴んでも同じ`scroll`が一覧から出る）。
+     直す前は一覧が送られた瞬間に閉じていた（物差し: 中のスクロールで開いたまま 0/2 → 2/2）。
+     ========================================================== */
+  await page.evaluate(()=>{window.__clear();
+    window.__mk('メニュー',{values:Array.from({length:40},(_,i)=>'候補'+(i+1))});});
+  await page.click('.opf-menu-btn');
+  await page.waitForSelector('#opfMenu:not([hidden])',{timeout:5000});
+  const lb=await page.evaluate(()=>{const r=document.querySelector('#opfMenu .opf-menu-list').getBoundingClientRect();
+    return {x:r.left+r.width/2,y:r.top+r.height/2}});
+  await page.mouse.move(lb.x,lb.y);
+  await page.mouse.wheel(0,240);
+  await W.until(page,()=>document.querySelector('#opfMenu .opf-menu-list').scrollTop>0,null,{ms:3000,what:'メニューの一覧が送られる'});
+  await paint();
+  const inner=await page.evaluate(()=>({開いたまま:!document.getElementById('opfMenu').hidden,
+    送った:Math.round(document.querySelector('#opfMenu .opf-menu-list').scrollTop)}));
+  rec('メニューの中をスクロールしても閉じない（スクロールバー・ホイール）',inner.開いたまま&&inner.送った>0,JSON.stringify(inner));
+  await page.evaluate(()=>window.dispatchEvent(new Event('scroll')));
+  const outerClosed=await W.until(page,()=>document.getElementById('opfMenu').hidden,null,{ms:3000,what:'外のスクロールでメニューが閉じる'});
+  rec('メニューの外がスクロールしたら閉じる（欄から離れて浮かせない）',outerClosed);
+
+  /* ==========================================================
+     10) スピナーは押し続けると続けて動く（§9.585、利用者の指示）
+     ---------------------------------------------------------
+     物差し: ▲を1.5秒押し続けたときの増え方（直す前 +1 → 直した後 +24）。
+     速さは`WL.base.holdRepeat`の1箇所なので、ここでは**続けて動く・上限で止まる・1回押しは1つ**を見る。
+     ========================================================== */
+  await page.evaluate(()=>{
+   window.__clear();
+   const label=document.createElement('label');
+   label.className='opf opf-host';label.dataset.opfill='1';
+   label.innerHTML='<span class="opf-name">スピナー</span><input type="text" class="numeric-input" value="0">';
+   document.getElementById('wbed').appendChild(label);
+   const def={name:'スピナー',preview:true,type:'整数',min:'0',max:'12',step:'1',decimals:'0',
+     look:{color:'既定',shape:'標準',size:'中'},layout:'自動'};
+   WL.opData.previewWidget(def,label,'スピナー');
+  });
+  await page.waitForSelector('#wbed [data-opstep="1"]',{timeout:5000});
+  const up=await page.$('#wbed [data-opstep="1"]');
+  const ub=await up.boundingBox();
+  const val=()=>page.evaluate(()=>Number(document.querySelector('#wbed input').value||0));
+  await page.mouse.click(ub.x+ub.width/2,ub.y+ub.height/2);
+  await paint();
+  const one=await val();
+  rec('スピナーの1回押しは1つだけ進む',one===1,String(one));
+  await page.mouse.move(ub.x+ub.width/2,ub.y+ub.height/2);
+  await page.mouse.down();
+  const held=await W.until(page,()=>Number(document.querySelector('#wbed input').value||0)>=5,null,{ms:4000,what:'押し続けると続けて増える'});
+  rec('スピナーの▲は押し続けると続けて増える',held);
+  await W.until(page,()=>Number(document.querySelector('#wbed input').value||0)>=12,null,{ms:6000,what:'上限まで届く'});
+  await page.mouse.up();
+  await paint();
+  const top=await val();
+  rec('押し続けても上限を超えない',top===12,String(top));
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 

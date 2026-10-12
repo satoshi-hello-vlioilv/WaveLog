@@ -33,6 +33,8 @@
  const opState={equipment:'',items:[],
                 /* 設定窓の「試しに打つ」の値（§9.541 F-2）。窓を組み直しても残す。 */
                 tryRaw:'',tryHot:'',
+                /* 設定窓の「細かい設定」の開け閉め（§9.587）。窓を組み直しても残す。 */
+                more:{},
                 /* 未保存の変更を持つ項目のid（§9.361）。再読み込みで
                    その1件だけ上書きしないために使う。 */
                 dirty:'',types:[],places:['準備','入力内容'],
@@ -240,7 +242,7 @@
   const list=opChoiceSuggest(x);
   if(!list.length)return '';
   const values=n=>(opState.choices||[]).filter(c=>c.name===n).map(c=>c.value);
-  return `<span class="op-suggest"><b class="op-suggest-lead">よく使う組み合わせ</b>`
+  return `<span class="op-suggest"><b class="op-suggest-lead">使えそうなまとまり</b>`
    +list.map(s=>{
      const vs=values(s.name);
      const peek=vs.length?`${vs.slice(0,4).join('／')}${vs.length>4?'…':''}`:'値が未登録';
@@ -1791,7 +1793,7 @@
   const fmt=opState.valueFormats.includes(x.valueFormat)?x.valueFormat:'そのまま';
   const blocked=at==='内部'&&opUnitInBlocked(widget,!!x.freeText);
   const zero=fmt==='ゼロ埋め';
-  return `<div class="op-form-row"><span class="op-form-label">見せ方</span>
+  return `<div data-op-row="unit" class="op-form-row"><span class="op-form-label">見せ方</span>
     <span class="op-form-ctl op-look">
      <label class="op-look-unit">単位<input type="text" id="opdUnit" value="${esc(x.unit||'')}"
        placeholder="mm など"></label>
@@ -1830,7 +1832,7 @@
   if(!x.builtin||keys.indexOf(x.builtin)<0)return '';
   const places=opState.sourceNotePlaces||['欄の下','名前の横','出さない'];
   const at=places.includes(x.sourceNote)?x.sourceNote:places[0];
-  return `<div class="op-form-row"><span class="op-form-label">出どころの添え書き</span>
+  return `<div data-op-row="srcnote" class="op-form-row"><span class="op-form-label">出どころの添え書き</span>
     <span class="op-form-ctl">
      <span class="op-look-line">${places.map(v=>
        `<button type="button" data-op-srcnote="${esc(v)}" class="op-mini${at===v?' is-on':''}">${esc(v)}</button>`).join('')}</span>
@@ -1867,14 +1869,118 @@
     3クリック→0になる。並びは**実際に決める順**（§14）。
     **④メモは塊にしない**——覚え書き1つのために列を1本使うのは面積の
     配り方として合わない（①の末尾へ小さく置く）。 */
- const OP_SECS=[{k:'place',n:'① どこに出すか',t:'カード・幅・群・出し方'},
-                {k:'data', n:'② 何を記録するか',t:'型・役割・選択肢・初期値'},
-                {k:'look', n:'③ どう見せるか',t:'選ばせ方・意匠・単位'}];
+ /* ---------- 決める順の3列と、列ごとの「細かい設定」（§9.587、利用者の指示・7案→組合せ→3回目の I3） ----------
+    「わかりにくく使いづらいので…階層構造化を適切に利用してサブ的情報はコンパクトに表示し、
+     メインコンテンツの表示領域を確保できているか、徹底した改良を」
+
+    以前は「①どこに出すか｜②何を記録するか｜③どう見せるか」の3列に**25行が同じ重さで平らに**並び、
+    説明が常に640字（1728×1152）、選ばせ方は浮き出しの中（開くまで0枚）、削除が②の流れの中にあった。
+    いまは**決める順**（何を記録する→どう選ばせる→どこに・どう見せる）に列を組み、列ごとに
+    **主役（`main`）だけを出して、細部（`more`）は「細かい設定」へ畳む**。畳みの見出しはいまの値を言うので、
+    開かずに読める（§CLAUDE 2）。危ない操作（`danger`）は①の最後の畳みへ離す（§CLAUDE 5）。
+    **どの行をどこに置くかは、この表の1箇所が答える**——行の組み立て（`opPane*()`）は行を作るだけで、
+    置き場所を知らない（行は`data-op-row`で名乗る）。表に無い行は列の末尾へ落ちる（載せ忘れても消えない・§4）。
+    列の鍵（`k`）は前と同じ3つ（`data`・`look`・`place`）——説明の`?`は鍵ごとに積んだもの（`help()`）が出る。 */
+ const OP_SECS=[
+  {k:'data', n:'① 何を記録するか',t:'名前・型・選択肢・初期値',
+   main:['name','auto','formula','type','nums','try','choice','initial'],more:['role','froms','free'],danger:['self']},
+  {k:'look', n:'② どう選ばせるか',t:'押すと見本が替わります',
+   main:['widget'],more:['layout','blank','btint','corder','inadd','srcnote']},
+  {k:'place',n:'③ どこに・どう見せるか',t:'置き場・幅・群・見た目',
+   main:['place','span','group','color','size','unit'],more:['shape','show','record','equip','when','note'],danger:['padops']},
+ ];
  /* **空きのカードは決めることが少ない**（§9.230 ③）。②何を記録するか・
     ③どう見せるかは中身を持たない空きには効かないので、列ごと出さない
     ——押しても何も無い列を並べない（§4）。 */
  function opSecsFor(x){
   return (x&&x.dummy)?OP_SECS.filter(o=>o.k==='place'):OP_SECS;
+ }
+ /* 行（`data-op-row`）を`OP_SECS`の置き場所へ並べ直す。行は組み立て済みの物をそのまま動かす（作り直さない）。 */
+ function opComposeCols(x,html,kit){
+  const tpl=document.createElement('template');
+  tpl.innerHTML=html;
+  const pick=keys=>(keys||[]).map(k=>tpl.content.querySelector(`[data-op-row="${k}"]`)).filter(Boolean);
+  const secs=opSecsFor(x);
+  const cols=document.createElement('div');
+  cols.className='op-cols'+(secs.length===1?' is-one':'');
+  cols.innerHTML=secs.map(t=>kit.sec(t.k,t.n,t.t,'')).join('');
+  const listed=new Set(OP_SECS.flatMap(t=>[...t.main,...t.more,...(t.danger||[])]));
+  /* 表に無い行は、作った塊の「細かい設定」へ落とす（載せ忘れても消さない）。 */
+  const lost=k=>[...tpl.content.querySelectorAll(`[data-op-sec="${k}"] [data-op-row]`)]
+    .filter(r=>!listed.has(r.dataset.opRow));
+  secs.forEach(t=>{
+   const sec=cols.querySelector(`[data-op-sec="${t.k}"]`);
+   pick(t.main).forEach(r=>sec.appendChild(r));
+   opFoldRows(sec,t.k,'細かい設定',pick(t.more).concat(lost(t.k)));
+   opFoldRows(sec,t.k+'-danger',x.builtin?'この項目を外す':'この項目を外す・消す',pick(t.danger),'is-danger',true);
+  });
+  cols.querySelectorAll('[data-op-row]').forEach(opTipNotes);
+  return cols;
+ }
+ /* ---------- 欄に乗せると見本の同じ所が光る（§9.587・§CLAUDE 15「図と入力は結ぶ」） ----------
+    どの行が見本のどこに効くかは`OP_HOT`の1箇所。光らせるのは見本の器の印（`data-hot`）だけで、
+    見本の中身は触らない（作り直さない）。 */
+ const OP_HOT={name:'name',group:'card',place:'card',span:'card',widget:'field',layout:'field',blank:'field',
+   btint:'field',color:'field',shape:'field',size:'field',choice:'field',initial:'field',unit:'unit'};
+ function opBindHot(){
+  const prev=$('#opModalPreview'),form=$('#opModalForm');
+  if(!prev||!form)return;
+  const set=k=>{if(k)prev.dataset.hot=k;else delete prev.dataset.hot};
+  form.querySelectorAll('[data-op-row]').forEach(r=>{
+   const k=OP_HOT[r.dataset.opRow];
+   if(!k)return;
+   r.dataset.opHot=k;
+   r.addEventListener('mouseenter',()=>set(k));
+   r.addEventListener('mouseleave',()=>set(''));
+   r.addEventListener('focusin',()=>set(k));
+   r.addEventListener('focusout',()=>set(''));
+  });
+ }
+ /* 細部の畳み。見出しは**いまの値**を言う（開かずに読める）。開け閉めは`opState.more`が覚える
+    ——押すたびに窓は組み直されるので、覚えないと1回押すごとに畳まれる。器は共通の畳み（`pageFoldHtml`）。 */
+ function opFoldRows(sec,key,title,rows,cls,bare){
+  if(!rows.length)return;
+  /* 危ない操作の畳みは件数も値も言わない（押させたい物ではない）。 */
+  const now=bare?'':rows.map(opRowNow).filter(Boolean).slice(0,4).join('・');
+  const open=!!(opState.more||{})[key];
+  const wrap=document.createElement('div');
+  wrap.innerHTML=WL.mm.pageFoldHtml(bare?title:`${title}（${rows.length}）`,now,'',open,
+    {cls:'op-more'+(cls?' '+cls:''),attrs:`data-op-more="${esc(key)}"`});
+  const fold=wrap.firstElementChild;
+  const body=fold.querySelector('.pc-acc-body');
+  rows.forEach(r=>body.appendChild(r));
+  fold.addEventListener('toggle',()=>{opState.more=Object.assign({},opState.more,{[key]:fold.open})});
+  sec.appendChild(fold);
+ }
+ /* 行のいまの値（畳みの見出しに出す一言）。押してある札→選んでいる項目の順。 */
+ function opRowNow(row){
+  const on=[...row.querySelectorAll('.is-on')].filter(b=>!b.disabled).map(b=>b.textContent.trim()).filter(Boolean);
+  if(on.length)return on.join('・');
+  const sel=row.querySelector('select');
+  const t=sel&&sel.value&&sel.selectedOptions[0]?sel.selectedOptions[0].textContent.trim():'';
+  return t.length>14?t.slice(0,14)+'…':t;
+ }
+ /* 長い説明は ⓘ へ（§9.583 と同じ作法・§9.587）。**状態の一言（短い字）と注意の札は残す**——畳むのは
+    説明の言い回しだけで、取り違えを防ぐ事実（いま効いていない・初期値が要る）は見えたまま（§9.255）。
+    元の字は消さずに伏せる（読む網と支援技術のため）。 */
+ const OP_NOTE_INLINE_MAX=20;
+ function opTipNotes(row){
+  const label=row.querySelector(':scope>.op-form-label');
+  if(!label||label.querySelector('.wl-tip-i'))return;
+  const notes=[...row.querySelectorAll(':scope>.op-form-ctl>.op-form-note,:scope>.op-form-note')]
+    .filter(n=>n.textContent.replace(/\s+/g,'').length>OP_NOTE_INLINE_MAX);
+  if(!notes.length)return;
+  const text=notes.map(n=>{
+   n.querySelectorAll('.op-warn-chip').forEach(w=>n.before(w));       // 注意の札は外へ出して見せる
+   const c=n.cloneNode(true);
+   c.querySelectorAll('b').forEach(b=>b.replaceWith(`**${b.textContent}**`));
+   n.classList.add('is-tipped');
+   return c.textContent.replace(/\s+/g,' ').trim();
+  }).join('\n');
+  label.insertAdjacentHTML('beforeend',WL.mm.tipHtml(text));
+  /* 印の「i」は絵で描く（CSS）——字にすると行の名前（`.op-form-label`の字）に混ざる。 */
+  const tip=label.querySelector('.wl-tip-i');
+  if(tip){tip.textContent='';tip.classList.add('op-tip-i')}
  }
  /* ---------- 役割（§9.223 ①、利用者の指示） ----------
     「データの設計上必須な部分は、全体の構成上の必須項目として押さえておき、
@@ -1958,11 +2064,11 @@
  function opBlankRowHtml(x,widget){
   const choice=opIsChoiceLike(x);
   if(!choice){
-   return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">空欄の札</span>
+   return `<div data-op-row="blank" class="op-form-row is-fixed-layout"><span class="op-form-label">空欄の札</span>
     <span class="op-form-ctl"><i class="op-form-note">この型にはありません。</i></span></div>`;
   }
   const off=!!x.noBlank;
-  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">空欄の札</span>
+  return `<div data-op-row="blank" class="op-form-row is-fixed-layout"><span class="op-form-label">空欄の札</span>
     <span class="op-form-ctl">
      <span class="op-look-row">
       <button type="button" data-op-blank="0" class="op-mini${off?'':' is-on'}">出す</button>
@@ -2000,7 +2106,7 @@
     +(k&&tint?` style="--btint:${tint.PALETTE[k]?tint.PALETTE[k].bg:'transparent'};`
               +`--btint-line:${tint.PALETTE[k]?tint.PALETTE[k].line:'transparent'}"`:'')
     +` title="${esc(note||'')}">${esc(label)}</button>`;
-  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">未入力の色</span>
+  return `<div data-op-row="btint" class="op-form-row is-fixed-layout"><span class="op-form-label">未入力の色</span>
     <span class="op-form-ctl">
      <span class="op-look-row op-btint-row">
       ${chip('','既定','必須の欄だけ橙になります（今までどおり）',!now)}
@@ -2020,7 +2126,7 @@
   const now=String(x.choiceOrder||'');
   const used=(opState.choices||[]).filter(c=>c.name===x.choice)
     .reduce((n,c)=>n+(Number(c.used)||0),0);
-  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">選択肢の並び</span>
+  return `<div data-op-row="corder" class="op-form-row is-fixed-layout"><span class="op-form-label">選択肢の並び</span>
     <span class="op-form-ctl">
      <span class="op-look-row">
       <button type="button" data-op-corder="" class="op-mini${now?'':' is-on'}"${usable?'':' disabled'}>登録順</button>
@@ -2050,7 +2156,7 @@
      **`x.inlineAdd`（サーバーが返した効いている値）を直に読まない**——押した
      直後は取り直していないので、注記だけが1手前の状態になる。 */
   const live=saved&&usable;
-  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">手打ちを登録</span>
+  return `<div data-op-row="inadd" class="op-form-row is-fixed-layout"><span class="op-form-label">手打ちを登録</span>
     <span class="op-form-ctl">
      <span class="op-look-row">
       <button type="button" data-op-inadd="0" class="op-mini${saved?'':' is-on'}"${usable?'':' disabled'}>登録しない</button>
@@ -2073,17 +2179,17 @@
   const pick=(axis,list,cur)=>list.map(v=>
     `<button type="button" data-op-look="${esc(axis)}" data-op-val="${esc(v)}"`
     +` class="op-look-btn${cur===v?' is-on':''}" aria-pressed="${cur===v?'true':'false'}">${esc(v)}</button>`).join('');
-  return `<div class="op-form-row"><span class="op-form-label">色</span>
+  return `<div data-op-row="color" class="op-form-row"><span class="op-form-label">色</span>
     <span class="op-form-ctl"><span class="op-look-swatches">${(opState.lookColors||[]).map(swatch).join('')}</span>
      <i class="op-form-note">${esc(OP_LOOK_NOTE[lk.color]||'')}
       　色が語るのは「どの仲間か」だけです——<b>選んだかどうかは面と文字の太さでも</b>示すので、
       色が見えない人にも伝わります。</i></span></div>
-   <div class="op-form-row"><span class="op-form-label">形</span>
+   <div data-op-row="shape" class="op-form-row"><span class="op-form-label">形</span>
     <span class="op-form-ctl"><span class="op-look-row">${pick('shape',opState.lookShapes||[],lk.shape)}</span>
      <i class="op-form-note"><b>どれも角丸</b>です——変わるのは丸みの深さだけ。
       素のテキストボックスやプルダウンと同じ形にそろえてあるので、
       1枚のカードに何種類の選ばせ方を混ぜても角の丸みは1通りに見えます。</i></span></div>
-   <div class="op-form-row"><span class="op-form-label">大きさ</span>
+   <div data-op-row="size" class="op-form-row"><span class="op-form-label">大きさ</span>
     <span class="op-form-ctl"><span class="op-look-row">${pick('size',opState.lookSizes||[],lk.size)}</span>
      <i class="op-form-note">文字の大きさから作るので、表示サイズを変えても崩れません。</i></span></div>`;
  }
@@ -2107,10 +2213,10 @@
      いた**（実測）。ボタンを消すのは§4のとおり（押しても何も起きない物を
      残さない）なので、**消すのは中身だけで場所は空けておく**。 */
   if(!usable){
-   return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">並べ方</span>
+   return `<div data-op-row="layout" class="op-form-row is-fixed-layout"><span class="op-form-label">並べ方</span>
     <span class="op-form-ctl"><i class="op-form-note">「${esc(opWidgetLabel(x,widget))}」では選べません。</i></span></div>`;
   }
-  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">並べ方</span>
+  return `<div data-op-row="layout" class="op-form-row is-fixed-layout"><span class="op-form-label">並べ方</span>
     <span class="op-form-ctl">
      <span class="op-look-row">${(opState.layouts||[]).map(v=>
        `<button type="button" data-op-layout="${esc(v)}" class="op-mini${on===v?' is-on':''}"`
@@ -2218,7 +2324,8 @@
   const rest=usableList.filter(w=>!seen.has(w));
   if(rest.length)groups.push({label:'その他',note:'',items:rest});
   const tile=w=>`<button type="button" data-op-widget="${esc(w)}"`
-    +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}>`
+    +` class="op-widget-tile${widget===w?' is-on':''}"${usable?'':' disabled'}`
+    +` title="${esc(opWidgetLabel(x,w)+'：'+((OP_WIDGET_NOTE[w]||{}).note||''))}">`
     +`<b class="op-widget-icon">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')}</b>`
     +`<span class="op-widget-name">${esc(opWidgetLabel(x,w))}</span>`
     +`<span class="op-widget-demo">${opWidgetDemoHtml(x,w)}</span>`
@@ -2230,7 +2337,7 @@
   return `<span class="op-widget-groups">${groups.map(g=>{
     const here=g.items.includes(widget);
     return `<span class="op-widget-group${here?' is-here':''}">`
-     +`<span class="op-widget-group-head">`
+     +`<span class="op-widget-group-head"${g.note?` title="${esc(g.note)}"`:''}>`
      +`<b>${esc(g.label)}</b><i>${g.items.length}</i>`
      +(here?'<em>いま選んでいます</em>':'')
      +(g.note?`<small>${esc(g.note)}</small>`:'')
@@ -2255,10 +2362,10 @@
   /* 塊は①→②→③の順に組む（`help()`が積んだ説明を、その塊の`sec()`が読む）。 */
   const panes={place:opPaneWhere(x,kit,v),data:opPaneWhat(x,kit,v),look:opPaneLook(x,kit,v)};
   /* **3つの塊を横に並べる**（§9.299）。段（タブ）は廃止したので、
-     開いた瞬間から全部見えている（手数は3クリック→0）。 */
-  const secs=opSecsFor(x);
-  $('#opModalForm').innerHTML=`<div class="op-cols${secs.length===1?' is-one':''}">`
-   +secs.map(t=>panes[t.k]||'').join('')+`</div>`;
+     開いた瞬間から全部見えている（手数は3クリック→0）。行の置き場所は`OP_SECS`の1箇所（§9.587）。 */
+  const form=$('#opModalForm');
+  form.innerHTML='';
+  form.appendChild(opComposeCols(x,opSecsFor(x).map(t=>panes[t.k]||'').join(''),kit));
   const role=opRoleOf(x);
   const roleLabel=(opState.roles.find(r=>r.key===role)||{}).label||'';
   $('#opModalRole').innerHTML=roleLabel
@@ -2269,7 +2376,9 @@
      削除は②のタブの中の帯へ移してある。 */
   $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`;
   bindOpModal(x);
-  bindOpTry(x);   // §9.541 F-2 試しに打つ（数の型だけ・欄が無ければ何もしない）
+  bindOpTry(x);
+  WL.popMenu.tips($('#opModalForm'));   // ⓘ の説明（§9.587）
+  opBindHot();   // §9.541 F-2 試しに打つ（数の型だけ・欄が無ければ何もしない）
  }
  /* ---------- 設定窓の段（§9.522・REVIEW 3-22） ----------
     以前は`renderOpModal()`の1本（394行）が見本と3つの塊を組んでいた。見本は`opRenderModalPreview()`、
@@ -2412,23 +2521,23 @@
   const {groups}=v;
   /* ---------- ① どこに出すか ---------- */
   return sec('place','どこに出すか','測定画面のどのカードへ、どのくらいの幅で出すか',`
-   <div class="op-form-row"><span class="op-form-label">置き場</span>
+   <div data-op-row="place" class="op-form-row"><span class="op-form-label">置き場</span>
     <span class="op-form-ctl">${seg('置き場',opState.places,x.place||'準備','data-op-place',
       p=>OP_PLACE_NOTE[p]||'')}</span></div>
-   <div class="op-form-row"><span class="op-form-label">幅</span>
+   <div data-op-row="span" class="op-form-row"><span class="op-form-label">幅</span>
     <span class="op-form-ctl">${opSpanPickerHtml(opSpanOf(x))}</span></div>
-   <div class="op-form-row"><span class="op-form-label">群</span>
+   <div data-op-row="group" class="op-form-row"><span class="op-form-label">群</span>
     <span class="op-form-ctl"><input type="text" id="opdGroup" list="opGroupList" value="${esc(x.group||'その他')}">
      <datalist id="opGroupList">${groups.map(g=>`<option value="${esc(g)}">`).join('')}</datalist>
      <i class="op-form-note">同じ名前を付けると1つの見出しにまとまります。</i></span></div>
-   <div class="op-form-row"><span class="op-form-label">出し方</span>
+   <div data-op-row="show" class="op-form-row"><span class="op-form-label">出し方</span>
     <span class="op-form-ctl">
      ${x.dummy?'':`<button type="button" id="opdRequired" class="op-toggle${x.required?' is-on':''}" aria-pressed="${x.required?'true':'false'}">必須にする</button>`}
      <button type="button" id="opdEnabled" class="op-toggle${x.enabled===false?'':' is-on'}" aria-pressed="${x.enabled===false?'false':'true'}">測定画面に出す</button>
      <button type="button" id="opdFold" class="op-toggle${x.fold?' is-on':''}" aria-pressed="${x.fold?'true':'false'}">この群を畳む</button>
     </span></div>
    ${x.dummy?'':`
-   <div class="op-form-row"><span class="op-form-label">確認の面</span>
+   <div data-op-row="record" class="op-form-row"><span class="op-form-label">確認の面</span>
     <span class="op-form-ctl">
      <button type="button" id="opdRecordShow" class="op-toggle${x.recordShow===false?'':' is-on'}" aria-pressed="${x.recordShow===false?'false':'true'}">③「記録した値」に出す</button>
     </span></div>`}
@@ -2437,7 +2546,7 @@
      +'どうかです。<b>群と並びはこの項目の設定がそのまま使われます</b>'
      +'（カード用の並びを別に持ちません）。</p>')}
    ${x.dummy?`
-   <div class="op-form-row is-danger"><span class="op-form-label">この空き</span>
+   <div data-op-row="padops" class="op-form-row is-danger"><span class="op-form-label">この空き</span>
     <span class="op-form-ctl">
      <button type="button" id="opdPadOff" class="ghost">ふつうの項目へ戻す</button>
      <button type="button" id="opdDelete" class="danger ghost">この空きを削除</button>
@@ -2445,10 +2554,10 @@
    ${x.dummy?help('place','空きのカードとは',
      '<p>空きは<b>幅ぶんの余白を取るだけ</b>のカードです（測定画面では見出しも枠も文字も'
      +'出しません）。名前・型・選ばせ方は持たないので、その列は出していません。</p>'):''}
-   <div class="op-form-row"><span class="op-form-label">対象設備</span>
+   <div data-op-row="equip" class="op-form-row"><span class="op-form-label">対象設備</span>
     <span class="op-form-ctl">${opEquipmentPickHtml(x)}</span></div>
    ${x.dummy?'':`
-   <div class="op-form-row"><span class="op-form-label">開く条件</span>
+   <div data-op-row="when" class="op-form-row"><span class="op-form-label">開く条件</span>
     <span class="op-form-ctl">
      <span class="op-when">${opMeasureTypes().map(t=>
        `<button type="button" data-op-when="${esc(t)}" class="${(x.showWhen||[]).includes(t)?'is-on':''}">${esc(t)}</button>`).join('')
@@ -2460,7 +2569,7 @@
    ${help('place','覚え書きは何のためか',
      '<p>画面には出ません。あとから触る人が「なぜこの設定なのか」を読めるようにしておくと、'
      +'同じ判断を2度しなくて済みます。</p>')}
-   <div class="op-form-row is-block"><span class="op-form-label">覚え書き</span>
+   <div data-op-row="note" class="op-form-row is-block"><span class="op-form-label">覚え書き</span>
     <span class="op-form-ctl">
      <textarea id="opdNote" class="op-note-in" rows="4"
       placeholder="この項目を作った理由・注意点・現場での呼び方など（画面には出ません）">${esc(x.note||'')}</textarea>
@@ -2478,16 +2587,13 @@
         +'見本は<b>本物の部品</b>なので、押して確かめられます。</p>')
      +(opFamilyOf(x)==='number'?'<p>数値の欄は<b>打つこともできる</b>まま——道具は隣に足すだけです。</p>':'')
      +(opFamilyOf(x)==='choice'&&!x.choice?'<p><b>選択肢のまとまりを選ぶと</b>、見本に実際の値が並びます。</p>':''))}
-   <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
+   <div data-op-row="widget" class="op-form-row is-wide op-widget-row"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
      ${usable
-       /* **札の中に説明を入れない**（§9.227 ②）——形ごとに長さが違うので、
-          選び直すたびに行の高さが変わって下の欄が上下する（実測4px）。
-          説明は`title`と浮き出しの中のタイルが持つ。 */
-       ?opPopHtml('widget',opWidgetLabel(x,widget),'選ばせ方',
-          opWidgetPickerHtml(x,widget,usable),
-          {headNote:'記録の中身は変わりません',
-           title:(OP_WIDGET_NOTE[widget]||{}).note||'押すと選べる形が並びます'})
+       /* **開かずに並べる**（§9.587）。以前は浮き出しの中（押すまで0枚）で、いちばん絵で選びたい決めごとが
+          文字のボタン1つに隠れていた。札は小さく（絵＋名前）、説明は札の`title`へ（§9.227 ②の「札の中に
+          説明を入れない」はそのまま——選び直しても行の高さが変わらない）。 */
+       ?`<span class="op-widget-inline">${opWidgetPickerHtml(x,widget,usable)}</span>`
        :`<b class="op-locked-chip">${esc(opWidgetLabel(x,widget))}</b>`
         +`<i class="op-form-note">この型で選べる形は1つだけです。</i>`}
     </span></div>
@@ -2528,10 +2634,10 @@
  /* ②の行: 項目名・自動で入る値。 */
  function opWhatName(x,kit,v){
   return `
-   <div class="op-form-row"><span class="op-form-label">項目名</span>
+   <div data-op-row="name" class="op-form-row"><span class="op-form-label">項目名</span>
     <span class="op-form-ctl"><input type="text" id="opdName" value="${esc(x.name)}"></span></div>
    ${x.autoValue?`
-   <div class="op-form-row"><span class="op-form-label">自動で入る値</span>
+   <div data-op-row="auto" class="op-form-row"><span class="op-form-label">自動で入る値</span>
     <span class="op-form-ctl">
      <b class="op-locked-chip">${esc(x.autoValueLabel||x.autoValue)}</b>
      ${x.autoValueGroup?`<b class="op-chip">${esc(x.autoValueGroup)}</b>`:''}
@@ -2548,9 +2654,9 @@
  function opWhatType(x,kit,v){
   const {seg,help}=kit;
   return `
-   <div class="op-form-row"><span class="op-form-label">役割</span>
+   <div data-op-row="role" class="op-form-row"><span class="op-form-label">役割</span>
     <span class="op-form-ctl">${opRolePickHtml(x)}</span></div>
-   <div class="op-form-row"><span class="op-form-label">型</span>
+   <div data-op-row="type" class="op-form-row"><span class="op-form-label">型</span>
     <span class="op-form-ctl">${x.autoValue
       ?`<b class="op-locked-chip">値の形は出どころが決めます</b>
         <i class="op-form-note">自動で入る値なので、型で入力を縛る意味がありません（打つ欄がありません）。
@@ -2572,7 +2678,7 @@
   const {isChoice}=v;
   return `
    ${(isChoice||x.builtin||opIsOutput(x))?'':`
-   <div class="op-form-row"><span class="op-form-label">数の決まり</span>
+   <div data-op-row="nums" class="op-form-row"><span class="op-form-label">数の決まり</span>
     <span class="op-form-ctl op-form-nums">
      <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
      <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"${x.minFrom?' disabled':''}></label>
@@ -2592,12 +2698,12 @@
       ?'「刻み」を入れると、打ち終わった値をその段へそろえられます。'
       :(x.roundMode?`打ち終わって欄を離れると <b>${esc(x.step)}</b> 刻みで<b>${esc(x.roundMode)}</b>ます（打っている最中は変わりません）。`
         :`いまは丸めません（打った値がそのまま残ります）。`)}</i></div>
-   <div class="op-form-row"><span class="op-form-label">上下限の出どころ</span>
+   <div data-op-row="froms" class="op-form-row"><span class="op-form-label">上下限の出どころ</span>
     <span class="op-form-ctl op-form-froms">
      ${opLimitFromHtml(x,'min')}
      ${opLimitFromHtml(x,'max')}
     </span></div>
-   <div class="op-form-row op-try-row"><span class="op-form-label">試しに打つ</span>
+   <div data-op-row="try" class="op-form-row op-try-row"><span class="op-form-label">試しに打つ</span>
     <span class="op-form-ctl op-try"><span class="op-try-in"><input type="text" id="opdTryIn" inputmode="decimal"
       value="${esc(opState.tryRaw)}" placeholder="例 ${esc(opTryExample(x))}" aria-label="試しに打つ値"></span>
      <span id="opdTryOut">${opTryHtml(x)}</span></span></div>
@@ -2617,7 +2723,7 @@
   const {isChoice,users}=v;
   return `
    ${isChoice?`
-   <div class="op-form-row"><span class="op-form-label">選択肢</span>
+   <div data-op-row="choice" class="op-form-row"><span class="op-form-label">選択肢</span>
     <span class="op-form-ctl">
      <span class="op-choice-pick">
       <select id="opdChoice">${['<option value="">（選んでいません）</option>']
@@ -2647,9 +2753,9 @@
   const {isChoice}=v;
   return `
    ${opIsOutput(x)?`
-   <div class="op-form-row"><span class="op-form-label">初期値</span>
+   <div data-op-row="initial" class="op-form-row"><span class="op-form-label">初期値</span>
     <span class="op-form-ctl"><i class="op-form-note">この欄は<b>画面が値を入れます</b>ので、初期値はありません。</i></span></div>`:`
-   <div class="op-form-row"><span class="op-form-label">初期値</span>
+   <div data-op-row="initial" class="op-form-row"><span class="op-form-label">初期値</span>
     <span class="op-form-ctl">
      <input type="text" id="opdInitial" list="opInitialList" value="${esc(x.initial||'')}"
        placeholder="空欄＝初期値なし">
@@ -2683,7 +2789,7 @@
      const blocked=(opState.freeTextBlocked||[]).includes(widget);
      const on=blocked?!!x.freeTextSaved:!!x.freeText;
      return `
-   <div class="op-form-row"><span class="op-form-label">手打ち</span>
+   <div data-op-row="free" class="op-form-row"><span class="op-form-label">手打ち</span>
     <span class="op-form-ctl">
      <button type="button" id="opdFreeText" class="op-toggle${on?' is-on':''}" aria-pressed="${on?'true':'false'}"${blocked?' disabled':''}>候補にない値も打てる</button>
      <i class="op-form-note">${blocked
@@ -2698,7 +2804,7 @@
  function opWhatSelf(x,kit,v){
   const {help}=kit;
   return `
-   <div class="op-form-row is-danger"><span class="op-form-label">この項目</span>
+   <div data-op-row="self" class="op-form-row is-danger"><span class="op-form-label">この項目</span>
     <span class="op-form-ctl">
      ${x.builtin
        ?`<button type="button" id="opdStepOut" class="ghost">①「測定画面に出す」へ</button>
@@ -3027,6 +3133,9 @@
       ①の「測定画面に出す」は同じ画面の左の列にある。 */
    const t=$('#opdEnabled');
    if(!t)return;
+   /* 連れて行く先が「細かい設定」の畳みの中なら開く（§9.587。畳んだままだと何も見えない）。 */
+   const fold=t.closest('details');
+   if(fold&&!fold.open)fold.open=true;
    t.scrollIntoView({block:'nearest'});
    t.focus();t.classList.add('op-flash');setTimeout(()=>t.classList.remove('op-flash'),1200);
   };
@@ -3110,7 +3219,7 @@
   const src=String(x.autoFormula||'');
   const r=opFormulaCheck(x,src);
   const groups=opFormulaNames(x);
-  return `<div class="op-form-row op-form-row-formula"><span class="op-form-label">式</span>
+  return `<div data-op-row="formula" class="op-form-row op-form-row-formula"><span class="op-form-label">式</span>
    <span class="op-form-ctl">
     <textarea id="opdFormula" class="op-formula-input" rows="2"
       placeholder="例: if([製造板厚] &lt; 0.3, &quot;薄物&quot;, &quot;厚物&quot;)">${esc(src)}</textarea>

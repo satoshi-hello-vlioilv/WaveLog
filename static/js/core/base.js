@@ -722,6 +722,31 @@ function onTyped(el,fn){
  el.addEventListener('input',e=>{if(!e.isComposing)fn(e)});
  el.addEventListener('compositionend',e=>fn(e));
 }
+/* 押している間くり返す（§9.585、利用者の指示「スピナーのボタンで、長押しにより連続的に変化する機能」）。
+   押した瞬間に1回、`HOLD.delay`待ってからくり返し、押し続けるほど間が詰まる（`HOLD.fastest`まで）。
+   離す・外れる・取り消す・窓を離れると止まる。`fn()`が`false`を返したら止まる（上下限に着いて動かなくなった）。
+   鍵盤（Enter／Space）と`el.click()`は**1回ずつ**（`click`の`detail`が0）。マウスの`click`は押下で済ませてあるので捨てる。
+   以前はマスタの数の欄（`master-maint.js`）だけが自前で持っていた——同じ「押し続ける」を2つの速さで持たない。 */
+const HOLD={delay:400,every:110,fastest:40,accel:0.85};
+function holdRepeat(btn,fn){
+ if(!btn||btn.dataset.wlHold)return;
+ btn.dataset.wlHold='1';
+ let t=0;
+ const stop=()=>{clearTimeout(t);t=0};
+ btn.addEventListener('pointerdown',e=>{
+  if(e.button!==0||btn.disabled)return;
+  e.preventDefault();                       // 焦点を打っている欄から奪わない
+  stop();
+  if(fn()===false)return;
+  let gap=HOLD.every;
+  const tick=()=>{if(fn()===false){stop();return}gap=Math.max(HOLD.fastest,gap*HOLD.accel);t=setTimeout(tick,gap)};
+  t=setTimeout(tick,HOLD.delay);
+ });
+ ['pointerup','pointerleave','pointercancel'].forEach(k=>btn.addEventListener(k,stop));
+ window.addEventListener('blur',stop);
+ btn.addEventListener('contextmenu',e=>{if(t)e.preventDefault()});   // 指で長押ししたときのメニューを出さない
+ btn.addEventListener('click',e=>{e.preventDefault();if(e.detail===0)fn()});
+}
 /* ---------- データソースの役割(§9.87) ----------
    「どれが作業対象の一覧(仕掛)で、どれが品質データか」は
    **データソースマスタの[役割]が決める**。以前は 'SIKALOTNOW' という
@@ -3155,7 +3180,7 @@ Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalD
    ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
    ============================================================ */
 window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
-WL.base={normalizedLot,durationMs,onTyped,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+WL.base={normalizedLot,durationMs,onTyped,holdRepeat,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
  LENGTH_SLOTS,
  /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
     `measureDirty` は外からも倒す（`records-store` が保存し終えて false に

@@ -138,6 +138,8 @@ run('test_opauto: 自動で入る値・計算値を操業データ項目とし�
    if(t)t.click();
   },NM_LOT);
   await page.waitForSelector('#opItemModal:not([hidden])',{timeout:8000});
+  /* 「細かい設定」の畳みを開く（§9.587）。開け閉めは窓が覚えるので、1回でよい。 */
+  await page.evaluate(()=>document.querySelectorAll('#opItemModal details[data-op-more]:not([open])').forEach(d=>{d.open=true}));
   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
   await idle();
   const dlg=await page.evaluate(()=>{
