@@ -73,6 +73,9 @@ SEED_KEYS = paths.SEED_KEYS   # 渡す鍵の顔ぶれは`paths`の1か所（読�
 REACH_SEC = 3.0
 # 置いている最中に終わった書きかけを片付けるまでの長さ（別の PC がいま置いている物を消さない）。
 STALE_SEC = 3600
+# 消している版の印（`versions/.<版>.<pid>.del`）。先に名前を変えてから中身を消す——途中で失敗しても
+# 半端な版が「置いてある版」に数えられない（`versions()`は点で始まる名前を数えない）。
+DELETING = '.del'
 _VERSION_RE = re.compile(r"^APP_VERSION\s*=\s*['\"]([0-9][0-9A-Za-z.\-]*)['\"]", re.M)
 # 窓（update.rs）と同じ読み方: 版の字は数字で始まり、英数字・点・ハイフンだけ。
 _SAFE_VERSION = re.compile(r'^[0-9][0-9A-Za-z.\-]{0,40}$')
@@ -215,20 +218,22 @@ def _quiet_tick(**_kw):
 
 
 def sweep_partial(base=None, older=STALE_SEC):
-    """置いている最中に終わった（窓を閉じた・落ちた）書きかけ（`versions/.<版>.<pid>.tmp`）を片付ける。
+    """置いている最中に終わった（窓を閉じた・落ちた）書きかけ（`versions/.<版>.<pid>.tmp`）と、
+    消し切れなかった版（`versions/.<版>.<pid>.del`・`delete_version()`）を片付ける。
 
-    **`older`秒より古い物だけ**——別の PC がいま置いている最中の物を消さない。書きかけは点で始まるので
-    `versions()`はもともと数えない（配られることは無い）。片付けは置き場を散らかさないため。"""
+    書きかけは**`older`秒より古い物だけ**——別の PC がいま置いている最中の物を消さない。消しかけは誰も
+    書き足さないので古さを問わない。どちらも点で始まるので`versions()`はもともと数えない（配られることは無い）。
+    片付けは置き場を散らかさないため。"""
     root = Path(base or update_dir()) / VERSIONS
     gone = 0
     try:
-        dirs = [d for d in root.iterdir() if d.is_dir() and d.name.startswith('.') and d.name.endswith('.tmp')]
+        dirs = [d for d in root.iterdir() if d.is_dir() and d.name.startswith('.') and d.name.endswith(('.tmp', DELETING))]
     except OSError as _e:
         quiet('置き場の書きかけを数えられない（片付けない）', _e)
         return 0
     for d in dirs:
         try:
-            if time.time() - d.stat().st_mtime < older:
+            if d.name.endswith('.tmp') and time.time() - d.stat().st_mtime < older:
                 continue
             shutil.rmtree(d)
             gone += 1
@@ -488,6 +493,44 @@ def set_release(version, uid='', base=None):
     if why:
         notes.append(why)
     return {'ok': True, **doc, 'notes': notes}
+
+
+def delete_version(version, base=None):
+    """置いてある版を置き場から消す（§9.584、利用者の指示「版を消すこともできるように」）。
+
+    **配っている版は消せない**——各 PC が起動のときに写しに来る版で、消すと全 PC の更新が止まる。
+    前に配った版・この PC の版は消せる（各 PC は自分の手元の写しで動いており、置き場の版を読まない）。
+    消し方: 名前を`.<版>.<pid>.del`へ変える（ここで「置いてある版」から外れる）→ 配る版を読み直し、
+    その間に別の PC がこの版を配る版にしていたら名前を戻して断る → 中身を消す。
+    中身を消し切れなくても版は外れている（残りは次に開いたときに`sweep_partial()`が片付ける）。"""
+    base = Path(base or update_dir())
+    have = {v['version']: v for v in versions(base)}
+    if version not in have:
+        return {'ok': False, 'error': '版 %s は置き場にありません（もう消してあるかもしれません）。' % version}
+    rel = release(base)
+    if rel and rel['version'] == version:
+        return {'ok': False, 'error': '版 %s はいま配っている版なので消せません。先に別の版を「この版を配る」で選んでください。' % version}
+    src = base / VERSIONS / version
+    gone = base / VERSIONS / ('.%s.%d%s' % (version, os.getpid(), DELETING))
+    try:
+        os.replace(src, gone)
+    except OSError as e:
+        return {'ok': False, 'error': '版 %s を消せません（%s）: %s。どこかの PC が版のフォルダを開いているかもしれません。' % (version, src, e)}
+    rel = release(base)
+    if rel and rel['version'] == version:
+        try:
+            os.replace(gone, src)
+        except OSError as e:
+            return {'ok': False, 'error': '版 %s は消している間に配る版に選ばれましたが、元へ戻せません（%s）: %s。'
+                    '置き場の %s を %s へ名前を戻してください。' % (version, base, e, gone.name, version)}
+        return {'ok': False, 'error': '版 %s は消している間に別の PC で配る版に選ばれたので、消すのをやめました。' % version}
+    notes = []
+    try:
+        shutil.rmtree(gone)
+    except OSError as e:
+        notes.append('版は一覧から外しましたが、中身の一部を消し切れませんでした（%s）。次にこの画面を開いたときに片付けます。' % e)
+    v = have[version]
+    return {'ok': True, 'version': version, 'files': v['files'], 'bytes': v['bytes'], 'notes': notes}
 
 
 def entry_info(base):

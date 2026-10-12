@@ -1,4 +1,4 @@
-# 起動・停止・監視（72件）
+# 起動・停止・監視（74件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -25,6 +25,8 @@
 | 外した入口（Start.vbs・update.bat・setup_app.py）は`RETIRED_DESKTOP`。`.git`のある作業ツリーは触らない | `test_faststart.py` | [§9.559](../../docs/decisions/9.559.md) |
 | 更新の置き場と配る版は`app_update.py`、各PCをそろえるのは窓の`update::check_and_apply()`の1箇所 | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |
 | そろえるのは Python を起こす前。届かなければ3秒で打ち切りいまの版で起動。sha256 を全部確かめ、途中で失敗したら全部戻す | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |
+| 版を消すのは`app_update.delete_version()`の1箇所。配っている版は断る。名前を変えてから消し、その間に配る版に選ばれたら戻す | `test_appupdate.py` | [§9.584](../../docs/decisions/9.584.md) |
+| 画面で消すのは「版を整理する」の整理中だけ（ふだんの行は「この版を配る」だけ・整理中は配るを伏せる） | `test_appupdateui.js` | [§9.584](../../docs/decisions/9.584.md) |
 | 版に入れるのは`PAYLOAD`だけ。`db`・`config`は版に入れず、入れ替えでも触らない。同じ版の置き直しは断る | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |
 | 入口は exe 自身（`desktop\\WaveLog.exe`）。写しへ渡す判断は`launch::plan()`の1箇所。写した物から印を外す（配った物は触らない） | `test_shortcut.py` | [§9.554](../../docs/decisions/9.554.md) |
 | program フォルダは`locate::program_dir()`の1箇所（`--program`→環境変数→exe の上→控え） | `test_shortcut.py` | [§9.554](../../docs/decisions/9.554.md) |
