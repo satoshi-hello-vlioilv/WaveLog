@@ -2040,16 +2040,10 @@
     input.value=document.activeElement===input?String(fixed):numDisplay(fixed);
     input.dispatchEvent(new Event('input',{bubbles:true}));
    };
+   // 押しっぱなしで連続増減(マウスだけで大きく動かせるように)。速さと止め方は`WL.base.holdRepeat`の1箇所(§9.585)
    wrap.querySelectorAll('[data-num-step]').forEach(btn=>{
     const dir=Number(btn.dataset.numStep)||1;
-    // 押しっぱなしで連続増減(マウスだけで大きく動かせるように)
-    let timer=null,repeat=null;
-    const stop=()=>{clearTimeout(timer);clearInterval(repeat);timer=repeat=null};
-    btn.addEventListener('pointerdown',ev=>{
-     ev.preventDefault();bump(dir);
-     timer=setTimeout(()=>{repeat=setInterval(()=>bump(dir),60)},400);
-    });
-    ['pointerup','pointerleave','pointercancel'].forEach(e=>btn.addEventListener(e,stop));
+    WL.base.holdRepeat(btn,()=>bump(dir));
    });
    // 上下キーでも同じ操作(キーボード派の手も止めない)
    input.addEventListener('keydown',ev=>{

@@ -91,7 +91,7 @@ rec('ふつうの例外には余計な手がかりを付けない', os_error_hin
 # ---- 5) 共有が応答しなくても起動直後の画面は出る（本題） ----
 orig_stat, orig_glob = pathlib.Path.stat, pathlib.Path.glob
 pathlib.Path.stat = lambda self, *a, **k: (_ for _ in ()).throw(net_error())
-pathlib.Path.glob = lambda self, p: (_ for _ in ()).throw(net_error())
+pathlib.Path.glob = lambda self, p, *a, **k: (_ for _ in ()).throw(net_error())   # 3.12 から case_sensitive を受ける
 try:
     r = client.get('/')
     rec('静的ファイルのstatが失敗してもトップページは出る',

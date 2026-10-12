@@ -1305,8 +1305,21 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      **記号はフラットネスと同じ3つ**（〇/△/×）で、条ごとの入力内容
      「巻ずれ」とは別物（あちらは条ごと・測定器から受ける値）。 */
   const pk=await page.evaluate(async()=>{
+   /* 見出しは2段（§9.586）。項目の名前は**下段＋上下にまたがる2つ**（丈・備考）を並びの順に読む。 */
    const head=[...document.querySelectorAll('.product-rows-table thead th')]
+     .filter(t=>!t.classList.contains('prt-group'))
+     .sort((a,b)=>a.getBoundingClientRect().left-b.getBoundingClientRect().left)
      .map(t=>t.textContent.trim());
+   /* 判定は**エッジ形状の右隣**、上段の群が「揃い…で判定」と言う（§9.586、利用者の指示）。 */
+   const cells=[...document.querySelectorAll('#productRowsBody tr[data-row="0"]>*')];
+   const at=f=>cells.findIndex(c=>c.querySelector(f));
+   const judgeRight=at('[data-product-judge]')===at('[data-product-field="edgeShape"]')+1;
+   const grp=document.getElementById('prtJudgeGroup');
+   const jr=document.querySelector('#productRowsBody tr[data-row="0"] [data-product-judge]').getBoundingClientRect();
+   const gr=grp?grp.getBoundingClientRect():null;
+   const judged={右隣:judgeRight,上段:grp?grp.textContent.trim():'',
+     上段の下:!!gr&&gr.left<=jr.left&&gr.right>=jr.right,
+     記録だけ:[...document.querySelectorAll('.product-rows-table thead th.prt-group')].map(t=>t.textContent.trim())};
    const sel=document.querySelector('#productRowsBody tr[data-row="0"] [data-product-field="appearance"]');
    const opts=sel?[...sel.options].map(o=>o.text.trim()):[];
    const put=(k,v)=>{const el=document.querySelector(
@@ -1319,12 +1332,15 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    const row=S.measure.product.rows[0]||{};
    /* **内訳の段には出さない**——外観は主役の列の欄で、異常の内訳ではない。 */
    const inDetail=!!document.querySelector('.prt-detail [data-product-field="appearance"]');
-   return {見出し:head,選択肢:opts,打てた:ok,
+   return {見出し:head,選択肢:opts,打てた:ok,判定:judged,
      記録:[row.appearance,row.offsetOs,row.offsetDs],内訳に出た:inDetail};
   });
-  rec('丈毎の表に「外観」「巻ズレ OS」「巻ズレ DS」の列がある（§9.393）',
-      pk.見出し.join('/')==='丈/長さ/肉厚/判定/外観/巻ズレ OS/巻ズレ DS/エッジ形状/備考',
+  rec('丈毎の表に「外観」「巻ズレ OS」「巻ズレ DS」の列がある（§9.393）・判定はエッジ形状の後ろ（§9.586）',
+      pk.見出し.join('/')==='丈/長さ/肉厚/外観/巻ズレ OS/巻ズレ DS/エッジ形状/判定/備考',
       JSON.stringify(pk.見出し));
+  rec('判定はエッジ形状の右隣で、上段の群が何の判定かを言う（§9.586）',
+      pk.判定.右隣&&pk.判定.上段の下&&/^揃い/.test(pk.判定.上段)&&/判定/.test(pk.判定.上段)
+      &&pk.判定.記録だけ.some(t=>/判定に効かない/.test(t)),JSON.stringify(pk.判定));
   rec('外観は〇/△/×から選ぶ（記号はフラットネスと同じ）',
       pk.選択肢.filter(t=>t==='〇'||t==='△'||t==='×').length===3,
       JSON.stringify(pk.選択肢));

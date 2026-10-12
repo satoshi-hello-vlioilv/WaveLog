@@ -1807,8 +1807,11 @@ th.col-sorted:hover{background:#c7e7ea}
   display:block;font-size:var(--fs-tiny);font-weight:var(--fw-ui);opacity:.8;
 }
 .product-rows-table thead th.prt-group{
-  border-bottom:1px solid var(--line);font-size:var(--fs-micro);letter-spacing:.04em;
+  border-bottom:1px solid var(--line);font-size:var(--fs-sm);letter-spacing:.04em;
 }
+/* 判定に効く群（§9.586）。**縁の色で群を言い、字でも言う**（色だけにしない・§CLAUDE 3）。
+   下段の「エッジ形状」「判定」の2つまで同じ縁で囲う——上段だけだと、どの列までが群か目で数えることになる。 */
+.product-rows-table thead th.prt-group.is-judged{color:var(--teal-ink);border-bottom:2px solid var(--teal)}
 .product-rows-table tbody th{
   text-align:center;color:var(--muted);font-weight:var(--fw-strong);background:var(--surface-2);
 }

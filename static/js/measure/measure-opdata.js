@@ -1486,13 +1486,26 @@
    });
   }
   placeMenu(pop,btn);
-  const onScroll=()=>closeNumPop();
-  window.addEventListener('scroll',onScroll,true);
-  window.addEventListener('resize',onScroll);
-  numPopOff=()=>{
-   window.removeEventListener('scroll',onScroll,true);
-   window.removeEventListener('resize',onScroll);
+  const offScroll=closeOnOuterScroll(pop,closeNumPop);
+  window.addEventListener('resize',closeNumPop);
+  numPopOff=()=>{offScroll();window.removeEventListener('resize',closeNumPop)};
+ }
+
+ /* ---------- 浮き面は「外の」スクロールでだけ閉じる（§9.585、利用者の報告） ----------
+    「選択肢の選ばせ方を『メニュー』にして、スクロールバーを触るとメニューが閉じてしまう」
+
+    浮き面（メニュー・数の小窓・語句の候補）は、開いたまま後ろがスクロールすると押した欄から離れて浮くので
+    閉じる。その見張りを`window`の`scroll`（捕捉）で受けていたため、**自分の中の一覧のスクロール**
+    （スクロールバーを掴む・ホイール）でも閉じていた——`scroll`は泡立たないが、捕捉ならどの要素のものも届く。
+    **出どころが浮き面の中なら閉じない**の1点を、3つの浮き面がこの1箇所から使う。返すのは見張りを外す関数。 */
+ function closeOnOuterScroll(pop,close){
+  const on=e=>{
+   const t=e.target;
+   if(pop&&t&&t.nodeType===1&&pop.contains(t))return;
+   close();
   };
+  window.addEventListener('scroll',on,true);
+  return ()=>window.removeEventListener('scroll',on,true);
  }
 
  /* ---------- 道具を欄の行へ重ねる（§9.250 ⑧） ----------
@@ -1538,6 +1551,15 @@
   host.dataset.opNumWatch='1';
   numRO.observe(host);
  }
+ /* 1目盛ぶん動かす。**動いたかを返す**——押し続けて上下限に着いたら、くり返しを止める（`WL.base.holdRepeat`・§9.585）。 */
+ function bumpNum(el,step,lo,hi,d){
+  const before=String(el.value||'');
+  let v=numOr(el.value,numOr(lo,0))+d*step;
+  if(lo!==null)v=Math.max(lo,v);
+  if(hi!==null)v=Math.min(hi,v);
+  setValue(el,numFix(v,step));
+  return String(el.value||'')!==before;
+ }
  function buildNumberWidget(def,host,kind){
   const el=valueEl(host);
   if(!el||el.tagName==='SELECT')return false;
@@ -1547,13 +1569,7 @@
   if(box.dataset.sig===sig){syncWidget(host);return true}
   box.dataset.sig=sig;
   host.classList.add('opf-alt');
-  const bump=d=>{
-   const cur=numOr(el.value,numOr(lo,0));
-   let v=cur+d*step;
-   if(lo!==null)v=Math.max(lo,v);
-   if(hi!==null)v=Math.min(hi,v);
-   setValue(el,numFix(v,step));
-  };
+  const bump=d=>bumpNum(el,step,lo,hi,d);
   /* **作れない道具は帯ごと出さず、理由を欄の説明へ落とす**（§4・§9.234 ①）。
      以前は「上下限を決めるとスライダーになります」という1行を欄の下へ
      足しており、**案内のほうが道具より場所を取っていた**（実測45px）。
@@ -1615,13 +1631,13 @@
   if(rail)html+='<i class="opf-num-rail"><b class="opf-num-fill"></b></i>';
   if(kind==='スピナー'){
    html+='<span class="opf-num-strip is-col">'
-     +'<button type="button" class="opf-spin-btn opf-num-btn" data-opstep="1" aria-label="1つ増やす" title="1つ増やす">▲</button>'
-     +'<button type="button" class="opf-spin-btn opf-num-btn" data-opstep="-1" aria-label="1つ減らす" title="1つ減らす">▼</button>'
+     +'<button type="button" class="opf-spin-btn opf-num-btn" data-opstep="1" aria-label="1つ増やす" title="1つ増やす（押し続けると続けて増えます）">▲</button>'
+     +'<button type="button" class="opf-spin-btn opf-num-btn" data-opstep="-1" aria-label="1つ減らす" title="1つ減らす（押し続けると続けて減ります）">▼</button>'
      +'</span>';
   }else if(kind==='ステッパー'){
    html+='<span class="opf-num-strip">'
-     +'<button type="button" class="opf-step-btn opf-num-btn" data-opstep="-1" aria-label="1つ減らす" title="1つ減らす">−</button>'
-     +'<button type="button" class="opf-step-btn opf-num-btn" data-opstep="1" aria-label="1つ増やす" title="1つ増やす">＋</button>'
+     +'<button type="button" class="opf-step-btn opf-num-btn" data-opstep="-1" aria-label="1つ減らす" title="1つ減らす（押し続けると続けて減ります）">−</button>'
+     +'<button type="button" class="opf-step-btn opf-num-btn" data-opstep="1" aria-label="1つ増やす" title="1つ増やす（押し続けると続けて増えます）">＋</button>'
      +'</span>';
   }else if(kind!=='メーター'){
    /* 帯に入りきらない道具は**押すと浮く**（複合コントロール）。
@@ -1635,8 +1651,9 @@
      +'</span>';
   }
   box.innerHTML=html;
+  /* 押し続けると続けて動く（§9.585・速さは`WL.base.holdRepeat`の1箇所）。 */
   box.querySelectorAll('[data-opstep]').forEach(b=>{
-   b.onclick=e=>{e.preventDefault();bump(Number(b.dataset.opstep));syncWidget(host)};
+   WL.base.holdRepeat(b,()=>{const moved=bump(Number(b.dataset.opstep));syncWidget(host);return moved});
   });
   const open=box.querySelector('.opf-num-open');
   if(open)open.onclick=e=>{e.preventDefault();openNumPop(def,host,el,open,kind)};
@@ -2401,12 +2418,10 @@
   placeMenu(el,btn);
   /* 窓の大きさが変わったら置き直す（開いたままスクロールしたら閉じる
      ——ずれた場所に浮いたメニューは、どの欄のものか分からなくなる）。 */
-  const onScroll=()=>closeMenu();
+  const offScroll=closeOnOuterScroll(el,closeMenu);
   const onResize=()=>{if(menuEl&&!menuEl.hidden&&menuBack)placeMenu(menuEl,menuBack)};
-  window.addEventListener('scroll',onScroll,true);
   window.addEventListener('resize',onResize);
-  menuOff=()=>{window.removeEventListener('scroll',onScroll,true);
-               window.removeEventListener('resize',onResize)};
+  menuOff=()=>{offScroll();window.removeEventListener('resize',onResize)};
   const first=el.querySelector('.opf-menu-item.is-on')||el.querySelector('.opf-menu-item');
   if(first&&first.focus){try{first.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
  }
@@ -2672,9 +2687,8 @@
    };
   });
   placeMenu(pop,el);
-  const onScroll=()=>closeSug();
-  window.addEventListener('scroll',onScroll,true);
-  sugOff=()=>window.removeEventListener('scroll',onScroll,true);
+  if(sugOff)sugOff();
+  sugOff=closeOnOuterScroll(pop,closeSug);
  }
 
  /* ---------- 説明つきで選ぶ浮き窓 ----------
