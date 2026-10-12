@@ -1,4 +1,4 @@
-# 刃組ガイダンス（258件）
+# 刃組ガイダンス（259件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 断面図の有効長の寸法線は**線ぜんたいも席を取る**（字の箱だけでなく線と立て線）。高さは下の軸の字の段のすぐ下（`h-54`の決め打ちをしない・`SPAN_TICK`の1つ） | `test_bladeui.js` | [§9.589](../../docs/decisions/9.589.md) |
 | 判定表のセルの書き方と判定は`WL.ruleCells`（`core/rule-cells.js`）。盤は列の組と答えの欄を呼ぶ側から受ける | `test_holdpick.js`・`test_stoprulemaster.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 判定表は空から始める（列なし・既定の行だけ）。盤は既定の列を持たない。試す欄は字の欄（`inputmode="decimal"`・`type=number`は右寄せになる） | `test_holdpick.js`・`test_bladepick.js` | [§9.574](../../docs/decisions/9.574.md) |
 | 列は表の中で足す（見出しの「＋ 条件の列」＝何の値かを読んで選ぶ・探せる／空の表は道しるべの札・最初の列で決まりの行も1つ）。説明は`PICK_FIELD_DESC`の1箇所 | `test_holdpick.js`・`test_bladeset.py` | [§9.574](../../docs/decisions/9.574.md) |
