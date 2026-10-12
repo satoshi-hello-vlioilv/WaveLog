@@ -1134,6 +1134,8 @@ body.bs-mode .bs-shell{display:flex}
 .rt-ans{font-size:var(--fs-sm)}
 .rt-ans .is-idle{color:var(--muted)}
 .rt-out{width:1%}
+/* 字で打つ答えの欄（§9.588・設備停止の挿入条件の「それぞれの時間」）は中身の長さ（「20, 10, 5」・「空欄＝標準30分」）から。 */
+.rt-out input.rt-ansel{width:9em}
 .rt-note input{width:100%;min-width:8em}
 .rt-ops{width:1%}
 .rt-row.is-won th,.rt-row.is-won td{background:var(--teal-soft)}

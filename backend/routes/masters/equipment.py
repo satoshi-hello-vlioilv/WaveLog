@@ -45,7 +45,9 @@ from ...repositories.master_repo import (
  OPERATOR_EQUIPMENT_TABLE,
  rename_equipment_references,
  field_reorder_terminal_count,
-)
+ RUN_MODE_COLUMN,
+ RUN_MODES,
+ normalize_run_mode)
 
 
 def _measure_items_off(value):
@@ -65,14 +67,15 @@ def _insert_equipment(cur,name,x,order,uid):
     足したときに気づいた）。"""
  cur.execute(
   f'INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],'
-  f'[{EQUIPMENT_DISABLED_COLUMN}],[{MEASURE_ITEM_DISABLED_COLUMN}],[表示順],[有効],'
-  '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
+  f'[{EQUIPMENT_DISABLED_COLUMN}],[{MEASURE_ITEM_DISABLED_COLUMN}],[{RUN_MODE_COLUMN}],[表示順],[有効],'
+  '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
   [name,normalize_equipment_kind(x.get('kind')),
    (None if x.text('maxStrips')=='' else clamp_max_strips(x.get('maxStrips'))),
    normalize_standard_minutes(x.get('standardMinutes')),
    normalize_max_line_speed(x.get('maxLineSpeed')),
    normalize_equipment_features(x.get('disabledFeatures')),
    _measure_items_off(x.get('disabledMeasureItems')),
+   normalize_run_mode(x.get('runMode')),
    order,uid,uid])
 
 
@@ -107,7 +110,9 @@ def equipment_master_list():
             # 引きずられると、画面の札が設備ごとに違う順で並ぶ。
             'disabledMeasureItems':[k for k in MEASURE_ITEM_KEYS
                                     if k in equipment_disabled_measure_items(
-                                      r[11] if len(r)>11 else '')]}
+                                      r[11] if len(r)>11 else '')],
+            # 作業スケジュールの運用モード（§9.588）。保存値の空欄＝通常。**鍵で返す**（呼び名は`runModes`）。
+            'runMode':(normalize_run_mode(r[12] if len(r)>12 else '') or RUN_MODES[0][0])}
            for r in rows]
   return jsonify(ok=True,items=items,table=EQUIPMENT_MASTER_TABLE,created=not before,empty=len(items)==0,
                  stripLimit=STRIP_LIMIT,defaultMaxStrips=DEFAULT_MAX_STRIPS,
@@ -124,6 +129,8 @@ def equipment_master_list():
                  measureItems=[{'key':k,'label':l,'note':n} for k,l,n in MEASURE_ITEMS],
                  # 外したら何が起き、何が残るか（§9.542 効き先の図）。
                  measureItemEffect={'feature':MEASURE_ITEM_FEATURE,'off':MEASURE_ITEM_EFFECT[0],'keep':MEASURE_ITEM_EFFECT[1]},
+                 # 運用モードの語彙（§9.588・説明もサーバーが持つ）。
+                 runModes=[{'key':k,'label':l,'note':n} for k,l,n in RUN_MODES],
                  master_path=str(path))
  except Exception as e:return jsonify(error=f'設備マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
@@ -132,7 +139,7 @@ def equipment_master_register():
  try:
   x=body({'disabledFeatures': any_, 'disabledMeasureItems': any_, 'kind': any_,
           'maxLineSpeed': any_, 'maxStrips': any_,
-          'name': any_, 'reuseExisting': any_, 'standardMinutes': any_});name=x.text('name');uid=request_user_id(x)
+          'name': any_, 'reuseExisting': any_, 'runMode': any_, 'standardMinutes': any_});name=x.text('name');uid=request_user_id(x)
   # reuseExisting: True=同じ設備として復元/False=別の新しい設備として登録/
   # 未指定(None)=無効化された同名設備があれば選択を求める(下記参照)。
   reuse_existing=x.get('reuseExisting')
@@ -197,7 +204,7 @@ def equipment_master_update():
  try:
   x=body({'disabledFeatures': any_, 'disabledMeasureItems': any_, 'id': any_, 'kind': any_,
           'maxLineSpeed': any_,
-          'maxStrips': any_, 'name': any_, 'standardMinutes': any_});eid=x.get('id');name=x.text('name');uid=request_user_id(x)
+          'maxStrips': any_, 'name': any_, 'runMode': any_, 'standardMinutes': any_});eid=x.get('id');name=x.text('name');uid=request_user_id(x)
   if eid is None:return jsonify(error='更新対象IDがありません。'),400
   # **断りは400で、そのまま画面へ出す文で返す**（§CLAUDE 4）。
   # DBを触る前に見る——書いてから戻すと、失敗した設定が一瞬効く。
@@ -224,7 +231,8 @@ def equipment_master_update():
    # ——`if 'A' in x`／`if 'B' in x`の組み合わせでSQLを2の冪だけ書き分けると、
    # 足すたびに書き漏らす（§9.392で2列目を足したときに畳んだ）。
    for key,col,norm in (('disabledFeatures',EQUIPMENT_DISABLED_COLUMN,normalize_equipment_features),
-                        ('disabledMeasureItems',MEASURE_ITEM_DISABLED_COLUMN,_measure_items_off)):
+                        ('disabledMeasureItems',MEASURE_ITEM_DISABLED_COLUMN,_measure_items_off),
+                        ('runMode',RUN_MODE_COLUMN,normalize_run_mode)):
     if key in x:
      sets.append(f'[{col}]=?');vals.append(norm(x.get(key)))
    sets+=['[有効]=-1','[更新者ID]=?','[更新日時]=Now()']

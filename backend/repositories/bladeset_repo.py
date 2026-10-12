@@ -52,6 +52,7 @@ import re
 import unicodedata
 
 from ..db_access import tables
+from .. import rule_cells
 from ..flags import flag_of, OFF_WORDS
 from .master_repo import normalize_equipment_name
 from .table_def import TableDef
@@ -516,29 +517,19 @@ PICK_FIELD_DESC = {
 # 計算値（保持方式の表が前から使っていた列・§9.524）。
 CALC_FIELDS = tuple((f, l, k) for f, l, k, g, _s in PICK_FIELDS if g == 'calc')
 _FIELD_KIND = {f: k for f, _l, k, _g, _s in PICK_FIELDS}
-# 比べ方。**表示ルールマスタと同じ綴り**を使う（1つのアプリに2つの演算子の語彙を作らない）。
-BLADEPICK_OPS = (
-    ('eq', '＝'), ('ne', '≠'), ('ge', '≧'), ('gt', '＞'),
-    ('le', '≦'), ('lt', '＜'), ('between', '範囲'), ('contains', '含む'),
-    # §9.533（利用者の指示「＊＊＊で始まる、＊＊＊で終わるのような前方一致、や後方一致など様々な種類」）。
-    ('startsWith', 'で始まる'), ('endsWith', 'で終わる'), ('notContains', '含まない'),
-    ('notStartsWith', 'で始まらない'), ('notEndsWith', 'で終わらない'),
-    ('empty', '空'), ('notEmpty', '空でない'), ('regex', '正規表現'),
-)
-BLADEPICK_OPS_2 = ('between',)      # 右辺を2つ取るもの
-BLADEPICK_OPS_0 = ('empty', 'notEmpty')   # 右辺を持たないもの
+# 比べ方の語彙と整え方は判定表の共通の部品（`backend/rule_cells.py`・§9.588で切り出した）。名前は今までのまま。
+BLADEPICK_OPS = rule_cells.RULE_OPS
+BLADEPICK_OPS_2 = rule_cells.RULE_OPS_2      # 右辺を2つ取るもの
+BLADEPICK_OPS_0 = rule_cells.RULE_OPS_0      # 右辺を持たないもの
 
 
 # 仕掛の列を条件に使うときの綴り（§9.524）。`source.<列名>`——帳票ブロックの道
 # （§9.285）と同じ。列名は仕掛のデータに依るので、**字の形だけ**を見る。
 SOURCE_FIELD_PREFIX = 'source.'
-_SOURCE_FIELD_MAX = 80
 
 
 def is_source_field(field):
-    f = _txt(field)
-    return (f.startswith(SOURCE_FIELD_PREFIX) and len(f) > len(SOURCE_FIELD_PREFIX)
-            and len(f) <= _SOURCE_FIELD_MAX and not any(ch in f for ch in '[]\r\n\t'))
+    return rule_cells.prefixed_field(field, SOURCE_FIELD_PREFIX)
 
 
 def pick_fields_for(order):
@@ -548,61 +539,25 @@ def pick_fields_for(order):
             for f, l, k, g, st in PICK_FIELDS if st < order]
 
 
-def normalize_pick_conditions(raw, extra_fields=True, order=9):
-    """保存できる条件の配列へ整える。**壊れた条件は1件だけ落とす**
-    （表示ルールマスタと同じ理由——1つの入力ミスで行ごと消えると、
-    利用者からは「保存したのに戻っている」としか見えない）。`order`より前の表の答えだけを受ける。"""
-    if not isinstance(raw, list):
-        return []
+def _pick_field_ok(order, extra_fields=True):
+    """`order`より前の表の答えと材料・（`extra_fields`なら）仕掛の列を受ける。"""
     fields = {f for f, _l, _k, _g, st in PICK_FIELDS if st < order}
-    ops = {o for o, _l in BLADEPICK_OPS}
-    out = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        field = _txt(item.get('field'))
-        op = _txt(item.get('op'))
-        if op not in ops or not (field in fields or (extra_fields and is_source_field(field))):
-            continue
-        cond = {'field': field, 'op': op,
-                'value': '' if op in BLADEPICK_OPS_0 else _txt(item.get('value'))[:120]}
-        if op in BLADEPICK_OPS_2:
-            cond['value2'] = _txt(item.get('value2'))[:120]
-        # 1つのセルの中の「または」（§9.533）。真の条件から次の組が始まる——**同じ列の前の条件があるときだけ**
-        # （列の頭の`or`は意味を持たないので落とす）。
-        if item.get('or') is True and any(c['field'] == field for c in out):
-            cond['or'] = True
-        out.append(cond)
-    return out
+    return lambda f: f in fields or (extra_fields and is_source_field(f))
 
 
-_COLS_MAX = 40
+def normalize_pick_conditions(raw, extra_fields=True, order=9):
+    """保存できる条件の配列へ整える（`rule_cells.normalize_conditions()`・`order`より前の表の答えだけを受ける）。"""
+    return rule_cells.normalize_conditions(raw, _pick_field_ok(order, extra_fields))
 
 
 def normalize_cols(raw, order=9):
-    """判定表の列（データ）の並び（§9.530、利用者の指示「条件テーブルは行や列の並び替えが後からできるように」）。
-    **列の並びは表そのものの設定**で、条件の出てくる順からは起こさない——起こすと、1行目に無い列が
-    後ろへ回り、並べ替えた列が保存→開き直しで入れ替わっていた。`order`より前の表の答えと材料・仕掛の列だけ、
-    重ねず、`_COLS_MAX`まで。"""
-    if not isinstance(raw, list):
-        return []
-    fields = {f for f, _l, _k, _g, st in PICK_FIELDS if st < order}
-    out = []
-    for f in raw:
-        f = _txt(f)
-        if (f in fields or is_source_field(f)) and f not in out:
-            out.append(f)
-    return out[:_COLS_MAX]
+    """判定表の列（データ）の並び（§9.530・`rule_cells.normalize_cols()`）。"""
+    return rule_cells.normalize_cols(raw, _pick_field_ok(order))
 
 
 def table_cols(stored, rows, order):
-    """表の列の並び。**保存した並び**を先に、条件にあるのに並びに無い列（前の版で保存した表）を後ろへ足す。"""
-    cols = normalize_cols(stored, order)
-    for r in rows:
-        for c0 in r.get('conditions') or []:
-            if c0['field'] not in cols:
-                cols.append(c0['field'])
-    return cols
+    """表の列の並び（`rule_cells.table_cols()`）。"""
+    return rule_cells.table_cols(stored, rows, _pick_field_ok(order))
 
 
 def _json_list(v):

@@ -37,6 +37,8 @@
   const parts=[`残り ${rest}件`];
   if(d.doing.length)parts.push(`作業中 ${d.doing.length}件（${d.doing.map(lotOf).join('・')}）`);
   if(d.next)parts.push(`次 ${lotOf(d.next)}${hm(d.next.plannedStart)?`・${hm(d.next.plannedStart)} 開始予定`:''}`);
+  /* 厳密モード（§9.588）は一番上のロットからだけ。始められない理由はサーバーの答え（`strictTop.reason`）。 */
+  else if(d.strict&&d.strict.top&&!d.doing.length)parts.push(`厳密モード: 一番上の ${d.strict.top.lotNo||''} から開始します${d.strict.top.reason?`（${d.strict.top.reason}）`:`（まだ${eq}に仕掛かっていません）`}`);
   else if(d.waiting)parts.push(`いま始められるロットはありません（予定 ${d.waiting}件はまだ${eq}に仕掛かっていません）`);
   if(!rest)parts.splice(0,parts.length,'予定はありません');
   /* 次にすることは1つ: 測っている途中があれば続き、無ければ次の1本。 */

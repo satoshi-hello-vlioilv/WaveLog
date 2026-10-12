@@ -130,7 +130,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
               actualColumns:[],
               /* 仕掛の元データの列名(§9.501)。表示列の候補の土台で、**サーバーが答える**
                  （`scLoadWorkColumns()`）。画面がいま持っている表の列（`S.columns`）には頼らない。 */
-              workColumns:[]};
+              workColumns:[],
+              /* 運用モード（§9.588）。`runMode`＝'strict'なら厳密、`strictTop`＝一番上のロット
+                 （サーバーの`strict_top()`の答えを予定の応答が運ぶ・画面は数え直さない）。 */
+              runMode:'',strictTop:null,
+              /* 足りない設備停止（§9.588）。`stopRuleVocab`＝挿入の条件の語彙、`stopPairs`＝前に受け取った
+                 予定の境目の組（設備ごと）、`stopArmed`＝その後にこの端末がロットを足した・外した・並べ替えた。
+                 自動で入れるのは、その操作で**新しくできた境目だけ**。 */
+              stopRuleVocab:null,stopPairs:null,stopArmed:false};
  /* ---------- 読込結果のキャッシュ(§9.42) ----------
     共有スケジュールDBと実績バックアップはネットワーク共有上にあり、開くたびに
     読み直すと待たされる。**一度読んだら保持し、画面を開き直しただけでは
@@ -140,6 +147,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       - 設備を切り替えて、その設備をまだ一度も読んでいないとき
     いつ時点の状態かはヘッダーに出す(古い情報を黙って見せないため)。 */
  const scPlanCache=new Map();   // 設備名 -> {entries,anchor,warnings,loadFactor,fetchedAt}
+ /* キャッシュの1件は**予定の応答の形のまま**（`applyPlanResult()`がそのまま読む）。組むのはここ1箇所
+    ——3か所で鍵を書き写していたので、応答へ足した鍵（§9.588 の運用モード）が先読みの道だけ落ちた。 */
+ function planCacheOf(r,historyKey,fetchedAt){
+  return {entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
+   loadFactor:r.loadFactor,historyKey,historyFrom:r.historyFrom||null,
+   historyHours:r.historyHours,historyModes:r.historyModes,historyGroups:r.historyGroups,
+   fetchedAt,timings:r.timings,anchorRounded:r.anchorRounded,
+   runMode:r.runMode||'',strictTop:r.strictTop||null};
+ }
  let scOverviewCache=null;      // {rows,fetchedAt}
  /* ---------- 取得中の応答は「いつの分か」で捨てる(§9.200) ----------
     予定を変えるとキャッシュは捨てるが、**そのとき既に飛んでいるGETは
@@ -1182,7 +1198,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
              {key:'cat:comment',label:'コメント',hint:'時間を取らない申し送り'},
              /* 空の日付・直の枠(§9.238 ②)。時間は取らないが、ここから先の
                 起点を動かす行なので、コメントとは別に色を選べるようにする。 */
-             {key:'cat:frame',label:'枠',hint:'ここから先を、その日・その直から並べ直す行'}];
+             {key:'cat:frame',label:'枠',hint:'ここから先を、その日・その直から並べ直す行'},
+             /* 足りない設備停止の帯（§9.588）。行ではないが**同じ色の語彙**で選ぶ（既定は黄）。 */
+             {key:'cat:missing',label:'足りない設備停止',hint:'挿入の条件で足りない境目の帯（既定は黄）'}];
   /* 分類ごとの上書き。**登録されている分類だけ**を出す（架空の分類を
      並べない）。分類の指定は区分の指定より優先することを見出しに書く。 */
   (stopCategories||[]).forEach(name=>{
@@ -1911,6 +1929,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      ——一覧を見ているのに「編集中 自分」が出ていたら、何の話か分からない。 */
   const who=document.getElementById('scWho');
   if(who){who.hidden=true;who.innerHTML='';who.className='sc-who';who.title=''}
+  /* 「運用 厳密」もこの画面の物（§9.588）。 */
+  const runChip=document.getElementById('runModeBadge');
+  if(runChip)runChip.hidden=true;
   /* 広く使う印は**この画面のもの**（§9.292 ⑦）——外へ持ち出すと、
      他の画面でヘッダーが消えたまま戻せなくなる。設定（`scLayout.wide`）は
      残すので、次にスケジュールを開けばまた広いまま。 */
@@ -3308,8 +3329,30 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  function canStartEntry(e,workable){
   return !!(scState.canStartWork&&e&&e.kind==='作業'&&e.state==='予定'
-            &&!e.__pending&&!e.unplanned
+            &&!e.__pending&&!e.unplanned&&strictAllows(e)
             &&(workable||workableOf(e)).state==='ok');
+ }
+ /* ---------- 厳密モード（§9.588、利用者の指示「ロットの開始を作業スケジュール一覧の一番上のロットから
+    しかできないようにするモード」） ----------
+    開始できるのは**一番上のロットだけ**。どれが一番上で、いま開始できるかは**サーバーの`strict_top()`**が
+    答え、予定の応答が運ぶ（画面が数え直すと、開始の口が断る行に「開始」が出る）。断るのも開始の口
+    （`/api/schedule/plan/start`・`schedule/strict-start.js`）——ボタンを伏せるのは見え方だけ。 */
+ const strictOn=()=>scState.runMode==='strict';
+ const isStrictTop=e=>!!(strictOn()&&e&&scState.strictTop&&String(scState.strictTop.id)===String(e.id));
+ function strictAllows(e){
+  return !strictOn()||!!(isStrictTop(e)&&scState.strictTop.startable);
+ }
+ /* ヘッダーの「運用 厳密」（7案から A）。字で言い、なぜ他の行に「開始」が無いかは`title`が言う。 */
+ function renderRunModeChip(){
+  const el=document.getElementById('runModeBadge');if(!el)return;
+  const on=strictOn()&&document.body.classList.contains('sc-mode');
+  el.hidden=!on;
+  if(!on)return;
+  const t=scState.strictTop;
+  el.title=`${scState.equipment}は厳密モードです。ロットを開始できるのは作業スケジュールの一番上のロット`
+   +(t&&t.lotNo?`（${t.lotNo}）`:'')+'だけです。ほかのロットを始めるときは、並べ替えて一番上へ持ってきてください。'
+   +(t&&!t.startable&&t.reason?`\nいまは開始できません: ${t.reason}`:'')
+   +'\n切り替えはマスタ管理 > 設備 の「運用モード」です。';
  }
  /* **HTMLも1箇所**。DOMで組み立てる側（`applyWorkableFlags`）も
     `insertAdjacentHTML`でこれを通す——クラス名を2箇所に書くと、CSSを直したときに
@@ -3754,11 +3797,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        「表示」を最初に開いた時点で札がそろっている。 */
     setHistoryVocab(r);
     setSourceSyncMode(r);
-    if(r&&r.configured&&!scPlanCache.has(eq))
-     scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
-       loadFactor:r.loadFactor,historyKey:key,historyFrom:r.historyFrom||null,
-       historyHours:r.historyHours,historyModes:r.historyModes,historyGroups:r.historyGroups,
-       fetchedAt:Date.now(),timings:r.timings});
+    if(r&&r.configured&&!scPlanCache.has(eq))scPlanCache.set(eq,planCacheOf(r,key,Date.now()));
    })
    .catch(WL.quiet('予定を先読みできない（開いたときに取りに行く）'))
    .finally(()=>warmingPlans.delete(eq));
@@ -3858,6 +3897,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 読み込みの内訳(§9.198)。サーバーが測った値をそのまま持つ。 */
   scLastTimings=r.timings?Object.assign({},r.timings):null;
   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
+  scState.runMode=String(r.runMode||'');scState.strictTop=r.strictTop||null;
   /* 予定を取り直したら**設備停止の追加パネルも描き直す**（§9.402の追補）。
      「いま入れた」の列は`scState.entries`を見て「まだ生きているか」と
      「何時に入ったか」を出すので、ここで描き直さないと**差し替わる前の
@@ -3873,6 +3913,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   setSourceSyncMode(r);
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
+  renderRunModeChip();
+  autoInsertStops();
   /* 刃組の段は**同じ予定を段取りの側から見ている**（§9.383）ので、予定が
      差し替わったらこちらも描き直す（§9.408）——でないと、行を足しても
      並べ替えても刃組の表だけ古いまま残る。 */
@@ -3921,10 +3963,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     return;
    }
    const fetchedAt=Date.now();
-   scPlanCache.set(req.eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
-    loadFactor:r.loadFactor,historyKey:scState.historyKey,historyFrom:r.historyFrom||null,
-    historyHours:r.historyHours,historyModes:r.historyModes,historyGroups:r.historyGroups,
-    fetchedAt,timings:r.timings,anchorRounded:r.anchorRounded});
+   scPlanCache.set(req.eq,planCacheOf(r,scState.historyKey,fetchedAt));
    applyPlanResult(r,fetchedAt);
   }catch(e){
    if(scState.equipment!==req.eq)return;
@@ -6946,6 +6985,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    });
    timeline.append(box);
   });
+  paintStopGaps(timeline);
   appendTailSpace(timeline);
   renderPickBar(timeline);
   restoreInsertGhost();
@@ -7440,6 +7480,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       ——済んだ行の中で、次にすることが残っているのはこの行だけ。 */
    +(e.timesNeeded?' sc-row-needtimes':'')
    +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'')
+   /* 厳密モードの一番上のロット（§9.588）。次に開始するのはこの行だけ。 */
+   +(isStrictTop(e)?' sc-row-strict-top':'')
    /* 行の地の色(§9.198)。区分のセルだけでなく行全体に淡く敷く——設備停止の
       ように「作業ではない行」を、行を追う目のまま見分けられるようにする。 */
    +rowStyleClass(e)
@@ -7952,6 +7994,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* **追加だけが二重になりうる**——更新・削除・並べ替えは同じ結果を2回
      書いても行は増えない（べき等）。足すのは増えるものだけにする。 */
   if(op.op==='add'&&!op.opId)op.opId=newOpId();
+  /* ロットの境目を変える操作（足す・外す・並べ替える）は、次に受け取る予定で**新しくできた境目**を
+     挿入の条件で見る（§9.588・`autoInsertStops()`）。 */
+  if(op.op==='reorder'||op.op==='delete'||(op.op==='add'&&op.kind==='作業'))scState.stopArmed=true;
   queueScheduleWrite(
    // まとめられなかった場合(scheduleモード以外・単発)はこの経路で個別に投げる。
    async()=>{
@@ -8940,6 +8985,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       WL.quiet.note('時間の選択肢を取れない（標準所要分で入れる）',e);return {items:[]}}),
    ]);
    scState.stopReasons=(r.items||[]);
+   scState.stopRuleVocab=r.insertRuleVocab||null;
    scState.stopSubs=(ss.items||[]);
    /* 最初から選ばれている内訳（§9.397）。**数え直さない**——「1つしかない
       からそれ」も「既定の印が付いているからそれ」も、答えるのはサーバーの
@@ -8950,6 +8996,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      .filter(n=>Number.isFinite(n)&&n>0);
    scState.stopSlider=mm.slider||null;
    renderStopButtons();
+   /* 挿入の条件（§9.588）は停止内容が持つので、届いたら黄色の帯を塗り直す（予定が先に届いていても）。 */
+   paintStopGaps();
   }catch(e){WL.quiet.note('追加パネルは補助機能のためベストエフォート',e)}
  }
  /* 分類の名前は**分類マスタが持つ**。読めなくても止めない（固定の並びで出す）。 */
@@ -9758,6 +9806,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   scState.stopAdded=(scState.stopAdded||[]).filter(a=>a!==hit);
   renderStopList();renderStopPane();
  }
+ /* 楽観追加の行の明細（内訳の写し）。**サーバーが組む形と同じ**（1段目は`stopSub`・2段目は`stopSub2`・§9.390）。
+    手で入れる（`commitStopPick()`）と提案から入れる（`insertSuggestion()`）が同じ1本を通る。 */
+ function stopSubDetail(sub,sub2){
+  if(!sub)return {};
+  return sub2?{stopSubId:sub2.id,stopSub:sub.name,stopSub2:sub2.name,stopSubTopId:sub.id}:{stopSubId:sub.id,stopSub:sub.name};
+ }
  function commitStopPick(){
   const p=scState.stopPick;if(!p)return;
   const subs=p.subs||[];
@@ -9777,9 +9831,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const before=stopBefore();
   /* 画面へ先に置く（楽観追加）。**[予定名称]は停止内容の名前のまま**で、
      内訳は明細へ入れる（§9.389。名称で束ねたまま内訳で割れる）。 */
-  const entry=makeOptimisticEntry('設備停止',{title:p.label,
-    detail:leaf?(sub2?{stopSubId:sub2.id,stopSub:sub.name,stopSub2:sub2.name,stopSubTopId:sub.id}
-                     :{stopSubId:sub.id,stopSub:sub.name}):{},
+  const entry=makeOptimisticEntry('設備停止',{title:p.label,detail:stopSubDetail(sub,sub2),
     estimate:p.minutes==null?null:{minutes:p.minutes,source:'override'}});
   insertEntriesAt(before,[entry]);
   renderTimeline();
@@ -9809,6 +9861,143 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(!scState.stopKeepOpen)scState.stopPick=null;
   renderStopList();renderStopPane();
   keepStopTyping();
+ }
+ /* ================= 足りない設備停止（§9.588・7案から A「境目に黄色の帯」） =================
+    利用者の指示「黄色(変更可能)の表示から不足している設備停止をサジェストしてボタン1つで登録(修正も可能)
+    できる機能です」。判定は`WL.stopRules.evaluate()`（純粋な関数・設備停止マスタの「試す」と同じ
+    `firstRule()`）。ここが持つのは
+      ・帯を描く（後ろのロットの行のすぐ上・色は行表示マスタの「足りない設備停止」＝既定は黄）
+      ・入れる（1手・既定の内訳と提案の分で）／直して入れる…（設備停止の窓を、位置と分を入れて開く）／
+        今回は入れない（その境目だけ・後ろのロットの行へ控える）
+      ・自動で入れる（この端末の操作で新しくできた境目だけ・`autoInsertStops()`）
+    帯は**行ではない**（`.sc-row-line`を名乗らない＝並べ替え・選択・差し込みの的にならない）。 */
+ function stopSuggestions(){
+  if(!WL.stopRules)return [];
+  return WL.stopRules.evaluate(scState.entries,scState.stopReasons,entryValueOf,scState.stopRuleVocab)
+   .filter(s=>!s.prev.__pending&&!s.next.__pending);
+ }
+ function stopGapColor(){
+  const st=scRowStyles&&scRowStyles.get('cat:missing');
+  return (st&&String(st.colorKey||''))||'yellow';
+ }
+ /* 提案の分（空欄＝手で入れるときと同じ既定・内訳の標準所要分から）と、入れる内訳（既定の内訳）。 */
+ function suggestionPlan(s){
+  const pre=stopPickPreset(s.stop.id);
+  const subs=stopSubTopOf(s.stop.id);
+  const sub=pre.subId?subs.find(x=>Number(x.id)===Number(pre.subId))||null:null;
+  const kids=sub?stopSubKidsOf(s.stop.id,sub.id):[];
+  const sub2=pre.subId2?kids.find(x=>Number(x.id)===Number(pre.subId2))||null:null;
+  const def=stopPickDefaultMinutes(s.stop.id,pre.subId,pre.subId2);
+  /** @type {Array<number|null>} */
+  const minutes=s.minutes.map(m=>(m==null?def:m));
+  /* 内訳を選ばないと入れられない（既定の内訳が無い）なら、1手では入れず窓で選ぶ。 */
+  return {sub,sub2,minutes,needsPick:!!((subs.length&&!sub)||(kids.length&&!sub2))};
+ }
+ function suggestionText(s,plan){
+  const mins=plan.minutes.map(m=>(m==null?'標準所要分':WL.duration.text(m)));
+  return `${s.stop.name} ${s.missing>1?`${s.missing}本（${mins.join('・')}）`:mins[0]}`;
+ }
+ function stopGapLineHtml(s){
+  const plan=suggestionPlan(s);
+  const can=scState.fullControl&&!sessionBlocked();
+  const acts=can
+   ?`<button type="button" class="sc-sg-btn is-primary" data-sg="add" title="${esc(plan.needsPick?'内訳を選んでから入れます（既定の内訳がありません）':`${s.next.lotNo||'このロット'} の前へ入れます`)}">入れる</button>`
+    +'<button type="button" class="sc-sg-btn" data-sg="edit" title="設備停止の窓を、この位置と分を入れて開きます（内訳・分を直してから入れます）">直して入れる…</button>'
+    +'<button type="button" class="sc-sg-btn" data-sg="skip" title="この境目には入れません（並べ替えで前のロットが替わると、また見ます）">今回は入れない</button>'
+   :`<small class="sc-sg-note">${esc(scState.fullControl?sessionHolderMessage():'スケジュールモードで入れられます')}</small>`;
+  return `<div class="sc-sg-line" data-sg-key="${esc(s.key)}">`
+   +'<i class="fa-solid fa-triangle-exclamation sc-sg-mark" aria-hidden="true"></i>'
+   +`<span class="sc-sg-text" title="${esc(`${s.prev.lotNo||''} → ${s.next.lotNo||''}：${s.reason}`)}"><b>${esc(suggestionText(s,plan))}</b> ${esc(s.have?`があと${s.missing}本足りません`:'が足りません')}<small>— ${esc(s.reason)}</small></span>`
+   +(s.action==='auto'?'<em class="sc-sg-auto" title="挿入の条件が「自動で入れる」の決まりです。ロットを足す・外す・並べ替えたときに新しくできた境目へは自動で入ります">自動の決まり</em>':'')
+   +`<span class="sc-sg-acts">${acts}</span></div>`;
+ }
+ /* 帯は予定を描くたびに置き直す（状態を持たない）。後ろのロットの行が出ていなければ置かない。 */
+ function paintStopGaps(timeline){
+  const tl=timeline||$('#scTimeline');if(!tl)return;
+  tl.querySelectorAll('.sc-stop-gap').forEach(x=>x.remove());
+  /** @type {Map<string, any[]>} */
+  const byNext=new Map();
+  stopSuggestions().filter(s=>!s.skipped).forEach(s=>{
+   const k=String(s.next.id);
+   if(!byNext.has(k))byNext.set(k,[]);
+   byNext.get(k).push(s);
+  });
+  byNext.forEach((sugs,id)=>{
+   const row=tl.querySelector(`.sc-row-line[data-id="${CSS.escape(id)}"]`);
+   if(!row)return;   // さかのぼり・まとめの外で出していない行
+   const el=document.createElement('div');
+   el.className='sc-stop-gap sc-rs-'+stopGapColor();
+   el.setAttribute('role','note');
+   el.innerHTML=sugs.map(stopGapLineHtml).join('');
+   el.querySelectorAll('[data-sg]').forEach(b=>{
+    const line=b.closest('.sc-sg-line');
+    const s=sugs.find(x=>line&&x.key===line.dataset.sgKey);
+    if(s)b.addEventListener('click',()=>runSuggestion(b.dataset.sg,s));
+   });
+   row.before(el);
+  });
+ }
+ function runSuggestion(act,s){
+  if(act==='edit'||(act==='add'&&suggestionPlan(s).needsPick)){editSuggestion(s);return}
+  if(act==='skip'){skipSuggestion(s,true);return}
+  const what=suggestionText(s,suggestionPlan(s));
+  if(insertSuggestion(s))showToast&&showToast('設備停止を入れました',`${s.next.lotNo||''} の前へ ${what}`,3200);
+ }
+ /* 1手で入れる（足りない本数ぶん・後ろのロットのすぐ前・既定の内訳）。入れられなければ偽。 */
+ function insertSuggestion(s){
+  if(!scState.fullControl)return false;
+  if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return false}
+  const plan=suggestionPlan(s);
+  if(plan.needsPick)return false;
+  const leaf=plan.sub2||plan.sub,target=scState.equipment,before=String(s.next.id);
+  const made=plan.minutes.map(m=>makeOptimisticEntry('設備停止',{title:s.stop.name,detail:stopSubDetail(plan.sub,plan.sub2),
+   estimate:m==null?null:{minutes:m,source:'override'}}));
+  insertEntriesAt(before,made);
+  renderTimeline();
+  made.forEach((entry,i)=>queuePlanOp({op:'add',equipment:target,kind:'設備停止',position:`before:${before}`,
+   stopReasonId:s.stop.id,stopSubId:leaf?leaf.id:'',estimateMinutes:plan.minutes[i],
+   onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)}));
+  return true;
+ }
+ /* 直して入れる: 設備停止の窓を開き、停止内容・位置（後ろのロットの前）・分を入れておく。 */
+ function editSuggestion(s){
+  openStopModal();
+  openStopPicker(s.stop.id,s.stop.name,String(s.next.id));
+  const p=scState.stopPick,m=suggestionPlan(s).minutes[0];
+  if(p&&m!=null){p.minutes=m;p.touched=true;renderStopPane()}
+ }
+ /* 今回は入れない（その境目だけ）。後ろのロットの行へ「停止×前のロット」で控える——並べ替えで
+    前のロットが替われば効かない。取り消しは知らせの1手。 */
+ function skipSuggestion(s,on){
+  const next=(scState.entries||[]).find(e=>String(e.id)===String(s.next.id));
+  if(!next)return;
+  const me={stopId:Number(s.stop.id),prevId:s.prev.id};
+  const same=x=>Number(x.stopId)===me.stopId&&String(x.prevId)===String(me.prevId);
+  const rest=(next.stopSkips||[]).filter(x=>!same(x));
+  next.stopSkips=on?rest.concat([me]):rest;
+  paintStopGaps();
+  queuePlanOp({op:'update',id:next.id,stopSkip:{stopId:me.stopId,prevId:me.prevId,skip:on},
+   onFailure:()=>{next.stopSkips=on?rest:rest.concat([me]);paintStopGaps()}});
+  if(on)showToast&&showToast('この境目には入れません',`${s.prev.lotNo||''} → ${s.next.lotNo||''}：${s.stop.name}`,6000,
+   {label:'元に戻す',run:()=>skipSuggestion(s,false)});
+ }
+ /* 自動で入れる（§9.588「ロットがもと居た場所の前後と新しく挿入された前後ロットの情報から判定」）。
+    この端末がロットを足す・外す・並べ替えたあとに受け取った予定で、**新しくできた境目**だけを見る
+    ——外した所は元の前後がつながり、入れた所は前後が2つできる。前から在る境目（人が外した設備停止）には入れ直さない。 */
+ function autoInsertStops(){
+  const eq=scState.equipment;
+  const now=WL.stopRules?WL.stopRules.pairsOf(scState.entries):new Set();
+  const before=scState.stopPairs&&scState.stopPairs.eq===eq?scState.stopPairs.set:null;
+  const armed=scState.stopArmed;
+  scState.stopPairs={eq,set:now};scState.stopArmed=false;
+  if(!armed||!before||!scState.fullControl||sessionBlocked())return;
+  const fresh=WL.stopRules.newPairs(before,now);
+  if(!fresh.size)return;
+  const done=stopSuggestions().filter(s=>s.action==='auto'&&!s.skipped&&fresh.has(s.pair));
+  const texts=done.map(s=>`${s.next.lotNo||''} の前へ ${suggestionText(s,suggestionPlan(s))}`);
+  const ok=done.filter(s=>insertSuggestion(s));
+  if(ok.length)showToast&&showToast('設備停止を自動で入れました（挿入の条件）',
+   texts.filter((_t,i)=>ok.includes(done[i])).join('・'),6000);
  }
  /* ---------- 入れた設備停止を直す（§9.220 2①、利用者の指示） ----------
     「停止項目入れると変更できないので、右クリックやダブルクリックで
@@ -11003,6 +11192,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    await alertModal('この予定にはロット番号が記録されていないため、測定画面を開けません。');
    return;
   }
+  /* どの予定の行から始めたかを開始の関門へ渡す（§9.588・厳密モードの判定はその行で）。 */
+  if(WL.strictStart)WL.strictStart.intend(row,{equipment:eq,id:e.id});
   try{
    await WL.records.openMeasurement(row);
    // 開始時刻を打刻すればこの予定は「作業中」へ移る。次にスケジュールを
@@ -11022,8 +11213,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const works=(r.entries||[]).filter(e=>e.kind==='作業'&&!e.parentId);
   const doing=works.filter(e=>e.state==='着手');
   const waiting=works.filter(e=>e.state==='予定');
-  const next=waiting.find(e=>workableOf(e,eq).state==='ok')||null;
-  return {doing,waiting:waiting.length,next,
+  /* 厳密モード（§9.588）では次の1本は**一番上のロットだけ**（サーバーの`strictTop`）。 */
+  const top=r.runMode==='strict'?(r.strictTop||null):null;
+  const next=(top
+   ?waiting.find(e=>String(e.id)===String(top.id)&&top.startable&&workableOf(e,eq).state==='ok')
+   :waiting.find(e=>workableOf(e,eq).state==='ok'))||null;
+  return {doing,waiting:waiting.length,next,strict:r.runMode==='strict'?{top}:null,
    blocked:next?0:waiting.length,
    done:works.filter(e=>e.state==='完了').length};
  }
@@ -11474,11 +11669,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      if(gen!==planGen())return;      // 先読み中に予定を変えていたら捨てる(§9.200)
      setHistoryVocab(r);             // 語彙は先読みでも受け取る(§9.366)
      setSourceSyncMode(r);           // 元データの扱いも同じ応答が運ぶ(§9.375)
-     if(r&&r.configured&&!scPlanCache.has(eq))
-      scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
-        loadFactor:r.loadFactor,historyKey:scState.historyKey,historyFrom:r.historyFrom||null,
-        historyHours:r.historyHours,historyModes:r.historyModes,historyGroups:r.historyGroups,
-        fetchedAt:Date.now()});
+     if(r&&r.configured&&!scPlanCache.has(eq))scPlanCache.set(eq,planCacheOf(r,scState.historyKey,Date.now()));
     }));
    }
    jobs.push(WL.displayRules.load());

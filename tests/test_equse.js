@@ -73,9 +73,11 @@ run('test_equse: 設備の使い分けの表と効き先の図（§9.542）', as
   await W.until(page, () => document.querySelectorAll('#masterMaintList .mm-row:not(.head)').length >= 4 && !!document.querySelector('[data-ltab="eqUse"]'), null, { ms: 15000, what: '一覧と2枚目のタブ' });
   const main = await page.evaluate(() => ({ rows: document.querySelectorAll('#masterMaintList .mm-row:not(.head)').length,
    head: [...document.querySelectorAll('#masterMaintList .mm-row.head > *')].map(e => e.textContent.trim()).join('/'),
-   badge: (document.querySelector('[data-ltab="eqUse"] .mm-ltab-b') || {}).textContent || '' }));
+   badge: (document.querySelector('[data-ltab="eqUse"] .mm-ltab-b') || {}).textContent || '',
+   /* 見出しの正解は**定義から起こす**（列を足したら網を書き直す、にしない・§9.389）。見るのは「2枚目のタブが一覧を変えない」こと。 */
+   want: WL.mm.MASTER_DEFS.find(d => d.key === 'equipment').cols.map(c => c.label).concat(['操作']).join('/') }));
   const T = truth(SAMPLE);
-  rec('② 主役は1枚目の一覧のまま（4行・見出しは変えない）', main.rows === 4 && main.head === '設備名/区分/最大条数/標準時間/最大速度/使える機能/使う入力内容/操作', JSON.stringify(main));
+  rec('② 主役は1枚目の一覧のまま（4行・見出しは変えない）', main.rows === 4 && main.head === main.want, JSON.stringify(main));
   rec('② 2枚目のタブの札が違いの合計を言う', main.badge === `違い ${T.total}`, main.badge);
   await page.click('[data-ltab="eqUse"]');
   await W.until(page, () => !!document.querySelector('#masterMaintList [data-eu-cell]'), null, { ms: 8000, what: '使い分けの表' });

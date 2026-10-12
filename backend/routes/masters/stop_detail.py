@@ -24,6 +24,7 @@ from ..common import api_guard, cfg_read, cfg_write_response
 from ...access_mode import request_user_id
 from ..body import body, any_
 from ...repositories import schedule_repo as sr
+from ...repositories import stop_rule_repo
 from ... import flags
 from ._base import bp
 
@@ -160,8 +161,32 @@ def stop_reason_duplicate_route():
   return jsonify(error='複製元のIDがありません。'), 400
 
  def fn(mc):
-  return sr.stop_reason_duplicate(mc, sid, request_user_id(x),
-                                  name=str(x.get('name') or '').strip() or None)
+  out = sr.stop_reason_duplicate(mc, sid, request_user_id(x),
+                                 name=str(x.get('name') or '').strip() or None)
+  # 挿入の条件（§9.588）も「持っているもの全部」のうち。
+  stop_rule_repo.rules_copy(mc, sid, out['id'], request_user_id(x))
+  return out
+ return cfg_write_response(fn)
+
+
+# =====================================================================
+# 設備停止の挿入条件（§9.588、利用者の指示「判定条件は設備停止マスタの設備停止ごとに持たせ」）
+# =====================================================================
+@bp.post('/api/schedule/stop-rule')
+def stop_rule_save():
+ """1つの停止内容の判定表を丸ごと保存する（`{stopId, rows, cols}`）か、未登録に戻す（`{stopId, reset:true}`）。
+ 読み出しは設備停止マスタの一覧（`insertRule`）——作業スケジュールの画面もそこから読む。"""
+ x = body({'stopId': any_, 'rows': any_, 'cols': any_, 'reset': any_})
+ sid = x.get('stopId')
+ if sid in (None, ''):
+  return jsonify(error='どの設備停止の条件か（停止理由ID）がありません。'), 400
+
+ def fn(mc):
+  if x.flag('reset'):
+   stop_rule_repo.rules_reset(mc, sid)
+   return {'stopId': sid, 'reset': True}
+  n = stop_rule_repo.rules_replace(mc, sid, x.get('rows'), x.get('cols'), request_user_id(x))
+  return {'stopId': sid, 'rows': n}
  return cfg_write_response(fn)
 
 

@@ -82,6 +82,8 @@ JS_FILES=[
  # 浮きメニューの器のふるまい（§9.448）。置き場所・外クリック・Esc・
  # 矢印キー・role を1箇所で持つ。**画面より先**——どの面も開くときに呼ぶ。
  'core/pop-menu.js',
+ # 判定表のセルの書き方と判定（§9.588）。刃組（blade-core）と設備停止の挿入条件（schedule）が使う。**どちらより先**。
+ 'core/rule-cells.js',
  'list/list-view.js',
  'list/list-formula.js',
  'list/list-columns.js',
@@ -113,6 +115,8 @@ JS_FILES=[
  'core/print-core.js',
  'report/report-dashboard.js',
  'schedule/calendar-view.js',
+ # §9.588: 足りない設備停止の判定（純粋な関数・`WL.stopRules`）。予定の画面が描くときに呼ぶので、その前。
+ 'schedule/stop-rules.js',
  'schedule/schedule-view.js',
  # §9.368: 選んだ予定のロット番号をつないでコピーする（ICASコピー）。
  # schedule-view.js が右クリックメニューから `WL.lotCopy` を呼ぶ。
@@ -126,6 +130,8 @@ JS_FILES=[
  'schedule/schedule-history.js',
  # §9.580: 初期画面（仕掛一覧）の上の「作業予定」の帯。数え方と始め方は`WL.scheduleView`の口を読むので、その後。
  'schedule/plan-strip.js',
+ # §9.588: 厳密モードの開始の関門（測定画面を開く前に開始の口へ聞く）。開く道（予定・帯・仕掛の一覧）すべてに効く。
+ 'schedule/strict-start.js',
  # 刃組ガイダンス（§9.377）。計算（`blade-core.js`）→ 画面（`blade-view.js`）の順。
  # 画面は`WL.bladeSet`を呼ぶので、この順でしか動かない。
  'bladeset/blade-core.js',
@@ -135,6 +141,8 @@ JS_FILES=[
  # 刃組のマスタの盤（§9.529）。共有の作り（頭・2ペイン・判定表）が先、盤が後。
  'bladeset/board-kit.js',    # 刃組: 盤の共有の作り（設備の頭・一覧＋詳細の2ペイン・2択の札）
  'bladeset/rule-table.js',   # 刃組: 判定表の部品（保持方式・刃のカテゴリ・刃厚が共有）
+ # §9.588: 設備停止の挿入条件の盤。判定表の部品（`WL.ruleTable`）を読み込んだ時点で使うので、その後。
+ 'master/master-stoprule.js',
  'bladeset/hold-pick.js',    # 刃組: 保持方式マスタの盤（フィンガー／ゴムリングの判定表）
  'bladeset/blade-pick.js',   # 刃組: 刃選択マスタの盤（刃のカテゴリ・刃厚の2つの判定表。hold-pick の後）
  'bladeset/blade-board.js',  # 刃組: 刃マスタの盤（セットごとのカテゴリ・使用状態と刃厚ごとの行）

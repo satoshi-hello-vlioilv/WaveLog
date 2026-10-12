@@ -78,6 +78,10 @@ _WRITE_ALLOWED_MODES={
  # 専用画面を持たないマスタの編集(§9.249 ②)。**editだけ**——マスタ管理の
  # 他のタブと同じ扱い(scheduleモードは/api/schedule/以下だけが書ける)。
  'master_tables':{'edit'},
+ # 厳密モードのロットの開始(§9.588)。**開始するのはラインの端末**（測定画面を開くのは編集モードだけ）。
+ # 書くのは「一番上のロットの開始判定」と「そのすぐ上の設備停止の実際の時刻」だけで、何をどこまで書くかは
+ # `schedule_calc.strict_start_plan()`が決める（予定を自由に書き換える道にはしない）。
+ 'schedule_start':{'edit'},
 }
 # 上の表より広く許可する例外(エンドポイント名 -> 追加で許可するモード)。
 # 現場段取り: 並べ替えAPI(schedule.plan_reorder)だけをeditにも開ける。
@@ -174,6 +178,8 @@ _ENDPOINT_EXTRA_MODES={
  # 押す**ので、`masters`のBlueprintだがscheduleモードを足す（上の8本と
  # 同じ事情。載せ忘れると押しても403で黙って弾かれる）。
  'masters.stop_reason_duplicate_route':{'schedule'},
+ # 設備停止の挿入条件（§9.588）。設備停止マスタと同じ「設定値」なので同じ2つのモードから。
+ 'masters.stop_rule_save':{'schedule'},
  'masters.stop_sub_register':{'schedule'},
  'masters.stop_sub_update':{'schedule'},
  'masters.stop_sub_delete_route':{'schedule'},

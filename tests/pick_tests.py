@@ -172,7 +172,9 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scdragscroll',
                      # §9.375: 元データ（仕掛）が変わったら予定へ取り込む
                      'test_srcsync',
-                     'test_scsession', 'test_scwho']
+                     'test_scsession', 'test_scwho',
+                     # §9.588: 厳密モード（一番上からだけ開始）と足りない設備停止（黄色の帯・自動で入れる）
+                     'test_strictmode', 'test_stoprules']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
 # §9.248 ⑥: 見せる範囲を「実施した設備」で絞る（データ一覧・実績データ）
@@ -204,7 +206,9 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.392: 設備ごとに使う入力内容
                'test_measitems',
                # §9.542: 設備の使い分けの表と効き先の図
-               'test_equse']
+               'test_equse',
+               # §9.588: 設備停止の挿入条件の盤（設備停止マスタの下の全幅の節）
+               'test_stoprulemaster']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              # §9.392: 設備ごとに使う入力内容（選択肢とチップから伏せる）
              'test_measitems',
@@ -305,6 +309,13 @@ RULES = [
                                      'test_eqfeature', 'test_planstrip')),
     # §9.580: 初期画面の「作業予定」の帯（予定の要約と始め方は schedule-view.js の口）
     ('static/js/schedule/plan-strip.js', g('test_planstrip', 'test_bootui', 'test_scale')),
+    # §9.588: 足りない設備停止の判定（純粋な関数）と、厳密モードの開始の関門
+    ('static/js/schedule/stop-rules.js', g('test_stoprules')),
+    ('static/js/schedule/strict-start.js', g('test_strictmode', 'test_startwork', 'test_planstrip', 'test_flows')),
+    # §9.588: 判定表のセルの書き方と判定（刃組と設備停止の挿入条件が共有）
+    ('static/js/core/rule-cells.js', g('刃組', 'test_stoprules', 'test_stoprulemaster')),
+    # §9.588: 設備停止マスタの挿入条件の盤
+    ('static/js/master/master-stoprule.js', g('test_stoprulemaster', 'test_stopsubui', 'test_holdpick')),
     ('static/js/schedule/schedule-print.js', g('モーダル', 'test_scprint')),
     # §9.514: 実際の時刻を手で入れる小窓（予定の画面と段「履歴」が呼ぶ）
     ('static/js/schedule/schedule-times.js', g('test_sctimes', 'test_sctimesedit', 'test_schistui')),
@@ -395,7 +406,7 @@ RULES = [
     ('static/js/bladeset/hold-pick.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/blade-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/board-kit.js', g('刃組', 'マスタ')),
-    ('static/js/bladeset/rule-table.js', g('刃組', 'マスタ')),
+    ('static/js/bladeset/rule-table.js', g('刃組', 'マスタ', 'test_stoprulemaster')),
     ('static/js/bladeset/ring-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/stock-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/spacer-outlook.js', g('刃組', 'マスタ')),
@@ -489,7 +500,7 @@ RULES = [
     # §9.333で段（`equipment.py`/`operation.py`…）へ分けた。**末尾の`/`で丸ごと**
     # 見る——段ごとに書き分けると、段を1つ足したときだけ当たらずに全件へ倒れる。
     ('backend/routes/masters/', g('マスタ', '列', 'test_modeguard', 'test_apiguard',
-                                  'test_mastershare', 'test_body')),
+                                  'test_mastershare', 'test_body', 'test_stoprule')),
     ('backend/routes/common.py', g('マスタ', 'test_modeguard', 'test_crudroutes', 'test_error')),
     # §9.324 R1: 表の列定義（CREATE・足す・読む・書く）の器。3つのRepoが乗る。
     ('backend/repositories/table_def.py', g('マスタ', '操業データ', '異常位置', 'test_rpmaster',
@@ -497,6 +508,11 @@ RULES = [
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes', 'test_lfui')),
     # §9.502: 作業スケジュールの過去履歴（読むだけの口・組み立て）
     ('backend/routes/schedule_history.py', g('test_schedhist', 'test_schistui', 'test_routesplit')),
+    # §9.588: 設備停止の挿入条件（判定表の保存・見送り）と、判定表の共通の部品
+    ('backend/repositories/stop_rule_repo.py', g('test_stoprule')),
+    ('backend/rule_cells.py', g('test_stoprule', 'test_bladeset', 'test_holdpick', 'test_bladepick')),
+    # §9.588: 厳密モードの開始の口（一番上のロット・上の設備停止の時刻）
+    ('backend/routes/schedule_start.py', g('test_strictstart', 'test_modeguard', 'test_routesplit')),
     ('backend/schedule_history.py', g('test_schedhist', 'test_schistui')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
                                         # §9.317: 参照データが読めなくても測定は始められる
@@ -545,14 +561,14 @@ RULES = [
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource', 'test_cleanup')),
     # 権限区分・マスタ編集の判定もここが持つ（§9.272/§9.322）ので「権限」ごと。
-    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit')),
+    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
-                                   'test_actualmatch', 'test_finishjoin')),
+                                   'test_actualmatch', 'test_finishjoin', 'test_strictstart')),
     # 仕掛から消えたロットの突合（§9.364・§9.365）。
     ('backend/actual_match.py', g('test_actualmatch', 'test_finishjoin',
                                   'test_datasource', 'test_dscap')),

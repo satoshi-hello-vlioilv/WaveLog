@@ -27,6 +27,7 @@ from .. import schedule_calc
 from .. import query_join
 from .. import load_factor
 from ..repositories import schedule_repo as sr
+from ..repositories import stop_rule_repo
 from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
 from ..db_access import connect, path_config_value, DBS
 from ..access_mode import request_user_id, request_pc_name
@@ -503,6 +504,8 @@ def plan_list():
                 # 実際の時刻を入れてよいか（§9.518）。**画面は読むだけ**（答えは`_times_allowed()`）。
                 canEnterTimes=times_ok,
                 timesDenied='' if times_ok else PLAN_TIMES_DENIED,
+                # 運用モードと一番上のロット（§9.588）。**画面は読むだけ**（答えは`strict_top()`・開始の口と同じ）。
+                runMode=result.get('runMode'),strictTop=result.get('strictTop'),
                 warnings=warnings,timings=timings)
 
 @bp.post('/api/schedule/plan/add')
@@ -580,10 +583,19 @@ def _times_allowed(equipment):
  return bool(flags.get('canSchedule')) or (bool(flags.get('canFieldReorder'))
         and field_reorder_equipment_allows(flags.get('fieldReorderEquipment'),equipment))
 
+def _apply_stop_skip(c,plan_id,row,sk,uid,pc):
+ """設備停止の提案の「今回は入れない」（§9.588）を1件足す・外す。後ろのロットの行へ、前のロットとの組で持つ。
+ 1件ずつの更新とまとめ書込が**同じ1本**を通る。`sk`が無ければ何もしない（0）。"""
+ if not isinstance(sk,dict):return 0
+ if not row:raise ValueError('指定の予定が見つかりません。')
+ cur=schedule_calc.stop_skips(row[25] if len(row)>25 else None)
+ return sr.plan_set_stop_skips(c,plan_id,uid,schedule_calc.stop_skips_merge(cur,sk.get('stopId'),sk.get('prevId'),
+                                                                           sk.get('skip') is not False),pc=pc)
+
 @bp.post('/api/schedule/plan/update')
 def plan_update():
  x=body({'id': any_,'frame': any_,'estimateMinutes': any_,'fixedStart': any_,'remark': any_,'state': any_,'title': any_,
-         'detail': any_,'stopSubId': any_,'actualStart': any_,'actualEnd': any_,'equipment': any_})
+         'detail': any_,'stopSubId': any_,'actualStart': any_,'actualEnd': any_,'equipment': any_,'stopSkip': any_})
  plan_id=x.get('id')
  if plan_id is None:return jsonify(error='更新対象の予定IDがありません。'),400
  # titleは申し送り(コメント)の本文(§9.191)。他の種別では repo が弾く。
@@ -605,7 +617,7 @@ def plan_update():
  # （`_ENDPOINT_EXTRA_MODES`）で開けたぶんをここで絞る（§3.1.1）。
  edit_mode=get_mode()=='edit'
  if edit_mode and (not times or any(k in x for k in ('frame','estimateMinutes','fixedStart','remark','state','title',
-                                                     'detail','stopSubId'))):
+                                                     'detail','stopSubId','stopSkip'))):
   return jsonify(error='編集モードの端末で直せるのは、実際の時刻だけです。'),403
  def fn(c):
   row=sr.plan_row(c,plan_id)
@@ -621,6 +633,7 @@ def plan_update():
   if frame is not None:n+=sr.plan_set_frame(c,plan_id,request_user_id(x),frame,pc=request_pc_name(x))
   if stop_sub:n+=sr.plan_set_stop_sub(c,plan_id,request_user_id(x),x.get('stopSubId'),pc=request_pc_name(x))
   if detail:n+=sr.plan_merge_detail(c,plan_id,request_user_id(x),detail,pc=request_pc_name(x))
+  n+=_apply_stop_skip(c,plan_id,row,x.get('stopSkip'),request_user_id(x),request_pc_name(x))
   if fields:n+=sr.plan_update(c,plan_id,request_user_id(x),pc=request_pc_name(x),**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}
@@ -693,6 +706,7 @@ def _apply_plan_op(c,op,uid,pc=''):
   if frame is not None:n+=sr.plan_set_frame(c,plan_id,uid,frame,pc=pc)
   if 'stopSubId' in op:n+=sr.plan_set_stop_sub(c,plan_id,uid,op.get('stopSubId'),pc=pc)
   if detail:n+=sr.plan_merge_detail(c,plan_id,uid,detail,pc=pc)
+  n+=_apply_stop_skip(c,plan_id,row,op.get('stopSkip'),uid,pc)
   if fields:n+=sr.plan_update(c,plan_id,uid,pc=pc,**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}
@@ -942,7 +956,7 @@ def row_style_delete_route():
 # ========================================================================
 # 設備停止マスタ
 # ========================================================================
-def _stop_reason_entry(r,sub_counts=None):
+def _stop_reason_entry(r,sub_counts=None,rules=None):
  # r: 停止理由ID,設備名,分類,名称,標準所要分,色キー,表示順,有効,更新日時,更新者ID,連携機能
  # equipment は保存値そのまま(複数設備はカンマ区切り、全設備は'*'。§9.81)。
  # 画面が書式を解釈し直さずに済むよう、配列と表示用の文字列も添える。
@@ -959,6 +973,9 @@ def _stop_reason_entry(r,sub_counts=None):
          # 連携機能(§9.377)。鍵と**人が読む形**の両方を返す——画面が
          # 綴りから呼び名を組み立てると、行き先を増やしたときに2箇所直すことになる。
          'linkKey':link,'linkLabel':sr.stop_link_label(link),
+         # 挿入の条件（§9.588）。**作業スケジュールの画面もこの一覧を読む**ので、ここへ載せれば
+         # 判定のために別に取りに行かなくてよい（未登録は既定の1行＝要らない）。
+         'insertRule':(rules or {}).get(int(r[0])) or {'rows':[],'cols':[],'stored':False},
          'updatedAt':r[8].isoformat() if r[8] else None,'updatedBy':str(r[9] or '')}
 
 @bp.get('/api/schedule/stop-reason-master')
@@ -966,12 +983,14 @@ def stop_reason_list():
  equipment=str(request.args.get('equipment') or '').strip()
  def _fn(mc):
   counts=sr.stop_sub_counts(mc)
-  return [_stop_reason_entry(r,counts) for r in sr.stop_reason_rows(mc,equipment or None)]
+  rules=stop_rule_repo.rules_all(mc)
+  return [_stop_reason_entry(r,counts,rules) for r in sr.stop_reason_rows(mc,equipment or None)]
  items=_cfg_read(_fn)
  # **選べる行き先はサーバーが答える**(§9.163)。マスタ管理の札も、予定の行が
  # 「押せるかどうか」も、この一覧を見て決める。
  return jsonify(ok=True,configured=True,items=items,stale=False,
-                linkFeatures=[dict(f) for f in sr.STOP_LINK_FEATURES])
+                linkFeatures=[dict(f) for f in sr.STOP_LINK_FEATURES],
+                insertRuleVocab=stop_rule_repo.vocab())
 
 def _stop_reason_save(x,stop_reason_id=None):
  # 対象設備は文字列(カンマ区切り・'*')でもリストでも受ける。書式の正規化は

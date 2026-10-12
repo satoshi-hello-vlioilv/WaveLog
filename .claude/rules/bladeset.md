@@ -1,4 +1,4 @@
-# 刃組ガイダンス（257件）
+# 刃組ガイダンス（258件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 判定表のセルの書き方と判定は`WL.ruleCells`（`core/rule-cells.js`）。盤は列の組と答えの欄を呼ぶ側から受ける | `test_holdpick.js`・`test_stoprulemaster.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 判定表は空から始める（列なし・既定の行だけ）。盤は既定の列を持たない。試す欄は字の欄（`inputmode="decimal"`・`type=number`は右寄せになる） | `test_holdpick.js`・`test_bladepick.js` | [§9.574](../../docs/decisions/9.574.md) |
 | 列は表の中で足す（見出しの「＋ 条件の列」＝何の値かを読んで選ぶ・探せる／空の表は道しるべの札・最初の列で決まりの行も1つ）。説明は`PICK_FIELD_DESC`の1箇所 | `test_holdpick.js`・`test_bladeset.py` | [§9.574](../../docs/decisions/9.574.md) |
 | 判定表の盤は送り先と読み直しだけ渡す（段取り・見本・仕掛の列は`rule-table.js`）。保存の読み直しは隣の表の未保存の変更を捨てない | `test_bladepick.js` | [§9.574](../../docs/decisions/9.574.md) |
