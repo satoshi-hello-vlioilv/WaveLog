@@ -17,11 +17,15 @@
    材料（設備停止の行・運用モード）は自分で入れて自分で戻す。
    ============================================================ */
 'use strict';
-const {run}=require('./lib/harness.js');
+const H=require('./lib/harness.js');
+const {run}=H;
+/* 停止内容の削除は論理削除（行が残る）。触る前の行を控え、増えた行を消す（§9.362 ⑤）。 */
+const SNAP_TABLES=['設備停止マスタ'];
 const EQ='テスト設備A';
 const TAG='RTS'+process.pid;
 
 run('test_strictmode: 厳密モード（§9.588）', async ({page,rec,B,W,idle,errs})=>{
+ const snapM=await H.masterSnapshot(SNAP_TABLES);
  const made=[];
  let eqRow=null,stopId=null;
  const post=(p,body)=>page.evaluate(async a=>{
@@ -138,5 +142,6 @@ run('test_strictmode: 厳密モード（§9.588）', async ({page,rec,B,W,idle,e
   for(const id of made)await post('/api/schedule/plan/delete',{equipment:EQ,id});
   if(stopId)await post('/api/schedule/stop-reason-master/delete',{id:stopId});
   await post('/api/access-mode',{mode:'edit'});
+  await H.dropNewMasterRows(snapM).catch(e=>console.log('後片付けに失敗: '+e));
  }
 },{viewport:{width:1728,height:1030}});

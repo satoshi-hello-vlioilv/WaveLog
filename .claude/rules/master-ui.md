@@ -1,4 +1,4 @@
-# マスタ管理の画面（35件）
+# マスタ管理の画面（36件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 挿入の条件の盤は設備停止マスタの3つのペインの下に全幅（`WL.stopRuleBoard`）。停止内容の行に「条件 N行」。捨てる前に聞く | `test_stoprulemaster.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 操業データ項目の設定窓は決める順の3列。行の置き場所は`OP_SECS`の1箇所（`main`／`more`／`danger`）、行は`data-op-row`で名乗る | `test_opui.js` | [§9.587](../../docs/decisions/9.587.md) |
 | 細部は「細かい設定」に畳む（見出しはいまの値・開け閉めは`opState.more`）。長い説明は ⓘ、選ばせ方の盤は開かずに並べる | `test_opui.js` | [§9.587](../../docs/decisions/9.587.md) |
 | 共通設定は5段。札は絵・名前・要対応の数・いまの一言で、段が`data-tab-sum`／`data-tab-badge`で名乗る | `test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |

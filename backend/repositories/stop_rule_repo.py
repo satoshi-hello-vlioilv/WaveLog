@@ -34,7 +34,8 @@ STOP_RULE_PREFIXES = tuple(p for _k, p, _l, _d, _t, _o in STOP_RULE_SETS)
 # 答え: 動作。**自動で入れる**か、**知らせるだけ**か。
 ACTION_AUTO = 'auto'
 ACTION_WARN = 'warn'
-STOP_RULE_ACTIONS = ((ACTION_WARN, '知らせる（黄色で提案）'), (ACTION_AUTO, '自動で入れる'))
+# 呼び名は短く（表の右端の欄に入る長さ・「知らせる」が黄色の帯で提案することは盤の説明の1行が言う）。
+STOP_RULE_ACTIONS = ((ACTION_WARN, '知らせる'), (ACTION_AUTO, '自動で入れる'))
 COUNT_MAX = 9
 MINUTES_MAX = 1440
 

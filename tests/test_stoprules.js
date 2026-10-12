@@ -19,11 +19,15 @@
    材料（停止内容と挿入の条件）は自分で作り、自分で消す。
    ============================================================ */
 'use strict';
-const {run}=require('./lib/harness.js');
+const H=require('./lib/harness.js');
+const {run}=H;
+/* 停止内容の削除は論理削除（行が残る）。触る前の行を控え、増えた行を消す（§9.362 ⑤）。 */
+const SNAP_TABLES=['設備停止マスタ'];
 const EQ='テスト設備A';
 const TAG='RTR'+process.pid;
 
 run('test_stoprules: 足りない設備停止（§9.588）', async ({page,rec,B,W,idle,errs})=>{
+ const snapM=await H.masterSnapshot(SNAP_TABLES);
  let stopId=null;
  const post=(p,body)=>page.evaluate(async a=>{
   const t0=Date.now();let last=null;
@@ -162,5 +166,6 @@ run('test_stoprules: 足りない設備停止（§9.588）', async ({page,rec,B,
    await post('/api/schedule/stop-reason-master/delete',{id:stopId});
   }
   await post('/api/access-mode',{mode:'edit'});
+  await H.dropNewMasterRows(snapM).catch(e=>console.log('後片付けに失敗: '+e));
  }
 },{viewport:{width:1728,height:1030}});

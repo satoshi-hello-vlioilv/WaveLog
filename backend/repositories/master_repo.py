@@ -46,8 +46,8 @@ RUN_MODE_NORMAL='normal'
 RUN_MODE_STRICT='strict'
 # 札の一言は**短く**（設備マスタの窓の札・長いと見切れる）。くわしい説明は欄の`more`（`master-defs.js`）。
 RUN_MODES=(
- (RUN_MODE_NORMAL,'通常','どのロットからでも開始できます（仕掛の一覧からも）'),
- (RUN_MODE_STRICT,'厳密','作業スケジュールの一番上のロットからだけ開始します'),
+ (RUN_MODE_NORMAL,'通常','どのロットからでも開始できます'),
+ (RUN_MODE_STRICT,'厳密','一番上のロットからだけ開始します'),
 )
 RUN_MODE_KEYS=tuple(k for k,_l,_n in RUN_MODES)
 

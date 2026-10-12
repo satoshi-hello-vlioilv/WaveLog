@@ -1,4 +1,4 @@
-# APIとルート（22件）
+# APIとルート（23件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 予定の応答へ鍵を足したら`plan_list()`の`jsonify`にも足す（計算の結果を選んで返している。計算だけ見る網は素通りする） | `test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 在る設備を使用設備に選ぶのは**マスタへ書かない**（端末の設定だけ・`chooseEquipment()`）。マスタへ書くのは新しい名前の登録だけで、書けない端末では押す前に言う | `test_eqsetup.js` | [§9.573](../../docs/decisions/9.573.md) |
 | 画面↔サーバーの約束はサーバーのコード（ルート表・`body(spec)`・`return`の字面）の1か所。網は読むだけ | `test_tscheck.py` | [§9.567](../../docs/decisions/9.567.md) |
 | 新しいマスタのAPIは`routes/masters/`の段へ足す（`schedule.py`は40ルートで上限・上げられない） | `test_routesplit.py` | [§9.389](../../docs/decisions/9.389.md) |
