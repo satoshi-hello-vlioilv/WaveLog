@@ -48,23 +48,25 @@ run('test_waiting: 読み込みが遅いときのWAITING表示(§9.32)。', asyn
  rec('withWaitingがグローバルに公開されている',await page.evaluate(()=>typeof window.withWaiting==='function'));
 
  await slow('**/api/equipment-master*',900);
- await watch(); await page.click('#openMasterMaint'); await shownThenClosed();
+ await watch(); await W.nav(page,'#openMasterMaint'); await shownThenClosed();
  let s=await seen();
  rec('マスタ管理: 読み込み中にWAITINGが出る',s.shown&&/マスタを読み込んでいます/.test(s.title),JSON.stringify(s));
  rec('マスタ管理: 読み込み後に閉じている',await closed());
 
+ /* 全幅の画面（マスタ管理）からは「戻る」で出る（§9.593）。出た先の読み込み中の表示を拾わないよう、見張りより先に出ておく。 */
+ await W.leaveFocus(page); await idle();
  await slow('**/api/measurement/records*',900);
- await watch(); await page.click('#openCalendar'); await built('.cal-grid'); await settle();
+ await watch(); await W.nav(page,'#openCalendar'); await built('.cal-grid'); await settle();
  s=await seen();
  rec('実績カレンダー: WAITINGが出て閉じる',(!s.shown||/実績カレンダー/.test(s.title))&&await closed(),JSON.stringify(s));
 
- await watch(); await page.click('#openDashboard'); await built('#dashboardPanel .db-card'); await settle();
+ await watch(); await W.nav(page,'#openDashboard'); await built('#dashboardPanel .db-card'); await settle();
  s=await seen();
  rec('分析ダッシュボード: 読み込み後に閉じている',await closed(),JSON.stringify(s));
 
  // 速い処理ではちらつかせない
  await page.unroute('**/api/equipment-master*');
- await watch(); await page.click('#openMasterMaint');
+ await watch(); await W.nav(page,'#openMasterMaint');
  // 「出ないこと」は待てないので、**中身が描き終わったこと**を条件にしてから見る。
  // 器(#masterMaintForm)は先にあるので条件にならない——行が出るまで待つ。
  await built('#masterMaintList .mm-row'); await settle();
@@ -81,7 +83,7 @@ run('test_waiting: 読み込みが遅いときのWAITING表示(§9.32)。', asyn
     “取り直しになる”状態を作る（先読みそのものを壊すのではなく、
     先読みが間に合わなかった状況を再現する）。 */
  await page.evaluate(()=>window.invalidateSchedulePlanCache&&window.invalidateSchedulePlanCache());
- await watch(); await page.click('#openSchedule'); await shownThenClosed();
+ await watch(); await W.nav(page,'#openSchedule'); await shownThenClosed();
  s=await seen();
  rec('作業スケジュール(俯瞰): 間に合わないときはWAITINGが出る',s.shown&&/空き状況/.test(s.title),JSON.stringify(s));
  rec('作業スケジュール(俯瞰): 読み込み後に閉じている',await closed());
@@ -111,7 +113,7 @@ run('test_waiting: 読み込みが遅いときのWAITING表示(§9.32)。', asyn
    return WL.records.reliableAllCore(...a);
   });
  });
- await watch(); await page.click('#openCalendar'); await shownThenClosed(); await built('.cal-grid');
+ await watch(); await W.nav(page,'#openCalendar'); await shownThenClosed(); await built('.cal-grid');
  s=await seen();
  rec('端末内データが遅いときもWAITINGが出る',s.shown&&/実績カレンダー/.test(s.title),JSON.stringify(s));
  rec('端末内データが遅くても読み込み後に閉じている',await closed());

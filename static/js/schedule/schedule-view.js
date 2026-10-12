@@ -134,6 +134,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
               /* 運用モード（§9.588）。`runMode`＝'strict'なら厳密、`strictTop`＝一番上のロット
                  （サーバーの`strict_top()`の答えを予定の応答が運ぶ・画面は数え直さない）。 */
               runMode:'',strictTop:null,
+              /* 運用モードをこの端末から切り替えられるか（§9.592・サーバーの`line_ops_allowed()`）と語彙（`runModes`）。 */
+              canSetRunMode:false,runModes:[],
               /* 足りない設備停止（§9.588）。`stopRuleVocab`＝挿入の条件の語彙、`stopPairs`＝前に受け取った
                  予定の境目の組（設備ごと）、`stopArmed`＝その後にこの端末がロットを足した・外した・並べ替えた。
                  自動で入れるのは、その操作で**新しくできた境目だけ**。 */
@@ -1931,7 +1933,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      ——一覧を見ているのに「編集中 自分」が出ていたら、何の話か分からない。 */
   const who=document.getElementById('scWho');
   if(who){who.hidden=true;who.innerHTML='';who.className='sc-who';who.title=''}
-  /* 「運用 厳密」もこの画面の物（§9.588）。 */
+  /* 「運用」の札もこの画面の物（§9.588・§9.592）。 */
   const runChip=document.getElementById('runModeBadge');
   if(runChip)runChip.hidden=true;
   /* 広く使う印は**この画面のもの**（§9.292 ⑦）——外へ持ち出すと、
@@ -2282,6 +2284,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const inBlade=scState.boardMode==='blade';
   const inBoard=scState.boardMode==='board';
   const inHist=scState.boardMode==='history';
+  renderRunModeChip();   // 「運用」の札は1設備の段だけ（全体の俯瞰では伏せる・§9.592）
   /* 段の器は**刃組の段があるので常に出す**（§9.383）。「全体」は設備を選べる
      ときだけ意味を持つので、そのボタンだけ伏せる——器ごと消すと、自設備
      固定の端末から刃組一覧へ行けなくなる。 */
@@ -3329,10 +3332,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const why=cat.key==='done'&&e.doneReason?`${cat.label}（${e.doneReason}）`:cat.label;
   return `<span class="sc-row-state ${cls}" title="${esc(why)}">${esc(cat.label)}</span>`;
  }
- function canStartEntry(e,workable){
-  return !!(scState.canStartWork&&e&&e.kind==='作業'&&e.state==='予定'
-            &&!e.__pending&&!e.unplanned&&strictAllows(e)
-            &&(workable||workableOf(e)).state==='ok');
+ /* 開始の状態（§9.592）——**答えはここ1箇所**（表を描く・可否を差し替える・右クリックのメニューが同じ答えを読む）。
+    'go'＝押せる／'locked'＝厳密モードでいまは押せない（**見える形で残す**——どのロットを一番上へ入れ替えれば
+    始められるかが読める・利用者の指示）／''＝出さない（可でない・作業でない・開始できない端末）。 */
+ function startStateOf(e,workable){
+  if(!(scState.canStartWork&&e&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned
+       &&(workable||workableOf(e)).state==='ok'))return '';
+  return strictAllows(e)?'go':'locked';
  }
  /* ---------- 厳密モード（§9.588、利用者の指示「ロットの開始を作業スケジュール一覧の一番上のロットから
     しかできないようにするモード」） ----------
@@ -3344,23 +3350,84 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function strictAllows(e){
   return !strictOn()||!!(isStrictTop(e)&&scState.strictTop.startable);
  }
- /* ヘッダーの「運用 厳密」（7案から A）。字で言い、なぜ他の行に「開始」が無いかは`title`が言う。 */
+ /* ---------- ヘッダーの「運用」の札（§9.588 の A → §9.592 の B3、利用者の指示「通常・厳密モードの切り替えは
+    スケジュールから設備作業者権限でもできるように」） ----------
+    **いつも出す**（通常でも厳密でも・いまの運用を字で言う）。押すと面が開き、先頭に「いま開始できる」ロット、
+    下に通常／厳密（語彙はサーバーの`runModes`）。切り替えられるのは**並べ替えできる端末**（サーバーの
+    `line_ops_allowed()`の答え＝予定の応答の`canSetRunMode`）。できない端末では選べない形にして理由を書く。 */
+ const runModeWord=k=>((scState.runModes||[]).find(m=>m.key===k)||{}).label||(k==='strict'?'厳密':'通常');
+ function runModeNowLine(){
+  if(!strictOn())return '';
+  const t=scState.strictTop;
+  if(!t||!t.lotNo)return '<p class="srm-now">いま開始できるロットはありません（予定にロットがありません）</p>';
+  return t.startable?`<p class="srm-now"><b>いま開始できる: ${esc(t.lotNo)}</b>（一番上）</p>`
+   :`<p class="srm-now is-ng"><b>いまは開始できません</b>: ${esc(t.reason||'')}</p>`;
+ }
  function renderRunModeChip(){
   const el=document.getElementById('runModeBadge');if(!el)return;
-  const on=strictOn()&&document.body.classList.contains('sc-mode');
+  const on=document.body.classList.contains('sc-mode')&&!!scState.equipment&&scState.boardMode!=='board';
   el.hidden=!on;
   if(!on)return;
+  const strict=strictOn();
+  el.classList.toggle('is-strict',strict);
+  const lab=document.getElementById('runModeLabel');if(lab)lab.textContent=runModeWord(strict?'strict':'normal');
   const t=scState.strictTop;
-  el.title=`${scState.equipment}は厳密モードです。ロットを開始できるのは作業スケジュールの一番上のロット`
-   +(t&&t.lotNo?`（${t.lotNo}）`:'')+'だけです。ほかのロットを始めるときは、並べ替えて一番上へ持ってきてください。'
-   +(t&&!t.startable&&t.reason?`\nいまは開始できません: ${t.reason}`:'')
-   +'\n切り替えはマスタ管理 > 設備 の「運用モード」です。';
+  el.title=(strict?`${scState.equipment}は厳密モードです。ロットを開始できるのは作業スケジュールの一番上のロット`
+    +(t&&t.lotNo?`（${t.lotNo}）`:'')+'だけです。鍵の付いた「開始」の行は、一番上へ並べ替えると始められます。'
+    +(t&&!t.startable&&t.reason?`\nいまは開始できません: ${t.reason}`:'')
+   :`${scState.equipment}は通常モードです（どのロットからでも開始できます）。`)
+   +'\n押すと通常／厳密を切り替えられます（並べ替えできる端末だけ）。';
+  el.onclick=()=>openRunModeMenu(el);
+ }
+ function openRunModeMenu(btn){
+  let m=document.getElementById('runModeMenu');
+  if(m&&!m.hidden){WL.popMenu.close();return}
+  if(!m){m=document.createElement('div');m.id='runModeMenu';m.className='wl-menu sc-run-menu';m.setAttribute('role','menu');
+   m.setAttribute('aria-label','運用モード');m.hidden=true;document.body.appendChild(m)}
+  const cur=strictOn()?'strict':'normal',can=!!scState.canSetRunMode;
+  m.innerHTML=runModeNowLine()+(scState.runModes||[]).map(o=>`<button type="button" role="menuitemradio" aria-checked="${o.key===cur}"
+    class="srm-item${o.key===cur?' is-on':''}" data-run-mode="${esc(o.key)}"${can?'':' aria-disabled="true"'}>
+    <i class="fa-${o.key===cur?'solid fa-circle-dot':'regular fa-circle'}" aria-hidden="true"></i><b>${esc(o.label)}</b><small>${esc(o.note||'')}</small></button>`).join('')
+   +`<p class="srm-foot">${esc(scState.equipment)}の全端末に効きます。`
+   +(can?'切り替えられるのは並べ替えできる端末です。':'<b>この端末では切り替えられません</b>（並べ替えできる端末＝スケジュールモード、またはアクセス権限マスタの「現場段取り」でこの設備を持つ端末だけ）。')+'</p>';
+  m.querySelectorAll('[data-run-mode]').forEach(b=>{b.onclick=()=>{
+   if(!can||b.dataset.runMode===cur){WL.popMenu.close();return}
+   WL.popMenu.close();setRunMode(b.dataset.runMode)}});
+  m.hidden=false;btn.setAttribute('aria-expanded','true');
+  WL.popMenu.open(m,{anchor:btn,owner:btn,onClose:()=>{m.hidden=true;btn.setAttribute('aria-expanded','false')}});
+ }
+ async function setRunMode(mode){
+  const eq=scState.equipment;
+  try{
+   await api('/api/schedule/run-mode',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(withUserId({equipment:eq,mode}))});
+   showToast(`運用モードを${runModeWord(mode)}にしました`,`${eq}の全端末に効きます。`
+    +(mode==='strict'?'開始できるのは一番上のロットだけになります。':'どのロットからでも開始できます。'),5000);
+  }catch(e){showToast('運用モードを切り替えられませんでした',String(e&&e.message||e),7000);return}
+  await loadPlan(true);
  }
  /* **HTMLも1箇所**。DOMで組み立てる側（`applyWorkableFlags`）も
     `insertAdjacentHTML`でこれを通す——クラス名を2箇所に書くと、CSSを直したときに
-    片方だけ当たらない状態が作れる。 */
- function startBtnHtml(){
+    片方だけ当たらない状態が作れる。押せない開始（§9.592）は`aria-disabled`（`disabled`にしない——
+    乗せると理由が読め、押すと理由を言う）と鍵の印で言う（色だけにしない）。 */
+ function startBtnHtml(e,state){
+  if(state==='locked')return `<button type="button" class="sc-row-btn sc-row-start is-locked" aria-disabled="true" title="${esc(lockedStartReason(e))}"><i class="fa-solid fa-lock" aria-hidden="true"></i>${esc(SC_START_BTN.text)}</button>`;
+  if(state!=='go')return '';
   return `<button type="button" class="sc-row-btn sc-row-start" title="${esc(SC_START_BTN.title)}">${esc(SC_START_BTN.text)}</button>`;
+ }
+ /* 押せない理由（§9.592）。一番上でない行は「一番上のロットは何か・どうすれば始められるか」、一番上の行でも
+    いま始められないときはサーバーの理由（`strictTop.reason`）。 */
+ function lockedStartReason(e){
+  const t=scState.strictTop||{};
+  if(isStrictTop(e))return `いまは開始できません: ${t.reason||'作業中のロットがあります。'}`;
+  return `厳密モード: 開始できるのは一番上のロット${t.lotNo?`（${t.lotNo}）`:''}だけです。`
+   +'始めるときは、この行を一番上へ並べ替えてください。';
+ }
+ function bindStartBtn(btn,e){
+  if(!btn)return;
+  btn.onclick=ev=>{ev.stopPropagation();
+   if(btn.classList.contains('is-locked')){showToast('まだ開始できません',lockedStartReason(e),6000);return}
+   startWorkFromEntry(e)};
  }
 /* 可否の反映は**画面を作り直さない**。renderTimeline()を呼ぶと行が総入れ替えに
     なり、ドラッグ中・詳細を開いている最中・スクロール位置がすべて飛ぶ。
@@ -3377,18 +3444,18 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     cell.title=w.course?`${label.title}\n残仕掛設備ｺｰｽ: ${w.course}`:label.title;
    }
    row.classList.toggle('sc-row-not-workable',w.state==='ng');
-   // 可否が変わったら開始ボタンの有無も合わせる(可になったらすぐ着手できる)
-   const canStart=canStartEntry(e,w);
+   // 可否が変わったら開始ボタンの有無と状態（押せる／押せない）も合わせる(可になったらすぐ着手できる)
+   const state=startStateOf(e,w);
    const actions=row.querySelector('.sc-row-actions');
    const existing=row.querySelector('.sc-row-start');
-   if(canStart&&!existing&&actions){
+   const now=existing?(existing.classList.contains('is-locked')?'locked':'go'):'';
+   if(state===now||!actions)return;
+   if(existing)existing.remove();
+   if(state){
     /* **表を描くときと同じHTMLを差し込む**（先頭＝`renderEntryRow`と同じ位置）。
        ここで自前に組み立てると、文字も並びも2通りになる。 */
-    actions.insertAdjacentHTML('afterbegin',startBtnHtml());
-    const btn=actions.querySelector('.sc-row-start');
-    if(btn)btn.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
-   }else if(!canStart&&existing){
-    existing.remove();
+    actions.insertAdjacentHTML('afterbegin',startBtnHtml(e,state));
+    bindStartBtn(actions.querySelector('.sc-row-start'),e);
    }
   });
  }
@@ -3591,6 +3658,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(v==='auto'||v==='confirm')scSourceSyncMode=v;
   /* 実際の時刻を入れてよいか（§9.518）も**同じ応答**が運ぶ——予定を受けた3箇所がここを通る。 */
   if(r&&'canEnterTimes' in r){scState.canEnterTimes=!!r.canEnterTimes;scState.timesDenied=String(r.timesDenied||'')}
+  /* 運用モードを切り替えられるか（§9.592）も同じ応答（同じ答え`line_ops_allowed()`）。語彙もサーバー。 */
+  if(r&&'canSetRunMode' in r){scState.canSetRunMode=!!r.canSetRunMode;scState.runModes=Array.isArray(r.runModes)?r.runModes:[]}
  }
  /* 見る項目。**内容欄に出している項目そのもの**——「表示中の列すべて」を
     1箇所で答える（別々に組み立てると、見えている列と直る列が食い違う）。 */
@@ -7509,7 +7578,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
   // §9.51: 作業可否フラグが立っている(残仕掛設備ｺｰｽがこの設備で始まる)
   // 予定だけ開始できる。まだこの設備に来ていないロットを開始させない。
-  const canStart=canStartEntry(e,workable);
+  const startState=startStateOf(e,workable),canStart=startState==='go';
   // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
   /* 枠(§9.238 ②)は固定開始日時を使わないので、鍵の入口も出さない（§4）。 */
   const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned&&e.kind!=='枠';
@@ -7533,7 +7602,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const catShown=timelineColumnKeys().includes('__cat__');   // 状態の字の置き場（§9.518）
   const canFixTimes=!!(e.actual&&e.actual.source==='手入力');
   const manualTimes=canFixTimes;
-  return {canDrag,detailHtml,canDelete,canStart,canLock,recordId,canReport,canResume,canDeleteHistory,canTimes,timesOk,catShown,canFixTimes,manualTimes};
+  return {canDrag,detailHtml,canDelete,canStart,startState,canLock,recordId,canReport,canResume,canDeleteHistory,canTimes,timesOk,catShown,canFixTimes,manualTimes};
  }
  function entryNonWork(e){
   /* 作業以外の行（設備停止・コメント・枠）は**題名だけ**（§9.294 ①）。
@@ -7548,7 +7617,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* ④ 固定の列（区分・作業可否・日付・時刻・勤務・見積・実績・印・屑幅・操作）のセル。 */
  function entryFixedCells(e,info,caps){
   const {cat,locked,dateText,dateTitle,dateShifted,timeText,timeTitle,shiftText,relText,estText,estSrc,estProvisional,estNote,actualText,flags,wk,wkTitle}=info;
-  const {detailHtml,canDelete,canStart,canLock,canReport,canResume,canDeleteHistory,canTimes,timesOk,catShown,manualTimes}=caps;
+  const {detailHtml,canDelete,startState,canLock,canReport,canResume,canDeleteHistory,canTimes,timesOk,catShown,manualTimes}=caps;
   return {
    /* 区分のセル。**色とアイコンは行表示マスタが決める**(§9.198)が、
       区分名の文字は必ず出す（色だけで伝えない）。 */
@@ -7568,7 +7637,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     ${rowStateChipHtml(e,catShown)}
     ${canTimes?`<button type="button" class="sc-row-btn sc-row-times"${timesOk?'':' disabled'} title="${esc(timesOk
       ?'実際の開始・終了の時刻を入れます（開始だけなら見積で終わります）':timesBlockReason())}">時刻入力</button>`:''}
-    ${canStart?startBtnHtml():''}
+    ${startBtnHtml(e,startState)}
     ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
     ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">再開</button>`:''}
     ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">帳票</button>`:''}
@@ -7669,8 +7738,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function bindEntryRowButtons(row,e){
   const del=row.querySelector('.sc-row-delete');
   if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
-  const start=row.querySelector('.sc-row-start');
-  if(start)start.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
+  bindStartBtn(row.querySelector('.sc-row-start'),e);
   const lock=row.querySelector('.sc-row-lock');
   if(lock)lock.onclick=ev=>{ev.stopPropagation();toggleEntryLock(e)};
   const resume=row.querySelector('.sc-row-resume');
@@ -10338,7 +10406,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* 実際の時刻を入れられるか（§9.518、利用者の指示「時刻を入れるボタンが『操作』になく、
     どうにもできない」→ 選択「その場で入れられる」）。**予定の並びを変える権利とは別の軸**
     ——起きたことの記録なので、編集モードでも権限のある端末なら入れられる。
-    **答えはサーバー**（`canEnterTimes`・`routes/schedule.py`の`_times_allowed()`）で、
+    **答えはサーバー**（`canEnterTimes`・`routes/schedule.py`の`line_ops_allowed()`）で、
     画面はモードを見て決めない。入れられない理由もサーバーの字（`timesDenied`）。 */
  function timesEditable(){
   return !!scState.canEnterTimes&&!sessionBlocked();

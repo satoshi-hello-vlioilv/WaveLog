@@ -161,10 +161,15 @@
  function mmSetNavFolded(set){
   try{localStorage.setItem(MM_NAVFOLD_KEY,JSON.stringify([...set]))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  }
+ /* マスタを探す（§9.593）。名前の一部で、**畳んだ群の中まで**探す（内部データだけで20ある）。
+    字の畳み方は全角・半角と大小をそろえるだけ（`NFKC`＋小文字）。 */
+ const mmFold=v=>String(v||'').normalize('NFKC').toLowerCase().trim();
  function renderMaintNav(){
   const nav=$('#masterMaintNav');if(!nav)return;
-  const visible=allDefs().filter(maintDefVisible);
-  const folded=mmNavFolded();
+  const raw=($('#masterMaintFind')||{}).value||'',q=mmFold(raw);
+  const visible=allDefs().filter(maintDefVisible).filter(d=>!q||mmFold(d.label).includes(q));
+  /* 探している間は畳みを効かせない（当たった物を畳んだ群の中へ隠さない）。 */
+  const folded=q?new Set():mmNavFolded();
   /* **いま開いているタブの群は必ず開く**（§CLAUDE 4）。畳んだ群の中の
      タブを選んだままにすると、「今どこにいるか」が画面から消える。 */
   const cur=visible.find(d=>d.key===maintState.defKey);
@@ -189,10 +194,10 @@
     +`<span class="mm-nav-caret" aria-hidden="true">${off?'▸':'▾'}</span>`
     +`<span class="mm-nav-group-name">${esc(g.label)}</span>`
     +`<span class="mm-nav-count">${defs.length}</span></div>`
-    +(off?'':defs.map(d=>`<button type="button" data-master="${d.key}" title="${esc(d.label)}"><span class="mm-nav-ico" aria-hidden="true">${esc(d.icon)}</span><span class="mm-nav-label">${esc(d.label)}</span></button>`).join(''))
+    +(off?'':defs.map(d=>`<button type="button" data-master="${d.key}" title="${esc(d.label)}"><span class="mm-nav-label">${esc(d.label)}</span></button>`).join(''))
     +'</div>';
   }).join('');
-  nav.innerHTML=html;
+  nav.innerHTML=html||`<p class="mm-nav-empty">「${esc(raw.trim())}」に当たるマスタはありません</p>`;
   fitMaintNav();
   nav.querySelectorAll('[data-nav-fold]').forEach(b=>{
    const toggle=()=>{
@@ -243,6 +248,16 @@
   const hb=$('#mmHintBadge');
   if(hb)hb.onclick=()=>{if(mmHintMenu)closeHintMenu();else openHintMenu(hb)};
   $('#reloadMasterMaint').onclick=()=>loadMaint(true);
+  const find=$('#masterMaintFind');
+  if(find){
+   WL.base.onTyped(find,()=>renderMaintNav());
+   find.addEventListener('keydown',e=>{
+    if(e.isComposing)return;
+    if(e.key==='Enter'){const b=$('#masterMaintNav [data-master]');if(b){e.preventDefault();b.click()}}
+    /* Esc は**探す字だけ**消す（1回のEscで閉じるのは1枚・§9.471）。 */
+    else if(e.key==='Escape'&&find.value){e.preventDefault();find.value='';renderMaintNav()}
+   });
+  }
   renderMaintNav();
   return panel;
  }
@@ -262,6 +277,8 @@
     何ができるかを書く(ファイル名は開発者向けの情報で、現場では読めても
     意味が無い)。 */
  WL.registerView({key:'master',bodyClass:'mm-mode',nav:'openMasterMaint',toolbar:'#mmHead',
+  /* 全幅で使い、ヘッダーの左端に「◯◯へ戻る」（§9.593・測定画面と同じく左のメニューは出さない）。 */
+  focus:true,back:true,
   /* 操作は3つだけなので、ヘッダーの1行目へ相乗りする（§9.266）。 */
   compactToolbar:true,
   header:['マスタ管理','登録内容の追加・編集・無効化（更新者IDとともに記録）'],exit:exitMasterMaint});

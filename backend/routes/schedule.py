@@ -28,7 +28,7 @@ from .. import query_join
 from .. import load_factor
 from ..repositories import schedule_repo as sr
 from ..repositories import stop_rule_repo
-from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
+from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows, RUN_MODES
 from ..db_access import connect, path_config_value, DBS
 from ..access_mode import request_user_id, request_pc_name
 from .body import body, flag, any_
@@ -481,7 +481,7 @@ def plan_list():
  timings.update(result.get('timings') or {})
  timings['total']=round((time.perf_counter()-t_all)*1000,1)
  timings['rowCount']=len(result['entries'])
- times_ok=_times_allowed(equipment)
+ times_ok=line_ops_allowed(equipment)
  return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),
                 anchorRounded=result.get('anchorRounded'),
                 loadFactor=result.get('loadFactor'),
@@ -501,11 +501,13 @@ def plan_list():
                 # ——`schedule.py`は41ルートで上限（§9.333）だし、語彙と設定は
                 # 予定の応答と一緒に運べば食い違いようがない（§9.366と同じ作法）。
                 sourceSyncMode=source_sync_mode(),
-                # 実際の時刻を入れてよいか（§9.518）。**画面は読むだけ**（答えは`_times_allowed()`）。
+                # 実際の時刻を入れてよいか（§9.518）。**画面は読むだけ**（答えは`line_ops_allowed()`）。
                 canEnterTimes=times_ok,
                 timesDenied='' if times_ok else PLAN_TIMES_DENIED,
                 # 運用モードと一番上のロット（§9.588）。**画面は読むだけ**（答えは`strict_top()`・開始の口と同じ）。
                 runMode=result.get('runMode'),strictTop=result.get('strictTop'),
+                # 運用モードをこの端末から切り替えられるか（§9.592・並べ替えできる端末＝`line_ops_allowed()`）と語彙。
+                canSetRunMode=times_ok,runModes=[{'key':k,'label':l,'note':n} for k,l,n in RUN_MODES],
                 warnings=warnings,timings=timings)
 
 @bp.post('/api/schedule/plan/add')
@@ -575,7 +577,8 @@ PLAN_TIMES_DENIED=('この端末では実際の時刻を入れられません。
 # 編集モードから直せる鍵（これ以外が来たら断る——予定そのものを書き換える道にしない）。
 PLAN_TIMES_KEYS=('id','actualStart','actualEnd','equipment')
 
-def _times_allowed(equipment):
+def line_ops_allowed(equipment):
+ """この設備の予定を**現場で動かせる端末か**（§9.518 実際の時刻・§9.592 運用モード）。答えはここ1箇所。"""
  mode=get_mode()
  if mode=='schedule':return True
  if mode!='edit':return False
@@ -621,7 +624,7 @@ def plan_update():
   return jsonify(error='編集モードの端末で直せるのは、実際の時刻だけです。'),403
  def fn(c):
   row=sr.plan_row(c,plan_id)
-  if row and edit_mode and not _times_allowed(row[1]):raise PermissionError(PLAN_TIMES_DENIED)
+  if row and edit_mode and not line_ops_allowed(row[1]):raise PermissionError(PLAN_TIMES_DENIED)
   if row:_check_session(row[1])
   n=0
   if times:

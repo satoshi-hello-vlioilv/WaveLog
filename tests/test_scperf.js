@@ -33,7 +33,7 @@ run('test_scperf: 見え方の設定（まとめ・さかのぼり・表示列�
  // --- 初回 ---
  reset();
  let t=Date.now();
- await page.click('#openSchedule');
+ await W.nav(page,'#openSchedule');
  await page.waitForSelector('.sc-board-row',{timeout:15000});
  const firstBoardMs=Date.now()-t;
  /* §9.182で**押す前に先読みする**ようにしたので、押した時点の要求は0でよい
@@ -54,9 +54,9 @@ run('test_scperf: 見え方の設定（まとめ・さかのぼり・表示列�
  // --- 画面を離れて戻る(ここが遅かった) ---
  reset();
  t=Date.now();
- await page.click('#openMasterMaint');
+ await W.nav(page,'#openMasterMaint');
  await until(()=>!document.body.classList.contains('sc-mode'));
- await page.click('#openSchedule');
+ await W.nav(page,'#openSchedule');
  await until(()=>document.querySelectorAll('.sc-row-line,.sc-board-row').length>0);
  const backMs=Date.now()-t;
  rec('画面を離れて戻っても再読込しない',api.overview===0&&api.plan===0,

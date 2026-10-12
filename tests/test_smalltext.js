@@ -64,12 +64,12 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
  await page.reload({waitUntil:'domcontentloaded'});await W.booted(page);
  await visit('起動直後',async()=>{});
- await visit('測定データ一覧',()=>page.click('#homeDrafts'));
- await visit('測定実績',()=>page.click('#openActuals'));
- await visit('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'));
- await visit('作業スケジュール',()=>page.click('#openSchedule'));
+ await visit('測定データ一覧',()=>W.nav(page,'#homeDrafts'));
+ await visit('測定実績',()=>W.nav(page,'#openActuals'));
+ await visit('仕掛一覧',()=>W.nav(page,'aside [data-db-key="SIKALOTNOW"]'));
+ await visit('作業スケジュール',()=>W.nav(page,'#openSchedule'));
  await visit('マスタ管理・設備',async()=>{
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="equipment"]',{timeout:15000});
   await page.click('#masterMaintNav [data-master="equipment"]');
  });
@@ -84,8 +84,8 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
    'bladesetSpacer','bladesetRing','bladesetFinger','bladesetPick','bladesetHold','stopReason','stopMinutes','shiftMaster','loadFactor',
    'accessPermission','presence','measStorage','importBackup','dataSource','queryJoin','cleanup'])
   await visit('マスタ管理・'+k,()=>page.click(`#masterMaintNav [data-master="${k}"]`));
- await visit('ダッシュボード',()=>page.click('#openDashboard'));
- await visit('カレンダー',()=>page.click('#openCalendar'));
+ await visit('ダッシュボード',()=>W.nav(page,'#openDashboard'));
+ await visit('カレンダー',()=>W.nav(page,'#openCalendar'));
  const by={};found.forEach(f=>{(by[f.screen]=by[f.screen]||[]).push(f)});
  const cut=await page.evaluate(()=>window.__wlCut||[]);
  const oddW=await page.evaluate(()=>window.__wlOddW||[]);

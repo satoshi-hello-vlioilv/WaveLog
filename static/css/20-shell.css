@@ -253,6 +253,14 @@ main>header{gap:var(--space-4)}
    本文が跳ねない。`align-items:baseline`の器なので、ピルだけは中心で揃える。
    素性(誰が)は長くなるので切り詰め、全文は`title`と`#scSessionBanner`が持つ。 */
 .hd-context .sc-who{align-self:center;font-size:var(--fs-sm)}
+/* 戻る（§9.593）。帯の部品と同じ寸法（30px・13px）。字は戻る先の名前なので枠を付けて「押せる」と言う。 */
+.hd-back{align-self:center;flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-inline);margin-right:var(--space-2);
+ height:var(--bar-h);padding:0 var(--bar-px);border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:#fff;
+ color:var(--ink);font-size:var(--bar-fs);font-weight:var(--fw-strong);white-space:nowrap;cursor:pointer}
+.hd-back:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
+.hd-back[hidden]{display:none}
+/* 戻るがあるときは題と縦の中心でそろえる（題の基準線のままだと、枠のある戻ると題が上下にずれて見える）。 */
+.hd-context:has(>.hd-back:not([hidden])){align-items:center}
 .hd-context .sc-who .sc-who-holder{max-width:20em}
 /* 設定の保存の状態(§9.212 ④)。**文字が主で色は補助**(§3)。成功は2秒で
    引っ込め、失敗だけは残して同じ場所に「再試行」を置く(§4)。 */
@@ -298,6 +306,10 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 /* モード: 状態そのものが意味を持つので色で区別する(編集=緑/閲覧=灰/スケジュール=青) */
 .hd-chip-mode{border-color:var(--success-border);background:var(--success-bg)}
 .hd-chip-mode .hd-chip-val{color:var(--success)}
+/* 運用モード（§9.592）。**いつも出す押せる札**。厳密は青緑の面（モードの1つで、手を打つ「設定要」の橙ではない・§9.338）。 */
+.hd-chip-run.is-strict{border-color:var(--teal);background:var(--teal-tint)}
+.hd-chip-run.is-strict .hd-chip-val{color:var(--teal-ink)}
+.hd-chip-run[aria-expanded="true"]{border-color:var(--teal)}
 /* 押せない状態チップ（`.hd-chip-static`＝現場段取り）。**正常のときは中立**——素の`.hd-chip`
    （白地・`--line`の枠）のまま色を足さない（§9.338）。以前はここで橙
    （`--warn-*`）を当てており、**正常な「並べ替え可」が全画面でずっと橙**で、

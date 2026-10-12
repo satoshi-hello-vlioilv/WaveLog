@@ -5,7 +5,7 @@
      どうにもできないので戸惑います。『完了』のバッジのようなフラグもロット単位では
      立っていないので色で見分けるだけしかないのがわかりにくい点です。」
    選択「その場で入れられる」——編集モードでも、スケジュール可否／その設備の現場段取りを
-   持つ端末は入れられる（答えはサーバーの`_times_allowed()`・予定の応答の`canEnterTimes`）。
+   持つ端末は入れられる（答えはサーバーの`line_ops_allowed()`・予定の応答の`canEnterTimes`）。
 
    直す前（評価関数）: 押せる「時刻入力」0/2・操作の列の「完了」0/2・編集モードからの登録 403。
 
@@ -25,6 +25,7 @@ const W=require('./lib/wait.js');
 const B=H.B, EQ='テスト設備A', TARGET='timeline:'+EQ, TAG='RTE'+process.pid;
 H.run('test_sctimesedit: 編集モードの時刻入力と完了の字（§9.518）',async({page,rec,setMode})=>{
  const made=[];
+ let rid=null;   // 自分で作った停止内容（後片付けで消す）
  const layout=await H.snapLayout(TARGET);
  const post=(p,b)=>page.evaluate(async a=>{const t0=Date.now();let last=null;
   while(Date.now()-t0<20000){const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -55,9 +56,8 @@ H.run('test_sctimesedit: 編集モードの時刻入力と完了の字（§9.518
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   /* 材料（§9.351・自分で足して自分で消す）: 停止S1 → 仕掛落ちのロット → 停止S2 */
   await setMode('schedule');
-  const reasons=await page.evaluate(async e=>((await (await fetch('/api/schedule/stop-reason-master?equipment='
-    +encodeURIComponent(e))).json()).items||[]),EQ);
-  const rid=(reasons[0]||{}).id;
+  /* 停止内容も**自分で作る**（§9.592 の追補・その設備に停止内容がある前提を他の物の置き土産に頼らない）。 */
+  rid=(await post('/api/schedule/stop-reason-master',{equipment:EQ,name:TAG+'停止',category:'段取り',standardMinutes:30})).body.id;
   const add=async b=>{const r=await post('/api/schedule/plan/add',Object.assign({equipment:EQ},b));made.push(r.body.id);return r.body.id};
   await add({kind:'設備停止',title:TAG+'S1',stopReasonId:rid,estimateMinutes:30});
   const gone=await add({kind:'作業',lotNo:TAG+'GONE',castingNo:'C0001',title:TAG+'GONE',
@@ -124,6 +124,7 @@ H.run('test_sctimesedit: 編集モードの時刻入力と完了の字（§9.518
  }finally{
   await setMode('schedule');
   for(const id of made)if(id)await post('/api/schedule/plan/delete',{id,equipment:EQ});
+  if(rid)await post('/api/schedule/stop-reason-master/delete',{id:rid});
   await H.restoreLayout(TARGET,layout);
   await setMode('edit');
  }

@@ -78,7 +78,7 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
 
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:15000});
- await page.click('#openMasterMaint');await idle();
+ await W.nav(page,'#openMasterMaint');await idle();
 
  // ---- ① 入口がある（本物の答えで開く）----------------------------------
  const hasEntry=await page.evaluate(()=>[...document.querySelectorAll('#masterMaintNav [data-master]')]
@@ -245,6 +245,8 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  rec('⑧ ハートビートの応答に版の知らせの席がある（まだ無ければ null・あれば最新版と古いか）',
    hbReal.ok===true&&!!mine&&'version' in hbReal
    &&(hbReal.version===null||(hbReal.version.myVersion===mine&&typeof hbReal.version.outdated==='boolean')),JSON.stringify(hbReal));
+ /* 版の知らせは左のメニューの版のバッジの隣。マスタ管理（全幅の画面）は左のメニューを伏せるので、「戻る」で出てから見る（§9.593）。 */
+ await W.leaveFocus(page);
  // 以降はハートビートの答えを差し替える（15秒ごとの本物が、差し込んだ状態を上書きしないように）
  const hb={version:{latestVersion:'99.0.0',myVersion:mine,outdated:true}};
  await page.route('**/api/heartbeat?**',route=>route.fulfill({status:200,contentType:'application/json',

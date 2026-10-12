@@ -1,4 +1,4 @@
-# 作業スケジュール（108件）
+# 作業スケジュール（110件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,8 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 開始の状態は`startStateOf()`の1箇所（押せる／押せない／出さない）。厳密モードで押せない開始は鍵つきの灰の面で残す（半透明にしない） | `test_strictmode.js` | [§9.592](../../docs/decisions/9.592.md) |
+| 運用モードは作業スケジュールの「運用」の札（いつも出す）から切り替える。口は`/api/schedule/run-mode`、許す端末は`line_ops_allowed()` | `test_strictmode.js`・`test_strictstart.py` | [§9.592](../../docs/decisions/9.592.md) |
 | 帯の字を落とすしきい値（em）は字の大きさを変えたら測り直す（13pxで109.2em／93.4em） | `test_scbar.js` | [§9.591](../../docs/decisions/9.591.md) |
-| 厳密モードの一番上のロットは`strict_top()`の1箇所（予定の応答の`strictTop`・開始の口）。画面は数え直さず「開始」を一番上だけに | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
+| 厳密モードの一番上のロットは`strict_top()`の1箇所（予定の応答の`strictTop`・開始の口）。画面は数え直さず押せる「開始」を一番上だけに | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 開始の口は`/api/schedule/plan/start`の1本。測定画面を開く関門が予定・帯・仕掛のどの道でも聞く（通常モードは書かない） | `test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 断るときは理由の種類と一番上のロット・次の一手（作業スケジュールを開く）。作業中のロットがあれば「作業中」で断る（並べ替えに行かせない） | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 開始で上の設備停止へ「前のロットの終わり〜開始」を見積の比で入れる（出どころ「開始で自動」）。開始判定は2回目で上書きしない | `test_strictstart.py` | [§9.588](../../docs/decisions/9.588.md) |
@@ -23,7 +25,7 @@
 | 換算係数の1件ごとの実績と見積・要約は`load_factor.points()`の1箇所（見積は予定と同じ`estimate_work()`） | `test_lfpoints.py`・`test_lfui.js` | [§9.543](../../docs/decisions/9.543.md) |
 | 外れ値の判定は`outlier_flags()`の1箇所（推定と散布図の点が同じ答えを読む） | `test_lfpoints.py` | [§9.543](../../docs/decisions/9.543.md) |
 | 予定を時刻へ置くのは`_Placer`の1箇所。`cursor`が空（稼働帯が尽きた）なら以降は`_unplaced()`——**例外で止めない** | `test_scload.py` | [§9.522](../../docs/decisions/9.522.md) |
-| 実際の時刻を入れてよいかは`_times_allowed()`の1箇所（編集モードは時刻の鍵だけ）。画面は`canEnterTimes`を読む。「時刻入力」は操作の列に必ず出す | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |
+| 実際の時刻を入れてよいかは`line_ops_allowed()`の1箇所（編集モードは時刻の鍵だけ）。画面は`canEnterTimes`を読む。「時刻入力」は操作の列に必ず出す | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |
 | 区分の列を外しているときは操作の列が「✓完了」「作業中」を字で言う（字は`categoryOf()`）。区分の列があれば出さない | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |
 | 仕掛から消えたロット・後ろの作業が始まった設備停止は**完了**。時刻が無ければ`timesNeeded`（`_times_prompts()`の1箇所） | `test_actualmatch.py`・`test_sctimes.js` | [§9.514](../../docs/decisions/9.514.md) |
 | 実際の時刻は`[手入力実績JSON]`の1列（測定データと別）。検めるのは`manual_payload()`、登録で状態も完了 | `test_actualmatch.py` | [§9.514](../../docs/decisions/9.514.md) |

@@ -86,18 +86,18 @@ run('test_flows: 測定・スケジュール・メンテナンスの各導線を
   });
 
   // --- 測定作業導線 ---
-  await check('測定データ一覧',()=>page.click('#homeDrafts'),{header:'測定データ一覧'});
+  await check('測定データ一覧',()=>W.nav(page,'#homeDrafts'),{header:'測定データ一覧'});
   /* 一覧の見出しは**データソースマスタの表示名**(§9.87)。コード内に
      固定で書いていた頃は、左メニュー(表示名)とヘッダー(固定文字列)で
      別の名前が出ていた。表示名を変えても追随するよう、期待値もマスタから取る。 */
   const dsLabel=k=>page.evaluate(key=>WL.dataSource.label(key),k);
-  await check('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'),
+  await check('仕掛一覧',()=>W.nav(page,'aside [data-db-key="SIKALOTNOW"]'),
     {header:await dsLabel('SIKALOTNOW')});
-  await check('品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'),
+  await check('品質データ',()=>W.nav(page,'aside [data-db-key="SIKALOTDEF"]'),
     {header:await dsLabel('SIKALOTDEF')});
 
   // --- スケジュール作業導線 ---
-  await check('作業スケジュール',()=>page.click('#openSchedule'),
+  await check('作業スケジュール',()=>W.nav(page,'#openSchedule'),
    {header:'作業スケジュール'});
   const rows=await page.$$eval('.sc-row-line',n=>n.length);
   rec('作業スケジュール: 予定行が描かれている',rows>0,`行数=${rows}`);
@@ -106,7 +106,7 @@ run('test_flows: 測定・スケジュール・メンテナンスの各導線を
      `qa-view-raw`が付かず伏せたままだった——「品質を出していたか」を画面の印と
      別の控え（`prevQa`）が持ち、一覧を離れても控えだけ残っていた。
      行の数では見ない（伏せた表にも行は在る）。**見えているか**で見る。 */
-  await check('作業スケジュール→品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'),
+  await check('作業スケジュール→品質データ',()=>W.nav(page,'aside [data-db-key="SIKALOTDEF"]'),
     {header:await dsLabel('SIKALOTDEF')});
   const back=await page.evaluate(()=>{const g=document.querySelector('#grid');
    return {表:!!g&&g.getBoundingClientRect().height>0,
@@ -117,11 +117,11 @@ run('test_flows: 測定・スケジュール・メンテナンスの各導線を
       back.表&&back.行>0&&back.帯,JSON.stringify(back));
 
   // --- 分析導線 ---
-  await check('ダッシュボード',()=>page.click('#openDashboard'),{header:'ダッシュボード'});
-  await check('測定実績カレンダー',()=>page.click('#openCalendar'),{header:'測定実績カレンダー'});
+  await check('ダッシュボード',()=>W.nav(page,'#openDashboard'),{header:'ダッシュボード'});
+  await check('測定実績カレンダー',()=>W.nav(page,'#openCalendar'),{header:'測定実績カレンダー'});
 
   // --- メンテナンス導線(マスタ管理の各タブ) ---
-  await check('マスタ管理',()=>page.click('#openMasterMaint'),{header:'マスタ管理'});
+  await check('マスタ管理',()=>W.nav(page,'#openMasterMaint'),{header:'マスタ管理'});
   const tabs=await page.$$eval('#masterMaintNav [data-master]',n=>n.map(x=>x.dataset.master));
   rec('マスタ管理: タブが並んでいる',tabs.length>=8,`${tabs.length}件: ${tabs.slice(0,6)}`);
   // 見切れ・実行エラーが出やすい特殊タブを重点的に見る
@@ -134,7 +134,7 @@ run('test_flows: 測定・スケジュール・メンテナンスの各導線を
 
   // --- 測定画面(未保存の保護。今回の変更点) ---
   where='測定画面';
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:25000}); await W.settleFlags(page); await idle();
   const started=await page.evaluate(()=>{
    const r=[...document.querySelectorAll('.sc-row-line')].find(x=>x.querySelector('.sc-row-start'));

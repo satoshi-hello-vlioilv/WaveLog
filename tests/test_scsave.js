@@ -64,7 +64,7 @@ run('test_scsave: 変更が戻ってしまう不具合・保存できない不�
 
   /* ---- スケジュールを開く ---- */
   await page.waitForSelector('#openSchedule',{timeout:25000});
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await page.waitForSelector('.sc-board-row',{timeout:25000});
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
@@ -130,9 +130,9 @@ run('test_scsave: 変更が戻ってしまう不具合・保存できない不�
   await page.unroute('**/api/schedule/plan?*');
 
   /* ---- 2) 画面を切り替えて戻っても残る ---- */
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await W.until(page,()=>document.body.classList.contains('mm-mode'));
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await W.until(page,e=>[...document.querySelectorAll('.sc-board-row')].some(x=>x.dataset.equipment===e),EQ);
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
@@ -200,9 +200,9 @@ run('test_scsave: 変更が戻ってしまう不具合・保存できない不�
       srvAfterDrag.filter(planOnly).join()===domAfterDrag.filter(planOnly).join(),
       `画面 ${domAfterDrag.filter(planOnly).slice(0,6).join(',')} / サーバ ${srvAfterDrag.filter(planOnly).slice(0,6).join(',')}`);
   /* **画面を切り替えて戻す**——実機の症状はここで元へ戻ることだった。 */
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await W.until(page,()=>document.body.classList.contains('mm-mode'));
-  await page.click('#openSchedule');
+  await W.nav(page,'#openSchedule');
   await W.until(page,e=>[...document.querySelectorAll('.sc-board-row')].some(x=>x.dataset.equipment===e),EQ);
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);

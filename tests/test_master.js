@@ -50,7 +50,7 @@ run('test_master: マスタ管理の画面（統合パネル・タブ・編集�
   /* ---- ① 形: メイン画面へ統合されている（旧 test_p11） ---- */
   rec('サイドバーにMASTER(マスタ一覧)の独立ナビが無い',
       (await page.$$('aside [data-db-key="MASTER"]')).length===0);
-  await page.click('#openMasterMaint');
+  await W.nav(page,'#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});
   /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
@@ -316,7 +316,7 @@ run('test_master: マスタ管理の画面（統合パネル・タブ・編集�
      '負荷率上書きマスタ'].every(t=>raw.tables.includes(t)),raw.tables.join(','));
 
   /* ---- ① 形: 他ナビへ移ると閉じる（旧 test_p11） ---- */
-  await page.click('aside [data-db-key="SIKALOTNOW"]');
+  await W.nav(page,'aside [data-db-key="SIKALOTNOW"]');
   await page.waitForFunction(()=>!document.body.classList.contains('mm-mode'),null,{timeout:8000}).catch(()=>{});
   await idle(400,8000);
   rec('他のサイドバー項目を押すとマスタ管理から出る',

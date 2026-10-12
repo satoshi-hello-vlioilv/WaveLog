@@ -117,14 +117,14 @@ run('test_scale: 文字・UIの階層（役割 → 寸法）を実測で固定�
    const r=await roles();
    Object.keys(roleAgg).forEach(k=>roleAgg[k].push(...r[k]));
   };
-  await visit('仕掛一覧',()=>page.click('aside [data-db-key="SIKALOTNOW"]'));
-  await visit('品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'));
+  await visit('仕掛一覧',()=>W.nav(page,'aside [data-db-key="SIKALOTNOW"]'));
+  await visit('品質データ',()=>W.nav(page,'aside [data-db-key="SIKALOTDEF"]'));
   await visit('品質データ_グラフ',async()=>{
    await page.click('[data-qa-tab="graph"]');await settle(900);
    await page.evaluate(()=>document.querySelectorAll('.qa-acc:not(.open) .qa-acc-head').forEach(x=>x.click()));
   });
   await page.click('[data-qa-tab="raw"]');await settle(600);
-  await visit('作業スケジュール',()=>page.click('#openSchedule'));
+  await visit('作業スケジュール',()=>W.nav(page,'#openSchedule'));
   /* 段「履歴」（§9.502）。設備を1つ選んでから段を切り替える（俯瞰の段には履歴の器が無い）。 */
   await visit('作業スケジュール_履歴',async()=>{
    await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);if(r)r.click()},'テスト設備A');
@@ -132,14 +132,14 @@ run('test_scale: 文字・UIの階層（役割 → 寸法）を実測で固定�
    await page.click('#scModeHistory');
    await page.waitForFunction(()=>{const s=WL.scheduleHistory&&WL.scheduleHistory.state();return !!s&&!s.loading&&!!document.querySelector('#shSide .sh-cal')},null,{timeout:15000});
   });
-  await visit('ダッシュボード',()=>page.click('#openDashboard'));
-  await visit('測定実績カレンダー',()=>page.click('#openCalendar'));
-  await visit('マスタ管理',()=>page.click('#openMasterMaint'));
+  await visit('ダッシュボード',()=>W.nav(page,'#openDashboard'));
+  await visit('測定実績カレンダー',()=>W.nav(page,'#openCalendar'));
+  await visit('マスタ管理',()=>W.nav(page,'#openMasterMaint'));
   /* **測定画面も網に載せる（§9.127）。** ここが巡回に入っていなかったため、
      アプリ全体の寸法を揃えた後も測定画面だけが取り残されていた
      （実測でコントロールの高さ13種・文字7種）。3段それぞれを見る。 */
   await visit('測定①準備',async()=>{
-   await page.click('#openSchedule');
+   await W.nav(page,'#openSchedule');
    await page.waitForSelector('.sc-row-line',{timeout:25000});
    const ok=await page.evaluate(()=>{
     const r=[...document.querySelectorAll('.sc-row-line')].find(x=>x.querySelector('.sc-row-start'));

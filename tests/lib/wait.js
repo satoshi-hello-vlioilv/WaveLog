@@ -10,6 +10,8 @@
      until(page,fn,arg)    画面の条件が真になった（＋短い落ち着き）
      poll(fn,pred)         サーバーの答えが条件を満たした（書き込みのあとの取り直し）
      settle(page)          短い落ち着き（レイアウトの確定。既定350ms）
+     leaveFocus(page)      全幅の画面（マスタ管理）なら「戻る」で出る（§9.593）
+     nav(page,sel)         左のメニューの行き先を押す（全幅の画面なら先に「戻る」）
 
    **上限を超えたら黙って先へ進む**（その先の判定でFAILとして出る）——
    ここで投げると「何を待っていて足りなかったか」が読めなくなる。
@@ -69,8 +71,16 @@ const settleFlags=(page,ms=30000)=>page.waitForFunction(
    ①設備の行（`[data-equipment]`）が描かれた ②その設備の行（`.sc-row-line`）が
    描かれ、タイムラインがその設備を名乗っている ③作業可否が落ち着いた、の3つ。
    `rows:false`は、予定が1本も無い設備を開くときに使う。 */
+/* 全幅の画面（`body.view-focus`＝マスタ管理）は左のメニューを伏せている（§9.593）。人と同じく、ヘッダーの
+   「戻る」で出てから左のメニューを押す。伏せていなければ何もしない。 */
+async function leaveFocus(page,ms=15000){
+ if(!await page.evaluate(()=>document.body.classList.contains('view-focus')))return;
+ await page.click('#viewBack');
+ await until(page,()=>!document.body.classList.contains('view-focus'),null,{ms,what:'「戻る」で全幅の画面を出る'});
+}
+async function nav(page,sel){await leaveFocus(page);await page.click(sel)}
 async function openSchedule(page,EQ,{rows=true,ms=25000}={}){
- await page.click('#openSchedule');
+ await nav(page,'#openSchedule');
  await until(page,e=>!!document.querySelector(`[data-equipment="${e}"]`),EQ,ms);
  await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);r&&r.click()},EQ);
  if(rows)await page.waitForSelector('.sc-row-line',{timeout:ms});
@@ -229,6 +239,7 @@ async function listView(page){
 
 /* 計測の口は公開するものにだけ被せる（中で呼び合うぶんは二重に数えない）。 */
 const X={SETTLE,settle,paint,textOf,
+ leaveFocus:traced('leaveFocus',leaveFocus),nav:traced('nav',nav),
  until:traced('until',until),booted:traced('booted',booted),settleFlags:traced('settleFlags',settleFlags),
  openSchedule:traced('openSchedule',openSchedule),poll:traced('poll',poll),opSave:traced('opSave',opSave),
  answerPrompt:traced('answerPrompt',answerPrompt),answerConfirm:traced('answerConfirm',answerConfirm),

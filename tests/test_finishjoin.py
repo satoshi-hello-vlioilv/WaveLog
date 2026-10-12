@@ -24,6 +24,7 @@ finally で消し、消えたことを確かめる。
 ============================================================
 """
 import json
+import os
 import pathlib
 import sys
 
@@ -45,7 +46,7 @@ def rec(name, ok, detail=''):
 
 client = flask_app.app.test_client()
 EQ = 'テスト設備A'
-TAG = 'FJ' + str(pathlib.os.getpid())
+TAG = 'FJ' + str(os.getpid())
 made_joins = []
 made_plans = []
 paused = []          # この網のあいだ止めた既存の結合（必ず戻す）

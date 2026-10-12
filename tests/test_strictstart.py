@@ -20,6 +20,8 @@
  8. 開始判定のある行は、測定の開始時刻が無くても着手で、予定の応答に一番上のロットと運用モードが載る
  9. 通常モードの設備は一番上のロットを答えない（`strictTop` は None）
  10. 運用モードの読み替え（鍵・呼び名・空＝通常）
+ 11. 作業スケジュールから切り替える（§9.592）: 書くのは`write_equipment_run_mode()`（知らない設備・語彙に無い字は断る）、
+     切り替えてよい端末は`line_ops_allowed()`の1箇所（スケジュールモード／編集モードでスケジュール可否・その設備の現場段取り）
 
 **材料は自分で作る**（一時フォルダの共有DB・設定DB）。サーバーは要らない（1段目・純粋な網）。
 ============================================================
@@ -201,6 +203,43 @@ rec('運用モードの読み替え: 鍵・呼び名を受け、空・知らな�
     (mr.normalize_run_mode('strict'), mr.normalize_run_mode('厳密'), mr.normalize_run_mode('通常'), mr.normalize_run_mode('x'))
     == ('strict', 'strict', '', ''))
 rec('設備マスタに登録の無い設備は通常', mr.read_equipment_run_mode(mc, '知らない設備') == 'normal')
+
+# ---- 11: 作業スケジュールから切り替える（§9.592） ----
+n = mr.write_equipment_run_mode(mc, '通常試験設備', 'strict', 'tester')
+rec('11: 切り替えると設備マスタの運用モードが変わる（通常→厳密→通常）',
+    n == 1 and mr.read_equipment_run_mode(mc, '通常試験設備') == 'strict'
+    and mr.write_equipment_run_mode(mc, '通常試験設備', 'normal', 'tester') == 1
+    and mr.read_equipment_run_mode(mc, '通常試験設備') == 'normal', n)
+raw = mc.execute('SELECT [運用モード],[更新者ID] FROM [設備マスタ] WHERE [設備名]=?', ['通常試験設備']).fetchone()
+rec('11: 通常の保存値は空（設備マスタの窓と同じ正規化）・更新者を残す', tuple(raw) == ('', 'tester'), tuple(raw))
+bad = []
+for args in (('知らない設備', 'strict'), ('通常試験設備', '厳しい'), ('', 'strict')):
+    try:
+        mr.write_equipment_run_mode(mc, args[0], args[1], 'tester')
+        bad.append(args)
+    except ValueError:
+        pass
+rec('11: 設備マスタに無い設備・語彙に無い字は断る（ValueError＝400）', not bad, bad)
+from backend.routes import schedule as rs  # noqa: E402 切り替えてよい端末の答え（1箇所）を直に問う
+
+
+def allowed(mode, flags, eq='通常試験設備'):
+    rs.get_mode = lambda: mode
+    rs.current_permission_flags = lambda: flags
+    return rs.line_ops_allowed(eq)
+
+
+grid = {
+    'スケジュールモード': allowed('schedule', {}),
+    '閲覧モード': allowed('view', {'canSchedule': True}),
+    '編集・権限なし': allowed('edit', {'canSchedule': False, 'canFieldReorder': False}),
+    '編集・スケジュール可否': allowed('edit', {'canSchedule': True}),
+    '編集・現場段取り（この設備）': allowed('edit', {'canFieldReorder': True, 'fieldReorderEquipment': '通常試験設備'}),
+    '編集・現場段取り（ほかの設備）': allowed('edit', {'canFieldReorder': True, 'fieldReorderEquipment': '厳密試験設備'}),
+}
+rec('11: 切り替えてよいのは並べ替えできる端末だけ（スケジュール／スケジュール可否／その設備の現場段取り）',
+    grid == {'スケジュールモード': True, '閲覧モード': False, '編集・権限なし': False, '編集・スケジュール可否': True,
+             '編集・現場段取り（この設備）': True, '編集・現場段取り（ほかの設備）': False}, grid)
 
 ok = sum(R)
 print(f'\n== {ok}/{len(R)} PASS ==')

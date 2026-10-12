@@ -74,6 +74,22 @@ def _read_equipment_value(c,equipment,column,normalize,default,what):
  except Exception as _e:quiet(f'列を読めない（{what}）',_e)
  return default
 
+def write_equipment_run_mode(c,equipment,mode,user_id):
+ """この設備の運用モードを書く（§9.592・作業スケジュールから切り替える口）。書くのは有効な行の正規化した設備名が
+ 一致する行だけ・保存値は`normalize_run_mode()`（空欄＝通常）。設備マスタに無い設備は断る（ValueError）。
+ 設備マスタの窓の更新（`/api/equipment-master/update`）と同じ列・同じ正規化を通る。"""
+ if mode not in RUN_MODE_KEYS:raise ValueError(f'運用モードは {"・".join(l for _k,l,_n in RUN_MODES)} のどれかを選んでください。')
+ name=normalize_equipment_name(equipment)
+ ensure_equipment_master_table(c)
+ cur=c.cursor()
+ cur.execute(f'SELECT {qi("設備ID")},{qi("設備名")},{qi("有効")} FROM {qi(EQUIPMENT_MASTER_TABLE)}')
+ ids=[r[0] for r in cur.fetchall() if (True if r[2] is None else bool(r[2])) and normalize_equipment_name(r[1])==name]
+ if not name or not ids:raise ValueError(f'設備マスタに「{equipment}」がありません（マスタ管理 > 設備 で登録してください）。')
+ for i in ids:
+  cur.execute(f'UPDATE {qi(EQUIPMENT_MASTER_TABLE)} SET {qi(RUN_MODE_COLUMN)}=?,{qi("更新者ID")}=?,{qi("更新日時")}=Now() '
+              f'WHERE {qi("設備ID")}=?',[normalize_run_mode(mode),user_id,i])
+ return len(ids)
+
 def read_equipment_run_mode(c,equipment):
  """この設備の運用モード（'normal'／'strict'）。**答えはここ1箇所**——予定の応答・開始の口が同じ答えを見る。"""
  return _read_equipment_value(c,equipment,RUN_MODE_COLUMN,lambda v:normalize_run_mode(v) or RUN_MODE_NORMAL,
