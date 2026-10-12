@@ -2922,3 +2922,25 @@ div.sc-view-row{cursor:default}
   font-size:var(--fs-sm);color:var(--ink-2)}
 .sh-back{align-self:flex-start}
 }
+@layer component {
+/* 厳密モードの一番上のロット（§9.588）。次に開始するのはこの行だけ——左の帯で言い、字は「開始」のボタン。 */
+.sc-row-line.sc-row-strict-top{border-left:var(--bar-w) solid var(--teal);padding-left:5px}
+/* 足りない設備停止の帯（§9.588・7案から A）。色は行表示マスタの「足りない設備停止」（既定は黄・`.sc-rs-*`の
+   `--rs-fg`／`--rs-bg`／`--rs-line`）。**行ではない**——並べ替え・選択・差し込みの的にしない。 */
+.sc-stop-gap{display:flex;flex-direction:column;gap:var(--space-1);margin:var(--space-1) 0;padding:var(--space-1) var(--space-3);
+  background:var(--rs-bg);border:1px solid var(--rs-line);border-left:var(--bar-w) solid var(--rs-fg);border-radius:var(--radius-xs);
+  font-size:var(--fs-sm);color:var(--ink)}
+.sc-sg-line{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+.sc-sg-mark{color:var(--rs-fg);flex:none}
+.sc-sg-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-sg-text b{font-weight:var(--fw-strong)}
+.sc-sg-text small{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--ink-2)}
+.sc-sg-auto{flex:none;font-style:normal;font-weight:var(--fw-ui);color:var(--ink-2)}
+.sc-sg-acts{display:flex;gap:var(--space-2);flex:none}
+.sc-sg-note{color:var(--ink-2)}
+.sc-sg-btn{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:#fff;
+  color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;cursor:pointer}
+.sc-sg-btn:hover{border-color:var(--teal);color:var(--teal-ink)}
+.sc-sg-btn.is-primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.sc-sg-btn.is-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
+}

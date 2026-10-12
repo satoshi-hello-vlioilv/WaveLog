@@ -4053,8 +4053,8 @@
  /* `addUnder`＝下の欄で足す先（§9.390）。0＝停止内容の直下、>0＝その内訳の下。
     **どこへ足すのかは字で出す**——同じ「追加」ボタンが2つの意味を持つので、
     押す前に読めないと取り違える（§CLAUDE 2「推測させない」）。
-    `cat`＝左で選んでいる分類（`null`＝すべて）。 */
- const ssbState={stops:[],subs:[],defaults:{},cats:[],picked:0,q:'',minutes:[],addUnder:0,cat:null};
+    `cat`＝左で選んでいる分類（`null`＝すべて）。`ruleVocab`＝挿入の条件の語彙（列の群・入れ方・上限・§9.588）。 */
+ const ssbState={stops:[],subs:[],defaults:{},cats:[],picked:0,q:'',minutes:[],addUnder:0,cat:null,ruleVocab:null};
  function ssbSay(text,bad){
   const el=$('#ssbState');if(!el)return;
   el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
@@ -4104,6 +4104,7 @@
     api('/api/schedule/stop-category-master'),
    ]);
    ssbState.stops=(rs.items||[]).map(x=>({...x}));
+   ssbState.ruleVocab=rs.insertRuleVocab||null;
    ssbState.subs=(ss.items||[]).map(x=>({...x}));
    ssbState.defaults=ss.defaults||{};
    ssbState.cats=(cs.items||[]).map(x=>({...x}));
@@ -4123,8 +4124,16 @@
    +`<span class="op-bar-note">左から<b>分類</b>→<b>停止内容</b>→<b>内訳</b>の順に決めます。`
    +`内訳は<b>集計のときだけ</b>分かれ、名称（例: 刃組待ち）では1つにまとまります。</span>`
    +`<span class="op-bar-state" id="ssbState"></span></div>`;
-  list.innerHTML=`<div class="ssb-edit">${ssbCatPaneHtml()}${ssbStopPaneHtml(picked)}${ssbSubPaneHtml(picked)}</div>`;
+  /* 挿入の条件（§9.588・7案から M3）は3つのペインの**下に全幅**——右のペインでは答えの列が切れる。 */
+  list.innerHTML=`<div class="ssb-edit has-rules">${ssbCatPaneHtml()}${ssbStopPaneHtml(picked)}${ssbSubPaneHtml(picked)}`
+   +'<section class="ssb-rules" id="ssbRules" aria-label="挿入の条件"></section></div>';
   bindStopSub();
+  ssbMountRules();
+ }
+ /* 選んでいる停止内容の挿入の条件（`WL.stopRuleBoard`）。保存したら一覧ごと読み直す（「条件 N行」の札も変わる）。 */
+ function ssbMountRules(){
+  const host=$('#ssbRules');if(!host||!WL.stopRuleBoard)return;
+  WL.stopRuleBoard.mount(host,ssbStop(ssbState.picked),ssbState.ruleVocab,()=>loadStopSubMaint(true));
  }
  /* 左＝分類（3階層の1段目）。**件数はその分類の停止内容の数**で、
     内訳までは数えない（同じ言葉が2箇所で違う数を言わない・§CLAUDE 8）。 */
@@ -4177,6 +4186,7 @@
       <span class="ssb-stop-eq">${esc(s.equipmentLabel||'')}</span>
       <span class="ssb-stop-n${n?'':' is-blank'}">${n?`内訳${n}件`:'内訳なし'}</span>
       <span class="ssb-stop-min">${blank?'標準所要分なし':esc(WL.duration.text(Number(m)))}</span>
+      ${WL.stopRuleBoard&&WL.stopRuleBoard.chipText(s)?`<span class="ssb-stop-rule">${esc(WL.stopRuleBoard.chipText(s))}</span>`:''}
      </span></button>
     <button type="button" class="mm-btn-ghost sm" data-ssb-edit="${s.id}"
       title="対象設備・分類・名称・標準所要分・連携機能を直します">編集</button>
@@ -4397,9 +4407,14 @@
   /* 中を押したとき**右だけ差し替える**（§9.226 ①）——一覧を作り直すと
      `scrollTop`が0へ戻り、上から数え直すことになる。 */
   list.querySelectorAll('[data-ssb-pick]').forEach(btn=>{
-   btn.onclick=()=>{
+   btn.onclick=async()=>{
     const id=Number(btn.dataset.ssbPick);
     if(Number(ssbState.picked)===id)return;
+    /* 挿入の条件に保存していない変更があれば、捨てる前に聞く（§9.588）。 */
+    if(WL.stopRuleBoard&&WL.stopRuleBoard.dirty()&&!await confirmModal({title:'保存していない条件',eyebrow:'挿入の条件',
+      message:'いま開いている停止内容の挿入の条件に、保存していない変更があります。捨てて別の停止内容を開きますか？',
+      confirmLabel:'捨てて開く',cancelLabel:'やめる'}))return;
+    WL.stopRuleBoard&&WL.stopRuleBoard.table&&(WL.stopRuleBoard.table.dirty=false);
     ssbState.picked=id;ssbState.addUnder=0;
     const pane=list.querySelector('.ssb-subs');
     if(!pane){renderStopSub();return}
@@ -4407,6 +4422,7 @@
     list.querySelectorAll('[data-ssb-pick]').forEach(b=>
       b.classList.toggle('is-on',Number(b.dataset.ssbPick)===id));
     bindStopSub();
+    ssbMountRules();
    };
   });
   /* 停止内容そのものの編集は**汎用の編集窓**（§9.397）。欄が5つ

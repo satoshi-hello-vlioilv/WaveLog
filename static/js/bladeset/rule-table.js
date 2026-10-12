@@ -19,12 +19,14 @@
      ・見出しのすぐ下の「試す」行に値を入れると、当たる行が光り、セルごとに○×が付く。
        「試す」の値は**同じ画面の表どうしで共有**する（刃のカテゴリと刃厚を同じ作業で試す）
 
-   判定は**書かない**。`blade-core.js` の `firstRule()`／`condHits()` をそのまま呼ぶ——盤と刃組
+   判定は**書かない**。`core/rule-cells.js` の `firstRule()`／`condHits()` をそのまま呼ぶ（§9.588で刃組から切り出し、
+   設備停止の挿入条件の盤もこの部品を使う。列の組・答えの欄は呼ぶ側が渡す）——盤と刃組
    ガイダンスで判定が食い違うと、「盤では当たるのに現場では当たらない」という最も分かりにくい形で
    壊れる（§9.379）。表は1枚として編集し、保存は丸ごと（送り先と読み直しは呼ぶ側が渡す・`send()`）。
    ============================================================ */
 (function(){
- const BS=()=>WL.bladeSet;
+ /* 判定は共通の部品（`core/rule-cells.js`・§9.588）。刃組を知らない。 */
+ const BS=()=>WL.ruleCells;
  /* 列（データ）の幅（利用者の指示「入力した文字数が多い場合もあるので条件テーブルの列幅を変化させられるように」）。
     **この端末の見え方**なので端末に覚える（表の決まりではない＝保存して他の端末へ配らない）。鍵は表と列の名前。 */
  const WIDTH_KEY='wl.ruleTable.widths';
@@ -38,8 +40,12 @@
  }
  /* 幅を決めた列のセルの`style`（見出し・試す・条件のセルで同じ）。 */
  const widthStyle=w=>w?` style="width:${w}px;min-width:${w}px;max-width:${w}px"`:'';
- const SRC='source.';
- const isSrc=f=>String(f).startsWith(SRC);
+ /* **外から足す列の組**（§9.588で一般化）: 名前がデータに依る列（仕掛の列名）に接頭辞を付けて読む。刃組は
+    `source.`（1本目のコイルの行）の1組、設備停止の挿入条件は`prev.`／`next.`／`chg.`／`diff.`（前後のロット・
+    変わったか・差）の4組。呼ぶ側は`sourceSets()`で組を渡す（渡さなければ`sourceCols()`から`source.`の1組を作る）。
+    組: {key, prefix, label, kind, options, desc(列名,見本)}。 */
+ const SOURCE_SET=cols=>({key:'source',prefix:'source.',label:'',kind:'auto',cols,
+  desc:(n,ex)=>`仕掛の列「${n}」（1本目のコイルの行）${ex.length?`・例 ${ex.join(' / ')}`:''}`});
 
  /* ---------- セルの字 ⇔ 条件 ----------
     **書き方は`blade-core.js`の1組**（`parseCell`／`cellText`／`cellSay`・§9.533）。刃組の説明の字も同じ1組を使う。
@@ -109,24 +115,40 @@
   }
   fields(){return this.o.fields()||[]}
   fieldOf(f){return this.fields().find(x=>x.field===f)||null}
-  colLabel(f){return isSrc(f)?String(f).slice(SRC.length):((this.fieldOf(f)||{}).label||f)}
-  kindOf(f){return ((this.fieldOf(f)||{}).kind)||(isSrc(f)?'auto':'text')}
+  /* 外から足す列の組（並び）と、その列が属する組（無ければ null）。 */
+  sets(){return this.o.sourceSets?(this.o.sourceSets()||[]):[SOURCE_SET((this.o.sourceCols&&this.o.sourceCols())||[])]}
+  setOf(f){return this.sets().find(x=>String(f).startsWith(x.prefix))||null}
+  colName(f){const x=this.setOf(f);return x?String(f).slice(x.prefix.length):''}
+  colLabel(f){const x=this.setOf(f);return x?(x.labelOf?x.labelOf(this.colName(f)):this.colName(f)):((this.fieldOf(f)||{}).label||f)}
+  kindOf(f){const x=this.setOf(f);return ((this.fieldOf(f)||{}).kind)||(x?(x.kind||'auto'):'text')}
   /* その列のセルの条件（並びのまま・`or`つき）。空の配列＝問わない。 */
   condsOf(row,f){return (row.conditions||[]).filter(c=>c.field===f)}
+  /* 答えの欄（§9.588で複数に）。呼ぶ側が`answerCols()`で`[{key, head, kind:'select'|'text', options(r), get(r), set(r,v), placeholder, title}]`を
+     渡す。渡さなければ`answers`／`answerOf`／`setAnswer`から1つの選択の欄を作る（刃組の表は今までのまま）。 */
+  ansCols(){
+   const o=this.o;
+   return o.answerCols?o.answerCols():[{key:'answer',head:o.answerHead,kind:'select',options:r=>o.answers(r),get:r=>o.answerOf(r),set:(r,v)=>o.setAnswer(r,v)}];
+  }
   /* 既定の行＝条件の無い行。**足したばかりで条件をまだ書いていない行**（`fresh`）は違う。 */
   isDefault(r){return !(r.conditions||[]).length&&!r.fresh}
-  kinds(){return Object.fromEntries(this.fields().map(f=>[f.field,f.kind]))}
-  groupWord(f){const g=isSrc(f)?'source':(this.fieldOf(f)||{}).group;return ((this.o.groups()||[]).find(x=>x.key===g)||{}).label||''}
+  /* 判定へ渡す列の型（組の列も型を名乗る——前後のロットの列は`auto`、変わったかは`choice`、差は`num`）。 */
+  kinds(){return Object.assign(Object.fromEntries(this.cols.map(f=>[f,this.kindOf(f)])),Object.fromEntries(this.fields().map(f=>[f.field,f.kind])))}
+  fieldDefs(){return this.fields().concat(this.cols.filter(f=>!this.fieldOf(f)).map(f=>({field:f,kind:this.kindOf(f),label:this.colLabel(f),options:this.optionsOf(f)})))}
+  optionsOf(f){const x=this.setOf(f);return x?(x.options||[]):((this.fieldOf(f)||{}).options||[])}
+  groupOf(f){const x=this.setOf(f);return x?x.key:(this.fieldOf(f)||{}).group}
+  groupWord(f){const g=this.groupOf(f);return ((this.o.groups()||[]).find(x=>x.key===g)||{}).label||''}
   /* 列が何の値か（§9.574・説明はサーバーの`PICK_FIELD_DESC`）。仕掛の列は名前と見本で言う。 */
   colDesc(f){
-   if(isSrc(f)){const ex=this.sampleValues(f).slice(0,3);return `仕掛の列「${this.colLabel(f)}」（1本目のコイルの行）${ex.length?`・例 ${ex.join(' / ')}`:''}`}
+   const x=this.setOf(f);
+   if(x)return x.desc(this.colName(f),this.sampleValues(f).slice(0,3));
    return (this.fieldOf(f)||{}).desc||'';
   }
   /* この列の値の見本（§9.574 で盤ごとの写しを1つへ）。仕掛の列は実データの見本（`loadSource()`の20行から3つまで）、
      材料の字の列（材質・調質）は名前にその字を含む仕掛の列の見本。 */
   sampleValues(f){
    const s=(this.o.samples&&this.o.samples())||{};
-   if(isSrc(f))return s[String(f).slice(SRC.length)]||[];
+   const x=this.setOf(f);
+   if(x)return x.kind==='choice'?(x.options||[]):x.kind==='num'&&x.key!=='source'?[]:(s[this.colName(f)]||[]);
    const fd=this.fieldOf(f);
    if(!fd||fd.group!=='material')return [];
    return Object.entries(s).filter(([n])=>n.includes(fd.label)).flatMap(([,v])=>v);
@@ -162,7 +184,7 @@
   probeHit(){
    if(!this.probeFilled())return null;
    /* 書きかけの行（条件なし）は当てない——既定の行と取り違えないように。番号は表の並びのまま。 */
-   return BS().firstRule(this.rows.map(r=>r.fresh&&!(r.conditions||[]).length?Object.assign({},r,{enabled:false}):r),this.probeCtx(),this.fields(),true);
+   return BS().firstRule(this.rows.map(r=>r.fresh&&!(r.conditions||[]).length?Object.assign({},r,{enabled:false}):r),this.probeCtx(),this.fieldDefs(),true);
   }
   cellMark(terms){
    if(!terms.length||!this.probeFilled())return '';
@@ -214,7 +236,7 @@
    }
    const tail=this.rows.slice(ri+1),shown=tail.length>4?tail.slice(0,3).concat([tail[tail.length-1]]):tail;
    const line=(r,skip)=>{const i=this.rows.indexOf(r),def=this.isDefault(r);
-    return `<li class="${skip?'is-skip':def?'is-def':''}"><b>${def?'既定':`${i+1}行目`}</b><span title="${esc(def?'':BS().rowText(r.conditions,this.fields()))}">${esc(def?'どれにも当てはまらないとき':BS().rowText(r.conditions,this.fields()))}</span><em>→ ${esc(this.o.answerLabel(r))}</em></li>`};
+    return `<li class="${skip?'is-skip':def?'is-def':''}"><b>${def?'既定':`${i+1}行目`}</b><span title="${esc(def?'':BS().rowText(r.conditions,this.fieldDefs()))}">${esc(def?'どれにも当てはまらないとき':BS().rowText(r.conditions,this.fieldDefs()))}</span><em>→ ${esc(this.o.answerLabel(r))}</em></li>`};
    return `<ol class="rt-flow">${line(this.rows[ri],true)}${tail.length>shown.length?shown.slice(0,3).map(r=>line(r)).join('')+'<li class="is-gap">…</li>'+line(shown[3]):shown.map(r=>line(r)).join('')}</ol>`
     +`<p class="rt-then">どの作業もこの行を<b>素通り</b>して、下の行で決まります。答え「${esc(ans)}」は<b>使われません</b>。</p>`;
   }
@@ -248,7 +270,7 @@
   grid(){
    const key=JSON.stringify([this.rows.map(r=>[r.conditions,this.o.answerLabel(r),!!r.fresh]),this.cols]);
    if(this._g&&this._g.key===key)return this._g;
-   const G=BS().ruleGrid(this.gridRows(),this.fields(),Object.fromEntries(this.cols.map(f=>[f,this.kindOf(f)])));
+   const G=BS().ruleGrid(this.gridRows(),this.fieldDefs(),Object.fromEntries(this.cols.map(f=>[f,this.kindOf(f)])));
    const ans=q=>q.win<0?'':this.o.answerLabel(this.rows[q.win]);
    this._g={key,G,ans,eff:G.tooMany?[]:BS().ruleEffect(G,ans).sort((a,b)=>b.share-a.share)};
    return this._g;
@@ -368,9 +390,10 @@
   /* 足せる列（使っていない列）。群の並びのまま・仕掛の列は名前の順のまま。 */
   addable(){
    const used=new Set(this.cols);
-   return (this.o.groups()||[]).map(g=>({g,fs:g.key==='source'
-    ?(this.o.sourceCols()||[]).map(n=>SRC+n).filter(f=>!used.has(f))
-    :this.fields().filter(f=>f.group===g.key&&!used.has(f.field)).map(f=>f.field)})).filter(x=>x.fs.length);
+   const sets=this.sets();
+   return (this.o.groups()||[]).map(g=>{const x=sets.find(y=>y.key===g.key);
+    return {g,fs:x?(x.cols||[]).map(n=>x.prefix+n).filter(f=>!used.has(f))
+     :this.fields().filter(f=>f.group===g.key&&!used.has(f.field)).map(f=>f.field)}}).filter(x=>x.fs.length);
   }
   /* 列を足す面（§9.574・H1「見出しの＋」）。何の値か（説明・例）を読んで選べ、字で探せる。器と鍵盤は`WL.popMenu`。 */
   colMenuHtml(){
@@ -403,9 +426,9 @@
   }
   /* 空の表（列なし）の道しるべ。①はよく使うデータ（仕掛の列以外）を札で並べ、押せば列と最初の決まりができる。 */
   emptyHtml(){
-   const chips=this.addable().filter(x=>x.g.key!=='source').flatMap(x=>x.fs);
+   const chips=this.addable().filter(x=>!this.sets().some(y=>y.key===x.g.key)).flatMap(x=>x.fs);
    /* 行いっぱい＝番号・列・「＋ 条件の列」・答え・備考・操作。 */
-   return `<tr class="rt-empty"><td colspan="${this.cols.length+5}"><ol class="rt-steps">
+   return `<tr class="rt-empty"><td colspan="${this.cols.length+4+this.ansCols().length}"><ol class="rt-steps">
     <li class="is-now"><b>条件にするデータを選ぶ</b><small>押すと列と決まりの行が1つでき、そのセルへ入ります</small>
      <span class="rt-chips">${chips.map(f=>`<button type="button" class="rt-chip" data-addcol="${esc(f)}" title="${esc(this.colDesc(f))}">＋ ${esc(this.colLabel(f))}</button>`).join('')}
      <button type="button" class="mm-btn-ghost sm" data-rt="addcol" title="仕掛の列も含めて、説明を読んで選ぶ・名前で探す">ほかのデータ…</button></span></li>
@@ -413,7 +436,7 @@
     <li><b>右端で答えを選んで保存</b><small>どれにも当たらない作業は、いちばん下の既定の行で決まります</small></li></ol></td></tr>`;
   }
   colHeadHtml(f,ci){
-   return `<th class="rt-col" data-f="${esc(f)}" data-g="${esc((this.fieldOf(f)||{}).group||(isSrc(f)?'source':''))}" title="${esc(this.colDesc(f))}"${widthStyle(widthOf(this.o.key,f))}>`
+   return `<th class="rt-col" data-f="${esc(f)}" data-g="${esc(this.groupOf(f)||'')}" title="${esc(this.colDesc(f))}"${widthStyle(widthOf(this.o.key,f))}>`
     +`<span class="rt-cn">${this.gripHtml('col',ci,`${this.colLabel(f)}の列`)}<b>${esc(this.colLabel(f))}</b>`
     +`<button type="button" class="rt-x" data-rt="delcol" data-c="${ci}" title="この列を消す" aria-label="${esc(this.colLabel(f))}の列を消す">×</button></span>`
     +`<small>${esc(this.groupWord(f))}</small>`
@@ -422,27 +445,28 @@
   probeRowHtml(hit){
    const ans=!this.probeFilled()?'<span class="is-idle">値を入れると、当たる行が光ります</span>'
     :hit?`<b>${esc(this.o.answerLabel(hit.row))}</b>（${this.isDefault(hit.row)?'既定の行':`${hit.index+1}行目`}に当たる）`:'<span class="is-idle">当たる行がありません</span>';
-   return `<tr class="rt-try"><th class="rt-no" title="値を入れると、その作業で当たる行が光ります（保存はしません）">試す</th>${this.cols.map(f=>`<td data-f="${esc(f)}"${widthStyle(widthOf(this.o.key,f))}>${this.probeInput(f)}</td>`).join('')}<td class="rt-addc"></td><td class="rt-ans" colspan="3">${ans}</td></tr>`;
+   return `<tr class="rt-try"><th class="rt-no" title="値を入れると、その作業で当たる行が光ります（保存はしません）">試す</th>${this.cols.map(f=>`<td data-f="${esc(f)}"${widthStyle(widthOf(this.o.key,f))}>${this.probeInput(f)}</td>`).join('')}<td class="rt-addc"></td><td class="rt-ans" colspan="${this.ansCols().length+2}">${ans}</td></tr>`;
   }
   tableHtml(){
    const hit=this.probeHit();
    const more=this.addable().length;
    const head=`<tr><th class="rt-no">#</th>${this.cols.map((f,ci)=>this.colHeadHtml(f,ci)).join('')}
     <th class="rt-addc">${more?'<button type="button" class="rt-ghost" data-rt="addcol" title="条件にするデータ（列）を足す——説明を読んで選ぶ・名前で探す">＋ 条件の列</button>':''}</th>
-    <th class="rt-out">→ ${esc(this.o.answerHead)}</th><th class="rt-note">備考</th><th class="rt-ops"></th></tr>`;
+    ${this.ansCols().map((a,i)=>`<th class="rt-out" data-ak="${esc(a.key)}"${a.title?` title="${esc(a.title)}"`:''}>${i?'':'→ '}${esc(a.head)}</th>`).join('')}<th class="rt-note">備考</th><th class="rt-ops"></th></tr>`;
    /* 決まりを足す行は**決まりの並びの最後**（既定の行の上・§9.574）。列が無いうちは道しるべを出す。 */
    const rows=this.rows.map((r,i)=>this.rowHtml(r,i,hit));
-   const add=this.cols.length?`<tr class="rt-addr"><th class="rt-no"></th><td colspan="${this.cols.length+1}"><button type="button" class="rt-ghost" data-rt="addrow" title="決まりの行を足す（既定の行の上に入ります）">＋ 決まりを足す</button></td><td colspan="3"></td></tr>`:this.emptyHtml();
+   const add=this.cols.length?`<tr class="rt-addr"><th class="rt-no"></th><td colspan="${this.cols.length+1}"><button type="button" class="rt-ghost" data-rt="addrow" title="決まりの行を足す（既定の行の上に入ります）">＋ 決まりを足す</button></td><td colspan="${this.ansCols().length+2}"></td></tr>`:this.emptyHtml();
    const body=rows.slice(0,-1).join('')+add+rows.slice(-1).join('');
    const ri=this.read>=0&&this.read<this.rows.length?this.read:(hit?hit.index:0);
    return `<div class="rt-wrap"><table class="rt-table"><thead>${head}${this.cols.length?this.probeRowHtml(hit):''}</thead><tbody>${body}</tbody></table></div>
     <p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>${this.deadHtml()}${this.mapHtml()}`;
   }
   probeInput(f){
-   const fd=this.fieldOf(f),v=this.o.probe[f]??'';
+   const v=this.o.probe[f]??'';
    const tip=` title="${esc(`${this.colLabel(f)}の値で試す（保存はしません）——${this.colDesc(f)}`)}"`;
-   if(fd&&fd.kind==='choice')return `<select class="rt-p" data-p="${esc(f)}"${tip}>${['<option value="">（問わない）</option>']
-    .concat((fd.options||[]).map(x=>`<option value="${esc(x)}"${x===v?' selected':''}>${esc(x)}</option>`)).join('')}</select>`;
+   /* 選択肢を持つ列（項目の`choice`・組の`chg.`＝変わる／同じ）は選ばせる。 */
+   if(this.kindOf(f)==='choice'&&this.optionsOf(f).length)return `<select class="rt-p" data-p="${esc(f)}"${tip}>${['<option value="">（問わない）</option>']
+    .concat(this.optionsOf(f).map(x=>`<option value="${esc(x)}"${x===v?' selected':''}>${esc(x)}</option>`)).join('')}</select>`;
    /* 数の列も`type=text`＋`inputmode="decimal"`（§9.574）。`type=number`は土台の決まりで右寄せになり、広い欄で
       「右から埋まる」と読まれた。日本語の入力も受けない。数かどうかは判定（`probeCtx()`）が読む。 */
    return `<input class="rt-p" data-p="${esc(f)}" type="text"${this.kindOf(f)==='num'?' inputmode="decimal"':''} value="${esc(v)}" placeholder="値"${tip}>`;
@@ -470,15 +494,20 @@
     +` title="掴んで動かす（${keys}キーでも動きます）" aria-label="${esc(what)}を動かす（${keys}キー）">⠿</span>`;
   }
   rowHtml(r,i,hit){
-   const o=this.o,def=this.isDefault(r),won=hit&&hit.index===i;
+   const def=this.isDefault(r),won=hit&&hit.index===i;
    const cells=def?`<td class="rt-any" colspan="${this.cols.length+1}">どれにも当てはまらないとき</td>`
     :this.cols.map(f=>this.cellHtml(r,i,f)).join('')+'<td class="rt-addc"></td>';
-   const cur=o.answerOf(r);
-   const sel=`<select class="rt-ansel" data-r="${i}" aria-label="${esc(o.answerHead)}">${o.answers(r).map(a=>
-    `<option value="${esc(a.v)}"${a.v===cur?' selected':''}>${esc(a.label)}</option>`).join('')}</select>`;
+   const ans=this.ansCols().map((a,ai)=>{
+    const cur=a.get(r);
+    const el=a.kind==='text'
+     ?`<input class="rt-ansel" type="text" data-r="${i}" data-ak="${esc(a.key)}" value="${esc(cur??'')}" placeholder="${esc(a.placeholder||'')}" aria-label="${esc(a.head)}"${a.title?` title="${esc(a.title)}"`:''}>`
+     :`<select class="rt-ansel" data-r="${i}" data-ak="${esc(a.key)}" aria-label="${esc(a.head)}">${a.options(r).map(x=>
+      `<option value="${esc(x.v)}"${String(x.v)===String(cur)?' selected':''}>${esc(x.label)}</option>`).join('')}</select>`;
+    return `<td class="rt-out" data-ak="${esc(a.key)}">${el}${ai?'':this.shadowTag(i)}</td>`;
+   }).join('');
    const no=def?'既定':`${this.gripHtml('row',i,`${i+1}行目の決まり`)}${i+1}`;
    return `<tr class="rt-row${def?' is-default':''}${won?' is-won':''}" data-r="${i}"><th class="rt-no">${no}</th>${cells}`
-    +`<td class="rt-out">${sel}${this.shadowTag(i)}</td><td class="rt-note"><input class="rt-n" data-r="${i}" value="${esc(r.note||'')}" placeholder="—" aria-label="備考"></td>`
+    +`${ans}<td class="rt-note"><input class="rt-n" data-r="${i}" value="${esc(r.note||'')}" placeholder="—" aria-label="備考"></td>`
     +`<td class="rt-ops">${def?'':this.opsHtml(i)}</td></tr>`;
   }
   /* 描き直しても**焦点と字の位置を戻す**（試す・セルを打つたびに表を作り直すため）。 */
@@ -546,7 +575,9 @@
     el.onfocus=()=>{this.read=+el.dataset.r;this.paintRead(host)};
    });
    host.querySelectorAll('.rt-row').forEach(tr=>{tr.onmouseenter=()=>{this.read=+tr.dataset.r;this.paintRead(host)}});
-   host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{this.o.setAnswer(this.rows[+el.dataset.r],el.value);this.touch();this.render()}});
+   host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{
+    const a=this.ansCols().find(x=>x.key===el.dataset.ak);if(!a)return;
+    a.set(this.rows[+el.dataset.r],el.value);this.touch();this.render()}});
    host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>this.setNote(host,+el.dataset.r,el.value)});
    this.wireGrips(host);this.wireWidths(host);this.wireDead(host);this.wireMap(host);
    host.querySelectorAll('.rt-p').forEach(el=>{
@@ -698,7 +729,7 @@
     .map(r=>Object.assign(this.o.rowOut(r),{conditions:r.conditions||[],note:r.note||''}));
    this.busy=true;this.render();
    try{
-    const eq=this.o.payload().equipment||'';
+    const eq=this.o.savedWord?this.o.savedWord():(this.o.payload().equipment||'');
     if(!await this.send({rows,cols:this.cols.slice()}))throw new Error('更新者IDが決まっていません');
     showToast&&showToast(`${this.label}の表を保存しました`,`${eq}・${rows.length}行`,2600);
    }

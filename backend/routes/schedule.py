@@ -504,6 +504,8 @@ def plan_list():
                 # 実際の時刻を入れてよいか（§9.518）。**画面は読むだけ**（答えは`_times_allowed()`）。
                 canEnterTimes=times_ok,
                 timesDenied='' if times_ok else PLAN_TIMES_DENIED,
+                # 運用モードと一番上のロット（§9.588）。**画面は読むだけ**（答えは`strict_top()`・開始の口と同じ）。
+                runMode=result.get('runMode'),strictTop=result.get('strictTop'),
                 warnings=warnings,timings=timings)
 
 @bp.post('/api/schedule/plan/add')

@@ -44,10 +44,10 @@ def normalize_equipment_kind(value):
 RUN_MODE_COLUMN='運用モード'
 RUN_MODE_NORMAL='normal'
 RUN_MODE_STRICT='strict'
+# 札の一言は**短く**（設備マスタの窓の札・長いと見切れる）。くわしい説明は欄の`more`（`master-defs.js`）。
 RUN_MODES=(
- (RUN_MODE_NORMAL,'通常','作業スケジュールのどのロットからでも開始できます。仕掛の一覧から直接ロットを開始することもできます。'),
- (RUN_MODE_STRICT,'厳密','開始できるのは作業スケジュールの**一番上のロットだけ**です。段取りを変えるときは、並べ替えて一番上へ持ってきてから開始します。'
-                        '開始すると、その上の設備停止に実際の時刻（前のロットの終わり〜開始）が自動で入ります。仕掛の一覧から予定に無いロットを開始することはできません。'),
+ (RUN_MODE_NORMAL,'通常','どのロットからでも開始できます（仕掛の一覧からも）'),
+ (RUN_MODE_STRICT,'厳密','作業スケジュールの一番上のロットからだけ開始します'),
 )
 RUN_MODE_KEYS=tuple(k for k,_l,_n in RUN_MODES)
 

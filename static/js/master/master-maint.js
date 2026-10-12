@@ -640,6 +640,11 @@
      古いデータで全部外れていることはあり得るので言葉は用意しておく。 */
   if(col.format==='measureItems')
    return checkSetSummary('measureItems','disabledMeasureItems','なし（測定できません）');
+  /* 運用モード（§9.588）。呼び名はサーバーの語彙（`runModes`）——画面へ「通常／厳密」を書き写さない。 */
+  if(col.format==='runMode'){
+   const m=((maintState.meta&&maintState.meta.runModes)||[]).find(o=>o.key===v);
+   return m?m.label:v;
+  }
   /* 設定した場所に実物があるか。設定と実態のずれは、値だけ眺めていても
      気づけない(「登録したのに動かない」の大半がこれ)。 */
   if(col.format==='rneState'){

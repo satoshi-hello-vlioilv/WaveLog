@@ -2281,6 +2281,8 @@ WL.records={
  flushPendingBackupDeletes,syncPendingRecords,importRemoteRecord,shareRecord,
  mergedRecords,persistAndTransition,
  openMeasurement,openMeasurementCore,closeMeasureModal,loadMeasurementContext,
+ /* この端末に同じロットの編集中のデータがあるか（§9.588・厳密モードの関門が「続き」を止めないために聞く）。 */
+ findDraftForRow,
  applyContextChoices,updateCourseGuard,resumeRecordFromList,
  openRecords,openRecordsSafe,renderRecordListRows,openRecordRowMenu,
  recordAllColumnKeys,recordColumnPanelSource,recordInitialHidden,

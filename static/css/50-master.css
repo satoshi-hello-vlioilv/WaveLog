@@ -2334,6 +2334,12 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ssb-edit{display:grid;
   grid-template-columns:minmax(var(--w-md),var(--w-lg)) minmax(var(--w-lg),var(--w-2xl)) minmax(0,1fr);
   gap:var(--space-3);flex:1;min-height:0;align-items:stretch}
+.ssb-edit.has-rules{grid-template-rows:minmax(0,2fr) minmax(0,3fr)}
+/* 挿入の条件（§9.588）: 3つのペインの下に全幅。表は中でだけ流す。 */
+.ssb-rules{grid-column:1 / -1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--radius-md);
+  background:var(--surface);padding:var(--pad-card)}
+.ssb-stop-rule{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
+.ssb-stop.is-on .ssb-stop-rule{color:inherit}
 .ssb-cats,.ssb-stops,.ssb-subs{display:flex;flex-direction:column;gap:var(--space-2);
   min-width:0;min-height:0;border:1px solid var(--line);border-radius:var(--radius-md);
   background:var(--surface);padding:var(--pad-card)}

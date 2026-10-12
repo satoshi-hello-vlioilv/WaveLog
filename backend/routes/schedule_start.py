@@ -20,6 +20,7 @@
 `routes/schedule.py`はルートの数が上限（`test_routesplit`の`PINNED`）なので段を分けた。書込の共通処理
 （`_write_response`）・読むだけの取得（`_read`）はあちらの1箇所を使う。
 """
+import json
 from datetime import datetime
 
 from flask import Blueprint, jsonify
@@ -84,7 +85,9 @@ def plan_start():
     def fn(c):
         plan = _decide(c, equipment, x, datetime.now())
         if not plan['ok']:
-            raise ValueError(plan['error'])
+            # 読んでから書くまでのあいだに別の端末が開始・並べ替えをした。**書かずに理由を返す**
+            # （例外にすると`_write_response`が400の字だけにして、画面は理由の種類と一番上のロットを失う）。
+            return {'refused': True, 'code': plan['code'], 'error': plan['error'], 'top': plan['top']}
         if plan['already']:
             return {'strict': True, 'already': True}
         target_id = plan['id']
@@ -92,4 +95,16 @@ def plan_start():
         for st in plan['stops']:
             sr.plan_set_manual_times(c, st['id'], uid, schedule_calc.strict_stop_payload(st, uid, pc), pc=pc)
         return {'strict': True, 'id': target_id, 'startAt': plan['start'], 'stops': plan['stops'], 'prev': plan['prev']}
-    return _write_response(fn)
+    return _refusal_as_conflict(_write_response(fn))
+
+
+def _refusal_as_conflict(resp):
+    """書込サイクルの中で断った答え（`refused`）を、書く前に断ったときと同じ409の形へ直す。"""
+    # 成功の応答は`Response`1つ（断りの形は(本文, 状態)の組）。本文の字から読む（画面から来る JSON の読み方は body.py の1箇所）。
+    try:
+        j = json.loads(resp.get_data(as_text=True)) if hasattr(resp, 'get_data') else None
+    except ValueError:
+        j = None
+    if isinstance(j, dict) and j.get('refused'):
+        return jsonify(error=j.get('error'), code=j.get('code'), top=j.get('top'), strict=True), 409
+    return resp

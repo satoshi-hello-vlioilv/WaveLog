@@ -48,6 +48,10 @@ def rec(name, ok, detail=''):
 
 EQ = '厳密試験設備'
 NOW = datetime.now().replace(second=0, microsecond=0)
+# **仕掛の在席は「仕掛にある」に固定する**（`test_scload`と同じ）。ランナーの中では検証用の仕掛が読めるので、
+# ここで作ったロット（LA・LB・LC）は「仕掛から消えた＝完了」になり、単独で回したとき（仕掛を読めず
+# 「判定できない」）と答えが変わった。この網が見るのは開始の判定で、仕掛の突き合わせではない。
+sc.actual_match.lookup = lambda detail, entry: {'missing': False, 'reason': ''}
 tmp = pathlib.Path(tempfile.mkdtemp(prefix='wl_strict_'))
 c = connect(tmp / 'schedule.sqlite3', False)
 mc = connect(tmp / 'master.sqlite3', False)
@@ -154,7 +158,8 @@ rec('開始済みの行をもう一度開始しても「already」（何も書�
 rec('開始判定は2回目で上書きしない（最初に開始した時刻が残る）',
     sr.plan_set_start_flag(c, IDS['B'], 'other', {'at': '2000-01-01T00:00', 'by': 'other'}) == 0)
 c_plan = sc.strict_start_plan(entries2, IDS['C'], NOW, minutes_of2)
-rec('作業中のロットがあるあいだは次のロットも始めない（Bが一番上のまま）', not c_plan['ok'] and c_plan['code'] == 'notTop', c_plan['error'])
+rec('作業中のロットがあるあいだは次のロットも始めない——理由は「作業中」（並べ替えに行かせない）',
+    not c_plan['ok'] and c_plan['code'] == 'busy' and 'LB が作業中' in c_plan['error'] and '並べ替え' not in c_plan['error'], c_plan['error'])
 IDX_B_DONE = sc._build_actual_index([
     record('a', 'LA', (NOW - timedelta(minutes=160)).isoformat(), A_END.isoformat(), '完了'),
     record('b', 'LB', plan_b['start'], (NOW + timedelta(minutes=1)).isoformat(), '完了')])

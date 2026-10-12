@@ -172,7 +172,9 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scdragscroll',
                      # §9.375: 元データ（仕掛）が変わったら予定へ取り込む
                      'test_srcsync',
-                     'test_scsession', 'test_scwho']
+                     'test_scsession', 'test_scwho',
+                     # §9.588: 厳密モード（一番上からだけ開始）と足りない設備停止（黄色の帯・自動で入れる）
+                     'test_strictmode', 'test_stoprules']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
 # §9.248 ⑥: 見せる範囲を「実施した設備」で絞る（データ一覧・実績データ）
@@ -204,7 +206,9 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.392: 設備ごとに使う入力内容
                'test_measitems',
                # §9.542: 設備の使い分けの表と効き先の図
-               'test_equse']
+               'test_equse',
+               # §9.588: 設備停止の挿入条件の盤（設備停止マスタの下の全幅の節）
+               'test_stoprulemaster']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              # §9.392: 設備ごとに使う入力内容（選択肢とチップから伏せる）
              'test_measitems',
@@ -305,6 +309,13 @@ RULES = [
                                      'test_eqfeature', 'test_planstrip')),
     # §9.580: 初期画面の「作業予定」の帯（予定の要約と始め方は schedule-view.js の口）
     ('static/js/schedule/plan-strip.js', g('test_planstrip', 'test_bootui', 'test_scale')),
+    # §9.588: 足りない設備停止の判定（純粋な関数）と、厳密モードの開始の関門
+    ('static/js/schedule/stop-rules.js', g('test_stoprules')),
+    ('static/js/schedule/strict-start.js', g('test_strictmode', 'test_startwork', 'test_planstrip', 'test_flows')),
+    # §9.588: 判定表のセルの書き方と判定（刃組と設備停止の挿入条件が共有）
+    ('static/js/core/rule-cells.js', g('刃組', 'test_stoprules', 'test_stoprulemaster')),
+    # §9.588: 設備停止マスタの挿入条件の盤
+    ('static/js/master/master-stoprule.js', g('test_stoprulemaster', 'test_stopsubui', 'test_holdpick')),
     ('static/js/schedule/schedule-print.js', g('モーダル', 'test_scprint')),
     # §9.514: 実際の時刻を手で入れる小窓（予定の画面と段「履歴」が呼ぶ）
     ('static/js/schedule/schedule-times.js', g('test_sctimes', 'test_sctimesedit', 'test_schistui')),
@@ -395,7 +406,7 @@ RULES = [
     ('static/js/bladeset/hold-pick.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/blade-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/board-kit.js', g('刃組', 'マスタ')),
-    ('static/js/bladeset/rule-table.js', g('刃組', 'マスタ')),
+    ('static/js/bladeset/rule-table.js', g('刃組', 'マスタ', 'test_stoprulemaster')),
     ('static/js/bladeset/ring-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/stock-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/spacer-outlook.js', g('刃組', 'マスタ')),

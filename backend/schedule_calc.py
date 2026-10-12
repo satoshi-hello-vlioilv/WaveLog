@@ -1050,15 +1050,18 @@ def strict_top(entries):
  out={'id':top['id'],'lotNo':str(top.get('lotNo') or ''),'state':top['state'],'startable':False,'reason':'','busy':None}
  if busy is not None:
   out['busy']={'id':busy['id'],'lotNo':str(busy.get('lotNo') or ''),'unplanned':bool(busy.get('unplanned'))}
-  out['reason']=(f'ロット {out["lotNo"]} は作業中です。' if busy is top else
-                 f'{"予定に無いロット" if busy.get("unplanned") else "ロット"} {out["busy"]["lotNo"]} が作業中です。'
-                 '測定画面で完了するか、実際の時刻を入れて終えてから開始してください。')
+  out['reason']=(f'ロット {out["lotNo"]} は作業中です。' if busy is top else _busy_error(out['busy']))
   return out
  if top['state']!=sr.PLAN_REORDERABLE_STATE:
   out['reason']=f'ロット {out["lotNo"]} は{top["state"]}です。'
   return out
  out['startable']=True
  return out
+
+def _busy_error(busy):
+ """作業中のロットがあって開始できないときの字（一番上の行の理由と、開始の口の断りが同じ字を使う）。"""
+ return (f'{"予定に無いロット" if busy.get("unplanned") else "ロット"} {busy["lotNo"]} が作業中です。'
+         '測定画面で完了するか、実際の時刻を入れて終えてから開始してください。')
 
 def _strict_view(mc,equipment,entries):
  """予定の応答に載せる運用モード（§9.588）。「一番上のロット」は**時刻を置く前の並び**で決める（計画外の作業中も数える）。"""
@@ -1081,11 +1084,13 @@ def strict_start_plan(entries,target_id,now,minutes_of):
   return dict(base,code='notPlanned',error='このロットは作業スケジュールにありません。厳密モードでは、予定に入れて一番上へ並べてから開始します。')
  if target['state'] in ('着手','完了'):return dict(base,ok=True,already=True)
  if target['state']=='取消':return dict(base,code='cancelled',error='このロットの予定は取り消されています。')
+ # **作業中のロットがあるなら、それが本当の理由**（並べ替えても開始できない）。「一番上から」と言うと並べ替えに行かせる。
+ if top is not None and top['busy'] is not None:return dict(base,code='busy',error=_busy_error(top['busy']))
  if top is None or top['id']!=target_id:
   name=top['lotNo'] if top else ''
   return dict(base,code='notTop',error=(f'厳密モードでは、一番上のロット（{name}）から開始します。このロットを始めるときは、'
                                        '作業スケジュールで一番上へ並べ替えてください。'))
- if not top['startable']:return dict(base,code='busy',error=top['reason'])
+ if not top['startable']:return dict(base,code='notStartable',error=top['reason'])
  prev,stops,prev_end=_strict_between(entries,target)
  out,end_from=_strict_allocate(stops,prev_end,start,minutes_of)
  prev_view=({'id':prev['id'],'lotNo':str(prev.get('lotNo') or ''),
