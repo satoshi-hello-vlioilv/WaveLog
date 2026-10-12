@@ -60,7 +60,8 @@
  ============================================================ *//* マスタ管理はメイン画面統合型(ARCHITECTURE.md「マスタ管理の画面形態」)。他の統合ビュー(.rec-panel/.sc-panel/
    .rp-panel)と同じ枠に収め、中の.mm-dialogは寸法だけ枠いっぱいへ上書きする
    (内部構造を作り直さずに済ませるため。.rec-panel .record-dialogと同じ手法)。 */
-.mm-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+/* 全幅で使う（§9.593）。左のメニューを伏せた画面なので、器の外の余白と枠は要らない（ヘッダーの下からそのまま始める）。 */
+.mm-panel{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface-2);border-top:1px solid var(--line);overflow:hidden}
 .mm-panel .mm-dialog{width:100%;max-width:none;height:100%;border-radius:0;box-shadow:none}
 .mm-dialog{position:relative;width:96vw;max-width:1500px;height:94vh;display:flex;flex-direction:column;background:var(--surface-2);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--elev-modal)}
 /* 見出しの濃色バンドは廃止(画面名はヘッダーの#fileNameが持つ)。残るのは
@@ -79,7 +80,7 @@
    8文字の呼び名（記録した値の配置／測定データの保存／テーブル生データ…）が
    2行に折り返していた（実測: 使える幅100px に対し文字103px）。
    文字ぶんは`em`（＝文字サイズに追随）、器物は px で足し合わせる。
-     8.4em … 8文字ぶん＋にじみ / 84px … アイコン26+隙間8+左右余白28+枠2+器の余白20 */
+     8.4em … 8文字ぶん＋にじみ / 56px … 行の余白20+左の帯3+器の余白16+バー15+枠2（§9.593で1文字の印を外した） */
 /* 器の幅は**実測して決める**（§9.250 ⑨、利用者の報告「『記録した値の配置』が
    1行に収まっておらず、・・・で省略されています」）。`--mm-nav-w`はJSの
    `fitMaintNav()`が「切れているぶん」を足して入れる——**スクロールバーの幅**も
@@ -88,14 +89,21 @@
    8文字の名前が省略記号になっていた。**変数が無いときは式のまま**
    （読み込む前の1瞬と、測れなかったときの受け皿）。 */
 .mm-body{flex:1;min-height:0;display:grid;
- grid-template-columns:var(--mm-nav-w,minmax(150px,calc(8.4em + 84px))) minmax(0,1fr)}
-/* **バーの場所は常に空けておく**（§9.227 ②）——出た瞬間に中身が15px狭く
-   なると、そのときだけ文字が切れる。 */
-.mm-nav{display:flex;flex-direction:column;gap:var(--gap-hair);padding:12px 10px;background:var(--surface-3);border-right:1px solid var(--line);overflow:auto;scrollbar-gutter:stable}
+ grid-template-columns:var(--mm-nav-w,minmax(150px,calc(8.4em + 56px))) minmax(0,1fr)}
+/* 左の一覧（§9.593）: 頭に「マスタを探す」、下に群ごとの行き先。器は白地で、右の作業の面（淡い地）と分ける。
+   **バーの場所は常に空けておく**（§9.227 ②）——出た瞬間に中身が15px狭くなると、そのときだけ文字が切れる。 */
+.mm-side{display:flex;flex-direction:column;min-height:0;background:var(--surface);border-right:1px solid var(--line)}
+.mm-find{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h-sm);margin:10px 10px 6px;
+ padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);color:var(--muted);font-size:var(--fs-sm)}
+.mm-find:focus-within{border-color:var(--teal)}
+.mm-find input{flex:1;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:var(--fs-sm)}
+.mm-nav{flex:1;min-height:0;display:flex;flex-direction:column;padding:2px 8px 12px;overflow:auto;scrollbar-gutter:stable}
+.mm-nav-empty{margin:8px 6px;color:var(--muted);font-size:var(--fs-sm)}
 /* マスタ種別のグループ見出し(情報アーキテクチャ)。左ナビのnav-group-labelと
    同じ言語で、色相はteal系のまま彩度だけ落として階層を示す。 */
-.mm-nav-group{display:flex;flex-direction:column;gap:var(--gap-tight);margin-bottom:10px}
-.mm-nav-group.is-folded{margin-bottom:var(--space-1)}
+/* 群は細い線で区切るだけ（枠の中に枠を作らない）。行き先は平らな行で、選んでいる行は左の帯と淡い面で言う。 */
+.mm-nav-group{display:flex;flex-direction:column;padding:4px 0}
+.mm-nav-group+.mm-nav-group{border-top:1px solid var(--line)}
 /* 群の見出しは**押して畳める**（§9.250 ②）。畳んでも件数は文字で残す。 */
 /* 見出しは**行き先より一段小さく**（主役は下の行き先）。`<button>`にすると
    `10-roles.css`の`.mm-nav button`が行き先と同じ寸法（--ctl-h・--fs）を
@@ -110,11 +118,13 @@
  background:var(--pale);color:#0a6570;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 /* 危ない操作は器の右端へ寄せる（§CLAUDE 5。「完了」の隣に「削除」を置かない）。 */
 .mm-form-head #mmDropTable{margin-left:auto}
-.mm-nav button{display:flex;align-items:center;gap:var(--gap-inline);border:1px solid transparent;background:#fff;color:var(--ink);font-weight:var(--fw-strong);cursor:pointer;transition:.12s;text-align:left}
-.mm-nav button:hover{border-color:#9fc3c8;background:var(--surface-2)}
-.mm-nav button.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:var(--elev-pop)}
-.mm-nav-ico{display:grid;place-items:center;width:26px;height:26px;border-radius:var(--radius-sm);background:var(--pale);color:#0a6570;font-weight:var(--fw-strong);font-size:var(--fs-base-sm);flex:0 0 auto}
-.mm-nav button.active .mm-nav-ico{background:#ffffff30;color:#fff}
+/* 行き先の行（§9.593）。1文字の印（「設」「刃」…）は名前の頭の字の繰り返しだったので外した（同じ情報を2つ出さない）。
+   高さは帯の補助の部品と同じ`--ctl-h-sm`（30px）——36pxの札では 1152px の窓でも群が溢れていた。 */
+.mm-nav button{display:flex;align-items:center;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+ border:0;border-left:3px solid transparent;border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:transparent;
+ color:var(--ink);font-size:var(--fs);font-weight:var(--fw-ui);cursor:pointer;text-align:left}
+.mm-nav button:hover{background:var(--surface-2)}
+.mm-nav button.active{background:var(--teal-tint);color:var(--teal-ink);border-left-color:var(--teal);font-weight:var(--fw-strong)}
 /* **折り返さない**（§9.250 ①）。折り返すと36pxの並びが崩れて、
    どこまでが1つの行き先なのかが読めなくなる。入らないときだけ省略記号
    （全文はボタンの`title`が持つ・§9.234 ①）。 */
@@ -581,7 +591,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-loading-box{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);border:1px solid #bcd9dd;border-radius:var(--radius-md);background:#fff;box-shadow:var(--elev-pop);color:#0a6570;font-weight:var(--fw-strong)}
 /* メニューのマスタ閲覧ボタンは非表示（マスタ管理へ集約） */
 #nav [data-db-key="MASTER"]{display:none}
-@media(max-width:900px){.mm-body{grid-template-columns:1fr}.mm-nav{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}}
+@media screen and (max-width:900px){.mm-body{grid-template-columns:1fr}.mm-side{border-right:0;border-bottom:1px solid var(--line)}.mm-nav{flex-direction:row;flex-wrap:wrap}}
 /* ============================================================
 2026-07-21 Quality analysis / print / listbox height update
 ============================================================ */

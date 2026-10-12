@@ -35,7 +35,7 @@
      `special`の画面で測定画面と同じ6列のグリッドを出し、掴んで動かす。
      `fields`/`cols`は残す——編集モーダルの部品としてではなく、
      `tests/test_crudroutes.py`が4本のCRUDを見張る材料になっている。 */
-  {group:'measure',key:'opItem',label:'操業データ項目',icon:'操',endpoint:'/api/operation-item-master',
+  {group:'measure',key:'opItem',label:'操業データ項目',endpoint:'/api/operation-item-master',
    hasDelete:true,special:'op-item',titleText:'操業データ — 測定画面に出す入力欄と並び',
    fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
             tagHint:'この項目をどの設備の測定画面へ出すかです。複数選べます。「すべての設備」を選ぶと、これから増える設備でも自動的に出ます。'},
@@ -67,7 +67,7 @@
      ここは「どう並べるか」。1枚に混ぜると盤の1枚のカードが2つの並びを
      同時に表すことになる。書くのは`[記録表示]`／`[記録群]`／`[記録順]`の
      3列だけで、汎用CRUDは持たない（`endpoint`はGETの読み口）。 */
-  {group:'measure',key:'recordLayout',label:'記録した値の配置',icon:'記',
+  {group:'measure',key:'recordLayout',label:'記録した値の配置',
    special:'record-layout',endpoint:'/api/operation-item-master',
    titleText:'記録した値 — ③確認のカードの並べ方',
    /* 汎用の一覧・編集モーダルは通らない（`special`で分岐する）。`cols`が
@@ -85,7 +85,7 @@
      `fields`/`cols`は残す——編集モーダルの部品としてではなく、
      `tests/test_crudroutes.py`が4本のCRUDを見張る材料になっている
      （操業データ項目マスタと同じ扱い）。 */
-  {group:'measure',key:'opChoice',label:'選択肢の値',icon:'択',endpoint:'/api/operation-choice-master',hasDelete:true,
+  {group:'measure',key:'opChoice',label:'選択肢の値',endpoint:'/api/operation-choice-master',hasDelete:true,
    special:'op-choice',
    titleText:'操業データの選択肢 — まとまりと値',
    /* **編集は汎用モーダル1枚**（§9.222 ⑥、利用者の指示「オペレータマスタなど
@@ -135,7 +135,7 @@
      ——同じことをする画面は同じ形にする）。
      `fields`/`cols`は残す——編集モーダルの部品としてではなく、
      `tests/test_crudroutes.py`が4本のCRUDを見張る材料になる。 */
-  {group:'measure',key:'choiceLink',label:'選択肢の親子',icon:'絆',
+  {group:'measure',key:'choiceLink',label:'選択肢の親子',
    endpoint:'/api/choice-link-master',hasDelete:true,
    special:'choice-link',
    titleText:'選択肢の親子 — どのまとまりがどのまとまりで絞られるか',
@@ -167,7 +167,7 @@
      **先頭は1行に続けて書くこと**——`tests/test_crudroutes.py`の正規表現は
      空白・改行を許さないので、ここで改行すると4本のCRUDの検査から
      静かに外れる。 */
-  {group:'equip',key:'roll',label:'ロール',icon:'ロ',endpoint:'/api/roll-master',hasDelete:true,
+  {group:'equip',key:'roll',label:'ロール',endpoint:'/api/roll-master',hasDelete:true,
    titleText:'ロール — 設備ごとのロールの諸元（異常位置判定のピッチ照合に使います）',
    /* Excelの持ち出し・取り込み（§9.240、利用者の指示）。**印を1つ付けるだけ**で
       帯が出る差し替え口にしてある——他のマスタが要るときも、ここに
@@ -233,7 +233,7 @@
      **どれも設備ごと**で、設備停止マスタのような「すべての設備」は取れない
      ——部材は設備ごとに実物が違うので、1本が全設備の所要に混ざった瞬間に
      数が嘘になる（ロールマスタと同じ理由）。 */
-  {group:'bladeset',key:'bladesetStandard',label:'刃組基準値',icon:'基',
+  {group:'bladeset',key:'bladesetStandard',label:'刃組基準値',
    special:'standard-board',endpoint:'/api/bladeset-standard-master',groupBy:'equipment',
    titleText:'刃組基準値 — このラインの諸元と、判定の帯',
    /* **専用の盤**（§9.531・`special:'standard-board'`／`bladeset/standard-board.js`）。利用者の選択
@@ -323,7 +323,7 @@
      利用者の選択: ゴムリングと同じ「一覧＋詳細の2ペイン」。**専用の盤**（`special:'blade-board'`／
      `bladeset/blade-board.js`）。前の「刃セット」タブ（§9.526）はこの1枚へ統合した。
      `endpoint`は刃厚の行の登録・直す・削除に使う（4本のCRUDは`test_crudroutes`が見張る）。 */
-  {group:'bladeset',key:'bladesetBlade',label:'刃',icon:'刃',
+  {group:'bladeset',key:'bladesetBlade',label:'刃',
    special:'blade-board',endpoint:'/api/bladeset-blade-master',groupBy:'equipment',
    titleText:'刃 — セット（A〜Z）ごとのカテゴリ・使用状態と、刃厚ごとの径・枚数',
    hint:'左でセットを選ぶと、右に**カテゴリ**（通常刃／専用刃）・**使用状態**（使用中／研磨中）と**刃厚ごとの径・枚数・研磨の記録**が出ます。1種類の刃は**設備＋セット＋刃厚**で決まります（同じ3つの2行目は登録できません）。'},
@@ -331,7 +331,7 @@
      利用者の選択「中身に合わせて」。**専用の盤**（`bladeset/stock-board.js`）。スペーサーは寸法の在庫表を
      その場で直す1枚、フィンガーはゴムリングと同じ2ペイン（左＝材質・右＝幅ごとの本数）。前は1行ごとに
      窓を開いて直した（本数1つに 編集→欄→保存 の3手）。`endpoint`は行の登録・直す・削除に使う。 */
-  {group:'bladeset',key:'bladesetSpacer',label:'スペーサー',icon:'ス',
+  {group:'bladeset',key:'bladesetSpacer',label:'スペーサー',
    special:'spacer-board',endpoint:'/api/bladeset-spacer-master',groupBy:'equipment',
    titleText:'スペーサー（ライナー） — 軸方向の寸法を作る部材',
    hint:'スペーサー（現場ではライナーとも呼びます）の在庫です。**軸方向の寸法を作るのはこの部材**で、ゴムリングはその上に被る別の層です。保有・用途は表の中で直します（欄を離れるとすぐ保存）。'},
@@ -340,11 +340,11 @@
      「今まで登録した色と被らないように、登録状況がわかるもの」「色ごとにまとめて表示」。
      §9.529 で刃と同じ「一覧＋詳細の2ペイン」へ（`board-kit.js`）。**専用の盤**（`special:'ring-board'`／`bladeset/ring-board.js`）。行は色×幅のまま
      （`endpoint`は幅の行の登録・本数・削除に使う）、色の属性は`/api/bladeset/ring-colors`で色ごとに書く。 */
-  {group:'bladeset',key:'bladesetRing',label:'ゴムリング',icon:'輪',
+  {group:'bladeset',key:'bladesetRing',label:'ゴムリング',
    special:'ring-board',endpoint:'/api/bladeset-ring-master',groupBy:'equipment',
    titleText:'ゴムリング — 色ごとに外径・内径は共通、幅ごとに本数',
    hint:'左に**登録済みの色**が外径の大きい順に並びます。色を選ぶと、右にその色の**外径・内径（幅ぜんぶで共通）**と**幅ごとの本数**が出ます。本数は欄を離れるとすぐ保存されます。色は**カラーピッカー**で選び、**同じ色名・同じ色・同じ外径**の色は登録できません（潤滑リングの紫とも比べます）。**潤滑リング**も同じ盤で、種類を「潤滑リング」にして登録します。'},
-  {group:'bladeset',key:'bladesetFinger',label:'フィンガー',icon:'指',
+  {group:'bladeset',key:'bladesetFinger',label:'フィンガー',
    special:'finger-board',endpoint:'/api/bladeset-finger-master',groupBy:'equipment',
    titleText:'フィンガー（板押さえ） — 材質ごと・幅ごとの本数',
    hint:'板押さえ（フィンガー）の在庫です。1本は**設備＋材質＋幅**。**フィンガーで保持するか・どの材質かは「保持方式」の表**が決めます。'},
@@ -352,7 +352,7 @@
      「刃厚を選ぶテーブルと通常刃か専用刃を選ぶテーブルの2つを準備し…条件テーブルは『保持方式』の
       選択マスタみたいな条件テーブルの作りが好ましい」。**専用の盤**（`special:'blade-pick'`／
      `bladeset/blade-pick.js`）。2つの判定表（刃のカテゴリ・刃厚）は保持方式と同じ部品（`rule-table.js`）。 */
-  {group:'bladeset',key:'bladesetPick',label:'刃選択',icon:'選',
+  {group:'bladeset',key:'bladesetPick',label:'刃選択',
    special:'blade-pick',endpoint:'/api/bladeset/blade-pick',groupBy:'equipment',
    titleText:'刃選択 — 刃のカテゴリと刃厚を決める2つの判定表',
    hint:'刃組ガイダンスが使う刃を、**② 刃のカテゴリ**（通常刃／専用刃とそのセット）→ **③ 刃厚**の2つの判定表で決めます（① 保持方式の答えも条件に使えます）。'},
@@ -361,7 +361,7 @@
        取得済みデータを列に持つ条件テーブルを組めるようにマスタを追加してください。」
      **専用の盤**（`special:'hold-pick'`／`bladeset/hold-pick.js`）。列＝データ・行＝決まり・
      右端＝保持方式の判定表。上から順に見て最初に当たった行、最後の行が既定。 */
-  {group:'bladeset',key:'bladesetHold',label:'保持方式',icon:'保',
+  {group:'bladeset',key:'bladesetHold',label:'保持方式',
    special:'hold-pick',endpoint:'/api/bladeset/hold-pick',groupBy:'equipment',
    titleText:'保持方式 — フィンガーとゴムリングを選ぶ判定表',
    hint:'板を保持する方式（**フィンガー**／**ゴムリング**）を、板厚・条数・仕掛の列などの条件で決める表です。**上から順に見て最初に当たった行**の方式を使い、どれにも当たらなければ**最後の既定の行**で決めます。登録が無い設備は、刃組基準値の「フィンガー切替 板厚」から作った表で決めます（今までと同じ動き）。'},
@@ -380,7 +380,7 @@
      「紙で組み換える」で**同じ組み換え画面**へ連れて行く（入口を2つに
      しない・§9.207）。ここが受け持つのは、組み換え画面と重複していた
      **出す/出さない・幅・高さ・紙の割り**——一覧で見比べながら直せる形。 */
-  {group:'report',key:'reportLayout',label:'帳票レイアウト',icon:'配',
+  {group:'report',key:'reportLayout',label:'帳票レイアウト',
    special:'report-layout',endpoint:'/api/column-layout-master',
    titleText:'帳票レイアウト — 設備ごとの紙（親）と、そこに載る塊（子）',
    /* 汎用の一覧・編集モーダルは通らない（`special`で分岐する）。`cols`が
@@ -391,7 +391,7 @@
      ごと設計できるように、編集追加などできるように」）。中身の作り方が
      仕事になっている塊（測定表・条の図・異常位置判定）はコードの側のままで、
      **「ラベルと値の出どころを並べただけの塊」だけ**を現場が足せる。 */
-  {group:'report',key:'reportBlock',label:'帳票ブロック',icon:'票',
+  {group:'report',key:'reportBlock',label:'帳票ブロック',
    endpoint:'/api/report-block-master',hasDelete:true,
    titleText:'帳票ブロック — 紙に載せる塊',titleKey:'name',
    asideHtml:()=>WL.mm.rbAsideHtml(),bindAside:form=>WL.mm.rbBindAside(form),
@@ -562,7 +562,7 @@
      残りは数値なので、規格幅の`sm`/`xs`に収まる。 */
   /* §9.542（利用者の選択 G-2＋G-4）。主役は1枚目の一覧のまま、2枚目のタブに使い分けの表と効き先の図
      （`master-equse.js`が`registerListView('eqUse')`で名乗る）。 */
-  {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
+  {group:'equip',key:'equipment',label:'設備',endpoint:'/api/equipment-master',hasDelete:true,
    listTab:{label:'一覧',unit:'台'},listViews:['eqUse'],
    editorModal:true,titleText:'設備 — この工場のライン',
    hintShort:'1行＝1つの設備です。**行を押すと編集の窓が開きます。**',
@@ -624,7 +624,7 @@
   /* 接続状況（§9.272）。**汎用CRUDは持たない**（`special`で分岐する）。
      一般ユーザーでも開ける——見るだけならどの区分でもできる。 */
   /* **マスタ編集の段の対象外**（§9.322）——切断できるかは権限区分が答える。 */
-  {group:'system',key:'presence',label:'接続状況',icon:'席',masterEditExempt:true,
+  {group:'system',key:'presence',label:'接続状況',masterEditExempt:true,
    special:'presence',endpoint:'/api/presence',
    titleText:'接続状況 — 誰がいまこのシステムを使っているか',
    cols:[{k:'login',label:'ログインID'}],
@@ -633,7 +633,7 @@
       出る**（マスタへ入れた文字列のHTMLがそのまま効かないようにするための
       順番なので、この順番は変えない・§9.222 ⑧）。 */
    hint:'この共有のマスタへ繋いでいる端末の一覧です。**区分が開発者・メンテナンス者の端末だけが切断できます**（メンテナンス者は開発者を切断できません）。区分はアクセス権限マスタで決めます。切断された端末は**書き込みだけが止まり**、開いている画面はそのまま残ります（別のPCの操作を横から消さないため）。一定時間で自動的に戻ります。'},
-  {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
+  {group:'system',key:'accessPermission',label:'アクセス権限',endpoint:'/api/access-permission-master',hasDelete:true,
    /* 主役は端末の登録の一覧。補う面はタブ（見張り）と行の下に開く節（できること）——§9.538、
       利用者の選択 D-6＋D-10。中身は`master-access.js`が登録表で名乗り、判定はサーバーの`permission_capabilities()`。 */
    listTab:{label:'端末の登録',unit:'台'},listViews:['permWatch'],rowDetail:'permCaps',
@@ -744,14 +744,14 @@
        +'**現場段取り**は編集モードの端末に限り、対象設備の**並べ替えだけ**を追加で許可します。'
        +'対象設備は複数選べ、「すべての設備」を選ぶと全設備が対象になります'
        +'（開発・保守用。設備が増えても権限行を足さずに済みます）。'}]},
-  {group:'schedule',key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
+  {group:'schedule',key:'loadFactor',label:'換算係数',special:'load-factor',endpoint:'/api/schedule/load-factors'},
   /* ---------- 分類は「設備停止マスタ」の左ペインへ統合した（§9.397） ----------
      利用者の指示「設備停止分類と内訳と設備停止名の登録をシームレスにマスタ
      連携できていないので…『設備停止マスタ』としてマスタ統合してほしい」。
      **定義は残す**（`navHidden`）——APIは今までどおりで、
      `tests/test_crudroutes.py`が4本のCRUDを見張る材料でもある。
      消すとその見張りだけが静かに減る。 */
-  {group:'schedule',key:'stopCategory',label:'設備停止分類',icon:'類',endpoint:'/api/schedule/stop-category-master',hasDelete:true,navHidden:true,
+  {group:'schedule',key:'stopCategory',label:'設備停止分類',endpoint:'/api/schedule/stop-category-master',hasDelete:true,navHidden:true,
    fields:[{k:'name',label:'分類名',required:true,key:true}],
    cols:[{k:'name',label:'分類名',grow:2}],
    hint:'設備停止マスタの「分類」の選択肢です。分類は設備をまたいだ集計・色分けに使うため、設備ごとではなく全設備共通で持ちます。設備停止マスタで未登録の分類を入力して保存すると、ここへも自動で登録されます(先にこの画面で作っておく必要はありません)。使用中の分類を削除しようとすると、何件で使われているかを確認したうえで消します。'},
@@ -762,7 +762,7 @@
      `fields`/`cols`は**そのまま残す**——停止内容そのものの編集は
      汎用の編集窓（`WL.mm.openMaintEditor`）を統合画面から開いて使い回す
      ので、欄の定義がここに無いと窓が空になる。 */
-  {group:'schedule',key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,special:'stop-master',
+  {group:'schedule',key:'stopReason',label:'設備停止',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,special:'stop-master',
    titleText:'設備停止マスタ — 分類 → 停止内容 → 内訳',
    fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
             tagHint:'この停止内容をどの設備で選べるようにするかです。複数選べます。「すべての設備」を選ぶと、これから増える設備でも自動的に選べます。'},
@@ -804,7 +804,7 @@
      `tests/test_crudroutes.py`が4本のCRUDを見張る材料になっている。 */
   /* 内訳も「設備停止マスタ」の右ペインへ統合した（§9.397）。定義を残す
      理由は分類と同じ（APIとCRUDの見張り）。 */
-  {group:'schedule',key:'stopSub',label:'設備停止の内訳',icon:'訳',endpoint:'/api/schedule/stop-sub-master',hasDelete:true,navHidden:true,
+  {group:'schedule',key:'stopSub',label:'設備停止の内訳',endpoint:'/api/schedule/stop-sub-master',hasDelete:true,navHidden:true,
    titleText:'設備停止の内訳 — 分類 → 停止内容 → 内訳',
    fields:[{k:'stopReasonId',label:'どの設備停止の内訳か',required:true,key:true},
            {k:'name',label:'内訳名',required:true,key:true},
@@ -821,47 +821,47 @@
 
      持つのは「分」だけ。名前も色も分類も持たせない——**「30分」は全設備で
      30分**で、呼び名を付けると設備ごとに別の意味を持たせたくなる。 */
-  {group:'schedule',key:'stopMinutes',label:'設備停止の時間',icon:'分',endpoint:'/api/schedule/stop-minutes-master',hasDelete:true,special:'stop-minutes',
+  {group:'schedule',key:'stopMinutes',label:'設備停止の時間',endpoint:'/api/schedule/stop-minutes-master',hasDelete:true,special:'stop-minutes',
    titleText:'設備停止の時間 — 予定へ入れるときに選ばせる分',
    fields:[{k:'minutes',label:'分',required:true,key:true,type:'number',unit:'分',step:5,min:1}],
    cols:[{k:'minutes',label:'分',grow:1}],
    hint:'作業スケジュールへ設備停止を入れるとき、**選ばせる時間の一覧**です。全設備で共通です。登録のときはこの選択肢からひとつ選び、**スライダーで細かく直せます**（スライダーの範囲はこの一覧の最小〜最大から作ります）。設備停止マスタの「標準所要分」は残っていて、最初から選ばれている値として使います。'},
-  {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
+  {group:'schedule',key:'shiftMaster',label:'勤務形態',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
   /* 測定データの置き場(§9.202、利用者の指示)。**3段あることを図で示す**
      ——「入力したのに完了に出ない」「DBへ同期が何をするのか分からない」
      「バックアップの設定画面が無い」は、どれも置き場の関係が画面に
      書かれていないことが元だった。設定もここへ集める（共通設定から移動。
      同じ設定を2画面に置かない＝§9.168と同じ作法）。 */
-  {group:'data',key:'measStorage',label:'測定データの保存',icon:'測',special:'meas-storage',
+  {group:'data',key:'measStorage',label:'測定データの保存',special:'meas-storage',
    titleText:'測定データの保存 — どこに何が入るか'},
   /* 書き先は測定データ（measurement）なので、マスタ編集の段では止まらない（§9.322）。 */
-  {group:'data',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup',masterEditExempt:true},
+  {group:'data',key:'importBackup',label:'データ引継ぎ',special:'import-backup',masterEditExempt:true},
   /* データ接続(§9.168)。**1行＝1つのデータソース**で、「これは何か／どこから
      読むか／この設定で何ができるか」を1枚のカードにまとめる。読み込み先の
      個別上書きは以前パス設定タブにあったが、同じ「どこを読むか」の設定が
      2画面に分かれていたため、**データソース側へ寄せた**（保存先は今までどおり
      パス設定マスタなので、検証用の差し替えはそのまま効く）。 */
-  {group:'data',key:'dataSource',label:'データ接続',icon:'源',special:'data-source',
+  {group:'data',key:'dataSource',label:'データ接続',special:'data-source',
    titleText:'データ接続 — このアプリが読むデータ',
    endpoint:'/api/data-source-master',hasDelete:true},
   /* クエリ結合(§9.193)。**データ接続に登録済みのものだけを組み合わせる**
      （利用者の指示）。データ接続のすぐ下に置くのは、「読む」→「つなぐ」が
      そのまま作業の順番だから（視覚導線と作業導線を一致させる）。 */
-  {group:'data',key:'queryJoin',label:'クエリ結合',icon:'結',endpoint:'/api/query-join-master',hasDelete:true,
+  {group:'data',key:'queryJoin',label:'クエリ結合',endpoint:'/api/query-join-master',hasDelete:true,
    special:'query-join',titleText:'クエリ結合 — 読んだデータ同士をつなぐ'},
-  {group:'data',key:'pathConfig',label:'共通設定',icon:'共',special:'path-config',
+  {group:'data',key:'pathConfig',label:'共通設定',special:'path-config',
    titleText:'共通設定 — 置き場・読み込み先・間隔',endpoint:'/api/path-config-master'},
   /* 不要ファイルの掃除（§9.249 ①、利用者の指示「溜まってくると問題なので、
      不要なキャッシュファイルや不要なバックアップファイルを削除する機能を
      実装してください。いらないものや世代の古いものは定期的に削除するような
      機能も欲しいです」）。**判定はサーバーの1箇所**（`backend/file_cleanup.py`）
      が持ち、画面は返ってきた種別をそのまま出す（§9.163）。 */
-  {group:'system',key:'cleanup',label:'不要ファイル掃除',icon:'掃',special:'cleanup',
+  {group:'system',key:'cleanup',label:'不要ファイル掃除',special:'cleanup',
    titleText:'不要ファイルの掃除 — 作り直せるものだけを片付ける'},
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
   // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(スケジュール列表示マスタ
   // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
-  {group:'system',key:'rawTable',label:'テーブル生データ',icon:'表',special:'raw-table',readOnly:true},
+  {group:'system',key:'rawTable',label:'テーブル生データ',special:'raw-table',readOnly:true},
  ];
  /* 既定のタブは**実在するキー**にすること（§9.221 ③でオペレータのタブを
     撤去した）。`currentDef()`は見つからなければ先頭へ落とすので中身は出るが、

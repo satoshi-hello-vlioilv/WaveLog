@@ -2048,6 +2048,26 @@ WL.printCurrentView=opt=>{
  window.print();
 };
 WL.printHintDefault=PRINT_HINT_DEFAULT;
+/* ---------- 全幅の画面と「戻る」（§9.593、利用者の指示） ----------
+   「マスタボタンを押したら、『戻る』ことができるボタンをメニューにつけて…測定メイン画面が出るときのように
+    マスタ編集中に不要なメニューは出ないような工夫を入れてエリア全体を活かせるように」
+   画面が名乗る2つ: `focus`＝左のメニュー（と使用設備の案内）を伏せて全幅を使う／`back`＝ヘッダーの左端に
+   「◯◯へ戻る」を出す。戻る先は**入る直前に選ばれていた左メニューの行き先**で、字にその名前を書く（推測させない）。
+   左メニューを伏せた画面から出る道はこの1つなので、控えが無いとき（起動の直後など）は左メニューの先頭へ戻す。 */
+const NAV_ITEMS='aside .nav-item,#nav button.db,#analysisNav button.db,#planNav button.db';
+let viewBackTo=null;
+function paintViewBack(def,from){
+ const btn=document.getElementById('viewBack');
+ if(!btn)return;
+ if(!def||!def.back){viewBackTo=null;btn.hidden=true;return}
+ if(from&&from.id!==def.nav)viewBackTo=from;
+ if(!viewBackTo||!viewBackTo.isConnected)viewBackTo=document.querySelector('aside .nav-item');
+ const name=viewBackTo?((viewBackTo.querySelector('span')||viewBackTo).textContent||'').trim():'';
+ btn.hidden=!viewBackTo;
+ btn.querySelector('span').textContent=name?`${name}へ戻る`:'戻る';
+ btn.title=name?`「${name}」の画面へ戻ります`:'前の画面へ戻ります';
+ btn.onclick=()=>{if(viewBackTo&&viewBackTo.isConnected)viewBackTo.click()};
+}
 function enterView(key,opts){
  WL.currentView=String(key||'');
  VIEW_REGISTRY.forEach((v,k)=>{
@@ -2070,9 +2090,13 @@ function enterView(key,opts){
   else measureModal.setAttribute('hidden','');
  }
  // ナビの選択は排他。どのナビ群に置かれたボタンでも一度全部外す。
- document.querySelectorAll('aside .nav-item,#nav button.db,#analysisNav button.db,#planNav button.db')
-  .forEach(b=>b.classList.remove('active'));
+ // 外す前に「いまどこに居たか」を控える（§9.593 戻る先）。
+ const navItems=[...document.querySelectorAll(NAV_ITEMS)];
+ const from=navItems.find(b=>b.classList.contains('active'))||null;
+ navItems.forEach(b=>b.classList.remove('active'));
  const def=VIEW_REGISTRY.get(key);
+ document.body.classList.toggle('view-focus',!!def?.focus);
+ paintViewBack(def,from);
  if(!def)return null;
  if(def.bodyClass)document.body.classList.add(def.bodyClass);
  /* **「印刷」は画面ごとに1つだけ**（§9.300 ①、利用者の指示「一番上の表示も

@@ -41,7 +41,7 @@
 /* --- 標準（ヘッダー・ダイアログ・パネルの操作） --- */
 .equipment-header-button,.split-panel-open-btn,
 .status-filter-btn,.rec-actbar button,.work-time-actions button,
-.mm-nav button,.mm-btn-ghost,.rp-btn-primary,.rp-btn-secondary,
+.mm-btn-ghost,.rp-btn-primary,.rp-btn-secondary,
 .defect-actions button,.qa-v7 .qa-primary,.qa-v7 .qa-secondary,
 .connection-lost-bar button,.split-update-actions button,.ps-actions button{
   height:var(--ctl-h);padding:0 var(--ctl-pad-x);

@@ -272,6 +272,12 @@ body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw #generic
    占有し、A4が49%表示になっていた。操作類は1本のバーへ統合し、
    帳票表示中は一覧用のヘッダ類を隠す。 */
 body.rp-mode main>header,body.rp-mode .equipment-setup-banner{display:none}
+/* 全幅で1つの仕事をする画面（§9.593・`registerView({focus:true})`＝マスタ管理）。測定画面と同じく左のメニューと
+   使用設備の案内を伏せ、作業の場所を広げる（1728px で作業の面 62%→84%）。出る道はヘッダーの「戻る」。 */
+body.view-focus .layout{grid-template-columns:minmax(0,1fr)}
+body.view-focus :is(.layout>aside,#navResizeHandle,.equipment-setup-banner){display:none}
+/* マスタ管理に要らない札（ラインの段取りと使用設備）。モードの札は書けるかを言うので残す。 */
+body.mm-mode :is(#fieldReorderBadge,.hd-chip-equip){display:none}
 /* ロット一覧を畳んだ状態。A4横は倍率が幅で決まるため、畳むと帳票が大きくなる。
    列数は1列にする。`0 minmax(0,1fr)` の2列指定のままだと、display:noneで
    グリッドから外れた.rp-navの代わりに.rp-mainが幅0の第1列へ自動配置され、

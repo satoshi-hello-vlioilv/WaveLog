@@ -3578,7 +3578,7 @@
   const retired=t.kind==='retired';
   const where=t.where?`ふだんは**${t.where}**から書き換えています。`:'';
   return {group:retired?'retired':'internal',key:'mt:'+t.table,
-          label:t.label||t.table,icon:(t.label||t.table).slice(0,1),
+          label:t.label||t.table,
           endpoint:'/api/master-table/'+encodeURIComponent(t.table),
           hasDelete:!retired,editorModal:!retired,readOnly:retired,
           rawTable:t.table,rawKind:t.kind,
