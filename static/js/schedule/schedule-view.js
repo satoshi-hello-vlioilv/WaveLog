@@ -4320,7 +4320,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      ——毎回見るものではないので場所を取らせない（§CLAUDE 1）。 */
   {key:'__scrap__',label:'耳屑幅(片耳)',w:84,
    note:'元幅から条幅の合計を引いた両耳ぶんの半分（均等）。分割ありは子ロットの条幅を合計します',off:true},
-  {key:'__time__',label:'時刻',w:112,note:'開始〜終了'},
+  /* 日をまたぐ予定は「22:10〜00:10(翌)」——**いちばん長い書式**（`sample`）を実際に描いて幅を決める（§9.594）。
+     決め打ちの112pxは「(翌)」の無い形の幅で、日をまたぐ行だけ末尾が11px切れていた（`overflow:hidden`・「…」なし）。 */
+  {key:'__time__',label:'時刻',w:112,note:'開始〜終了',sample:'00:00〜00:00(翌)',cell:'sc-row-time'},
   {key:'__shift__',label:'勤務',w:58,note:'勤務形態マスタの名称'},
   {key:'__rel__',label:'残り',w:88,note:'開始までの目安時間'},
   {key:'__est__',label:'見積',w:62,note:'見積時間（~付きは実績以外が出どころ）'},
@@ -4343,6 +4345,34 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     出ない列**になる（実測で踏んだ。`test_scscrap`が数える）。 */
  const SC_COL_AFTER=['__scrap__','__est__','__actual__','__flags__','__by__','__pc__','__upby__','__uppc__','__actions__'];
  const scIsFixedCol=k=>SC_COL_MAP.has(k);
+ /* ---------- 固定の列の既定の幅は1箇所が答える（§9.594） ----------
+    書式の決まった列（`sample`を持つ）は、**そのセルと同じクラスで見本を描いて**幅を読む——`canvas`の
+    `measureText`は`tabular-nums`（数字の等幅）を知らない（§9.294 ④で踏んだ）。見本は**見出しの行の子**として
+    描く（列の左の余白`padding-left`は行の子に効く規則なので、器の外で測ると余白のぶん足りない・実測で3〜4px）。
+    進行中・要入力の行は太字になるので**太字で**測る。答えは倍率を掛ける前のpx（呼ぶ側が`--ui-scale`を掛ける）。決め打ちの`w`より
+    狭くはしない。器が描かれていない（測れない）ときは`w`のまま。同じ字の大きさなら測り直さない。 */
+ const scSampleW=new Map();
+ function scColDefaultW(k){
+  const d=SC_COL_MAP.get(k);
+  if(!d)return 110;
+  if(!d.sample)return d.w;
+  const tl=document.getElementById('scTimeline');
+  const host=tl&&tl.querySelector('.sc-row-head');
+  if(!host||!host.isConnected)return d.w;
+  const sig=k+'|'+(document.documentElement.dataset.uiSize||'')+'|'+uiScaleNow();
+  if(scSampleW.has(sig))return scSampleW.get(sig);
+  const probe=document.createElement('span');
+  probe.className=d.cell||'';
+  probe.textContent=d.sample;
+  probe.style.cssText='position:absolute;visibility:hidden;left:-9999px;top:0;width:auto;overflow:visible;font-weight:var(--fw-strong)';
+  host.appendChild(probe);
+  const px=probe.getBoundingClientRect().width;
+  probe.remove();
+  if(!(px>0))return d.w;
+  const w=Math.max(d.w,Math.ceil(px/uiScaleNow())+1);
+  scSampleW.set(sig,w);
+  return w;
+ }
  /* **一度も保存していないうちは出さない列**(§9.180)。列レイアウトマスタの
     hiddenは空なので、そのまま使うと足した列がいきなり全員の画面に並ぶ
     ——データ一覧の`WL.records.recordInitialHidden()`(§9.162)と同じ考え方で、
@@ -4706,8 +4736,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const t=timelineTarget();
   const w=t?WL.columnLayout.width(t,k):null;
   if(w)return w;
-  const d=SC_COL_MAP.get(k);
-  return d?d.w:110;
+  return scColDefaultW(k);
  }
  /* ---------- 印刷の「見える範囲の列」（§9.236、利用者の指示「見える範囲の
     列か、全ての列かを選べるようにして」） ----------
@@ -6289,7 +6318,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function applyTimelineContentColumns(timeline){
   const t=timelineTarget();
   const keys=timelineColumnKeys();
-  const defW=k=>{const d=SC_COL_MAP.get(k);return d?d.w:110};
+  const defW=scColDefaultW;
   const track=k=>{
    const w=t?WL.columnLayout.width(t,k):null;
    if(w)return `${w}px`;

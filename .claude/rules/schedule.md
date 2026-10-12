@@ -1,4 +1,4 @@
-# 作業スケジュール（110件）
+# 作業スケジュール（111件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 固定の列の既定の幅は`scColDefaultW()`の1箇所。書式の決まった列は`sample`を見出しの行で描いて測る（太字・`w`より狭くしない） | `test_fit.js` | [§9.594](../../docs/decisions/9.594.md) |
 | 開始の状態は`startStateOf()`の1箇所（押せる／押せない／出さない）。厳密モードで押せない開始は鍵つきの灰の面で残す（半透明にしない） | `test_strictmode.js` | [§9.592](../../docs/decisions/9.592.md) |
 | 運用モードは作業スケジュールの「運用」の札（いつも出す）から切り替える。口は`/api/schedule/run-mode`、許す端末は`line_ops_allowed()` | `test_strictmode.js`・`test_strictstart.py` | [§9.592](../../docs/decisions/9.592.md) |
 | 帯の字を落とすしきい値（em）は字の大きさを変えたら測り直す（13pxで109.2em／93.4em） | `test_scbar.js` | [§9.591](../../docs/decisions/9.591.md) |
