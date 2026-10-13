@@ -550,7 +550,6 @@ body.sc-mode #headerContextSource{display:none}
   .lc-state-chip.is-on,
   .lg-seg button.is-on,
   .mm-cd-tab.active,
-  .mm-more.is-on,
   .nl-win .nl-span.is-on,
   .op-mini.is-on,
   .op-seg button.is-on, .op-toggle.is-on, .op-when button.is-on,
@@ -591,6 +590,8 @@ body.sc-mode #headerContextSource{display:none}
   .ssb-stop.is-on,
   .shift-list-item.active{background:var(--teal-tint);border-color:transparent;box-shadow:inset var(--bar-w) 0 0 var(--teal);color:var(--teal-ink)}
   .shift-list-item.active b{color:var(--teal-ink)}
+  /* 右の詳細の札の行（§9.598・1e）は**チェックの印だけ**で選んだことを言う（行ごとに地を塗ると、既定で全部入りの9行が淡い塊になる）。 */
+  .mm-editor-modal.is-docked .mm-card-opt.is-on{background:none;border-color:transparent transparent var(--line)}
 
   /* 紺の面（縁つき）（3族） */
   .fb-axis>button.is-on,

@@ -14,6 +14,7 @@
     6. 開いているあいだ頭の「追加」は縁取り（塗りの主ボタンは足元の保存の1つ）。閉じれば塗りへ戻る
     7. 表の値は印で言う（既定は薄い字・機能は札・入力内容は棒・段は ●◐○— と凡例）。列の幅は中身の比で、切れない。
        欄に入ると同じ列が光り、打った値はその場でセルに出る（キャンセルで戻る）
+    8. 編集欄: 説明の続きは ⓘ の1つ・空欄の値は欄の中の薄い字・欄が1つの節は名前を見出しへ・札の一言は切れない
    ============================================================ */
 'use strict';
 const H = require('./lib/harness.js');
@@ -152,6 +153,21 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
  });
  rec('7) 値は印で言う（既定は薄い字・機能は札・入力内容は棒）', marks.def > 0 && marks.tags > 0 && marks.bar > 0, JSON.stringify(marks));
  rec('7) 列の幅は中身の比——詳細を開いたままでもセルが「…」で切れない', marks.cut.length === 0, JSON.stringify(marks));
+ /* ---------- 8) 編集欄（1e） ---------- */
+ const ed = await page.evaluate(() => {
+  const f = document.getElementById('maintEditorForm');
+  const solo = [...f.querySelectorAll('.mm-field[data-solo]')];
+  return { old: f.querySelectorAll('.mm-more').length, tips: f.querySelectorAll('.wl-tip-i[data-tip]').length,
+   ph: [...f.querySelectorAll('.mm-num-input')].map(i => i.placeholder),
+   blankHints: [...f.querySelectorAll('.mm-field-hint')].filter(h => /^空欄なら/.test(h.textContent.trim())).length,
+   solo: solo.length, soloHidden: solo.every(x => { const sp = x.querySelector(':scope>span'); return !sp || getComputedStyle(sp).display === 'none'; }),
+   headTips: [...f.querySelectorAll('.mm-fieldgroup>.wl-tip-i')].length,
+   cut: [...f.querySelectorAll('.mm-card-txt>small')].filter(x => x.scrollWidth > x.clientWidth + 1).length };
+ });
+ rec('8) 欄の説明の続きは ⓘ の1つ（`?`は無い）', ed.old === 0 && ed.tips > 0, JSON.stringify(ed));
+ rec('8) 空欄のときの値は欄の中の薄い字（「空欄なら…」の説明の行は無い）', ed.ph.includes('40（既定）') && ed.ph.includes('120（既定）') && ed.blankHints === 0, JSON.stringify(ed.ph));
+ rec('8) 欄が1つの節は欄の名前を出さず、名前と ⓘ は節の見出しが持つ', ed.solo > 0 && ed.soloHidden && ed.headTips > 0, JSON.stringify(ed));
+ rec('8) 札の一言は切れない（右の詳細では折り返す）', ed.cut === 0, JSON.stringify(ed.cut));
  const minF = '#maintEditorForm [data-field="standardMinutes"]';
  await page.focus(minF);
  const hot = await page.evaluate(() => ({ th: !!document.querySelector('#masterMaintList .mm-th.is-hot[data-col="standardMinutes"]'),

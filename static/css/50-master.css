@@ -190,6 +190,17 @@
 /* 欄と表を結ぶ: 入った欄の列は見出しが青緑の字、選んだ行のそのセルは一段濃い地（字に重ねない）。 */
 .mm-row.head>.mm-th.is-hot b{color:var(--teal-ink)}
 .mm-row.editing>.is-hot{background:var(--pale);border-radius:var(--radius-xs);box-shadow:0 0 0 var(--space-1) var(--pale)}
+/* ---------- 編集欄（§9.598・1e）----------
+   欄が1つの節は欄の名前を出さない（名前と ⓘ は節の見出し）。空欄のときの値は欄の中の薄い字。 */
+.mm-field[data-solo]>span:first-child{display:none}
+.mm-fieldgroup>.wl-tip-i{margin-left:var(--space-1);vertical-align:middle}
+.mm-num-input::placeholder{color:var(--muted);opacity:1}
+/* 右の詳細の札の並びは詰めた行（チェック＋名前＋一言）。一言は折り返す（切らない・器が狭い）。
+   選ばれた札の地と縁は状態の層（90-state.css）が外す。 */
+.mm-editor-modal.is-docked .mm-card-row{flex-direction:column;flex-wrap:nowrap;gap:0;border-top:1px solid var(--line)}
+.mm-editor-modal.is-docked .mm-card-opt{flex:none;max-width:none;width:100%;padding:var(--space-2) var(--space-1);border:0;border-bottom:1px solid var(--line);border-radius:0;background:none}
+.mm-editor-modal.is-docked .mm-card-ico{width:18px;height:18px}
+.mm-editor-modal.is-docked .mm-card-txt>small{white-space:normal}
 .mm-editor-modal.is-docked .mm-form-hint{color:var(--muted);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .mm-form[hidden]{display:none}
 .mm-count{color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
@@ -3422,22 +3433,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pc-acc-body{display:flex;flex-direction:column;gap:var(--gap-inline);
   padding:var(--space-2) var(--space-3);min-width:0}
-/* くわしい説明は押すと開く（触る画面では`title`が読めない・§4）。 */
-.mm-more{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:1.25em;height:1.25em;margin-left:var(--space-1);padding:0;
-  border:1px solid var(--line-mid);border-radius:var(--radius-pill);
-  background:var(--surface);color:var(--muted);
-  font-size:var(--fs-micro);font-weight:var(--fw-ui);line-height:1;cursor:pointer;
-}
-.mm-more:hover{border-color:var(--teal);color:var(--teal-dark)}
-.mm-more-body{
-  margin-top:var(--space-1);padding:var(--space-2);
-  border-left:3px solid var(--line-mid);border-radius:var(--radius-xs);
-  background:var(--surface-2);color:var(--ink-2);
-  font-size:var(--fs-badge);line-height:1.7;
-}
-.mm-more-body[hidden]{display:none}
 .mm-editor-dialog.is-builder .mm-def-hint{grid-column:1/-1;grid-row:1;margin:0}
 /* **左は段（タブ）を縦に積む1本の柱**（§9.254 ①）。中身は
    「段の帯」と「段の中身」の2つだけなので、ここは折り返す横並びではなく
@@ -3555,7 +3550,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
 /* 空の説明で1行ぶんの余白を残さない（`hintHtml()`が空を返しうる）。 */
 .mm-field-hint:empty,.mm-def-hint:empty{display:none}
 /* 説明の階層（§9.276 ④）。**常時出すのはリード文だけ**で、詳しい話は
-   押したときだけ開く。欄の`?`（`.mm-more-box`）と同じ言語で揃える。 */
+   押したときだけ開く。 */
 .mm-hint-more{display:flex;flex-wrap:wrap;gap:var(--gap-tight);margin:var(--space-1) 0 var(--space-2)}
 .mm-hint-sec{flex:0 1 auto;max-width:100%;
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2)}
@@ -3689,11 +3684,6 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .mm-step-sub{display:block;margin-top:var(--space-1);color:var(--muted);
  font-style:normal;font-size:var(--fs-micro)}
 
-/* 短くした説明の続きは見出しの `?` から読む（§9.249 (3)）。 */
-.mm-more{display:inline-grid;place-items:center;width:1.3em;height:1.3em;
- border-radius:var(--radius-round);background:var(--surface-3);color:var(--muted);
- font-style:normal;font-size:var(--fs-micro);font-weight:var(--fw-ui);cursor:help}
-.mm-field>span:hover .mm-more{background:var(--teal);color:#fff}
 
 /* ---------- 一覧の見出し: 並べ替えと列幅（§9.250 (6)） ---------- */
 /* **`overflow`を戻す**——`.mm-row>span{overflow:hidden}`が効いたままだと、

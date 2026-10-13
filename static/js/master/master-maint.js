@@ -377,7 +377,7 @@
   return `<span class="mm-num" data-num-wrap>
     <button type="button" class="mm-num-btn" data-num-step="-1" tabindex="-1" aria-label="${esc(f.label)}を減らす">−</button>
     <input data-field="${f.k}" class="mm-num-input" type="text" inputmode="decimal" autocomplete="off"
-           value="${esc(numDisplay(val))}" ${attrs.join(' ')}>
+           value="${esc(numDisplay(val))}"${f.blank?` placeholder="${esc(f.blank)}"`:''} ${attrs.join(' ')}>
     <button type="button" class="mm-num-btn" data-num-step="1" tabindex="-1" aria-label="${esc(f.label)}を増やす">＋</button>
     ${f.unit?`<span class="mm-num-unit">${esc(f.unit)}</span>`:''}
    </span>`;
@@ -396,9 +396,9 @@
     （読み方の好みなのでPCごとに違ってよい・§9.199／§9.242 ⑥）。
     **既定は今までどおり`full`**——わざわざ選んでいない人の見え方を変えない。
 
-    **`?`（くわしい説明）は消さない**——押したときだけ開く、場所を取らない
+    **ⓘ（くわしい説明）は消さない**——乗せる・押すで開く、場所を取らない
     入口なので、消すと「短め」にした人が全文へ辿り着けなくなる（§9.234 ①
-    「消した説明は落とし先を用意する」）。だから`off`でも`?`は残す。
+    「消した説明は落とし先を用意する」）。だから`off`でも ⓘ は残す。
 
     **通すのは`hintHtml()`の1箇所**（§9.163）——説明を出す場所は十数箇所
     あるので、そこへ足すと**足し忘れた欄だけが長いまま残る**。 */
@@ -446,7 +446,7 @@
   return `<button type="button" id="mmHintBadge" class="mm-btn-ghost mm-head-icobtn mm-hintbadge"`
    +` aria-haspopup="true" aria-expanded="false"`
    +` title="欄の下に出る説明文の量を選びます（いまは「${esc(cur.label)}」）。`
-   +`「くわしい説明」（?）はどの段でも読めます">`
+   +`「くわしい説明」（ⓘ）はどの段でも読めます">`
    +`<span class="mm-hint-ico" aria-hidden="true">💬</span><b id="mmHintLabel">${esc(cur.label)}</b></button>`;
  }
  /* 浮きメニュー。**器は`body`直下**（`#mmHead`は`overflow`を持つ器の中に
@@ -480,7 +480,7 @@
    if(lab)lab.textContent=cur2.label;
    const badge=$('#mmHintBadge');
    if(badge)badge.title=`欄の下に出る説明文の量を選びます（いまは「${cur2.label}」）。`
-     +`「くわしい説明」（?）はどの段でも読めます`;
+     +`「くわしい説明」（ⓘ）はどの段でも読めます`;
    closeHintMenu();
    refreshMaintScreen();
   });
@@ -513,12 +513,12 @@
      使ってわかりやすく階層化しながらコンパクトに表示・説明する方法も」
 
     常時出すのは**リード文（`hint`）だけ**で、詳しい話は`hintMore`の節へ畳む
-    （`<details>`——欄の`?`と同じ言語・§9.250 ④）。**節は既定で閉じる**
+    （`<details>`——押して開く・§9.250 ④）。**節は既定で閉じる**
     ——開いておくと畳んだ意味が無い。
     **`hintHtml()`を通す**（§9.163）ので、説明の量（通常／短め／出さない）が
     リード文へそのまま効き、`**強調**`も同じ書き方でよい。
     **「出さない」でも節は残す**——押したときだけ開く入口なので、消すと
-    短くした人が全文へ辿り着けなくなる（§9.234 ①・`?`と同じ約束）。 */
+    短くした人が全文へ辿り着けなくなる（§9.234 ①・欄の ⓘ と同じ約束）。 */
  /* ---------- 頭の行（§9.598・AA）----------
     どのマスタも同じ形で言う: 画面名（左の一覧と同じ呼び名）・用途の1行・ⓘ（説明の残りと畳んだ節）。
     用途は呼び名の「—」の後ろ（`titleText`）、無ければ説明の最初の1文。**同じ字を2か所に出さない**——
@@ -577,55 +577,24 @@
     4箇所が同じ形になるので、`hintMore`を足したマスタは自動で階層になる。
     **編集窓では節を出さない**（§CLAUDE 8「窓の説明は一覧の説明と同じに
     しない」）——窓に要るのは「いま決めることの一言」で、マスタ全体の
-    説明は一覧の側が持つ。窓の中の細かい話は各欄の`?`が言う。 */
+    説明は一覧の側が持つ。窓の中の細かい話は各欄の ⓘ が言う。 */
  function defHintHtml(def,text){
   const modal=text!==undefined;
   const t=modal?text:(def&&def.hint);
   const lead=t?`<p class="mm-def-hint">${hintHtml(t)}</p>`:'';
   return modal?lead:(lead+hintSectionsHtml(def));
  }
- /* **消した説明は`title`へ落とす**（§9.234 ①）。欄の説明を短くすると
-    読めるようになるが、消してしまうと調べようが無くなる。`more`を持つ欄は
-    見出しにマウスを当てれば全文が読める（§CLAUDE 8）。 */
+ /* ---------- 欄の見出し（§9.598・1e）----------
+    名前・必須の印・キーの札と、説明の続き（`more`）・空欄のときの理由（`blankWhy`）を持つ ⓘ の1つ。ⓘ は頭の行・共通設定と
+    同じ部品（`tipHtml()`→`WL.popMenu.tips()`・乗せる／鍵盤の焦点／押すで読める・押しても閉じない）。**以前の`?`（押すと
+    欄の下へ開く）はやめた**——同じ役目の物を2つの形にしない（§9.250 ④の「触る画面でも読める」は ⓘ も満たす）。 */
+ const fieldTipText=f=>[f.more,f.blankWhy].filter(Boolean).join(' ');
  function fieldLabelHtml(f){
-  const t=f.more?` title="${esc(f.label+'｜'+String(f.more).replace(/\*\*/g,''))}"`:'';
-  /* ---------- 続きは畳んで置く（§9.250 ④、利用者の指示） ----------
-     「タブとアコーディオンによる情報の階層化、チャンク化を取り入れて」
-
-     以前は`?`が**マウスを乗せたときだけ**出る`title`で、触る画面では
-     一度も読めなかった（説明があること自体は見えているので、
-     「押しても何も起きない」に見える・§4）。押すと開く形にする。
-     `title`は残す——読み方が2つあって困るものではない。 */
-  return `<span${t}>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}`
-   +(f.more?`<button type="button" class="mm-more" aria-expanded="false"`
-     +` aria-label="${esc(f.label)}のくわしい説明" data-more="${esc(String(f.more))}">?</button>`:'')
-   +`</span>`;
+  const tip=fieldTipText(f);
+  return `<span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}${tip?tipHtml(tip):''}</span>`;
  }
- /* 押したら欄の下へ開く。**器へ足すのは押したときだけ**——最初から置くと、
-    畳んでいても`.mm-field`の子が1つ増えて並びの計算が変わる。
-    **`<label>`の中なので`preventDefault()`が要る**（押すと欄へフォーカスが
-    飛んで、開いた瞬間に入力欄が選ばれる）。 */
- function bindMoreToggles(form){
-  form.querySelectorAll('.mm-more').forEach(b=>{
-   if(b.dataset.moreWired)return;
-   b.dataset.moreWired='1';
-   b.onclick=e=>{
-    e.preventDefault();e.stopPropagation();
-    const fld=b.closest('.mm-field');if(!fld)return;
-    let body=fld.querySelector(':scope>.mm-more-body');
-    if(!body){
-     body=document.createElement('small');
-     body.className='mm-more-body';
-     body.innerHTML=hintHtml(String(b.dataset.more||''));
-     fld.appendChild(body);
-    }
-    const on=b.getAttribute('aria-expanded')!=='true';
-    b.setAttribute('aria-expanded',on?'true':'false');
-    b.classList.toggle('is-on',on);
-    body.hidden=!on;
-   };
-  });
- }
+ /* 欄の下の説明（短い1〜2文）。どの型の欄も同じ書き方（量は`hintHtml()`の段に従う）。 */
+ function fieldHintHtml(f){return f&&f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}
  /* master-combo の選択肢は別マスタから取る。同じマスタを何度も引かないよう
     タブを開いている間だけ持つ(登録すると連動して増えるので、保存後の
     loadMaint()で作り直す)。 */
@@ -802,10 +771,16 @@
      **見本（`asideHtml`）は段の外**に置くので、どの段を見ていても
      刷り上がりが見える（§CLAUDE 14「視覚導線と作業導線を一致させる」）。 */
   if(!def.groupsAsTabs){
-   let prev=null;const out=[];
+   /* **欄が1つの節は欄の名前を出さない**（§9.598・「③ 使える機能／使える機能 ?」のように同じ字が2段に並ぶ）。名前と ⓘ は
+      節の見出しが持つ。必須・キーの印を持つ欄は除く（印ごと消える）。 */
+   const runOf=[];let prev=null,start=0;
+   groups.forEach((g,i)=>{const k=g||prev;if(k!==prev){start=i}runOf[i]=start;prev=k});
+   const size=i=>runOf.filter(x=>x===runOf[i]).length;
+   prev=null;const out=[];
    groups.forEach((g,i)=>{
-    if(g&&g!==prev)out.push(`<h4 class="mm-fieldgroup">${esc(g)}</h4>`);
-    prev=g||prev;out.push(html[i]);
+    const f=(def.fields||[])[i]||{},solo=!!(g||prev)&&size(i)===1&&!f.required&&!f.key;
+    if(g&&g!==prev){const tip=solo?fieldTipText(f):'';out.push(`<h4 class="mm-fieldgroup">${esc(g)}${tip?tipHtml(tip):''}</h4>`)}
+    prev=g||prev;out.push(solo?String(html[i]).replace(/^(\s*<(?:div|label)\b)/,'$1 data-solo=""'):html[i]);
    });
    return out.join('');
   }
@@ -1102,11 +1077,11 @@
        できなくなる）。足したうえで**無いことを文字で言う**（§4）。 */
     const missing=!!val&&!opts.some(eq=>eq.name===val);
     if(!opts.length&&!missing){
-     return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
+     return `<div class="mm-field">${fieldLabelHtml(f)}<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
     }
     const optHtml=(missing?`<option value="${esc(val)}" selected>${esc(val)}（設備マスタにありません）</option>`:'')
       +opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
-    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}">${missing?'':'<option value="">選択...</option>'}${optHtml}</select>${missing?`<small class="mm-field-hint">この設備は設備マスタにありません（消されたか、名前が変わっています）。**そのままにすれば今の設備名を保ちます**。登録済みの設備へ付け替えることもできます。</small>`:(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')}</label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${missing?'':'<option value="">選択...</option>'}${optHtml}</select>${missing?`<small class="mm-field-hint">この設備は設備マスタにありません（消されたか、名前が変わっています）。**そのままにすれば今の設備名を保ちます**。登録済みの設備へ付け替えることもできます。</small>`:fieldHintHtml(f)}</label>`;
    },
    /* 対象設備を複数選べる欄。作業可能設備(equipment-multi)と同じタグUIだが、
       保存先が配列ではなくカンマ区切りの1列で、さらに「すべての設備」という
@@ -1124,7 +1099,7 @@
     // 補足文はマスタごとに意味が違う(権限の対象か/停止内容の対象か)ので
     // def側からf.tagHintで渡す。未指定はアクセス権限マスタの従来文言。
     const tagHint=f.tagHint||'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
-    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span>
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1">${fieldLabelHtml(f)}
      <div class="mm-tagfield-inner">
       <label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
@@ -1136,11 +1111,11 @@
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
     const opts=WL.records.equipmentMasterState.items||[];
     if(!opts.length){
-     return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
+     return `<div class="mm-field">${fieldLabelHtml(f)}<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
     }
     const hiddenBoxes=opts.map(eq=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${selected.has(eq.name)?' checked':''} hidden>`).join('');
     const tags=opts.filter(eq=>selected.has(eq.name)).map(eq=>`<span class="mm-tag">${esc(eq.name)}<button type="button" class="mm-tag-remove" aria-label="${esc(eq.name)}を削除">×</button></span>`).join('');
-    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}"><span>${esc(f.label)}</span>
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}">${fieldLabelHtml(f)}
      <div class="mm-tagfield-inner">
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${tags}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
@@ -1153,7 +1128,7 @@
     /* **説明を書いたら出す**（§9.222 ⑧）。ここだけ`f.hint`を捨てていたので、
        マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
     return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`
-      +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
+      +fieldHintHtml(f)+`</label>`;
    },
    /* 別マスタ連動の選択欄(§5.3.1)。選ぶだけで済むのが基本で、無い値は
       「＋ 新しく追加」から入力する。保存時に相手のマスタへも登録される。 */
@@ -1178,10 +1153,10 @@
     return `<label class="mm-field">${fieldLabelHtml(f)}
       <input data-field="${f.k}" type="text" list="${lid}" autocomplete="off" value="${esc(val)}">
       <datalist id="${lid}">${opts.map(o=>`<option value="${esc(o)}"></option>`).join('')}</datalist>
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+      ${fieldHintHtml(f)}</label>`;
    },
    'number':(f,val,editing)=>{
-    return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${fieldHintHtml(f)}</label>`;
    },
    /* ---------- 選んで組み立てる（§9.226 ④、利用者の指示） ----------
       「帳票ブロックを新規登録が難しすぎて作成できない。入力データ(汎用入力
@@ -1226,7 +1201,7 @@
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
       ${list.length?'':'<small class="mm-field-hint">選べる候補をこの端末では読めませんでした。</small>'}
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+      ${fieldHintHtml(f)}</div>`;
    },
    /* ---------- 選んだ側を保存する札（§9.306） ----------
       利用者の指示「親マスタの選択肢から選んで登録することができるように」。
@@ -1261,7 +1236,7 @@
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(raw)}">
       <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+      ${fieldHintHtml(f)}</div>`;
    },
    /* ---------- いくつでも入切できる札（§9.302） ----------
       利用者の指示「有効無効の範囲については機能別に分けて変更できるように」。
@@ -1299,7 +1274,7 @@
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc([...off].join(','))}">
       <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+      ${fieldHintHtml(f)}</div>`;
    },
    /* 紙の12マスをそのまま出して、**押した幅がそのまま見える**ようにする。
       「6＝1/2」を頭の中で割り算させない（§CLAUDE 6）。 */
@@ -1340,7 +1315,7 @@
       </div>
       <em class="mm-step-sub" data-step-sub="${f.k}">${sub}</em>
       <input type="hidden" data-field="${f.k}" value="${esc(val)}">
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+      ${fieldHintHtml(f)}</div>`;
    },
    'field-builder':(f,val,editing)=>{
     return `<div class="mm-field mm-field-area fb" data-fb="${f.k}">${fieldLabelHtml(f)}
@@ -1383,13 +1358,13 @@
     return `<label class="mm-field mm-field-area">${fieldLabelHtml(f)}`
      +`<textarea data-field="${f.k}" rows="${f.rows||6}" spellcheck="false"`
      +` placeholder="${esc(f.placeholder||'')}">${esc(val)}</textarea>`
-     +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+     +`${fieldHintHtml(f)}</label>`;
    },
    'date':(f,val,editing)=>{
-    return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${fieldHintHtml(f)}</label>`;
    },
    'time':(f,val,editing)=>{
-    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="time" step="60" value="${esc(val)}">${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="time" step="60" value="${esc(val)}">${fieldHintHtml(f)}</label>`;
    },
    'path':(f,val,editing)=>{
     return `<div class="mm-field mm-field-path">${fieldLabelHtml(f)}
@@ -1406,13 +1381,13 @@
    'readonly':(f,val,editing)=>{
     return `<label class="mm-field mm-field-ro">${fieldLabelHtml(f)}`
      +`<input data-field="${f.k}" type="text" value="${esc(val)}" readonly tabindex="-1">`
-     +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+     +`${fieldHintHtml(f)}</label>`;
    },
  };
  MM_FIELD_BUILDERS['rows-pick']=MM_FIELD_BUILDERS['span-grid'];   // 同じ組み立て（決め方が違うだけ）
  function mmTextFieldHtml(f,val){
   return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off">`
-   +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
+   +fieldHintHtml(f)+`</label>`;
  }
 
  /* ---------- Excelの持ち出し・取り込み（§9.240、利用者の指示） ----------
@@ -1797,7 +1772,7 @@
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
   const rm=$('#masterMaintRowMore');if(rm)rm.onclick=ev=>openRowMenu(ev.currentTarget,editing);
-  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);WL.popMenu.tips(form);
   bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);bindLinkMaster(def);
  }
 
@@ -2029,7 +2004,7 @@
    <div class="mm-form-fields">${buildFieldControls(def,editing)}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    ${typeof def.asideHtml==='function'?def.asideHtml(editing):''}`;
-  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);WL.popMenu.tips(form);
   if(typeof def.bindAside==='function')def.bindAside(form);
  }
  /* **段を切り替えても窓の大きさを変えない**（§9.463、利用者の指摘「モーダル
