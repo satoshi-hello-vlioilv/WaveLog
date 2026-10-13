@@ -260,6 +260,48 @@ H.run('test_stopsubui: 設備停止マスタの画面（§9.397）',
  rec('内訳が1件だけの段では「既定にする」を押せなくして理由を書く',
      only.off&&/1つだけ/.test(only.why),JSON.stringify(only).slice(0,120));
 
+ // ---- ⑤d §9.598 1j: 内訳も打った値は足元の「保存」で書く（欄を離れても保存しない）・消すは行の ⋯ ----
+ await pick(idA);
+ await page.waitForFunction(()=>!!document.querySelector('#ssbSubSave'),null,{timeout:8000});
+ const f0=await page.evaluate(()=>({txt:document.querySelector('#ssbState').textContent,save:document.querySelector('#ssbSubSave').disabled,
+  cancel:document.querySelector('#ssbSubCancel').disabled,x:document.querySelectorAll('.ssb-row[data-ssb-id] .danger').length,
+  more:document.querySelectorAll('.ssb-row[data-ssb-id] .ssb-row-more').length,rows:document.querySelectorAll('.ssb-row[data-ssb-id]').length}));
+ rec('1j: 内訳の足元はキャンセル＋保存（開いただけでは「変更なし」で押せない）・行の × は無く ⋯ が1つずつ',
+   /^変更なし/.test(f0.txt)&&f0.save&&f0.cancel&&f0.x===0&&f0.more===f0.rows&&f0.rows>0,JSON.stringify(f0));
+ const rowMin=async n=>page.evaluate(n=>{const r=[...document.querySelectorAll('.ssb-row[data-ssb-id]')]
+   .find(x=>(x.querySelector('input[data-ssb-k="name"]')||{}).value===n);return r?r.querySelector('input[data-ssb-k="min"]').value:null},n);
+ const minOf=n=>`.ssb-row[data-ssb-id]:has(input[data-ssb-k="name"][value="${n}"]) input[data-ssb-k="min"]`;
+ const origMin=await rowMin('刃出し');
+ await page.fill(minOf('刃出し'),'25');
+ await page.locator(minOf('刃出し')).blur();
+ await W.until(page,()=>/^変更 1件/.test(document.querySelector('#ssbState').textContent)&&!document.querySelector('#ssbSubSave').disabled,null,{ms:4000,what:'打つと「変更 1件」'});
+ const srvMid=await page.evaluate(async i=>{const j=await (await fetch('/api/schedule/stop-sub-master')).json();
+  return ((j.items||[]).find(x=>Number(x.stopReasonId)===Number(i)&&x.name==='刃出し')||{}).standardMinutes??null},idA);
+ rec('1j: 欄を離れても保存しない（打った値はまだサーバーに無い）',Number(srvMid)!==25,String(srvMid));
+ await page.click('#ssbSubCancel');
+ await W.until(page,()=>/^変更なし/.test(document.querySelector('#ssbState').textContent),null,{ms:4000,what:'キャンセルで元へ'});
+ rec('1j: キャンセルで描いたときの値へ戻る',(await rowMin('刃出し'))!=='25',String(await rowMin('刃出し')));
+ await page.fill(minOf('刃出し'),'25');
+ await page.click('#ssbSubSave');
+ await W.until(page,()=>/保存しました/.test(document.querySelector('#ssbState').textContent),null,{ms:8000,what:'保存の字'});
+ const srvAfter=await page.evaluate(async i=>{const j=await (await fetch('/api/schedule/stop-sub-master')).json();
+  return ((j.items||[]).find(x=>Number(x.stopReasonId)===Number(i)&&x.name==='刃出し')||{}).standardMinutes??null},idA);
+ rec('1j: 「保存」で打った値がサーバーへ入る',Number(srvAfter)===25,String(srvAfter));
+ /* 消すのは ⋯ のメニュー（赤の字）。開くだけで消さない（Esc で閉じる）。 */
+ await page.locator('.ssb-row[data-ssb-id] .ssb-row-more').first().click();
+ await W.until(page,()=>{const m=document.querySelector('#mmActMenu');return !!m&&!m.hidden&&!!m.querySelector('[data-ssb-sub-act="delete"]')},null,{ms:4000,what:'内訳の ⋯ に「消す」'});
+ const subDel=await page.evaluate(()=>{const b=document.querySelector('#mmActMenu [data-ssb-sub-act="delete"]');return {danger:b.classList.contains('is-danger'),text:b.textContent}});
+ rec('1j: 内訳を消すのは行の ⋯ のメニュー（赤の字）',subDel.danger&&/消す/.test(subDel.text),JSON.stringify(subDel));
+ await page.keyboard.press('Escape');
+ await W.until(page,()=>document.querySelector('#mmActMenu')?.hidden===true,null,{ms:4000,what:'Esc でメニューが閉じる'});
+ /* 元の分へ戻し、前の節の終わり（idB を選んだ状態）へ戻す——次の節はその状態から読む。 */
+ await page.fill(minOf('刃出し'),origMin||'');
+ if(!(await page.$eval('#ssbSubSave',b=>b.disabled))){
+  await page.click('#ssbSubSave');
+  await W.until(page,()=>/^変更なし|保存しました/.test(document.querySelector('#ssbState').textContent)&&document.querySelector('#ssbSubSave').disabled,null,{ms:8000,what:'元の分へ戻す'});
+ }
+ await pick(idB);
+
  // ---- ⑤c §9.598 1g: 頭の追加・基本をその場で直す・足元・⋯・分の棒・新しい停止内容 ----
  const head=await page.evaluate(()=>{
   const t=document.querySelector('.ssb-table'),g=e=>e?getComputedStyle(e).gridTemplateColumns:'';
@@ -269,8 +311,8 @@ H.run('test_stopsubui: 設備停止マスタの画面（§9.397）',
    addCols:g(document.querySelector('.ssb-row.is-add'))===g(document.querySelector('.ssb-row.is-head'))};
  });
  rec('1g: 追加は頭の主の操作・一覧の上の説明の帯と「基本を直す…」は無い',head.add&&!head.bar&&!head.edit,JSON.stringify(head));
- rec('1g: 内訳の追加は表の最後の行で列にそろう・足元が「いつ保存するか」を言う',
-     head.addLast&&head.addCols&&/欄を離れると保存/.test(head.foot),JSON.stringify(head));
+ rec('1g: 内訳の追加は表の最後の行で列にそろう・足元が状態を言う（§9.598 1j で保存のボタンへ）',
+     head.addLast&&head.addCols&&/^(変更なし|「刃出し」を保存しました)/.test(head.foot),JSON.stringify(head));
  const bars=await page.evaluate(ids=>ids.map(i=>{const x=document.querySelector(`[data-ssb-pick="${i}"] .mm-val-bar>i`);return x?parseFloat(x.style.width):-1}),[idA,idB]);
  rec('1g: 木の分の棒は同じ目盛り（60分は30分の2倍）',bars[1]>0&&Math.abs(bars[0]/bars[1]-2)<0.01,bars.join(' / '));
  await page.click('[data-ssb-tab="basic"]');

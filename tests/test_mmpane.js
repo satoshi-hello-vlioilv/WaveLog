@@ -167,10 +167,14 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
  const marks = await page.evaluate(() => {
   const rows = [...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')];
   const cut = rows.flatMap(r => [...r.children].filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.title || c.textContent.trim()));
-  return { cut, def: document.querySelectorAll('#masterMaintList .mm-val-def').length, tags: document.querySelectorAll('#masterMaintList .mm-val-tag').length,
-   bar: document.querySelectorAll('#masterMaintList .mm-val-bar').length, vw: innerWidth };
+  const tagCells = [...document.querySelectorAll('#masterMaintList .mm-val-tags')];
+  return { cut, def: document.querySelectorAll('#masterMaintList .mm-val-def').length, tags: tagCells.reduce((n, c) => n + c.querySelectorAll('.mm-val-tag').length, 0),
+   offTags: tagCells.filter(c => c.querySelector('.mm-val-tag.is-off')).reduce((n, c) => n + c.querySelectorAll('.mm-val-tag').length, 0),
+   bar: document.querySelectorAll('#masterMaintList .mm-val-bar').length,
+   partBar: [...document.querySelectorAll('#masterMaintList .mm-val-bar>i')].filter(i => parseFloat(i.style.width) < 100).length, vw: innerWidth };
  });
- rec('7) 値は印で言う（既定は薄い字・機能は札・入力内容は棒）', marks.def > 0 && marks.tags > 0 && marks.bar > 0, JSON.stringify(marks));
+ /* §9.598 1j: 全部使う機能・入力内容は「すべて 既定」の薄い字。札と棒は外したものがある行だけ（test_eqfeature・test_measitems が見る）。 */
+ rec('7) 値は印で言う（既定は薄い字・全部使うときは「すべて 既定」・外した行だけ札と棒）', marks.def > 0 && marks.tags === marks.offTags && marks.bar === marks.partBar, JSON.stringify(marks));
  rec('7) 列の幅は中身の比——詳細を開いたままでもセルが「…」で切れない', marks.cut.length === 0, JSON.stringify(marks));
  /* ---------- 8) 編集欄（1e） ---------- */
  const ed = await page.evaluate(() => {

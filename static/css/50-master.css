@@ -2582,7 +2582,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ssb-table .mm-empty.ssb-none{margin:0;padding:var(--space-3) var(--space-2);text-align:left;border:0;border-bottom:1px solid var(--line);background:none}
 /* 列は「内訳名／分／消す」の3つだけ。**分は中身の長さから決める**
    （§CLAUDE 11）——3桁しか入らない欄に器いっぱいを与えない。 */
-/* 列は「内訳名／分／既定／消す／＋下へ」の5つ。**分は中身の長さから決める**
+/* 列は「内訳名／分／既定／＋下へ／⋯（消すなど）」の5つ（⋯ は行の右端・勤務形態の区分と同じ・§9.598 1j）。**分は中身の長さから決める**
    （§CLAUDE 11）——3桁しか入らない欄に器いっぱいを与えない。
    「既定」は字が入る幅だけ（§9.397）。 */
 /* **名前の列が残りを取る**（§CLAUDE 11）。`--w-xl`（22em）を先に配ると、
@@ -2591,7 +2591,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
    固定するのは中身の長さが決まっている列だけにして、名前は`1fr`で縮ませる。 */
 /* §9.598 1g: 分の列は欄＋分の棒なので`--w-md`。 */
 .ssb-row{display:grid;
-  grid-template-columns:minmax(0,1fr) var(--w-md) var(--w-sm) var(--ctl-h-sm) max-content;
+  grid-template-columns:minmax(0,1fr) var(--w-md) var(--w-sm) max-content var(--ctl-h-sm);
   align-items:center;gap:var(--gap-inline);padding:var(--space-1) var(--space-2)}
 .ssb-mcell{display:flex;align-items:center;gap:var(--space-2);min-width:0}
 .ssb-row .ssb-mcell>input.ssb-f{flex:none;width:var(--w-xs)}

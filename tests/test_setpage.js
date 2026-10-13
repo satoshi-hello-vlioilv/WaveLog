@@ -186,9 +186,10 @@ run('test_setpage: §9.68 パス設定を設定ページ形式へ / データ引
  /* 起動アイコンを作れない端末（Windows 以外）は誤りではなく端末の事実——灰の字で言い、行き先は押せない形（§9.598 1h）。 */
  await W.until(page,()=>!/確認しています/.test((document.querySelector('#pcShortcut [data-sc-state]')||{}).textContent||''),null,{ms:10000,what:'起動アイコンの状態が届く'});
  const lnk=await page.evaluate(()=>{const s=document.querySelector('#pcShortcut [data-sc-state]'),b=document.getElementById('pcScOpen');
-  return {cls:s?s.className:'',txt:s?s.textContent:'',off:b?b.disabled:null}});
- rec('起動アイコンを作れない端末は灰の字で言い、行き先を押せない形にする（作れる端末では押せる）',
-   /is-na/.test(lnk.cls)?lnk.off===true&&!/is-bad/.test(lnk.cls):lnk.off===false,JSON.stringify(lnk));
+  return {cls:s?s.className:'',txt:s?s.textContent:'',hidden:b?(b.hidden||getComputedStyle(b).display==='none'):null}});
+ /* §9.598 1j: 使えない機能はボタンごと消す（押せない灰のボタンを残さない）。 */
+ rec('起動アイコンを作れない端末は灰の字で言い、行き先のボタンを出さない（作れる端末では出す）',
+   /is-na/.test(lnk.cls)?lnk.hidden===true&&!/is-bad/.test(lnk.cls):lnk.hidden===false,JSON.stringify(lnk));
 
  // 他タブへ移ると設定ページ用の指定が残らない
  await tab('アクセス権限');

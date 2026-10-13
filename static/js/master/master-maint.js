@@ -673,6 +673,9 @@
   const cs=MM_CHECKSET[col.format];
   if(cs){
    const st=checkSetState(col,t);
+   /* 全部使う（既定）は「すべて 既定」の薄い字（§9.598 1j）——全行に同じ札・満タンの棒が並ぶと、外した行が目に留まらない。
+      札・棒は外したものがある行だけ（数の既定「40 既定」と同じ考え方）。 */
+   if(st&&st.on.length&&!st.off.size)return `${esc(t)}<span class="mm-val-def">既定</span>`;
    if(st&&st.on.length){
     if(cs.mark==='bar'){
      const pct=Math.round(st.on.length/st.all.length*100);

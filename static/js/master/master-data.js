@@ -2099,11 +2099,11 @@
  function pcLdHtml(){
   /* 畳みのままだが**見出しは他の行と同じ格子**（名前｜いまの値｜開く印・§9.598 1h）——箱の畳みが1つだけ別の形で浮いていた。 */
   return `<details class="pc-acc pc-ld is-row" id="pcLd">
-    <summary><b class="pc-row-label">読み込みの見せ方</b><span class="pc-row-ctl"><span class="ld-sample">${WL.loader.html(16)}</span>
-     <span class="pc-acc-now pc-ld-now" id="pcLdNow"></span>
-     <span class="mm-btn-ghost sm pc-ld-open" aria-hidden="true">一覧から選ぶ<i class="mm-hd-caret">▾</i></span>${tipHtml(
+    <summary><b class="pc-row-label">読み込みの見せ方${tipHtml(
       `データを待っているあいだに出る動くしるしです。loaders.css（MIT）から${WL.loader.STYLES.length-1}種を写して**同梱**しています（回線が無い端末でも動きます）。`
-      +'仲間ごとに並べてあります——まず仲間を1つ選び、その中の4〜5枚を見比べてください。')}</span></summary>
+      +'仲間ごとに並べてあります——まず仲間を1つ選び、その中の4〜5枚を見比べてください。')}</b><span class="pc-row-ctl"><span class="ld-sample">${WL.loader.html(16)}</span>
+     <span class="pc-acc-now pc-ld-now" id="pcLdNow"></span>
+     <span class="mm-btn-ghost sm pc-ld-open" aria-hidden="true">一覧から選ぶ<i class="mm-hd-caret">▾</i></span></span></summary>
     <div class="pc-acc-body">${WL.loader.GROUPS.map(pcLdGroupHtml).join('')}</div>
    </details>`;
  }
@@ -2153,9 +2153,9 @@
    el.className='lnk-state'+(f.cls?' '+f.cls:'');
    el.textContent=f.text;
   });
-  /* 作れない端末では行き先（「表示」で作る）も押せない形（押しても作れない・§CLAUDE 4）。 */
+  /* 作れない端末では行き先（「表示」で作る）を**出さない**（使えない機能はボタンごと消す・§CLAUDE 4・§9.598 1j）。字が理由を言う。 */
   const go=document.getElementById('pcScOpen');
-  if(go){go.disabled=!!f.off;go.title=f.off?f.text:''}
+  if(go)go.hidden=!!f.off;
   renderShortcutPanel();
  }
  /* 「表示」の節の中身。**値はサーバーの答えから入れる**（§9.163）——共通設定を
@@ -2481,6 +2481,12 @@
   return {row,path,num,pick,text,fold};
  }
  /* 段「この端末」: 名乗り（読むだけ）→ 名前の決め打ち → 見え方 → 起動アイコン → 読み込みの見せ方。 */
+ /* PC名の出どころは**利用者の言葉**で（§9.598 1j）: 下の「名前を決め打ちする」で決めたか、OS から自動で取ったか。
+    取った道具の名前（socket.gethostname() など・サーバーの`_pc_name_candidates()`の綴り）は title だけが持つ。 */
+ function pcFromWord(from){
+  if(!from)return '出どころ不明';
+  return /^設定/.test(from)?'下の欄で決め打ち':'OS から自動で取得';
+ }
  function pcTabTerminal(K){
   /* PC名は**サーバーが解決した結果**を出す（§9.208 ⑧）。画面が持つ`WL.terminal`は保存した直後は古い。 */
   const term=(window.WL&&WL.terminal)||null;
@@ -2490,7 +2496,7 @@
   /* 読み取り専用の値に入力欄風の枠を付けない（§CLAUDE 10）——名前と値を横に並べた1行。 */
   /* 名乗りは **PC名だけ**（§9.598 1h）。ログインIDとモードはヘッダーの札（👤・モード）が言う——同じ情報を2か所に出さない。 */
   return `<dl class="pc-who" id="pcWho">
-    <div><dt>PC名</dt><dd><b>${esc(pcNow||'（取得できていません）')}</b><small>${esc(pcFrom||'出どころ不明')}</small></dd></div>
+    <div><dt>PC名</dt><dd><b>${esc(pcNow||'（取得できていません）')}</b><small title="${esc(pcFrom?`出どころ: ${pcFrom}`:'')}">${esc(pcFromWord(pcFrom))}</small></dd></div>
    </dl>
    <div class="pc-rows">
     ${K.row('pc_name','名前を決め打ちする',K.text('pc_name','空欄なら OS から自動で取ります'),
@@ -4326,11 +4332,12 @@
  const ssbState={stops:[],subs:[],defaults:{},cats:[],picked:0,q:'',minutes:[],addUnder:0,ruleVocab:null,fold:new Set(),tab:'subs',
   creating:null,basic:null};
  /* 結果は字で返す（§9.212）: 内訳の段の足元（`#ssbState`）があればそこ、無ければ知らせ（基本・挿入の条件の段は自分の足元を持つ）。
-    空にすると足元の既定の字（いつ保存するか）へ戻る。 */
+    空にすると足元の状態の字（変更なし／変更 N件・記録者）へ戻る。 */
  function ssbSay(text,bad){
   const el=$('#ssbState');
   if(!el){if(text&&typeof showToast==='function')showToast(bad?'できませんでした':'設備停止',text,bad?6500:3600);return}
-  el.textContent=text||el.dataset.idle||'';el.classList.toggle('is-bad',!!bad);
+  if(!text){ssbPaintSubs();return}
+  el.textContent=text;el.classList.toggle('is-bad',!!bad);
  }
  /* 分の棒の目盛り（§9.598 1g）: 木・基本・内訳の棒は**同じ目盛り**（いちばん長い分・60分より短くしない）——棒どうしを比べて読める。 */
  function ssbMinScale(){
@@ -4457,7 +4464,20 @@
  function ssbDirty(){
   if(!$('#masterMaintList .ssb-edit'))return false;
   return !!(ssbState.basic&&ssbState.basic.dirty())
+   ||!!(ssbState.tab==='subs'&&ssbSubEdits().length)
    ||!!(ssbState.tab==='rules'&&WL.stopRuleBoard&&WL.stopRuleBoard.dirty());
+ }
+ /* 内訳の段で打ったまま保存していない行（欄の値が描いたときの値と違う行）。打った値は足元の「保存」で書く（§9.598 1j・基本の段・
+    右の詳細と同じ。前は欄を離れると保存していて、同じ画面の中で保存のしかたが2つあった）。 */
+ function ssbSubEdits(){
+  return [...document.querySelectorAll('#masterMaintList .ssb-row[data-ssb-id]')]
+   .filter(r=>[...r.querySelectorAll('.ssb-f')].some(i=>i.value!==i.defaultValue));
+ }
+ function ssbPaintSubs(){
+  const el=$('#ssbState');if(!el)return;
+  const n=ssbSubEdits().length;
+  el.classList.remove('is-bad');
+  WL.mm.paintFootState(el,[$('#ssbSubCancel'),$('#ssbSubSave')],false,n>0,n);
  }
  /* 捨てて移ると決めたあと（盤の「保存していない」の印を降ろす）。 */
  function ssbForget(){if(WL.stopRuleBoard)WL.stopRuleBoard.forget()}
@@ -4556,14 +4576,15 @@
    </div>`;
  }
  /* 足元は1つの部品`.mm-dfoot`（§9.598・勤務形態・右の詳細と同じ）。基本＝状態と記録者＋キャンセル＋保存（変更が無いうちは押せない）。
-    内訳＝欄を離れると保存するので、状態の字だけ（いつ保存するかを言う）。挿入の条件は盤が自分の足元を持つ。 */
+    内訳も同じ並び（打った値は保存で書く・§9.598 1j）。追加・既定・消すはボタンの1押しで書く。挿入の条件は盤が自分の足元を持つ。 */
  function ssbFootHtml(tab,creating){
   if(tab==='basic')return `<div class="mm-dfoot"><span class="mm-form-hint" id="ssbBasicState"></span>
     <button type="button" id="ssbBasicCancel" class="mm-btn-ghost">キャンセル</button>
     <button type="button" id="ssbBasicSave" class="mm-btn-primary">${creating?'追加':'保存'}</button></div>`;
   if(tab!=='subs')return '';
-  const idle=`欄を離れると保存します・記録者 ${currentUserId()||'—'}`;
-  return `<div class="mm-dfoot"><span class="mm-form-hint" id="ssbState" data-idle="${esc(idle)}" aria-live="polite">${esc(idle)}</span></div>`;
+  return `<div class="mm-dfoot"><span class="mm-form-hint" id="ssbState" aria-live="polite"></span>
+    <button type="button" id="ssbSubCancel" class="mm-btn-ghost">キャンセル</button>
+    <button type="button" id="ssbSubSave" class="mm-btn-primary">保存</button></div>`;
  }
  /* 右＝その停止の内訳。**親の標準所要分をここに出す**（§CLAUDE 6「出どころを
     画面に出す」）——内訳の分を空欄にしたとき何分になるのかが、見なくても
@@ -4639,11 +4660,11 @@
         :(isDef?'予定へ入れるとき、最初からこれが選ばれます（押すと外します）'
               :'予定へ入れるとき、最初からこれが選ばれるようにします')}">${
       isDef?'既定':(only?'—':'既定にする')}</button>
-    <button type="button" class="mm-btn-ghost sm danger" data-ssb-del="${r.id}" title="${
-      deep?'この内訳を消します':'この内訳と、その下の内訳をまとめて消します'}">×</button>
     ${deep?'<span></span>'
      :`<button type="button" class="ssb-under${on?' is-on':''}" data-ssb-under="${r.id}"
         title="「${esc(r.name||'')}」の下へ内訳をもう1段足します">${on?'足す先 ✓':'＋ 下へ'}</button>`}
+    <button type="button" class="mm-btn-ghost mm-hd-more ssb-row-more" data-ssb-del="${r.id}" aria-haspopup="menu" aria-expanded="false"
+      aria-label="この内訳の操作" title="この内訳の操作（消すなど）"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
    </div>`;
  }
  /* 足す先を**字で言う**（§CLAUDE 2）。直下のときは何も言わない——それが既定。 */
@@ -4834,32 +4855,22 @@
  }
  /* 右＝内訳の行（名前・分をその場で直す／既定の印）。 */
  function ssbWireSubRows(list){
+  /* 打った値は足元の「保存」で書く（§9.598 1j）。Enter は保存を押すのと同じ。キャンセルは描いたときの値へ戻す。 */
   list.querySelectorAll('.ssb-row[data-ssb-id] .ssb-f').forEach(inp=>{
-   const row=inp.closest('.ssb-row');
-   const id=Number(row.dataset.ssbId);
-   const before=inp.value;
-   inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();inp.blur()}};
-   inp.onchange=async()=>{
-    const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
-    if(!cur)return;
-    const name=inp.dataset.ssbK==='name'?inp.value.trim():String(cur.name||'');
-    const minRaw=inp.dataset.ssbK==='min'?inp.value
-      :(cur.standardMinutes==null?'':String(cur.standardMinutes));
-    const min=ssbMinutes(minRaw);
-    if(min===undefined){ssbSay('分は0より大きい数で入れてください。',true);inp.value=before;return}
-    if(!name){ssbSay('内訳名を空にはできません。',true);inp.value=before;return}
-    /* **親は動かさない**（§9.212 ②）。名前や分を直しただけで段が変わると、
-       2段目が1段目へ跳ね上がる。**既定の印も送らない**——送らなければ
-       サーバーは触らない（§9.397）。 */
-    await ssbSave({id,stopReasonId:cur.stopReasonId,name,standardMinutes:min,
-                   parentSubId:Number(cur.parentSubId||0)},
-                  `「${name}」を保存しました`);
-   };
+   inp.addEventListener('input',ssbPaintSubs);
+   inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const b=$('#ssbSubSave');if(b&&!b.disabled)b.click()}};
   });
+  const save=$('#ssbSubSave'),cancel=$('#ssbSubCancel');
+  if(save)save.onclick=ssbSaveSubEdits;
+  if(cancel)cancel.onclick=()=>{
+   ssbSubEdits().forEach(r=>r.querySelectorAll('.ssb-f').forEach(i=>{i.value=i.defaultValue;i.dispatchEvent(new Event('input'))}));
+   ssbPaintSubs();
+  };
+  ssbPaintSubs();
   /* 既定の印（§9.397）。**立てるのも降ろすのも同じボタン**——2つ置くと、
      どちらが今の状態なのかを押して確かめることになる。 */
   list.querySelectorAll('[data-ssb-def]').forEach(btn=>{
-   btn.onclick=async()=>{
+   btn.onclick=()=>WL.mm.afterLeave(async()=>{
     const id=Number(btn.dataset.ssbDef);
     const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
     if(!cur)return;
@@ -4870,7 +4881,7 @@
                    isDefault:!nowDef},
                   nowDef?`「${cur.name}」の既定を外しました`
                         :`「${cur.name}」を既定にしました（予定へ入れるとき最初から選ばれます）`);
-   };
+   });
   });
  }
  /* 右＝内訳を足す（「＋ 下へ」とその解除）・消す。 */
@@ -4880,9 +4891,10 @@
    const inp=cell.querySelector('input'),bar=cell.querySelector('.mm-val-bar');if(!inp||!bar)return;
    inp.oninput=()=>{const own=String(inp.value).trim();ssbPaintBar(bar,own||inp.placeholder,!own)};
   });
+  /* 追加・下へ・消す・既定はボタンの1押しで書く（描き直す）。打ったまま保存していない行があれば、先に聞く（黙って捨てない）。 */
   const add=$('#ssbAdd');
   if(add){
-   add.onclick=async()=>{
+   add.onclick=()=>WL.mm.afterLeave(async()=>{
     const nameEl=$('#ssbNewName'),minEl=$('#ssbNewMin');
     const name=String(nameEl&&nameEl.value||'').trim();
     if(!name){ssbSay('内訳名を入れてください。',true);nameEl&&nameEl.focus();return}
@@ -4895,38 +4907,67 @@
      if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
      const m2=$('#ssbNewMin');if(m2)m2.value='';
     }
-   };
+   });
   }
   list.querySelectorAll('[data-ssb-under]').forEach(btn=>{
-   btn.onclick=()=>{
+   btn.onclick=()=>WL.mm.afterLeave(()=>{
     const id=Number(btn.dataset.ssbUnder);
     ssbState.addUnder=(Number(ssbState.addUnder)===id)?0:id;
     renderStopSub();
     const el=$('#ssbNewName');
     if(el){try{el.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ移せない（押して打てる）',err)}}
-   };
+   });
   });
   const clr=$('#ssbUnderClear');
-  if(clr)clr.onclick=()=>{ssbState.addUnder=0;renderStopSub()};
+  if(clr)clr.onclick=()=>WL.mm.afterLeave(()=>{ssbState.addUnder=0;renderStopSub()});
+  /* 消すのは行の ⋯ のメニュー（§9.598 1j・勤務形態の区分と同じ。行の × は主の動線に置いた危ない操作だった）。 */
   list.querySelectorAll('[data-ssb-del]').forEach(btn=>{
-   btn.onclick=async()=>{
+   btn.onclick=()=>{
     const id=Number(btn.dataset.ssbDel);
-    const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
-    if(!cur)return;
-    const kids=ssbSubsOf(ssbPickedId()).filter(x=>Number(x.parentSubId||0)===Number(id));
-    if(!(await confirmModal(`「${cur.name}」を内訳から消しますか？\n`
-      +(kids.length?`この下の内訳 ${kids.length}件（${kids.map(k=>k.name).join('、')}）も一緒に消えます。\n`:'')
-      +'これまでに入れた予定の内訳の記録は、その予定の中に残ります。')))return;
-    const uid=requireMaintUser();if(uid===null)return;
-    try{
-     await api('/api/schedule/stop-sub-master/delete',
-       {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({id,user_id:uid})});
-     await loadStopSubMaint(true);
-     ssbSay(`「${cur.name}」を消しました`);
-    }catch(e){ssbSay(`消せませんでした: ${e.message||String(e)}`,true)}
+    const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);if(!cur)return;
+    const deep=Number(cur.parentSubId||0)>0;
+    WL.mm.openActMenu(btn,[{label:deep?'この内訳を消す…':'この内訳を消す（下の内訳も）…',danger:true,data:{ssbSubAct:'delete'},
+     note:'確かめる窓が出ます',onClick:()=>WL.mm.afterLeave(()=>ssbDeleteSub(id))}],'この内訳の操作');
    };
   });
+ }
+ /* 内訳を1つ消す（下の内訳もまとめて）。 */
+ async function ssbDeleteSub(id){
+  const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
+  if(!cur)return;
+  const kids=ssbSubsOf(ssbPickedId()).filter(x=>Number(x.parentSubId||0)===Number(id));
+  if(!(await confirmModal(`「${cur.name}」を内訳から消しますか？\n`
+    +(kids.length?`この下の内訳 ${kids.length}件（${kids.map(k=>k.name).join('、')}）も一緒に消えます。\n`:'')
+    +'これまでに入れた予定の内訳の記録は、その予定の中に残ります。')))return;
+  const uid=requireMaintUser();if(uid===null)return;
+  try{
+   await api('/api/schedule/stop-sub-master/delete',
+     {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,user_id:uid})});
+   await loadStopSubMaint(true);
+   ssbSay(`「${cur.name}」を消しました`);
+  }catch(e){ssbSay(`消せませんでした: ${e.message||String(e)}`,true)}
+ }
+ /* 内訳の段の「保存」: 打った行をまとめて書く（読めない字は行の欄へ戻して言う・1行も書かない）。**親と既定の印は送らない**
+    （§9.212 ②・§9.397——名前や分を直しただけで段や既定が変わらない）。途中で断られたら読み直さない（打った値を捨てない）。 */
+ async function ssbSaveSubEdits(){
+  const rows=ssbSubEdits();if(!rows.length)return;
+  const bodies=[];
+  for(const r of rows){
+   const id=Number(r.dataset.ssbId),cur=(ssbState.subs||[]).find(x=>Number(x.id)===id);if(!cur)continue;
+   const nameEl=r.querySelector('[data-ssb-k="name"]'),minEl=r.querySelector('[data-ssb-k="min"]');
+   const name=String(nameEl.value).trim(),min=ssbMinutes(minEl.value);
+   if(!name){ssbSay('内訳名を空にはできません。',true);nameEl.focus();return}
+   if(min===undefined){ssbSay('分は0より大きい数で入れてください。',true);minEl.focus();return}
+   bodies.push({id,stopReasonId:cur.stopReasonId,name,standardMinutes:min,parentSubId:Number(cur.parentSubId||0)});
+  }
+  const uid=requireMaintUser();if(uid===null)return;
+  try{
+   for(const b of bodies)await api('/api/schedule/stop-sub-master/update',
+     {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...b,user_id:uid})});
+  }catch(e){ssbSay(`保存できませんでした: ${e.message||String(e)}`,true);return}
+  await loadStopSubMaint(true);
+  ssbSay(bodies.length===1?`「${bodies[0].name}」を保存しました`:`内訳 ${bodies.length}件を保存しました`);
  }
 
  /* ============================================================

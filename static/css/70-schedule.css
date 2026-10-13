@@ -1268,7 +1268,8 @@
    名称欄の長さが行ごとに変わり列として追えなかった。
    **見出しも本文と同じ文字サイズにする**——列幅が`em`なので、見出しだけ
    小さくすると同じ`--w-sm`が別の幅になる（§9.193で実際に踏んだ）。 */
-.shift-segs{display:grid;gap:0}
+/* 表は中身の幅で止める（行の操作を本文のすぐ後ろへ・右に空いた帯を引かない・§9.598 1j）。 */
+.shift-segs{display:grid;gap:0;align-self:flex-start;max-width:100%}
 .shift-seg,.shift-seg-head{display:grid;align-items:center;gap:var(--space-2);
   /* **`auto`を使わないこと。** 見出しと本文は別々の要素なので、`auto`は
      それぞれの中身で解決される——見出しの「時間帯」と本文の時刻2つでは
@@ -1300,7 +1301,7 @@
 .shift-seg-dayoff{width:100%;height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 .shift-seg-dayoff.is-na{display:block;color:var(--muted);text-align:center;
   border:none;background:none;height:auto}
-.shift-seg-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
+.shift-seg-act{display:flex;gap:var(--gap-inline);justify-content:flex-start}
 .shift-seg button{flex:none;width:26px;border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:var(--muted)}
 .shift-seg .shift-seg-more{height:auto;align-self:stretch}
 .shift-seg button:disabled{opacity:var(--op-disabled);cursor:default}
