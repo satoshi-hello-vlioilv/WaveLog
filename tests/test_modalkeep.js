@@ -74,7 +74,9 @@ run('test_modalkeep: 背景クリックではモーダルを閉じない（§9.2
   await W.until(page,()=>{const m=document.querySelector('#appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'×で確認の窓が閉じる'});
   rec('×では閉じる',await page.evaluate(()=>document.querySelector('#appConfirmModal').hidden===true));
 
-  /* ---- 4) マスタの編集モーダル: 打ちかけの文字が消えない ---- */
+  /* ---- 4) マスタの右の詳細: 打ちかけの文字が消えない（§9.598 で窓から右の詳細へ） ----
+     覆わない器なので「背景を押しても閉じない」は**一覧の空いた所を押しても閉じない**で見る。閉じる道は×だけで、
+     変更があれば聞く（黙って捨てない）。キャンセルは「開いたときの値へ戻す」（閉じない）。 */
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:8000});
   /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
@@ -83,22 +85,36 @@ run('test_modalkeep: 背景クリックではモーダルを閉じない（§9.2
   /* **「追加」が出るまで待つ**（固定待ちにしない・tests/README.md）。 */
   await page.waitForSelector('#masterMaintAdd',{state:'visible',timeout:15000});
   await page.click('#masterMaintAdd');
-  await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:5000});
+  await page.waitForSelector('#maintEditorModal.is-docked',{state:'visible',timeout:5000});
   await page.fill('#maintEditorForm [data-field="loginId"]','打ちかけの文字');
-  const dlg=await page.evaluate(()=>{
-   const d=document.querySelector('#maintEditorModal [role="dialog"]').getBoundingClientRect();
-   return {x:Math.round(d.left/2),y:Math.round(d.top+d.height/2)};
+  const pt=await page.evaluate(()=>{
+   const w=document.querySelector('#masterMaintPanel .mm-list-wrap').getBoundingClientRect();
+   return {x:Math.round(w.left+w.width/2),y:Math.round(w.bottom-16)};
   });
-  await page.mouse.click(Math.max(6,dlg.x),dlg.y);
+  await page.mouse.click(pt.x,pt.y);
   await paint();  // 「閉じない」を見るので条件では待てない（上と同じ）
-  const kept=await page.evaluate(()=>({
+  const state=()=>page.evaluate(()=>({
     open:document.querySelector('#maintEditorModal').hidden===false,
-    value:document.querySelector('#maintEditorForm [data-field="loginId"]')?.value||''}));
-  rec('編集モーダルも背景クリックで閉じない',kept.open,JSON.stringify(kept));
-  rec('打ちかけの文字が消えていない',kept.value==='打ちかけの文字',kept.value);
+    value:document.querySelector('#maintEditorForm [data-field="loginId"]')?.value||'',
+    save:!document.getElementById('maintEditorSave').disabled,
+    foot:(document.getElementById('maintEditorHint')||{}).textContent||''}));
+  const kept=await state();
+  rec('右の詳細は一覧の空いた所を押しても閉じない',kept.open,JSON.stringify(kept));
+  rec('打ちかけの文字が消えていない',kept.value==='打ちかけの文字'&&kept.save&&/入力あり/.test(kept.foot),JSON.stringify(kept));
+  await page.click('#maintEditorClose');
+  await page.waitForSelector('#appConfirmModal',{state:'visible',timeout:5000});
+  await page.click('#appConfirmCancel');
+  await W.until(page,()=>document.querySelector('#appConfirmModal').hidden,null,{ms:5000,what:'確かめる窓が閉じる'});
+  const back=await state();
+  rec('変更があるうちの×は聞く——「戻って続ける」なら残る',back.open&&back.value==='打ちかけの文字',JSON.stringify(back));
   await page.click('#maintEditorCancel');
-  await W.until(page,()=>{const m=document.querySelector('#maintEditorModal');return !m||m.hidden},null,{ms:5000,what:'キャンセルで編集の窓が閉じる'});
-  rec('キャンセルでは閉じる',
+  await W.until(page,()=>document.getElementById('maintEditorSave').disabled,null,{ms:5000,what:'キャンセルで元へ戻る'});
+  const reverted=await state();
+  rec('キャンセルは開いたときの値へ戻す（閉じない・保存は押せなくなる）',
+      reverted.open&&reverted.value===''&&!reverted.save,JSON.stringify(reverted));
+  await page.click('#maintEditorClose');
+  await W.until(page,()=>{const m=document.querySelector('#maintEditorModal');return !m||m.hidden},null,{ms:5000,what:'×で右の詳細が閉じる'});
+  rec('変更が無ければ×でそのまま閉じる',
       await page.evaluate(()=>document.querySelector('#maintEditorModal').hidden===true));
 
   /* ---- 7) 素のダイアログを出さない（§9.342） ---- */

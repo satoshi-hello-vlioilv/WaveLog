@@ -47,8 +47,8 @@ run('test_stopeq: 設備停止マスタの対象設備(§9.81)', async ({page,re
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintForm',{timeout:10000});
   await page.evaluate(()=>{const b=document.querySelector('[data-master="stopReason"]');if(b)b.click()});
-  /* §9.397 で「設備停止マスタ」は3ペインの専用画面になった。窓を開く入口は
-     `#ssbAddStop`（汎用の`#masterMaintAdd`は出ない）。 */
+  /* §9.397 で「設備停止マスタ」は専用画面になった。追加の入口は頭の`#ssbAddStop`
+     （汎用の`#masterMaintAdd`は出ない）。§9.598 1g から、押すと右の「基本」で作る（窓は開かない）。 */
   await page.waitForSelector('#ssbAddStop',{timeout:15000});
   await idle();
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-stopeq');
@@ -63,7 +63,7 @@ run('test_stopeq: 設備停止マスタの対象設備(§9.81)', async ({page,re
   /* ---- 1) 入力欄が複数選択+「すべての設備」になっている ---- */
   await openStopTab();
   await page.click('#ssbAddStop');
-  await page.waitForSelector('#maintEditorModal:not([hidden])',{timeout:5000});
+  await page.waitForSelector('#ssbBasicForm .mm-field',{timeout:5000});
   await idle();
   const form=await page.evaluate(()=>{
    const all=document.querySelector('[data-equipment-all="equipment"]');
@@ -73,18 +73,19 @@ run('test_stopeq: 設備停止マスタの対象設備(§9.81)', async ({page,re
            legacySelect:!!document.querySelector('select[data-field="equipment"]'),
            label:(field?.querySelector(':scope > span')?.textContent||'').trim(),
            allLabel:(all?.closest('label')?.textContent||'').trim(),
-           hint:(field?.querySelector('.mm-field-hint')?.textContent||'').trim()};
+           /* 補足は見出しの ⓘ（§9.598 1e・1g——「基本」は1行＝見出し｜欄なので、欄の下に文を積まない）。 */
+           hint:(field?.querySelector(':scope > span .wl-tip-i')?.dataset.tip||'').trim()};
   });
   rec('対象設備は複数選べるタグ入力になっている',form.hasBox&&!form.legacySelect,JSON.stringify(form));
   rec('「すべての設備」を選べる',form.hasAll&&/すべての設備/.test(form.allLabel),form.allLabel);
   rec('欄の名前が「対象設備」になっている',/^対象設備/.test(form.label),form.label);
   rec('必須であることが分かる',/\*/.test(form.label),form.label);
-  rec('補足文が権限ではなく停止内容の話になっている',
+  rec('補足文（ⓘ）が権限ではなく停止内容の話になっている',
       /停止内容/.test(form.hint)&&!/権限/.test(form.hint),form.hint.slice(0,60));
 
   /* ---- 2) 未選択のままでは保存させない ---- */
   await page.fill('[data-field="name"]',TAG+'_未選択');
-  await page.click('#maintEditorSave');
+  await page.click('#ssbBasicSave');
   // 起きないことを見る判定: 登録されるなら出るはずの往復が静まるまで待つ（条件では待てない）。
   await idle(800);
   const none=await listFor();
@@ -101,9 +102,10 @@ run('test_stopeq: 設備停止マスタの対象設備(§9.81)', async ({page,re
   const tags=await page.$$eval('[data-equipment-box="equipment"] .mm-tag',ts=>ts.map(t=>t.textContent.replace('×','').trim()));
   rec('選んだ設備がタグとして並ぶ',tags.length===2&&tags.includes(EQ_A)&&tags.includes(EQ_B),tags.join('/'));
   await page.fill('[data-field="name"]',TAG+'_多');
-  await page.fill('#maintEditorForm .mm-num-input','30');
-  await page.click('#maintEditorSave');
-  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:10000,what:'保存して窓が閉じる'});
+  await page.fill('#ssbBasicForm .mm-num-input','30');
+  await page.click('#ssbBasicSave');
+  await W.until(page,n=>document.querySelector('.ssb-detail .ssb-title')?.textContent===n&&document.querySelector('#ssbBasicSave')?.textContent==='保存',
+    TAG+'_多',{ms:10000,what:'保存して、作った停止内容が右に開く'});
   await idle();
   const many=(await listFor()).find(x=>x.name===TAG+'_多');
   if(many)made.push(many.id);

@@ -139,8 +139,10 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .rne-job.is-ng{color:var(--danger)}
 /* 入のタグ(§9.197)。面を塗って**文字を白**にする——枠の色だけだと、
    タグが並んだときにどれが入なのかを1つずつ見比べることになる。 */
-.shift-eq-tag.is-on{border-color:var(--teal-dark);background:var(--teal);color:#fff;font-weight:var(--fw-strong)}
-.shift-eq-tag.is-on:hover{border-color:var(--teal-dark);background:var(--teal-dark);color:#fff}
+/* 選んだ設備の札は淡い地＋濃いチェック（§9.598）。塗りで白抜きにするとチェックが地に溶け、選んだかを色の差でしか言えない。 */
+.shift-eq-tag.is-on{border-color:var(--teal-soft);background:var(--teal-tint);color:var(--teal-ink);font-weight:var(--fw-ui)}
+.shift-eq-tag.is-on>i{color:var(--teal);font-weight:var(--fw-strong)}
+.shift-eq-tag.is-on:hover{border-color:var(--teal)}
 .sc-row-workable.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .sc-row-workable.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
 .sc-row-workable.is-unknown{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
@@ -548,7 +550,6 @@ body.sc-mode #headerContextSource{display:none}
   .lc-state-chip.is-on,
   .lg-seg button.is-on,
   .mm-cd-tab.active,
-  .mm-more.is-on,
   .nl-win .nl-span.is-on,
   .op-mini.is-on,
   .op-seg button.is-on, .op-toggle.is-on, .op-when button.is-on,
@@ -578,13 +579,25 @@ body.sc-mode #headerContextSource{display:none}
   .sc-mode-toggle-btn.active,
   .work-tabs button.active{background:var(--teal);color:#fff}
 
-  /* 濃い面（字は各自）（5族） */
+  /* 濃い面（字は各自）（3族） */
   .bs-tg.is-on::before,
   .oc-group.is-on,
-  .ssb-stop.is-on,
   .op-span-pick button.is-on,
-  .rly-paper.is-on,
-  .shift-list-item.active{background:var(--teal);border-color:var(--teal)}
+  .rly-paper.is-on{background:var(--teal);border-color:var(--teal)}
+
+  /* 一覧から1つ選んだ行（4族）: **淡い地＋左の帯**（§9.598・LotScope と同じ選び方）。濃い塗りで選ばない——
+     塗りの面は押す物（主ボタン）に見え、字を白へ反転させる規則も要る。表の行（`.mm-row.editing`）と同じ形。 */
+  .ssb-stop.is-on,
+  .shift-seg.is-focus,
+  .mm-tabbar.is-rail .mm-tab.is-on,
+  .shift-list-item.active{background:var(--teal-tint);border-color:transparent;box-shadow:inset var(--bar-w) 0 0 var(--teal);color:var(--teal-ink)}
+  .shift-list-item.active b{color:var(--teal-ink)}
+  /* 右の詳細の札の行（§9.598・1e）は**チェックの印だけ**で選んだことを言う（行ごとに地を塗ると、既定で全部入りの9行が淡い塊になる）。 */
+  :is(.mm-editor-modal.is-docked,.mm-inline-fields) .mm-card-opt.is-on{background:none;border-color:transparent transparent var(--line);color:var(--ink)}
+  /* 印は四角（いくつでも）と丸（1つだけ）の2つの形・選ぶと青緑（§9.598 1i）。一言は選んでも薄い字のまま（青緑の字を並べない）。 */
+  :is(.mm-editor-modal.is-docked,.mm-inline-fields) .mm-card-opt.is-on .mm-card-ico{background:var(--teal);border-color:var(--teal);color:var(--surface)}
+  :is(.mm-editor-modal.is-docked,.mm-inline-fields) .mm-card-row.is-one .mm-card-opt.is-on .mm-card-ico{background:radial-gradient(circle,var(--teal) 0 3.5px,var(--surface) 4px)}
+  :is(.mm-editor-modal.is-docked,.mm-inline-fields) .mm-card-opt.is-on .mm-card-txt>small{color:var(--muted)}
 
   /* 紺の面（縁つき）（3族） */
   .fb-axis>button.is-on,
@@ -622,13 +635,10 @@ body.sc-mode #headerContextSource{display:none}
   .sp-pat.is-on,
   .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}
 
-  /* 濃い面の中の字（6族） */
+  /* 濃い面の中の字（3族） */
   .fb-cat.is-on>i,
-  .ssb-stop.is-on>b, .ssb-stop.is-on .ssb-stop-eq, .ssb-stop.is-on .ssb-stop-n,
   .oc-group.is-on>b, .oc-group.is-on .oc-group-meta, .oc-group.is-on .oc-group-use,
-  .rly-paper.is-on>b, .rly-paper.is-on .rly-paper-meta, .rly-paper.is-on .rly-paper-gone,
-  .shift-eq-tag.is-on>i,
-  .shift-list-item.active b, .shift-list-item.active small{color:#fff}
+  .rly-paper.is-on>b, .rly-paper.is-on .rly-paper-meta, .rly-paper.is-on .rly-paper-gone{color:#fff}
 
   /* 淡い面の中の字（5族） */
   .mm-card-opt.is-on>small,

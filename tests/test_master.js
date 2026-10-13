@@ -264,23 +264,24 @@ run('test_master: マスタ管理の画面（統合パネル・タブ・編集�
       await page.evaluate(n=>[...document.querySelectorAll('.ssb-cat-row b')]
         .some(b=>b.textContent.trim()===n),sname));
 
-  /* ---- ② 停止内容: 多項目マスタはモーダル（旧 test_p11） ---- */
-  /* 統合画面でも**編集の作法は1つ**（§9.397）——欄が5つある停止内容は
-     汎用の編集窓を開いて直す。入口は「＋ 停止内容を足す」。 */
+  /* ---- ② 停止内容: 多項目でも窓で覆わない（§9.598 1g・旧 test_p11） ---- */
+  /* 欄が5つある停止内容は、右の「基本」の段で**その場で**作る・直す（汎用の表のマスタの「一覧＋右の詳細」と同じ）。
+     入口は頭の主の操作「＋ 停止内容を追加」。欄の組み立ては窓と同じ1本（`WL.mm.inlineFields`）。 */
   const modal=await page.evaluate(()=>({
-    addBtn:!!document.getElementById('ssbAddStop'),
+    addBtn:!!document.querySelector('#masterMaintActs #ssbAddStop'),
     inlineFields:document.querySelectorAll('#masterMaintForm [data-field]').length,
   }));
-  rec('多項目マスタ(停止内容)は上部フォームに欄を出さず、窓を開く入口だけ置く',
+  rec('多項目マスタ(停止内容)は上部フォームに欄を出さず、追加は頭の主の操作の1つ',
       modal.addBtn&&modal.inlineFields===0,JSON.stringify(modal));
   await page.click('#ssbAddStop');
-  await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:8000});
+  await W.until(page,()=>document.querySelectorAll('#ssbBasicForm .mm-field').length>0,null,{ms:8000,what:'右の「基本」に新しい停止内容の欄が出る'});
   /* 数えるのは入力欄の器(.mm-field)。専用コントロール(設備の複数選択タグ入力
      など)は素の [data-field] を持たないので、そちらで数えると項目が
      入れ替わるたびに数が合わなくなる(§9.81で対象設備がタグ入力になった)。 */
   const editor=await page.evaluate(()=>({
-    fields:document.querySelectorAll('#maintEditorForm .mm-field').length,
-    title:document.querySelector('#maintEditorTitle')?.textContent,
+    fields:document.querySelectorAll('#ssbBasicForm .mm-field').length,
+    title:document.querySelector('.ssb-detail .ssb-title')?.textContent,
+    modal:!document.querySelector('#maintEditorModal')||document.querySelector('#maintEditorModal').hidden,
   }));
   /* 欄は5つ（対象設備・分類・名称・標準所要分・**連携機能**。§9.377 で1つ増えた）。
      **数を定義から取る**——欄を1つ足すたびにここを書き直すのは、同じことを
@@ -289,11 +290,13 @@ run('test_master: マスタ管理の画面（統合パネル・タブ・編集�
    const d=(WL.mm.MASTER_DEFS||[]).find(x=>x.key==='stopReason');
    return d?(d.fields||[]).length:0;
   });
-  rec('編集専用モーダルに定義どおりの欄がすべて出る',
-      want>0&&editor.fields===want,JSON.stringify({...editor,want}));
-  await page.click('#maintEditorCancel');
-  await page.waitForFunction(()=>document.querySelector('#maintEditorModal')?.hidden,null,{timeout:8000}).catch(()=>{});
-  rec('編集モーダルを閉じられる',await page.evaluate(()=>document.querySelector('#maintEditorModal').hidden));
+  rec('右の「基本」に定義どおりの欄がすべて出る（窓は開かない）',
+      want>0&&editor.fields===want&&editor.modal&&editor.title==='新しい停止内容',JSON.stringify({...editor,want}));
+  /* 打っていないので、木の別の行を押せばその場で移れる（聞かない・§9.598 1c と同じ早さ）。 */
+  await page.evaluate(()=>{const b=document.querySelector('[data-ssb-pick]');if(b)b.click()});
+  await W.until(page,()=>!!document.querySelector('[data-ssb-pick].is-on')&&document.querySelector('.ssb-detail .ssb-title')?.textContent!=='新しい停止内容',null,{ms:8000,what:'打っていなければ聞かずに移る'});
+  rec('打っていない新しい停止内容は、木の行を押せば聞かずに移れる',
+      await page.evaluate(()=>{const x=document.getElementById('appConfirmModal');return !x||x.hidden}));
 
   /* ---- ④ 生データ（旧 test_p11 / test_master） ---- */
   await clickTab('テーブル生データ');

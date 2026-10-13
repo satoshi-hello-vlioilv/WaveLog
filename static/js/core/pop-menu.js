@@ -182,7 +182,8 @@
    if(b.__wlTip)return;
    b.__wlTip=true;
    const o={key:'tip:'+b.dataset.tip,cls:'wl-tip',side:b.dataset.tipSide||'below',
-    html:()=>`<div class="wl-tip-body">${WL.markup(b.dataset.tip||'')}</div>`};
+    /* 節を持つ説明（マスタの頭の ⓘ・§9.598）は札が`__wlTipHtml`で中身を渡す（器と出し方は同じ）。 */
+    html:()=>typeof b.__wlTipHtml==='function'?b.__wlTipHtml():`<div class="wl-tip-body">${WL.markup(b.dataset.tip||'')}</div>`};
    peek(b,o);
    /* 押したときは**開くだけ**（乗せて読んでから押す、という自然な動きで消さない）。閉じるのは外・Esc・離れたとき。
       畳みの見出し（`<summary>`）の中で押しても畳みを開け閉めしない（押したのは説明の札）。 */

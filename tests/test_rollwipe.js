@@ -55,6 +55,7 @@ run('test_rollwipe: ロールの全削除・完全入替の画面（§9.251、�
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   await page.waitForSelector('#masterMaintNav [data-master="roll"]',{timeout:20000});
   await page.click('#masterMaintNav [data-master="roll"]');
+  await W.mmTools(page);   // Excel の取り込みは頭の「⋯」の帯（§9.598）
   await page.waitForSelector('#mmXioMode',{timeout:20000});
   const settle=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
 
@@ -80,14 +81,15 @@ run('test_rollwipe: ロールの全削除・完全入替の画面（§9.251、�
   const place=await page.evaluate(()=>{
    const del=document.getElementById('mmBulkDel'),add=document.getElementById('masterMaintAdd');
    if(!del)return null;
-   const d=del.getBoundingClientRect(),a=add?add.getBoundingClientRect():null;
-   return {右:a?d.left>a.right:null,見える:d.width>0&&d.height>0,
+   const d=del.getBoundingClientRect();
+   /* §9.598 で「追加」は頭の右端へ、まとめて削除は頭の「⋯」の帯へ移った——主の操作と同じ行に並ばない（畳んだ帯の中）。 */
+   return {離れている:!!add&&!!del.closest('#masterMaintForm')&&!add.closest('#masterMaintForm')&&!!document.getElementById('masterMaintTools'),見える:d.width>0&&d.height>0,
            危険色:getComputedStyle(del).backgroundColor,
            文:del.textContent.trim(),説明:del.title||''};
   });
   rec('「全部消す…」がある',!!place&&place.見える,JSON.stringify(place));
-  rec('取り消せない操作は主要動線から離す（追加ボタンより右）',
-      !!place&&place.右===true,JSON.stringify(place));
+  rec('取り消せない操作は主要動線から離す（「追加」の行に並べず「⋯」の帯の中）',
+      !!place&&place.離れている===true,JSON.stringify(place));
   rec('押す前に何が起きるかを名乗る（title）',
       !!place&&/範囲/.test(place.説明),place&&place.説明);
 

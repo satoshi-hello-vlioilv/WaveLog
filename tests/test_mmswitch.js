@@ -45,6 +45,19 @@ run('test_mmswitch: マスタ管理のタブを切り替えても前のタブの
   const moved=await page.evaluate(()=>{
    const b=document.querySelector('[data-master="roll"]');if(!b)return false;b.click();return true;});
   rec('ロールマスタのタブがある',moved);
+  /* 前のタブの盤が後から届いても、**いまの一覧が一瞬も消えない**こと（§9.598 1g で測った: 直す前は届いた盤が一覧を
+     上書きし、取り直しが届くまで 10〜25ms 見出しが消えていた・6回中6回）。遅らせた応答（2秒）が届く先まで、ページの中で
+     5ms ごとに見る（待つのではなく見張る——終わりは時刻で決まる）。 */
+  const flick=await page.evaluate(async()=>{
+   const t0=performance.now();let seen=false,lost=0;
+   while(performance.now()-t0<3500){
+    const head=!!document.querySelector('#masterMaintList .mm-row.head');
+    if(head)seen=true;else if(seen)lost++;
+    await new Promise(r=>setTimeout(r,5));
+   }
+   return {seen,lost};
+  });
+  rec('前のタブの盤が後から届いても、いまの一覧が一瞬も消えない',flick.seen&&flick.lost===0,JSON.stringify(flick));
 
   // 前のタブの応答（2秒後）が届いたあとまで待つ。
   await idle(600,8000);   // 遅らせた応答（2秒）が届いて取得が静まるまで

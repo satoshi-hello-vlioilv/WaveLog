@@ -89,10 +89,10 @@ run('test_stopcat: 設備停止分類マスタ(§5.3.1)と入力支援(§9.49)�
    ['保全','段取り','待ち','突発'].every(c=>cats.some(x=>x.includes(c))),cats.join('/'));
 
  // ---- (2) 設備停止マスタの「分類」が分類マスタ連動の選択欄になっている ----
- /* 停止内容そのものの編集は**汎用の編集窓**を使い回す（§9.397）。入口は
-    統合画面の「＋ 停止内容を足す」——同じマスタの編集の作法を2通り持たない。 */
+ /* 停止内容そのものは右の「基本」の段でその場で作る（§9.598 1g）。欄の組み立ては汎用の窓と同じ1本
+    （`WL.mm.inlineFields`）——同じマスタの編集の作法を2通り持たない。入口は頭の「＋ 停止内容を追加」。 */
  await page.click('#ssbAddStop');
- await page.waitForSelector('#maintEditorModal:not([hidden])',{timeout:5000});
+ await page.waitForSelector('#ssbBasicForm .mm-field',{timeout:5000});
  await W.until(page,()=>!!document.querySelector('[data-combo-select="category"]'),null,{ms:8000,what:'分類の選択欄'});
  await idle();
  const combo=await page.evaluate(()=>{
@@ -147,8 +147,9 @@ run('test_stopcat: 設備停止分類マスタ(§5.3.1)と入力支援(§9.49)�
  await page.click('[data-equipment-search="equipment"]');
  await page.click('[data-equipment-suggest="equipment"] [data-pick="テスト設備A"]');
  await page.fill('[data-field="name"]','連動テスト'+uniq);
- await page.click('#maintEditorSave');
- await W.until(page,()=>document.querySelector('#maintEditorModal').hidden,null,{ms:15000,what:'編集窓が閉じる（保存済み）'});
+ await page.click('#ssbBasicSave');
+ await W.until(page,n=>document.querySelector('.ssb-detail .ssb-title')?.textContent===n&&document.querySelector('#ssbBasicSave')?.textContent==='保存',
+   '連動テスト'+uniq,{ms:15000,what:'保存して、作った停止内容が右に開く'});
  await idle();
  const catsAfter=await page.evaluate(async()=>{
   const r=await fetch('/api/schedule/stop-category-master').then(x=>x.json());

@@ -378,6 +378,9 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .wl-menu button:hover:not(:disabled){background:var(--menu-item-hover)}
 .wl-menu button:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
 .wl-menu button:disabled{color:var(--muted);cursor:not-allowed;opacity:1}
+/* 取り消せない操作の項目（削除など）は赤の字（赤は取り消せない操作だけ・§9.338）。 */
+.wl-menu button.is-danger{color:var(--danger)}
+.wl-menu button.is-danger:hover:not(:disabled){background:var(--danger-bg)}
 
 /* ---- ここから下は面ごとの値。**土台より後に書くこと**（同点なので後が勝つ） ---- */
 /* モード・同期・表の切り替え・再読込・フィルタ・ヒント・見本・「表示」の8面が
@@ -554,6 +557,8 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .lnk-state.is-done{color:var(--teal-dark)}
 .lnk-state.is-todo{color:var(--ink-2)}
 .lnk-state.is-bad{color:var(--danger)}
+/* 作れない端末（Windows 以外）は誤りではなく端末の事実——赤にしない（§9.598 1h）。 */
+.lnk-state.is-na{color:var(--ink-2)}
 .lnk-body{display:flex;flex-direction:column;gap:var(--space-2)}
 .lnk-body[hidden]{display:none}
 /* 1項目＝「名前／入力／一言」の縦積み（狭い器なので横に並べない）。

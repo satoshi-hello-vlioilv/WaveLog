@@ -1061,18 +1061,22 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
      <!-- 見出しだけを残す。再読込は**操作**なのでヘッダーの
           操作列(#mmHead → #headerViewBar)が持つ(§9.100)。ここに残すと、
           この画面だけ操作の置き場が2段になる。 -->
+     <!-- 頭の行（§9.598・AA）: どのマスタも同じ形——画面名（左の一覧と同じ呼び名）＋ⓘ＋用途の1行／右端に主の操作1つと
+          一覧の上の道具を開く「⋯」。描くのは`paintMaintHead()`と`WL.mm.setHeadActs()`の2つだけ。 -->
      <div class="mm-toolbar">
-      <div class="mm-toolbar-left"><b id="masterMaintTitle">オペレータ</b><span class="mm-count" id="masterMaintCount"></span>
+      <div class="mm-toolbar-left"><div class="mm-hd-title"><h1 id="masterMaintTitle">オペレータ</h1><span id="masterMaintInfo" class="mm-hd-info"></span><span class="mm-count" id="masterMaintCount"></span>
        <!-- マスタ編集の段（§9.322）。**書けないときだけ出す**——器は常に
             置いておき、中身の出し入れだけで済ませる（出入りで見出しの行が
             跳ねないように・§9.227 ②）。専用の画面（共通設定・データ接続など）は
             自前で欄を組み立てるので、断るのはサーバーだけ——**先に読める形で
             言う**のがこの帯の役目（§4）。 -->
        <span class="mm-mode-chip" id="masterMaintLevel" hidden></span></div>
+       <p class="mm-hd-lead" id="masterMaintLead" hidden></p></div>
       <!-- 束ねた見出しの開閉（§9.241 ①）。**群を持つマスタのときだけ**中身が
            入る（renderMaintList が出し入れする。押せるのに何も起きない
            ボタンを置かない・§CLAUDE 4）。 -->
       <div class="mm-fold" id="masterMaintFold" hidden></div>
+      <div class="mm-hd-acts" id="masterMaintActs"></div>
      </div>
      <form class="mm-form" id="masterMaintForm"></form>
      <div class="mm-list-wrap"><div class="mm-list" id="masterMaintList"></div></div>

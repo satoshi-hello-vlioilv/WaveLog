@@ -62,9 +62,10 @@ run('test_roleui: 設備作業者とマスタ編集の段が**画面に効いて
   const chip=document.getElementById('masterMaintLevel');
   return {title:document.getElementById('masterMaintTitle')?.textContent||'',
           rows:document.querySelectorAll('#masterMaintList .mm-row:not(.head)').length,
-          edits:document.querySelectorAll('#masterMaintList .mm-edit').length,
-          dels:document.querySelectorAll('#masterMaintList .mm-del').length,
-          submit:!!document.querySelector('#masterMaintForm [type="submit"],#masterMaintForm .mm-open-editor'),
+          /* 行の「編集・削除」のボタンは §9.598 でやめた（行を押すと右に詳細・削除は詳細の ⋯）。押して開ける行を数える。 */
+          edits:document.querySelectorAll('#masterMaintList .mm-row[data-mm-open]').length,
+          dels:document.querySelectorAll('#masterMaintList .mm-row[data-mm-open]').length,
+          submit:!!document.querySelector('#masterMaintForm [type="submit"],#masterMaintForm .mm-open-editor,#masterMaintAdd'),
           chip:(chip&&!chip.hidden)?chip.textContent.trim():'',
           chipWhy:(chip&&!chip.hidden)?(chip.title||''):''};
  });

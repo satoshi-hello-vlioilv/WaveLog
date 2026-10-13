@@ -1,4 +1,4 @@
-# 画面の土台（53件）
+# 画面の土台（54件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 「戻る」の前に画面が聞ける（`registerView({beforeLeave})`・断られたら留まる）。保存していない変更を黙って捨てない | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 全幅と戻るは画面が名乗る（`registerView({focus,back})`）。答えは`enterView()`。戻る先は入る直前の左メニューの行き先で、字にその名前 | `test_mmshell.js` | [§9.593](../../docs/decisions/9.593.md) |
 | 式を文のように組み立てる部品は`WL.formulaBuilder`の1箇所（節＝列・見方・値・比べ方を「かつ／または」で）。式の字へ変えるだけ、見方の語彙は呼ぶ側（`hows`） | `test_stoprulemaster.js` | [§9.590](../../docs/decisions/9.590.md) |
 | 押し続けると続けて動くボタンは`WL.base.holdRepeat()`の1箇所（押下で1回→400ms後からくり返し・`fn()`が`false`で止まる・鍵盤は1回ずつ） | `test_opwidget.js` | [§9.585](../../docs/decisions/9.585.md) |
@@ -62,4 +63,4 @@
 | 画面のJSは領域フォルダ。綴りは1つ | `test_loadorder.py` | [§9.334](../../docs/decisions/9.334.md) |
 | 設定の窓は「決める順の番号付きの節」で、同じ値を2箇所に出さない | `test_eqsetup.js` | [§9.257](../../docs/decisions/9.257.md) |
 | モーダルは背景クリックで閉じない | `test_modalkeep.js` | [§9.221](../../docs/decisions/9.221.md) |
-| マスタの1行を直す窓は汎用モーダル1枚 | — | [§9.222](../../docs/decisions/9.222.md) |
+| 【§9.598で改めた】マスタの1行を直す窓は汎用モーダル1枚（汎用の表のマスタは右の詳細） | — | [§9.222](../../docs/decisions/9.222.md) |

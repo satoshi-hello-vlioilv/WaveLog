@@ -27,6 +27,13 @@ run('test_shift: 勤務体系の編集（テンプレート・保存・区分追
  // テンプレートから 交替勤務(1,2,3直) を作る
  await page.click('#shiftNew');
  await W.until(page,()=>[...document.querySelectorAll('[data-shift-tmpl]')].some(x=>x.textContent.includes('1,2,3直')),null,{ms:4000,what:'テンプレートの札が出る'});
+ /* 1f（§9.598）: 「＋ 勤務体系を追加」は頭の主の操作で、▾ のメニュー（空・テンプレート）を開く。メニューは右の詳細の ⋯ と同じ
+    `#mmActMenu`（形を1つに）。 */
+ const menu=await page.evaluate(()=>{const m=document.querySelector('#mmActMenu');
+  return {open:!!m&&!m.hidden,caret:!!document.querySelector('#shiftNew .mm-hd-caret'),
+   items:[...document.querySelectorAll('#mmActMenu [data-shift-tmpl] b')].map(b=>b.textContent)}});
+ rec('「＋ 勤務体系を追加」は ▾ のメニューで空・テンプレートを選ぶ（§9.598 1f）',
+     menu.open&&menu.caret&&menu.items[0]==='空の勤務体系'&&menu.items.length>=2,JSON.stringify(menu));
  await page.evaluate(()=>{const b=[...document.querySelectorAll('[data-shift-tmpl]')].find(x=>x.textContent.includes('1,2,3直'));if(b)b.click()});
  await W.until(page,()=>(document.querySelector('#shiftName')||{}).value==='交替勤務(1,2,3直)'&&document.querySelectorAll('.shift-seg').length===3,null,{ms:4000,what:'テンプレートの3区分が入る'});
  const t=await page.evaluate(()=>({
@@ -37,7 +44,8 @@ run('test_shift: 勤務体系の編集（テンプレート・保存・区分追
      e:el.querySelector('.shift-seg-end').value,
      next:el.querySelector('.shift-seg-next').textContent})),
    timeInputs:document.querySelectorAll('.shift-seg input[type="time"]').length,
-   bars:document.querySelectorAll('.shift-bar-piece').length,
+   bars:document.querySelectorAll('.shift-bar .shift-bar-piece').length,   // 左の一覧の小さな帯（.shift-mini24）は数えない
+   barNames:[...document.querySelectorAll('.shift-bar .shift-bar-piece b')].map(b=>b.textContent),
  }));
  rec('テンプレート1クリックで階層(体系+3区分)が入る',t.name==='交替勤務(1,2,3直)'&&t.segs.length===3,JSON.stringify(t.segs));
  rec('時刻はinput[type=time](直打ち回避)',t.timeInputs===6,'time inputs='+t.timeInputs);
@@ -45,6 +53,25 @@ run('test_shift: 勤務体系の編集（テンプレート・保存・区分追
  rec('24時間バーが描かれる(日跨ぎは2本に分割)',t.bars===4,'pieces='+t.bars);
  const cov=await page.evaluate(()=>document.querySelector('#shiftCoverage')?.textContent);
  rec('カバレッジが可視化される',/24時間をすべてカバー/.test(cov||''),cov);
+ /* 1f: 帯は区分の名前を書く（色だけで言わない）。カバーの字は帯の真下。入力中の区分は帯の同じ所が光る（図と入力を結ぶ）。 */
+ rec('帯に区分の名前が書かれる（色だけで言わない）',['1直','2直','3直'].every(n=>t.barNames.includes(n)),JSON.stringify(t.barNames));
+ rec('カバーの字は帯の真下',await page.evaluate(()=>!!document.querySelector('.shift-bar-wrap #shiftCoverage')),'');
+ await page.locator('.shift-seg').nth(2).locator('.shift-seg-name').focus();
+ await W.until(page,()=>document.querySelector('.shift-seg[data-i="2"].is-focus')&&document.querySelectorAll('.shift-bar .shift-bar-piece.is-hot').length>0,null,{ms:4000,what:'入力中の区分と帯が光る'});
+ const hot=await page.evaluate(()=>[...document.querySelectorAll('.shift-bar .shift-bar-piece.is-hot')].map(p=>p.dataset.seg));
+ rec('入力中の区分は帯の同じ所が光る（日跨ぎは2本とも）',hot.length===2&&hot.every(x=>x==='2'),JSON.stringify(hot));
+ const foot0=await page.evaluate(()=>({st:document.querySelector('#shiftDirty')?.textContent||'',save:document.querySelector('#shiftSave')?.disabled}));
+ rec('作ったばかりの体系は「入力あり」で保存を押せる',/^入力あり/.test(foot0.st)&&foot0.save===false,JSON.stringify(foot0));
+ /* 適用設備は「n/N」。全部選ぶと「すべて選ぶ」は押せない。元（全設備共通）へ戻してから保存する
+    ——全部の設備を付けて保存すると、フィクスチャの体系から設備を奪う（後片付けは増えた行しか消さない）。 */
+ const eq0=await page.evaluate(()=>document.querySelector('.shift-eq-count')?.textContent||'');
+ await page.click('#shiftEqAll');
+ await W.until(page,()=>document.querySelector('#shiftEqAll')?.disabled===true,null,{ms:4000,what:'「すべて選ぶ」が押せなくなる'});
+ const eq1=await page.evaluate(()=>document.querySelector('.shift-eq-count')?.textContent||'');
+ const [n1,N1]=(eq1.match(/(\d+)\s*\/\s*(\d+)/)||[]).slice(1).map(Number);
+ rec('適用設備は「n/N」で、全部選ぶと「すべて選ぶ」は押せない',N1>0&&n1===N1,`前 ${eq0} → 後 ${eq1}`);
+ await page.click('#shiftEqNone');
+ await W.until(page,()=>document.querySelector('#shiftEqNone')?.disabled===true,null,{ms:4000,what:'全設備共通へ戻る'});
 
  /* ---- 現場歴の日付補正(§9.195) ----
     日を跨ぐ区分にだけ「日付の数え方」を出す。跨がない区分に置くと、
@@ -100,6 +127,25 @@ run('test_shift: 勤務体系の編集（テンプレート・保存・区分追
  const p=(saved.items||[]).find(x=>x.name==='交替勤務(1,2,3直)');
  rec('保存され、階層のままサーバーに入る',!!p&&p.segments.length===3,p?JSON.stringify(p.segments):'not found');
 
+ /* 1f: 保存した後は「変更なし」で、保存・キャンセルは押せない。削除は頭の ⋯ のメニュー（赤の字）。打つと「変更あり」、
+    キャンセルで開いたときの値へ戻る（閉じない）。 */
+ await W.until(page,()=>/^変更なし/.test(document.querySelector('#shiftDirty')?.textContent||''),null,{ms:8000,what:'保存の後は「変更なし」'});
+ const foot1=await page.evaluate(()=>({save:document.querySelector('#shiftSave')?.disabled,cancel:document.querySelector('#shiftCancel')?.disabled,
+  more:!!document.querySelector('#shiftMore'),delInFoot:!!document.querySelector('.mm-dfoot [id*="Del"],.shift-actions [id*="Del"]')}));
+ rec('保存の後は「変更なし」で保存・キャンセルを押せない・削除は足元に無い',foot1.save&&foot1.cancel&&foot1.more&&!foot1.delInFoot,JSON.stringify(foot1));
+ await page.click('#shiftMore');
+ await W.until(page,()=>{const m=document.querySelector('#mmActMenu');return !!m&&!m.hidden&&!!m.querySelector('[data-shift-act="delete"]')},null,{ms:4000,what:'⋯ のメニューに削除が出る'});
+ const del=await page.evaluate(()=>{const b=document.querySelector('#mmActMenu [data-shift-act="delete"]');return {danger:b.classList.contains('is-danger'),text:b.textContent}});
+ rec('削除は ⋯ のメニューの赤の字',del.danger&&/削除/.test(del.text),JSON.stringify(del));
+ await page.keyboard.press('Escape');
+ await W.until(page,()=>document.querySelector('#mmActMenu')?.hidden===true,null,{ms:4000,what:'Esc でメニューが閉じる'});
+ await page.fill('#shiftName','交替勤務(1,2,3直)の写し');
+ await W.until(page,()=>/^変更あり/.test(document.querySelector('#shiftDirty')?.textContent||'')&&document.querySelector('#shiftSave')?.disabled===false,null,{ms:4000,what:'打つと「変更あり」'});
+ await page.click('#shiftCancel');
+ await W.until(page,()=>document.querySelector('#shiftName')?.value==='交替勤務(1,2,3直)'&&/^変更なし/.test(document.querySelector('#shiftDirty')?.textContent||''),null,{ms:4000,what:'キャンセルで元の値へ'});
+ rec('打つと「変更あり」・キャンセルで開いたときの値へ戻る（閉じない）',
+     await page.evaluate(()=>!!document.querySelector('.shift-editor')&&document.querySelector('#shiftName').value==='交替勤務(1,2,3直)'),'');
+
  // 区分追加は前の区分の終了時刻を引き継ぐ
  const nSeg=await page.$$eval('.shift-seg',x=>x.length);
  await page.click('#shiftAddSeg');
@@ -107,6 +153,22 @@ run('test_shift: 勤務体系の編集（テンプレート・保存・区分追
  const added=await page.evaluate(()=>{const els=[...document.querySelectorAll('.shift-seg')];const l=els[els.length-1];
    return {n:l.querySelector('.shift-seg-name').value,s:l.querySelector('.shift-seg-start').value,prevEnd:els[els.length-2].querySelector('.shift-seg-end').value}});
  rec('区分追加時に直前の終了時刻を開始の初期値にする',added.s===added.prevEnd,JSON.stringify(added));
+
+ /* 1i（§9.598）: 区分を消すのは行の ⋯ のメニュー（主の動線に×を置かない）。保存するまではキャンセルで戻せる。 */
+ const nNow=await page.$$eval('.shift-seg',x=>x.length);
+ const segBtns=await page.evaluate(()=>({x:document.querySelectorAll('.shift-seg .shift-seg-del').length,more:document.querySelectorAll('.shift-seg .shift-seg-more').length}));
+ await page.locator('.shift-seg').last().locator('.shift-seg-more').click();
+ await W.until(page,()=>{const m=document.querySelector('#mmActMenu');return !!m&&!m.hidden&&!!m.querySelector('[data-shift-seg-act="delete"]')},null,{ms:4000,what:'区分の ⋯ に「この区分を消す」'});
+ const segDel=await page.evaluate(()=>{const b=document.querySelector('#mmActMenu [data-shift-seg-act="delete"]');return {danger:b.classList.contains('is-danger'),text:b.textContent}});
+ await page.click('#mmActMenu [data-shift-seg-act="delete"]');
+ await W.until(page,n=>document.querySelectorAll('.shift-seg').length===n-1,nNow,{ms:4000,what:'区分が1つ減る'});
+ rec('区分の行に×は無く、⋯ のメニュー（赤の字）から消す',segBtns.x===0&&segBtns.more===nNow&&segDel.danger,JSON.stringify({segBtns,segDel}));
+ /* 足元（キャンセル・保存）は右の下端（設備停止・右の詳細と同じ場所）。 */
+ const foot2=await page.evaluate(()=>{const f=document.querySelector('.shift-detail>.mm-dfoot').getBoundingClientRect(),w=document.querySelector('#masterMaintPanel .mm-list-wrap').getBoundingClientRect();return {fb:Math.round(f.bottom),wb:Math.round(w.bottom)}});
+ rec('足元は右の下端にある',foot2.wb-foot2.fb>=0&&foot2.wb-foot2.fb<=24,JSON.stringify(foot2));
+ /* 足して消したので元と同じ形なら「変更なし」でキャンセルは押せない（押せるときだけ押す）。 */
+ if(!(await page.$eval('#shiftCancel',b=>b.disabled)))await page.click('#shiftCancel');
+ await W.until(page,()=>/^変更なし/.test(document.querySelector('#shiftDirty')?.textContent||''),null,{ms:4000,what:'キャンセルで元へ'});
 
  /* **後始末。** 勤務体系はマスタDBに残り、実行をまたいで生き延びる(§9.121)。
     片付けないと、同じ名前の体系が回すたびに1件ずつ増えていく(実際に18件

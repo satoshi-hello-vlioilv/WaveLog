@@ -1204,41 +1204,57 @@
 /* ---------- 勤務体系マスタの専用エディタ(親: 勤務体系 / 子: 勤務区分) ----------
    左に登録済みの体系、右にその中身。時刻はinput[type=time]で直打ちを避け、
    24時間バーで「どの時間帯が埋まっているか」を色で示す。 */
-.shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:start}
+/* 器の高さいっぱい（`is-fill`・設備停止と同じ）。足元は右の下端・中身が長ければ右だけ送る（§9.598 1i）。 */
+.shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:stretch;flex:1;min-height:0;padding-top:var(--space-4)}
+.shift-list{overflow:auto}
 .shift-list{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0}
-.shift-list-head{font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.06em;color:var(--muted);padding:0 4px 2px}
-.shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer;text-align:left;min-width:0;width:100%}
+.shift-list-head{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);padding:0 4px 2px}
+.shift-list-n{font-style:normal;margin-left:var(--space-1);color:var(--muted)}
+/* 左の一覧の小さな24時間の帯（§9.598）: 開かずに「どの時間帯を埋める体系か」を読む。 */
+.shift-mini24{position:relative;display:block;width:100%;height:4px;margin:2px 0;border-radius:var(--radius-xs);background:var(--surface-3);overflow:hidden}
+.shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-card);border:1px solid transparent;border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:var(--surface);cursor:pointer;text-align:left;min-width:0;width:100%}
 .shift-list-item b{font-size:var(--fs-base-sm);color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shift-list-item small{font-size:var(--fs-sm);color:var(--muted)}
-.shift-list-item:hover{border-color:var(--teal);background:var(--surface-2)}
-.shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
+.shift-list-item:hover{background:var(--surface-2)}
+.shift-detail{min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:var(--space-2)}
+.shift-detail>.mm-dfoot{margin-top:auto;position:sticky;bottom:0;background:var(--surface)}
 /* **器は中身の長さから決める**(CLAUDE.md §11)。以前は`flex:1 1 240px`＋
    `width:100%`で、勤務体系の名称（長くても20字ほど）の入力欄が枠いっぱい
    ——600px超——まで伸びていた。名称は`--w-xl`(22em)で頭打ちにし、余りは
    適用設備へ渡す（関係の近いものへ渡す。§9.126）。 */
-.shift-fields{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--space-3);align-items:start}
+/* 広い詳細の欄は**左に名前の列**（設備停止の基本・共通設定と同じ形・§9.598 1i）。名前の列の幅は`--w-md`の1つ。 */
+.shift-fields{display:flex;flex-direction:column;gap:var(--space-3)}
+.mm-field.shift-f-name{display:grid;grid-template-columns:var(--w-md) minmax(0,1fr);align-items:center;column-gap:var(--space-2)}
 .shift-f-name input{width:100%;max-width:var(--w-xl)}
-.shift-f-eq{min-width:0}
-.shift-eq-bar{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
-  margin-bottom:var(--gap-hair)}
-/* **何が選ばれているかを文字で言う**(§3)。チェックの見た目だけだと、設備が
-   多いときに「全設備共通なのか選び忘れなのか」が読めない。 */
-.shift-eq-sum{font-size:var(--fs-sm);color:var(--ink-2)}
-.shift-eq-sum b{color:var(--ink)}
-.shift-eq-act{margin-left:auto;display:flex;gap:var(--gap-inline)}
+/* 適用設備: 見出し「適用設備 n/N」と操作は1行目、札はその下（§9.598）。**何が選ばれているかを文字で言う**(§3)——
+   数は見出し、名前は札（同じことを2か所に並べない）。 */
+.mm-field.shift-f-eq{display:grid;grid-template-columns:var(--w-md) minmax(0,1fr) auto;align-items:start;column-gap:var(--space-2);min-width:0}
+.shift-f-eq>.shift-eq-head{grid-column:1;grid-row:1;display:flex;align-items:center;min-height:var(--ctl-h-sm)}
+.shift-f-eq>.shift-eq-picker{grid-column:2;grid-row:1;padding-top:0}
+.shift-f-eq>.shift-eq-act{grid-column:3;grid-row:1}
+.shift-eq-count{font-style:normal;margin-left:var(--space-1);color:var(--muted);font-weight:var(--fw-ui)}
+.shift-eq-act{display:flex;gap:var(--gap-inline)}
 /* 設備名のタグを**詰めて並べる**(§9.197、利用者の指示「コンパクトかつ
    モダン」)。以前はマス目に割っていたが、1マスに1つのチェックボックスだと
    3行ぶんの高さを使って名前が数個しか出せず、器のほうが中身より大きかった
    （§11・§12）。タグは名前の長さなりなので、同じ高さに倍以上入る。
    多いときだけスクロールする。 */
+/* 札の器は枠を持たない（枠の中に枠を作らない・§9.598）。 */
 .shift-eq-picker{display:flex;flex-wrap:wrap;align-content:flex-start;
-  gap:var(--gap-tight);max-height:9em;overflow:auto;
-  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
-  padding:var(--gap-tight);background:var(--surface-2)}
+  gap:var(--gap-tight);max-height:9em;overflow:auto;padding-top:var(--gap-tight)}
 /* 24時間バー: 左端0時・右端24時。区分ごとに色を変え、日跨ぎは両端に分けて描く。 */
 .shift-bar-wrap{display:grid;gap:2px}
 .shift-bar{position:relative;height:22px;border:1px solid var(--line);border-radius:var(--radius-sm);background:repeating-linear-gradient(90deg,var(--surface-2) 0,var(--surface-2) calc(100%/24 - 1px),var(--surface-3) calc(100%/24 - 1px),var(--surface-3) calc(100%/24));overflow:hidden}
-.shift-bar-piece{position:absolute;top:0;bottom:0;opacity:.9}
+.shift-bar-piece{position:absolute;top:0;bottom:0;opacity:.9;overflow:hidden}
+/* 帯に区分の名前を書く（色だけで言わない・§9.598）。入らない幅では「…」。 */
+.shift-bar-piece>b{display:block;padding:0 var(--space-1);color:var(--surface);font-size:var(--fs-sm);font-weight:var(--fw-ui);line-height:20px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 入力中の区分（行に焦点がある）は帯の同じ区分を縁で示す（図と入力を結ぶ）。 */
+.shift-bar-piece.is-hot{opacity:1;box-shadow:inset 0 0 0 2px var(--ink)}
+/* 帯の真下に「24時間を埋めているか」を字と印で（帯が何を言っているかを読ませる）。 */
+.shift-cov{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+.shift-cov:empty{display:none}
+.shift-cov.is-ok{color:var(--success)}
+.shift-cov.is-warn{color:var(--warn-fg)}
 .shift-bar-noon{position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--line-strong)}
 .shift-bar-scale{display:flex;justify-content:space-between;font-size:var(--fs-tiny);color:var(--muted)}
 .shift-bar-piece[data-i="0"],.shift-seg-dot[data-i="0"]{background:#0a8993}
@@ -1252,7 +1268,8 @@
    名称欄の長さが行ごとに変わり列として追えなかった。
    **見出しも本文と同じ文字サイズにする**——列幅が`em`なので、見出しだけ
    小さくすると同じ`--w-sm`が別の幅になる（§9.193で実際に踏んだ）。 */
-.shift-segs{display:grid;gap:var(--gap-hair)}
+/* 表は中身の幅で止める（行の操作を本文のすぐ後ろへ・右に空いた帯を引かない・§9.598 1j）。 */
+.shift-segs{display:grid;gap:0;align-self:flex-start;max-width:100%}
 .shift-seg,.shift-seg-head{display:grid;align-items:center;gap:var(--space-2);
   /* **`auto`を使わないこと。** 見出しと本文は別々の要素なので、`auto`は
      それぞれの中身で解決される——見出しの「時間帯」と本文の時刻2つでは
@@ -1265,9 +1282,10 @@
     var(--w-xs)         /* 日跨ぎの印 */
     var(--w-xl)         /* 日付の数え方 */
     var(--w-md);        /* 操作（3つのボタン。実測7.8em→11em） */
-  padding:var(--pad-row);border:1px solid var(--line);border-radius:var(--radius-sm);
-  background:#fff;font-size:var(--fs-sm)}
-.shift-seg-head{background:var(--surface-2);border:1px solid transparent;
+  /* 行は枠で囲まず細い線で区切る（§9.598・表の行と同じ）。 */
+  padding:var(--pad-row);border:0;border-bottom:1px solid var(--line);border-radius:0;
+  background:var(--surface);font-size:var(--fs-sm)}
+.shift-seg-head{background:var(--surface-2);border-bottom-color:transparent;
   color:var(--muted);font-weight:var(--fw-strong);padding-top:2px;padding-bottom:2px}
 .shift-seg-h{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shift-seg-dot{flex:none;width:10px;height:10px;border-radius:var(--radius-round)}
@@ -1283,12 +1301,11 @@
 .shift-seg-dayoff{width:100%;height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 .shift-seg-dayoff.is-na{display:block;color:var(--muted);text-align:center;
   border:none;background:none;height:auto}
-.shift-seg-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
+.shift-seg-act{display:flex;gap:var(--gap-inline);justify-content:flex-start}
 .shift-seg button{flex:none;width:26px;border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:var(--muted)}
+.shift-seg .shift-seg-more{height:auto;align-self:stretch}
 .shift-seg button:disabled{opacity:var(--op-disabled);cursor:default}
 .shift-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
-.shift-actions-tail{margin-left:auto;display:flex;gap:var(--space-2)}
-.shift-cov-ok{color:var(--success);font-weight:var(--fw-strong)}
 /* ---------- 狭い枠に置いた仕掛一覧の横スクロール ----------
    ポップアップ表示(.sc-float-body)・分割表示(.sc-split-wrap)では、一覧の
    幅より表の方が広いのが普通。既定のoverflow:autoだと「今は足りている」

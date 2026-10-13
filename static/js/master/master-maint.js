@@ -8,7 +8,7 @@
      master-data.js    データと接続・作業スケジュール・管理の専用画面
      master-opdata.js  操業データ項目・選択肢・記録した値の配置の専用画面
    ファイル間の受け渡しは **`WL.mm`** の1つだけ（素の`window.*`を増やさない）。
-   専用画面は `WL.mm.registerSpecial(key,{load,onEditorClose})` で名乗り、
+   専用画面は `WL.mm.registerSpecial(key,{load,onEditorClose,dirty})` で名乗り、
    盤は `WL.mm.special` の登録簿から引く——画面を1つ足しても盤の`if`を
    足さなくてよい。読み込み順は backend/routes/core.py の JS_FILES
    （master-defs.js → master-maint.js → 専用画面の3本）。
@@ -20,7 +20,7 @@
  WL.mm.special=WL.mm.special||{};
  WL.mm.registerSpecial=(key,handlers)=>{WL.mm.special[key]=handlers};
  const MASTER_DEFS=WL.mm.MASTER_DEFS,MASTER_GROUPS=WL.mm.MASTER_GROUPS;
- let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,meta:{},loadGen:0};
+ let maintState={defKey:MASTER_DEFS[0].key,items:[],itemsKey:'',editing:null,meta:{},loadGen:0};   // `itemsKey`＝`items`がどのマスタの行か
  /* ---------- 専用タブを持たないマスタ（§9.249 ②） ----------
     タブの一覧は**固定のMASTER_DEFSと、サーバーが答える表から作った分**の
     2本立て。**どちらも同じ`def`の形**にしてあるので、一覧・編集モーダル・
@@ -208,7 +208,9 @@
    b.onclick=toggle;
    b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};
   });
-  nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>{maintState.defKey=b.dataset.master;maintState.editing=null;syncNav();loadMaint(true)});
+  /* 右の詳細に保存していない変更があれば先に聞く（§9.598・`afterLeave`）。 */
+  nav.querySelectorAll('[data-master]').forEach(b=>b.onclick=()=>afterLeave(()=>{
+   maintState.defKey=b.dataset.master;maintState.editing=null;syncNav();loadMaint(true)}));
   syncNav();
  }
 
@@ -247,7 +249,7 @@
   document.documentElement.setAttribute('data-hint',hintLevel());
   const hb=$('#mmHintBadge');
   if(hb)hb.onclick=()=>{if(mmHintMenu)closeHintMenu();else openHintMenu(hb)};
-  $('#reloadMasterMaint').onclick=()=>loadMaint(true);
+  $('#reloadMasterMaint').onclick=()=>afterLeave(()=>loadMaint(true));
   const find=$('#masterMaintFind');
   if(find){
    WL.base.onTyped(find,()=>renderMaintNav());
@@ -258,6 +260,9 @@
     else if(e.key==='Escape'&&find.value){e.preventDefault();find.value='';renderMaintNav()}
    });
   }
+  /* 送った一覧の上端には区切りの線（§9.598 1i）——途中の行が「マスタを探す」の下へ潜って切れたように見えていた。 */
+  const navEl=$('#masterMaintNav'),side=navEl&&navEl.closest('.mm-side');
+  if(navEl&&side)navEl.addEventListener('scroll',()=>side.classList.toggle('is-scrolled',navEl.scrollTop>0),{passive:true});
   renderMaintNav();
   return panel;
  }
@@ -281,7 +286,10 @@
   focus:true,back:true,
   /* 操作は3つだけなので、ヘッダーの1行目へ相乗りする（§9.266）。 */
   compactToolbar:true,
-  header:['マスタ管理','登録内容の追加・編集・無効化（更新者IDとともに記録）'],exit:exitMasterMaint});
+  header:['マスタ管理','登録内容の追加・編集・無効化（更新者IDとともに記録）'],exit:exitMasterMaint,
+  /* 右の詳細は一覧と並んでいて「戻る」を押せる（窓のように覆わない）。保存していない変更があれば先に聞く（§9.598）。 */
+  beforeLeave:()=>paneMayLeave()});
+ WL.closeGuard&&WL.closeGuard.hold('master-pane',()=>paneDirty()?'マスタの右の詳細に保存していない変更があります':'');
  function syncNav(){document.querySelectorAll('#masterMaintNav [data-master]').forEach(b=>b.classList.toggle('active',b.dataset.master===maintState.defKey))}
  /* いまの更新者IDをボタンへ書く。**IDは`/api/whoami`から後から届く**
     （§9.184と同じ罠）ので、届いていなければその場で取りに行く。 */
@@ -372,7 +380,7 @@
   return `<span class="mm-num" data-num-wrap>
     <button type="button" class="mm-num-btn" data-num-step="-1" tabindex="-1" aria-label="${esc(f.label)}を減らす">−</button>
     <input data-field="${f.k}" class="mm-num-input" type="text" inputmode="decimal" autocomplete="off"
-           value="${esc(numDisplay(val))}" ${attrs.join(' ')}>
+           value="${esc(numDisplay(val))}"${f.blank?` placeholder="${esc(f.blank)}"`:''} ${attrs.join(' ')}>
     <button type="button" class="mm-num-btn" data-num-step="1" tabindex="-1" aria-label="${esc(f.label)}を増やす">＋</button>
     ${f.unit?`<span class="mm-num-unit">${esc(f.unit)}</span>`:''}
    </span>`;
@@ -391,9 +399,9 @@
     （読み方の好みなのでPCごとに違ってよい・§9.199／§9.242 ⑥）。
     **既定は今までどおり`full`**——わざわざ選んでいない人の見え方を変えない。
 
-    **`?`（くわしい説明）は消さない**——押したときだけ開く、場所を取らない
+    **ⓘ（くわしい説明）は消さない**——乗せる・押すで開く、場所を取らない
     入口なので、消すと「短め」にした人が全文へ辿り着けなくなる（§9.234 ①
-    「消した説明は落とし先を用意する」）。だから`off`でも`?`は残す。
+    「消した説明は落とし先を用意する」）。だから`off`でも ⓘ は残す。
 
     **通すのは`hintHtml()`の1箇所**（§9.163）——説明を出す場所は十数箇所
     あるので、そこへ足すと**足し忘れた欄だけが長いまま残る**。 */
@@ -441,7 +449,7 @@
   return `<button type="button" id="mmHintBadge" class="mm-btn-ghost mm-head-icobtn mm-hintbadge"`
    +` aria-haspopup="true" aria-expanded="false"`
    +` title="欄の下に出る説明文の量を選びます（いまは「${esc(cur.label)}」）。`
-   +`「くわしい説明」（?）はどの段でも読めます">`
+   +`「くわしい説明」（ⓘ）はどの段でも読めます">`
    +`<span class="mm-hint-ico" aria-hidden="true">💬</span><b id="mmHintLabel">${esc(cur.label)}</b></button>`;
  }
  /* 浮きメニュー。**器は`body`直下**（`#mmHead`は`overflow`を持つ器の中に
@@ -475,7 +483,7 @@
    if(lab)lab.textContent=cur2.label;
    const badge=$('#mmHintBadge');
    if(badge)badge.title=`欄の下に出る説明文の量を選びます（いまは「${cur2.label}」）。`
-     +`「くわしい説明」（?）はどの段でも読めます`;
+     +`「くわしい説明」（ⓘ）はどの段でも読めます`;
    closeHintMenu();
    refreshMaintScreen();
   });
@@ -508,12 +516,60 @@
      使ってわかりやすく階層化しながらコンパクトに表示・説明する方法も」
 
     常時出すのは**リード文（`hint`）だけ**で、詳しい話は`hintMore`の節へ畳む
-    （`<details>`——欄の`?`と同じ言語・§9.250 ④）。**節は既定で閉じる**
+    （`<details>`——押して開く・§9.250 ④）。**節は既定で閉じる**
     ——開いておくと畳んだ意味が無い。
     **`hintHtml()`を通す**（§9.163）ので、説明の量（通常／短め／出さない）が
     リード文へそのまま効き、`**強調**`も同じ書き方でよい。
     **「出さない」でも節は残す**——押したときだけ開く入口なので、消すと
-    短くした人が全文へ辿り着けなくなる（§9.234 ①・`?`と同じ約束）。 */
+    短くした人が全文へ辿り着けなくなる（§9.234 ①・欄の ⓘ と同じ約束）。 */
+ /* ---------- 頭の行（§9.598・AA）----------
+    どのマスタも同じ形で言う: 画面名（左の一覧と同じ呼び名）・用途の1行・ⓘ（説明の残りと畳んだ節）。
+    用途は呼び名の「—」の後ろ（`titleText`）、無ければ説明の最初の1文。**同じ字を2か所に出さない**——
+    用途に使った文は ⓘ に入れない。 */
+ function headTextOf(def){
+  const t=String((def&&def.titleText)||''),i=t.indexOf('—');
+  const sub=i>=0?t.slice(i+1).trim():'';
+  const hint=String((def&&def.hint)||'');
+  const sents=hint.split('。').filter(s=>s.trim()).map(s=>s+'。');
+  return {name:(def&&def.label)||t,lead:String((def&&def.lead)||sub||sents[0]||'').replace(/\*\*/g,''),
+   info:sub?hint:sents.slice(1).join('')};
+ }
+ function paintMaintHead(def){
+  const h=headTextOf(def);
+  const title=$('#masterMaintTitle');if(title)title.textContent=h.name;
+  const lead=$('#masterMaintLead');if(lead){lead.textContent=h.lead;lead.hidden=!h.lead}
+  const slot=$('#masterMaintInfo');if(!slot)return;
+  const secs=hintSectionsHtml(def);
+  slot.innerHTML=(h.info||secs)?tipHtml(h.info||h.name):'';
+  const b=slot.querySelector('[data-tip]');if(!b)return;
+  b.__wlTipHtml=()=>(h.info?`<div class="wl-tip-body">${WL.markup(h.info)}</div>`:'')+secs;
+  WL.popMenu.tips(slot);
+ }
+ /* 頭の右端（§9.598）: 主の操作は1つだけ（`primary`）。一覧の上の道具（Excel・まとめて削除・見本など）は「⋯」で
+    開け閉めする帯（`tools`＝`#masterMaintForm`の中身）。専用の画面もここへ名乗る（各自の器に「追加」を置かない）。
+    `quiet`は詳細が見えているあいだ——塗りの主ボタンは詳細の足元の保存の1つにする（AA の決まり）。
+    `links`は1押しで行く約束の入口（縁取りのボタン・HTML）で、⋯ と主の操作の左に並ぶ。 */
+ let toolsOpenKey='';   // 「⋯」の帯を開いているマスタ（別のマスタへ移ると畳む）
+ function setHeadActs(o){
+  const box=$('#masterMaintActs'),form=$('#masterMaintForm');if(!box)return;
+  o=o||{};box.innerHTML=o.links||'';
+  if(o.tools&&form){
+   /* 開け閉めは**同じマスタにいる間は覚える**——取り込みのあとに一覧を読み直しても、結果の字が畳まれて消えない。 */
+   const key=maintState.defKey,open=toolsOpenKey===key;
+   box.insertAdjacentHTML('beforeend',`<button type="button" class="mm-btn-ghost mm-hd-more" id="masterMaintTools" aria-expanded="${open}" aria-controls="masterMaintForm" aria-label="一覧の道具" title="${esc(o.tools)}"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`);
+   form.hidden=!open;
+   $('#masterMaintTools').onclick=ev=>{const on=form.hidden;form.hidden=!on;toolsOpenKey=on?key:'';ev.currentTarget.setAttribute('aria-expanded',String(on))};
+  }
+  if(o.primary){
+   const p=o.primary,menu=Array.isArray(p.menu)&&p.menu.length;
+   box.insertAdjacentHTML('beforeend',`<button type="button" id="${esc(p.id)}" class="mm-btn-primary mm-hd-primary${o.quiet?' is-quiet':''}"`
+    +`${menu?' aria-haspopup="menu" aria-expanded="false"':''}${p.title?` title="${esc(p.title)}"`:''}>＋ ${esc(p.label)}${menu?'<i class="mm-hd-caret" aria-hidden="true">▾</i>':''}</button>`);
+   const b=$('#'+p.id);
+   /* ▾ を持つ主の操作は押すと「どう作るか」を選ぶ（空から・テンプレートから）。選ぶまで何も作らない。 */
+   b.onclick=menu?()=>openActMenu(b,p.menu,p.label):p.onClick;
+  }
+ }
+ function quietHeadAct(on){const b=$('#masterMaintActs .mm-hd-primary');if(b)b.classList.toggle('is-quiet',!!on)}
  function hintSectionsHtml(def){
   const secs=(def&&def.hintMore)||[];
   if(!secs.length)return '';
@@ -527,55 +583,24 @@
     4箇所が同じ形になるので、`hintMore`を足したマスタは自動で階層になる。
     **編集窓では節を出さない**（§CLAUDE 8「窓の説明は一覧の説明と同じに
     しない」）——窓に要るのは「いま決めることの一言」で、マスタ全体の
-    説明は一覧の側が持つ。窓の中の細かい話は各欄の`?`が言う。 */
+    説明は一覧の側が持つ。窓の中の細かい話は各欄の ⓘ が言う。 */
  function defHintHtml(def,text){
   const modal=text!==undefined;
   const t=modal?text:(def&&def.hint);
   const lead=t?`<p class="mm-def-hint">${hintHtml(t)}</p>`:'';
   return modal?lead:(lead+hintSectionsHtml(def));
  }
- /* **消した説明は`title`へ落とす**（§9.234 ①）。欄の説明を短くすると
-    読めるようになるが、消してしまうと調べようが無くなる。`more`を持つ欄は
-    見出しにマウスを当てれば全文が読める（§CLAUDE 8）。 */
+ /* ---------- 欄の見出し（§9.598・1e）----------
+    名前・必須の印・キーの札と、説明の続き（`more`）・空欄のときの理由（`blankWhy`）を持つ ⓘ の1つ。ⓘ は頭の行・共通設定と
+    同じ部品（`tipHtml()`→`WL.popMenu.tips()`・乗せる／鍵盤の焦点／押すで読める・押しても閉じない）。**以前の`?`（押すと
+    欄の下へ開く）はやめた**——同じ役目の物を2つの形にしない（§9.250 ④の「触る画面でも読める」は ⓘ も満たす）。 */
+ const fieldTipText=f=>[f.more,f.blankWhy].filter(Boolean).join(' ');
  function fieldLabelHtml(f){
-  const t=f.more?` title="${esc(f.label+'｜'+String(f.more).replace(/\*\*/g,''))}"`:'';
-  /* ---------- 続きは畳んで置く（§9.250 ④、利用者の指示） ----------
-     「タブとアコーディオンによる情報の階層化、チャンク化を取り入れて」
-
-     以前は`?`が**マウスを乗せたときだけ**出る`title`で、触る画面では
-     一度も読めなかった（説明があること自体は見えているので、
-     「押しても何も起きない」に見える・§4）。押すと開く形にする。
-     `title`は残す——読み方が2つあって困るものではない。 */
-  return `<span${t}>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}`
-   +(f.more?`<button type="button" class="mm-more" aria-expanded="false"`
-     +` aria-label="${esc(f.label)}のくわしい説明" data-more="${esc(String(f.more))}">?</button>`:'')
-   +`</span>`;
+  const tip=fieldTipText(f);
+  return `<span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}${tip?tipHtml(tip):''}</span>`;
  }
- /* 押したら欄の下へ開く。**器へ足すのは押したときだけ**——最初から置くと、
-    畳んでいても`.mm-field`の子が1つ増えて並びの計算が変わる。
-    **`<label>`の中なので`preventDefault()`が要る**（押すと欄へフォーカスが
-    飛んで、開いた瞬間に入力欄が選ばれる）。 */
- function bindMoreToggles(form){
-  form.querySelectorAll('.mm-more').forEach(b=>{
-   if(b.dataset.moreWired)return;
-   b.dataset.moreWired='1';
-   b.onclick=e=>{
-    e.preventDefault();e.stopPropagation();
-    const fld=b.closest('.mm-field');if(!fld)return;
-    let body=fld.querySelector(':scope>.mm-more-body');
-    if(!body){
-     body=document.createElement('small');
-     body.className='mm-more-body';
-     body.innerHTML=hintHtml(String(b.dataset.more||''));
-     fld.appendChild(body);
-    }
-    const on=b.getAttribute('aria-expanded')!=='true';
-    b.setAttribute('aria-expanded',on?'true':'false');
-    b.classList.toggle('is-on',on);
-    body.hidden=!on;
-   };
-  });
- }
+ /* 欄の下の説明（短い1〜2文）。どの型の欄も同じ書き方（量は`hintHtml()`の段に従う）。 */
+ function fieldHintHtml(f){return f&&f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}
  /* master-combo の選択肢は別マスタから取る。同じマスタを何度も引かないよう
     タブを開いている間だけ持つ(登録すると連動して増えるので、保存後の
     loadMaint()で作り直す)。 */
@@ -611,6 +636,62 @@
                          schedule:'予定の本体にする',finish:'完了突合の相手'};
  const CAPABILITY_SHORT={list:'一覧',measure:'測定',plan:'予定',quality:'結合',schedule:'予定本体',finish:'完了突合'};
  /* 一覧の表示用テキスト。保存値そのままだと '*' が生で見えて意味が伝わらない。 */
+ /* 「使わないほう」を持つ札の並び（`check-set`）の一覧の読み方（§9.392）。語彙は`meta[metaKey]`、保存値は行の`rowKey`。
+    字（`cellText`）と印（`cellHtml`）は**同じ答え**を読む。 */
+ const MM_CHECKSET={
+  equipmentFeatures:{metaKey:'equipmentFeatures',rowKey:'disabledFeatures',none:'なし（どこにも出ません）',mark:'tags'},
+  measureItems:{metaKey:'measureItems',rowKey:'disabledMeasureItems',none:'なし（測定できません）',mark:'bar'},
+ };
+ function checkSetState(col,v){
+  const cs=MM_CHECKSET[col.format];if(!cs)return null;
+  const all=(maintState.meta&&Array.isArray(maintState.meta[cs.metaKey]))?maintState.meta[cs.metaKey]:[];
+  if(!all.length)return null;
+  const raw=col.row&&col.row[cs.rowKey];
+  const off=new Set(Array.isArray(raw)?raw:String(raw??v??'').split(',').map(t=>t.trim()).filter(Boolean));
+  return {all,off,on:all.filter(o=>!off.has(o.key))};
+ }
+ /* ---------- 表の値を印にする（§9.598・1d）----------
+    字（`cellText`）は title・並べ替え・探すが使い、**セルの中身だけを印にする**（印は字から作る＝字と印が別のことを言わない）。
+    段の値は ●◐○—（凡例つき）、既定は値に薄い「既定」、未設定は字のまま薄く（§9.85／§9.231——「—」にすると「無い」と読める）、
+    札の並びは札・棒、運用モードは札。 */
+ const MM_LEVEL={'編集可':'full','可':'full','部分的編集可':'half','自分の分だけ':'half','閲覧のみ':'view','不可':'none','非表示':'none','変更不可':'none'};
+ const MM_LEVEL_LEGEND=[['full','できる'],['half','一部'],['view','見るだけ'],['none','できない']];
+ const levelMark=(lv,title)=>`<i class="mm-val-lv is-${lv}" role="img" aria-label="${esc(title)}"></i>`;
+ function levelLegendHtml(){
+  return `<span class="mm-val-legend" aria-label="印の読み方">${MM_LEVEL_LEGEND.map(([k,w])=>`<span>${levelMark(k,w)}${esc(w)}</span>`).join('')}</span>`;
+ }
+ /* 段の印を使う表は凡例を1つ（タブの帯の右端・無ければ表の上）。印だけで言わない（§CLAUDE 3）。 */
+ function paintLevelLegend(def,list){
+  if(!def.cols.some(c=>c.mark==='level'))return;
+  const bar=list.querySelector('.mm-ltabs');
+  if(bar)bar.insertAdjacentHTML('beforeend',levelLegendHtml());
+  else list.querySelector('.mm-row.head').insertAdjacentHTML('beforebegin',`<div class="mm-val-legendbar">${levelLegendHtml()}</div>`);
+ }
+ function cellHtml(col,text){
+  const t=String(text??'');if(!t)return '';
+  if(col.mark==='level'&&MM_LEVEL[t])return levelMark(MM_LEVEL[t],t);
+  const cs=MM_CHECKSET[col.format];
+  if(cs){
+   const st=checkSetState(col,t);
+   /* 全部使う（既定）は「すべて 既定」の薄い字（§9.598 1j）——全行に同じ札・満タンの棒が並ぶと、外した行が目に留まらない。
+      札・棒は外したものがある行だけ（数の既定「40 既定」と同じ考え方）。 */
+   if(st&&st.on.length&&!st.off.size)return `${esc(t)}<span class="mm-val-def">既定</span>`;
+   if(st&&st.on.length){
+    if(cs.mark==='bar'){
+     const pct=Math.round(st.on.length/st.all.length*100);
+     return `<span class="mm-val-bar" role="img" aria-label="${esc(t)}"><i style="width:${pct}%"></i></span><small class="mm-val-n">${st.on.length}/${st.all.length}</small>`;
+    }
+    return `<span class="mm-val-tags">${st.all.map(o=>`<i class="mm-val-tag${st.off.has(o.key)?' is-off':''}">${esc(o.label)}</i>`).join('')}</span>`;
+   }
+   return `<span class="mm-val-none">${esc(t)}</span>`;
+  }
+  /* 運用モードは**厳密だけ札**（橙）。ふつう（通常）は既定と同じ薄い字——全行に同じ札が並ぶと、違う行が目に留まらない（§9.598 1i）。 */
+  if(col.format==='runMode')return col.row&&col.row[col.k]==='strict'?`<i class="mm-val-tag is-warn">${esc(t)}</i>`:`<span class="mm-val-none">${esc(t)}</span>`;
+  const d=t.match(/^(.+?)（既定）$/);
+  if(d)return `${esc(d[1])}<span class="mm-val-def">既定</span>`;
+  if(t==='未設定')return `<span class="mm-val-none">未設定</span>`;
+  return esc(t);
+ }
  function cellText(col,value){
   const v=String(value??'');
   if(col.format==='maxStrips')return v.trim()===''?'40（既定）':v;
@@ -645,20 +726,12 @@
      **0個は「なし」と書き切る**（空欄にすると「まだ決めていない」と読める・§4）。 */
   /* **`check-set`の一覧は1つの書き方**（§9.392で2つ目が増えたので束ねた）。
      語彙は`meta[metaKey]`、保存値は行の`rowKey`（「使わないほう」）。 */
-  const checkSetSummary=(metaKey,rowKey,noneWord)=>{
-   const all=(maintState.meta&&Array.isArray(maintState.meta[metaKey]))?maintState.meta[metaKey]:[];
-   if(!all.length)return '';
-   const off=new Set(Array.isArray(col.row&&col.row[rowKey])?col.row[rowKey]
-    :String(v).split(',').map(t=>t.trim()).filter(Boolean));
-   const on=all.filter(o=>!off.has(o.key));
-   return !on.length?noneWord:on.length===all.length?'すべて':on.map(o=>o.label).join(' / ');
-  };
-  if(col.format==='equipmentFeatures')
-   return checkSetSummary('equipmentFeatures','disabledFeatures','なし（どこにも出ません）');
   /* 使う入力内容（§9.392）。**「なし」は作れない**（サーバーが断る）が、
-     古いデータで全部外れていることはあり得るので言葉は用意しておく。 */
-  if(col.format==='measureItems')
-   return checkSetSummary('measureItems','disabledMeasureItems','なし（測定できません）');
+     古いデータで全部外れていることはあり得るので言葉は用意しておく（`MM_CHECKSET`）。 */
+  if(MM_CHECKSET[col.format]){
+   const st=checkSetState(col,v);if(!st)return '';
+   return !st.on.length?MM_CHECKSET[col.format].none:st.on.length===st.all.length?'すべて':st.on.map(o=>o.label).join(' / ');
+  }
   /* 運用モード（§9.588）。呼び名はサーバーの語彙（`runModes`）——画面へ「通常／厳密」を書き写さない。 */
   if(col.format==='runMode'){
    const m=((maintState.meta&&maintState.meta.runModes)||[]).find(o=>o.key===v);
@@ -708,10 +781,16 @@
      **見本（`asideHtml`）は段の外**に置くので、どの段を見ていても
      刷り上がりが見える（§CLAUDE 14「視覚導線と作業導線を一致させる」）。 */
   if(!def.groupsAsTabs){
-   let prev=null;const out=[];
+   /* **欄が1つの節は欄の名前を出さない**（§9.598・「③ 使える機能／使える機能 ?」のように同じ字が2段に並ぶ）。名前と ⓘ は
+      節の見出しが持つ。必須・キーの印を持つ欄は除く（印ごと消える）。 */
+   const runOf=[];let prev=null,start=0;
+   groups.forEach((g,i)=>{const k=g||prev;if(k!==prev){start=i}runOf[i]=start;prev=k});
+   const size=i=>runOf.filter(x=>x===runOf[i]).length;
+   prev=null;const out=[];
    groups.forEach((g,i)=>{
-    if(g&&g!==prev)out.push(`<h4 class="mm-fieldgroup">${esc(g)}</h4>`);
-    prev=g||prev;out.push(html[i]);
+    const f=(def.fields||[])[i]||{},solo=!!(g||prev)&&size(i)===1&&!f.required&&!f.key;
+    if(g&&g!==prev){const tip=solo?fieldTipText(f):'';out.push(`<h4 class="mm-fieldgroup">${esc(g)}${tip?tipHtml(tip):''}</h4>`)}
+    prev=g||prev;out.push(solo?String(html[i]).replace(/^(\s*<(?:div|label)\b)/,'$1 data-solo=""'):html[i]);
    });
    return out.join('');
   }
@@ -804,6 +883,8 @@
  /* 札は**絵・名前・要対応の数・いまの一言**（§9.583、利用者の報告「タブがわかりにくい」）。
     絵（`icon`＝Font Awesome の名前）は任意。数は段が`data-tab-badge`で名乗る（`paint`が描く）。
     `opt.scroll`を渡すと**札は動かさず中身だけを送る**（段を切り替える場所を探させない）。 */
+ /* `opt.rail`（§9.598 1h）＝札を**左の一覧**に縦に並べる: 絵・名前・副題（`sub`＝何の段か・決まった字）・状態の札
+    （段が`data-tab-state`で名乗る＝OK・要対応 N・停止中…）。いまの一言は札の`title`へ（副題と2行で言わない）。 */
  function pageTabsHtml(items,opt){
   const o=opt||{};
   const tabs=items.map((x,i)=>
@@ -813,12 +894,12 @@
    +(x.icon?`<i class="fa-solid ${esc(x.icon)} mm-tab-icon" aria-hidden="true"></i>`:'')
    +`<span class="mm-fieldgroup">${esc(x.name)}</span>`
    +`<em class="mm-tab-badge" data-mmtab-badge="${i}" hidden></em>`
-   +`<small class="mm-tab-sum" data-mmtab-sum="${i}"></small></button>`).join('');
+   +`<small class="mm-tab-sum" data-mmtab-sum="${i}">${o.rail?esc(x.sub||''):''}</small></button>`).join('');
   const panels=items.map((x,i)=>
    `<section class="mm-tabpanel is-page" role="tabpanel" id="mmPanel${i}"`
    +`${x.key?` data-tab-key="${esc(x.key)}"`:''}`
    +` aria-labelledby="mmTab${i}" data-mmtab="${i}"${i?' hidden':''}>${x.body}</section>`).join('');
-  return `<div class="mm-tabbar is-page" role="tablist">${tabs}</div>`
+  return `<div class="mm-tabbar is-page${o.rail?' is-rail':''}" role="tablist"${o.rail?' aria-orientation="vertical"':''}>${tabs}</div>`
    +`<div class="mm-tabbody is-page${o.scroll?' is-scroll':''}">${panels}</div>`;
  }
  /* 畳み。`open`を渡したときだけ開いた状態で出す（既定は畳む）。
@@ -857,15 +938,20 @@
    /* 段が替わったことを器へ知らせる（段ごとに出し分ける物——保存の帯など——は器の持ち主が受ける） */
    form.dispatchEvent(new CustomEvent('mm-tab',{detail:{panel:panels[i]}}));
   };
+  const rail=bar.classList.contains('is-rail');
   const paint=()=>panels.forEach((p,i)=>{
    const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);
-   if(el)el.textContent=mmTabSummaryText(p);
-   /* 要対応の数（§9.583）。**数だけで言わない**——札の`title`に何の数かを書く（色だけで伝えない・§CLAUDE 3）。 */
+   /* 左の一覧（`rail`）の2行目は決まった副題（何の段か）——いまの一言は札の`title`が持つ。 */
+   if(rail){if(tabs[i])tabs[i].title=mmTabSummaryText(p)}
+   else if(el)el.textContent=mmTabSummaryText(p);
+   /* 要対応の数（§9.583）。**数だけで言わない**——札の`title`に何の数かを書く（色だけで伝えない・§CLAUDE 3）。
+      左の一覧では**状態の札**（`data-tab-state`＝OK・要対応 N・停止中…・字で言う）。 */
    const b=bar.querySelector(`[data-mmtab-badge="${i}"]`);
    if(b){
-    const n=p.dataset.tabBadge||'';
+    const n=rail?(p.dataset.tabState||''):(p.dataset.tabBadge||'');
+    const tone=rail?p.dataset.tabStateTone:p.dataset.tabTone;
     b.hidden=!n;b.textContent=n;
-    b.className='mm-tab-badge'+(p.dataset.tabTone?' is-'+p.dataset.tabTone:'');
+    b.className='mm-tab-badge'+(tone?' is-'+tone:'');
     b.title=p.dataset.tabBadgeTitle||'';
    }
   });
@@ -880,9 +966,11 @@
   tabs.forEach((t,i)=>{
    t.onclick=()=>show(i);
    t.onkeydown=e=>{
-    if(['ArrowRight','ArrowLeft'].indexOf(e.key)<0)return;
+    /* 左の一覧（縦）は ↑↓ も効く（横の札は ←→）。 */
+    const fwd=['ArrowRight'].concat(rail?['ArrowDown']:[]),back=['ArrowLeft'].concat(rail?['ArrowUp']:[]);
+    if(fwd.indexOf(e.key)<0&&back.indexOf(e.key)<0)return;
     e.preventDefault();
-    const nx=(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+    const nx=(i+(fwd.indexOf(e.key)>=0?1:-1)+tabs.length)%tabs.length;
     show(nx);tabs[nx].focus();
    };
   });
@@ -1008,11 +1096,11 @@
        できなくなる）。足したうえで**無いことを文字で言う**（§4）。 */
     const missing=!!val&&!opts.some(eq=>eq.name===val);
     if(!opts.length&&!missing){
-     return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
+     return `<div class="mm-field">${fieldLabelHtml(f)}<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
     }
     const optHtml=(missing?`<option value="${esc(val)}" selected>${esc(val)}（設備マスタにありません）</option>`:'')
       +opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
-    return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}">${missing?'':'<option value="">選択...</option>'}${optHtml}</select>${missing?`<small class="mm-field-hint">この設備は設備マスタにありません（消されたか、名前が変わっています）。**そのままにすれば今の設備名を保ちます**。登録済みの設備へ付け替えることもできます。</small>`:(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')}</label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${missing?'':'<option value="">選択...</option>'}${optHtml}</select>${missing?`<small class="mm-field-hint">この設備は設備マスタにありません（消されたか、名前が変わっています）。**そのままにすれば今の設備名を保ちます**。登録済みの設備へ付け替えることもできます。</small>`:fieldHintHtml(f)}</label>`;
    },
    /* 対象設備を複数選べる欄。作業可能設備(equipment-multi)と同じタグUIだが、
       保存先が配列ではなくカンマ区切りの1列で、さらに「すべての設備」という
@@ -1029,24 +1117,24 @@
     const strayBoxes=strays.map(n=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(n)}" checked hidden>`).join('');
     // 補足文はマスタごとに意味が違う(権限の対象か/停止内容の対象か)ので
     // def側からf.tagHintで渡す。未指定はアクセス権限マスタの従来文言。
-    const tagHint=f.tagHint||'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
-    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span>
+    const tagHint=f.tagHint!==undefined?f.tagHint:'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1">${fieldLabelHtml(f)}
      <div class="mm-tagfield-inner">
       <label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
-     <small class="mm-field-hint">${hintHtml(tagHint)}</small></div>`;
+     ${fieldHintHtml({hint:tagHint})}</div>`;
    },
    'equipment-multi':(f,val,editing)=>{
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
     const opts=WL.records.equipmentMasterState.items||[];
     if(!opts.length){
-     return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
+     return `<div class="mm-field">${fieldLabelHtml(f)}<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
     }
     const hiddenBoxes=opts.map(eq=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${selected.has(eq.name)?' checked':''} hidden>`).join('');
     const tags=opts.filter(eq=>selected.has(eq.name)).map(eq=>`<span class="mm-tag">${esc(eq.name)}<button type="button" class="mm-tag-remove" aria-label="${esc(eq.name)}を削除">×</button></span>`).join('');
-    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}"><span>${esc(f.label)}</span>
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}">${fieldLabelHtml(f)}
      <div class="mm-tagfield-inner">
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${tags}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
@@ -1055,15 +1143,18 @@
    },
    'select':(f,val)=>{
     /* 候補の顔ぶれは**サーバーが答える**ことがある（`optionsKey`＝一覧の応答の鍵・§9.526）。 */
-    const opts=selectOptionsOf(f).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
+    /* 空欄の札の字は定義の`blank`（一覧のセルと同じ言葉・§9.598 1i）。無ければ「（指定なし）」。 */
+    const opts=selectOptionsOf(f).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||f.blank||'（指定なし）')}</option>`).join('');
     /* **説明を書いたら出す**（§9.222 ⑧）。ここだけ`f.hint`を捨てていたので、
        マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
     return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`
-      +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
+      +fieldHintHtml(f)+`</label>`;
    },
    /* 別マスタ連動の選択欄(§5.3.1)。選ぶだけで済むのが基本で、無い値は
       「＋ 新しく追加」から入力する。保存時に相手のマスタへも登録される。 */
    'master-combo':(f,val,editing)=>{
+    /* 欄の下の説明は定義の`hint`（空文字＝出さない）、書いていなければ使い方の一言。 */
+    const tip=f.hint!==undefined?f.hint:'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。';
     return `<div class="mm-field mm-combo" data-combo="${f.k}" data-combo-endpoint="${esc(f.source&&f.source.endpoint||'')}" data-combo-valuekey="${esc(f.source&&f.source.valueKey||'name')}">
       ${fieldLabelHtml(f)}
       <div class="mm-combo-inner">
@@ -1071,7 +1162,7 @@
        <input data-field="${f.k}" type="hidden" value="${esc(val)}">
        <input class="mm-combo-new" data-combo-new="${f.k}" type="text" placeholder="新しい${esc(f.label)}を入力" autocomplete="off" hidden>
       </div>
-      <small class="mm-field-hint">${hintHtml(f.hint||'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。')}</small></div>`;
+      ${fieldHintHtml({hint:tip})}</div>`;
    },
    /* 候補を出すだけの自由記述（§9.239 ⑥）。**選択肢で塞がない**——
       現場の呼び名は事前に数え切れないので、一覧に無い値も打てるようにする。
@@ -1084,10 +1175,10 @@
     return `<label class="mm-field">${fieldLabelHtml(f)}
       <input data-field="${f.k}" type="text" list="${lid}" autocomplete="off" value="${esc(val)}">
       <datalist id="${lid}">${opts.map(o=>`<option value="${esc(o)}"></option>`).join('')}</datalist>
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+      ${fieldHintHtml(f)}</label>`;
    },
    'number':(f,val,editing)=>{
-    return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${fieldHintHtml(f)}</label>`;
    },
    /* ---------- 選んで組み立てる（§9.226 ④、利用者の指示） ----------
       「帳票ブロックを新規登録が難しすぎて作成できない。入力データ(汎用入力
@@ -1128,11 +1219,12 @@
       +`<span class="mm-card-txt"><b>${esc(c.label)}</b>`
       +`${c.note?`<small>${esc(c.note)}</small>`:''}</span></button>`;
     }).join('');
+    /* `is-one`＝1つだけ選ぶ札（右の詳細では丸の印・いくつでも選ぶ札は四角の印・§9.598 1i）。 */
     return `<div class="mm-field mm-field-area mm-cards">${fieldLabelHtml(f)}
-      <div class="mm-card-row">${cards}</div>
+      <div class="mm-card-row is-one">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
       ${list.length?'':'<small class="mm-field-hint">選べる候補をこの端末では読めませんでした。</small>'}
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+      ${fieldHintHtml(f)}</div>`;
    },
    /* ---------- 選んだ側を保存する札（§9.306） ----------
       利用者の指示「親マスタの選択肢から選んで登録することができるように」。
@@ -1167,7 +1259,7 @@
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(raw)}">
       <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+      ${fieldHintHtml(f)}</div>`;
    },
    /* ---------- いくつでも入切できる札（§9.302） ----------
       利用者の指示「有効無効の範囲については機能別に分けて変更できるように」。
@@ -1205,7 +1297,7 @@
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc([...off].join(','))}">
       <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+      ${fieldHintHtml(f)}</div>`;
    },
    /* 紙の12マスをそのまま出して、**押した幅がそのまま見える**ようにする。
       「6＝1/2」を頭の中で割り算させない（§CLAUDE 6）。 */
@@ -1246,7 +1338,7 @@
       </div>
       <em class="mm-step-sub" data-step-sub="${f.k}">${sub}</em>
       <input type="hidden" data-field="${f.k}" value="${esc(val)}">
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+      ${fieldHintHtml(f)}</div>`;
    },
    'field-builder':(f,val,editing)=>{
     return `<div class="mm-field mm-field-area fb" data-fb="${f.k}">${fieldLabelHtml(f)}
@@ -1289,13 +1381,13 @@
     return `<label class="mm-field mm-field-area">${fieldLabelHtml(f)}`
      +`<textarea data-field="${f.k}" rows="${f.rows||6}" spellcheck="false"`
      +` placeholder="${esc(f.placeholder||'')}">${esc(val)}</textarea>`
-     +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+     +`${fieldHintHtml(f)}</label>`;
    },
    'date':(f,val,editing)=>{
-    return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${fieldHintHtml(f)}</label>`;
    },
    'time':(f,val,editing)=>{
-    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="time" step="60" value="${esc(val)}">${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+    return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="time" step="60" value="${esc(val)}">${fieldHintHtml(f)}</label>`;
    },
    'path':(f,val,editing)=>{
     return `<div class="mm-field mm-field-path">${fieldLabelHtml(f)}
@@ -1312,13 +1404,13 @@
    'readonly':(f,val,editing)=>{
     return `<label class="mm-field mm-field-ro">${fieldLabelHtml(f)}`
      +`<input data-field="${f.k}" type="text" value="${esc(val)}" readonly tabindex="-1">`
-     +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
+     +`${fieldHintHtml(f)}</label>`;
    },
  };
  MM_FIELD_BUILDERS['rows-pick']=MM_FIELD_BUILDERS['span-grid'];   // 同じ組み立て（決め方が違うだけ）
  function mmTextFieldHtml(f,val){
   return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off">`
-   +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
+   +fieldHintHtml(f)+`</label>`;
  }
 
  /* ---------- Excelの持ち出し・取り込み（§9.240、利用者の指示） ----------
@@ -1671,8 +1763,7 @@
     ?`<button type="button" id="mmDropTable" class="mm-btn-danger sm"
         title="この表をマスタDBから丸ごと消します（取り消せません）">この表を削除</button>`:'';
    form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip">読み取り専用</span>
-     <span class="mm-form-hint">この表は見るだけです。追加・編集はできません。</span>${drop}</div>
-    ${defHintHtml(def)}`;
+     <span class="mm-form-hint">この表は見るだけです。追加・編集はできません。</span>${drop}</div>`;
    form.onsubmit=ev=>ev.preventDefault();
    const db=$('#mmDropTable');
    if(db)db.onclick=()=>WL.mm.dropRetiredTable(def);
@@ -1680,33 +1771,31 @@
   }
   if(defUsesEditorModal(def)){
    form.classList.add('mm-form-compact');
-   form.innerHTML=`<div class="mm-form-head">
-     <span class="mm-mode-chip new">新規登録</span>
-     <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
-     <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
-     ${sampleReportHtml(def)}
-     ${linkMasterHtml(def)}
-     ${bulkDeleteHtml(def)}
-    </div>
-    ${defHintHtml(def)}
-    ${excelIoHtml(def)}`;
+   /* 追加は頭の右端（§9.598）。**1押しで行く約束の入口**（見本で帳票を見る・§9.253／親子のマスタへ・§9.254）は
+      頭に見えたまま置き、たまに使う物と危ない物（Excel・まとめて削除）だけを「⋯」の帯へ畳む（説明は頭の ⓘ）。 */
+   const tools=bulkDeleteHtml(def).trim(),xio=excelIoHtml(def);
+   form.innerHTML=(tools?`<div class="mm-form-head">${tools}</div>`:'')+xio;
    form.onsubmit=ev=>ev.preventDefault();
-   const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
+   setHeadActs({primary:{id:'masterMaintAdd',label:`${def.label}を追加`,onClick:()=>afterLeave(()=>openMaintEditor(null))},
+    links:[linkMasterHtml(def),sampleReportHtml(def)].join('').trim(),
+    tools:(tools||xio)?'一覧の道具（Excel の書き出し・取り込み、まとめて削除など）':''});
+   if(!tools&&!xio)form.hidden=true;
    bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);bindLinkMaster(def);
    return;
   }
   form.classList.remove('mm-form-compact');
   const controls=buildFieldControls(def,editing);
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
-  form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${sampleReportHtml(def)}${linkMasterHtml(def)}${bulkDeleteHtml(def)}</div>
-   ${defHintHtml(def)}
+  const rowMore=editing&&def.hasDelete?`<button type="button" id="masterMaintRowMore" class="mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false" aria-label="この行の操作" title="この行の操作（削除など）"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`:'';
+  form.innerHTML=`<div class="mm-form-head">${chip}${rowMore}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${sampleReportHtml(def)}${linkMasterHtml(def)}${bulkDeleteHtml(def)}</div>
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>
    ${excelIoHtml(def)}`;
   form.onsubmit=ev=>{ev.preventDefault();submitMaint()};
   const nb=$('#masterMaintNew');if(nb)nb.onclick=()=>{maintState.editing=null;renderMaintForm()};
-  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
+  const rm=$('#masterMaintRowMore');if(rm)rm.onclick=ev=>openRowMenu(ev.currentTarget,editing);
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);WL.popMenu.tips(form);
   bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);bindLinkMaster(def);
  }
 
@@ -1720,7 +1809,9 @@
   modal.innerHTML=`<div class="mm-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="maintEditorTitle">
     <header class="mm-editor-head">
      <div><small id="maintEditorEyebrow">MASTER</small><h2 id="maintEditorTitle">編集</h2></div>
-     <button type="button" id="maintEditorClose" class="mm-close" aria-label="閉じる">×</button>
+     <button type="button" id="maintEditorMore" class="mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false"
+      aria-label="この行の操作" title="この行の操作（削除など）" hidden><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
+     <button type="button" id="maintEditorClose" class="mm-close mm-btn-ghost mm-hd-more" aria-label="閉じる" title="閉じる"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     </header>
     <form class="mm-editor-body" id="maintEditorForm"></form>
     <!-- 下段は<footer>ではなく<div>にすること。メイン画面統合型ビューの
@@ -1736,22 +1827,184 @@
     </div>
    </div>`;
   document.body.append(modal);
-  $('#maintEditorClose').onclick=()=>closeMaintEditor();
-  $('#maintEditorCancel').onclick=()=>closeMaintEditor();
+  /* 右の詳細（§9.598）では×は「変更があれば聞いてから閉じる」、キャンセルは「変更を元へ戻す」（閉じるのは×だけ）。
+     窓のときは今までどおり（キャンセル＝閉じる）。 */
+  $('#maintEditorClose').onclick=()=>afterLeave(closeMaintEditor);
+  $('#maintEditorCancel').onclick=()=>{if(paneDocked())revertPane();else closeMaintEditor()};
   $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
+  $('#maintEditorMore').onclick=ev=>openRowMenu(ev.currentTarget,maintState.editing);
+  const ef=$('#maintEditorForm');
+  ef.addEventListener('input',paintPaneFoot);ef.addEventListener('change',paintPaneFoot);
+  ef.addEventListener('focusin',ev=>paneHotKey(paneFieldKey(ev.target)));
+  ef.addEventListener('click',()=>requestAnimationFrame(paintPaneFoot));   // 札・±の押下（値は隠し欄が持つ）
   WL.modal.keepOpen(modal);
   /* **閉じ方は×／キャンセル／Escの3つ**（§9.221 ①）。背景クリックを
      止めたぶん、Escが無いモーダルは「どれが閉じてどれが閉じないか」を
      覚えることになる——規則が禁じた状態を以前より強い形で作ってしまう。
      変換中のEscは`escCloses()`が除く。 */
   document.addEventListener('keydown',e=>{
-   if(WL.modal.escCloses(e)&&!modal.hidden){e.stopPropagation();closeMaintEditor()}
+   if(!WL.modal.escCloses(e)||modal.hidden)return;
+   /* 右の詳細は**Esc では閉じない**（閉じるのは頭の×だけ・§9.598 AA）。覆わない器なので、詳細の中の ⋯ のメニュー・
+      候補の一覧・確かめる窓の Esc はそれぞれの面が受け持つ（ここで先に取ると、メニューを閉じたつもりが詳細ごと閉じる）。 */
+   if(paneDocked())return;
+   e.stopPropagation();closeMaintEditor();
   },true);
   return modal;
+ }
+ /* ---------- 右の詳細（§9.598・AA）----------
+    汎用の表のマスタは「一覧＋右の詳細」の1つの型。行を押すと右に開き、一覧は見えたまま（どの行かは行の印）。
+    窓（中央）に残すのは、広さの要る組み立て（`field-builder`）・紙の見本を並べる窓（`asideHtml`）・専用の画面が
+    自分で使う窓だけ。**答えは`editorDocks()`の1箇所**。 */
+ function editorDocks(def){
+  return defUsesEditorModal(def)&&!def.special&&typeof def.asideHtml!=='function'
+   &&!def.fields.some(f=>f.type==='field-builder');
+ }
+ let paneSnap=null;   // 開いたときの値（`collectMaintBody()`の写し）。変更の有無はこれと比べる
+ function paneDocked(){const m=$('#maintEditorModal');return !!m&&!m.hidden&&m.classList.contains('is-docked')}
+ /* 器の置き場を替える: 右の詳細は`.mm-main`の格子の右の列、窓は`body`直下（中央に覆う）。 */
+ function dockEditor(modal,on){
+  const main=$('#masterMaintPanel .mm-main');
+  modal.classList.toggle('is-docked',!!on);
+  const dlg=modal.querySelector('.mm-editor-dialog');
+  if(dlg){dlg.setAttribute('role',on?'region':'dialog');dlg.setAttribute('aria-modal',on?'false':'true')}
+  if(on&&main){if(modal.parentElement!==main)main.append(modal);main.classList.add('has-pane');return}
+  if(modal.parentElement!==document.body)document.body.append(modal);
+  if(main)main.classList.remove('has-pane');
+  ['#maintEditorCancel','#maintEditorSave'].forEach(s=>{const b=$(s);if(b){b.disabled=false;b.title=''}});
+  const more=$('#maintEditorMore');if(more)more.hidden=true;
+ }
+ /* 閉じる（右の詳細なら器を窓の置き場へ戻し、頭の「追加」を塗りへ戻す）。消す・保存・移るの全部がここを通る。 */
+ function hideMaintEditor(){
+  const modal=$('#maintEditorModal');if(!modal)return;
+  modal.hidden=true;paneSnap=null;
+  if(modal.classList.contains('is-docked')){dockEditor(modal,false);quietHeadAct(false);markEditingRow(null)}
+ }
+ function markEditingRow(id){
+  document.querySelectorAll('#masterMaintList .mm-row[data-mm-id]')
+   .forEach(r=>r.classList.toggle('editing',id!=null&&r.dataset.mmId===String(id)));
+ }
+ const paneValues=def=>JSON.stringify(collectMaintBody(def,'#maintEditorForm').body);
+ /* 変更の有無の答えは1つ（`vals`は集めた値があれば渡す・無ければ集める）。 */
+ function paneDirty(vals){
+  /* 専用の画面は自分で名乗る（`registerSpecial(key,{dirty})`・勤務形態など）——離れるときに聞く道は右の詳細と同じ1本。 */
+  const sp=WL.mm.special[currentDef().special];
+  if(sp&&typeof sp.dirty==='function')return !!sp.dirty();
+  if(!paneDocked()||paneSnap===null)return false;
+  return (vals?JSON.stringify(vals):paneValues(currentDef()))!==paneSnap;
+ }
+ /* 足元は1つの部品: 左に状態と記録者・右にキャンセルと保存。**変更が無いうちは押せない**（押しても何も起きない形にしない）。 */
+ function paintPaneFoot(){
+  if(!paneDocked())return;
+  const def=currentDef(),vals=collectMaintBody(def,'#maintEditorForm').body;
+  const dirty=paneDirty(vals);
+  paneLiveRow(def,vals);
+  paintFootState($('#maintEditorHint'),[$('#maintEditorCancel'),$('#maintEditorSave')],!maintState.editing,dirty);
+  $('#maintEditorModal').classList.toggle('is-dirty',dirty);
+ }
+ /* 足元の状態の字と、キャンセル・保存を押せるか（§9.598）。右の詳細・勤務形態・設備停止の基本が**同じ答え**を読む。 */
+ function paintFootState(stateEl,btns,isNew,dirty,count){
+  /* `count`＝変えた欄の数（分かる画面だけ・共通設定）。押す前に何が変わるかを言う（§9.583 ⑤）。 */
+  const st=isNew?(dirty?'入力あり':'まだ入力がありません'):(dirty?(count?`変更 ${count}件`:'変更あり'):'変更なし');
+  if(stateEl)stateEl.textContent=`${st}・記録者 ${currentUserId()||'—'}`;
+  const why=dirty?'':(isNew?'入力すると押せます':'変更があると押せます');
+  (btns||[]).forEach(b=>{if(b){b.disabled=!dirty;b.title=why}});
+  /* **塗りの主ボタンはいつも1つ**（§9.598 1i）: 変更が無いうちは頭の「追加」、変更があれば足元の「保存」。 */
+  quietHeadAct(!!dirty);
+ }
+ /* ---------- 欄と表を結ぶ（§9.598・1d・図と入力を結ぶ）----------
+    詳細の欄に入ると、選んだ行の同じセルの地と列の見出しが光る。打った値は**その場で**そのセルに出る（保存の前に一覧での
+    見え方が分かる）。キャンセルで元の値に戻り、閉じれば一覧を描き直す。 */
+ function paneFieldKey(el){
+  const box=el&&el.closest&&el.closest('.mm-field');if(!box)return '';
+  const f=box.querySelector('[data-field],[data-equipment-field],[data-equipment-all]');
+  return f?(f.dataset.field||f.dataset.equipmentField||f.dataset.equipmentAll||''):'';
+ }
+ function paneHotKey(k){
+  document.querySelectorAll('#masterMaintList .is-hot').forEach(e=>e.classList.remove('is-hot'));
+  if(!k||!paneDocked())return;
+  const def=currentDef(),i=def.cols.findIndex(c=>c.k===k);if(i<0)return;
+  const th=document.querySelector(`#masterMaintList .mm-row.head>.mm-th[data-col="${CSS.escape(k)}"]`);if(th)th.classList.add('is-hot');
+  const row=document.querySelector('#masterMaintList .mm-row.editing'),cell=row&&row.children[i];if(cell)cell.classList.add('is-hot');
+ }
+ function paneLiveRow(def,vals){
+  const ed=maintState.editing,row=ed&&document.querySelector('#masterMaintList .mm-row.editing');if(!row)return;
+  const it=Object.assign({},ed,vals);
+  def.cols.forEach((c,i)=>{
+   if(mmCellOf(c)||!(c.k in vals))return;   // 計算の列は登録表の答え（打った値では描き直さない）
+   const cell=row.children[i];if(!cell)return;
+   const cc={...c,row:it},v=cellText(cc,it[c.k]),tw=cell.querySelector('.mm-rowtw');
+   if(cell.title===v)return;
+   cell.title=v;cell.innerHTML=cellHtml(cc,v)||'<em class="mm-blank">—</em>';
+   if(tw)cell.prepend(tw);
+  });
+ }
+ /* 右の詳細を離れてよいか。変更が無ければそのまま、あれば聞く——行を押し替える・左の一覧で移る・追加・×・Esc・
+    「戻る」の全部がここを通る（**黙って捨てない**）。 */
+ async function paneMayLeave(){
+  if(!paneDirty())return true;
+  const def=currentDef();
+  return confirmModal({title:'保存していない変更があります',
+   message:`${def.label}の変更を保存していません。捨てて移りますか？`,
+   confirmLabel:'変更を捨てる',cancelLabel:'戻って続ける',danger:true});
+ }
+ /* 離れてよければ`fn`。**変更が無ければその場で**（押した直後に次の画面がある・今までと同じ早さ）、あれば聞いてから。 */
+ function afterLeave(fn){
+  if(!paneDirty()){fn();return}
+  paneMayLeave().then(ok=>{if(ok)fn()});
+ }
+ /* キャンセル＝開いたときの値へ戻す（閉じない）。 */
+ function revertPane(){
+  const def=currentDef(),form=$('#maintEditorForm');if(!form)return;
+  fillMaintEditorForm(def,maintState.editing,true);
+  paneSnap=paneValues(def);paintPaneFoot();
+ }
+ /* ---------- 専用の画面の中の「その場の欄」（§9.598 1g） ----------
+    専用の画面（設備停止の「基本」の段など）が、定義の`fields`をその場で直す欄として置く。組み立て・配線・値の集め方・保存は
+    右の詳細と同じ（`buildFieldControls`／`collectMaintBody`／`submitMaint`）——欄の作り方を2か所に持たない。
+    `item`＝直す行（無ければ新しい行・`seed`は最初から入れておく値）。返すのは`{isNew,dirty(),save()}`で、`save()`は
+    保存した行の応答（`{id}`）を返す。`onChange`は打つ・選ぶたび（足元の「変更あり」を塗り直す）。 */
+ function inlineFields(host,{item=null,seed=null,onChange=null}={}){
+  const def=currentDef(),sel='#'+CSS.escape(host.id);
+  host.classList.add('mm-editor-body','mm-inline-fields');   // 欄の寸法は窓・右の詳細と同じ規則（`.mm-editor-body`）
+  host.innerHTML=`<div class="mm-form-fields">${buildFieldControls(def,item||seed)}</div>`;
+  bindEquipmentPickers(host);bindInputHelpers(host);WL.popMenu.tips(host);
+  const now=()=>JSON.stringify(collectMaintBody(def,sel).body);
+  let snap=null;
+  const tell=()=>{if(onChange)onChange()};
+  host.addEventListener('input',tell);host.addEventListener('change',tell);
+  host.addEventListener('click',()=>requestAnimationFrame(tell));   // 札・±の押下（値は隠し欄が持つ）
+  /* 開いたときの値は**欄の配線が済んだあと**に写す（右の詳細と同じ・数の3桁区切りや隠し欄の初期値が入ってから）。 */
+  requestAnimationFrame(()=>{snap=now();tell()});
+  return {isNew:!item,
+   dirty:()=>snap!==null&&now()!==snap,
+   save:()=>{maintState.editing=item?Object.assign({},item):null;return submitMaint(sel)}};
+ }
+ /* ⋯（行の操作）・▾（作り方を選ぶ）のメニューは1つの部品（§9.598）。項目は`{label,note,danger,data,onClick}`。
+    `data`は項目の`data-*`（網や画面が項目を名指すため）。危ない項目は赤の字（主の動線に置かない操作だけをここへ）。 */
+ function openActMenu(anchor,items,label){
+  if(!anchor||!items||!items.length)return;
+  let m=$('#mmActMenu');
+  if(m&&!m.hidden&&m.__owner===anchor){WL.popMenu.close();return}
+  if(!m){m=document.createElement('div');m.id='mmActMenu';m.className='wl-menu mm-act-menu';m.setAttribute('role','menu');m.hidden=true;document.body.append(m)}
+  m.setAttribute('aria-label',label||'操作');m.__owner=anchor;
+  const attrs=o=>Object.entries(o||{}).map(([k,v])=>` data-${k.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())}="${esc(v)}"`).join('');
+  m.innerHTML=items.map((it,i)=>`<button type="button" role="menuitem" data-act-i="${i}"${it.danger?' class="is-danger"':''}${attrs(it.data)}`
+   +`${it.title?` title="${esc(it.title)}"`:''}><b>${esc(it.label)}</b>${it.note?`<small>${esc(it.note)}</small>`:''}</button>`).join('');
+  m.querySelectorAll('[data-act-i]').forEach(b=>{b.onclick=()=>{WL.popMenu.close();items[+b.dataset.actI].onClick()}});
+  m.hidden=false;anchor.setAttribute('aria-expanded','true');
+  WL.popMenu.open(m,{anchor,owner:anchor,onClose:()=>{m.hidden=true;anchor.setAttribute('aria-expanded','false')}});
+ }
+ /* 行の操作（⋯）。いまは削除だけ——危ない操作を主の動線（足元の保存の隣）に置かない。 */
+ function openRowMenu(anchor,item){
+  const def=currentDef();if(!def.hasDelete||!item)return;
+  openActMenu(anchor,[{label:`この${def.label}を${def.deleteWord||'無効化（削除）'}…`,title:'確かめる窓が出ます',danger:true,
+   data:{rowAct:'delete'},onClick:()=>deleteMaint(item)}],'この行の操作');
  }
  function openMaintEditor(item){
   const def=currentDef();if(!defUsesEditorModal(def))return;
   const modal=ensureMaintEditor();
+  const docked=editorDocks(def);
+  dockEditor(modal,docked);
   /* 組み立ての盤を持つ窓は広く取る（§9.226 ④）。**印を付け外しすること**
      ——付けっぱなしにすると、次に開いた別のマスタの窓まで広いまま
      （`mm-form-page`と同じ作法・§9.222 ⑤）。 */
@@ -1759,35 +2012,29 @@
   if(dlg)dlg.classList.toggle('is-builder',def.fields.some(f=>f.type==='field-builder'));
   maintState.editing=item?Object.assign({},item):null;
   const editing=maintState.editing;
-  $('#maintEditorEyebrow').textContent=def.label+'マスタ';
+  /* 右の詳細の頭は「種類の小さな字＋その行の名前」（§9.598）。窓は今までどおり「〜を編集」。 */
+  $('#maintEditorEyebrow').textContent=docked?def.label:def.label+'マスタ';
   /* 窓の題は**その行を名指しできる欄**から作る（§9.254 ③）。既定は一覧の
      先頭列だが、帳票ブロックのように先頭が「対象設備」のマスタだと
      「* を編集」としか出ず、どの塊を開いたのか分からない（親のマスタから
      直接この窓へ渡れるようにしたぶん、名前が出ないと迷子になる）。 */
   const titleKey=def.titleKey||def.cols[0].k;
-  $('#maintEditorTitle').textContent=editing?`${String(editing[titleKey]??'')||'(名称なし)'} を編集`:`${def.label}を新規登録`;
-  $('#maintEditorHint').textContent=editing
+  const name=editing?String(editing[titleKey]??'')||'(名称なし)':'';
+  $('#maintEditorTitle').textContent=docked?(editing?name:`新しい${def.label}`):(editing?`${name} を編集`:`${def.label}を新規登録`);
+  $('#maintEditorHint').textContent=docked?'':editing
    ?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新されます。'
    :'必須(*)を入力して登録します。';
-  $('#maintEditorSave').textContent=editing?'更新を保存':'追加登録';
+  $('#maintEditorSave').textContent=docked?(editing?'保存':'追加'):(editing?'更新を保存':'追加登録');
+  const more=$('#maintEditorMore');if(more)more.hidden=!(docked&&editing&&def.hasDelete);
   modal.querySelector('.mm-editor-dialog')?.classList.remove('is-wide','is-tall');
   $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
   const form=$('#maintEditorForm');
-  /* **決めることの隣に、刷り上がりを置く**（§9.249 ③）。`asideHtml`を持つ
-     マスタだけ2段組みになる（持たないマスタは今までどおり1段）。 */
-  /* **窓の説明は一覧の説明と同じにしない**（§CLAUDE 8）。一覧の`hint`は
-     「このマスタは何か」を書くので長い。窓では**いま決めることの一言**だけを
-     出し、詳しくは各欄の説明が言う（`hintShort`を持たないマスタは今までどおり）。 */
-  const modalHint=def.hintShort||def.hint;
-  form.innerHTML=`${defHintHtml(def,modalHint)}
-   <div class="mm-form-fields">${buildFieldControls(def,editing)}${
-    typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
-   ${typeof def.asideHtml==='function'?def.asideHtml(editing):''}`;
+  fillMaintEditorForm(def,editing,docked);
   form.onsubmit=ev=>{ev.preventDefault();submitMaint('#maintEditorForm')};
-  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
-  if(typeof def.bindAside==='function')def.bindAside(form);
   modal.hidden=false;
   mmHoldTabHeight(form);
+  paneSnap=null;
+  if(docked){markEditingRow(editing&&editing.id);paintPaneFoot()}
   /* **最初のフォーカスに「候補が出る欄」を選ばない**（§9.221 ④）。タグ入力は
      フォーカスした時点で候補の一覧を開くので、窓を開けた瞬間にその一覧が
      **他の欄の上へかぶさる**——欄を横に並べるようにしたぶん、下ではなく
@@ -1801,7 +2048,26 @@
    const first=form.querySelector('[data-field]:not([type=hidden])')
              ||form.querySelector('[data-equipment-search]');
    if(first)first.focus();
+   /* 開いたときの値は**欄の配線が済んだあと**に写す（数値の3桁区切り・隠し欄の初期値が入ってから）。 */
+   if(docked){paneSnap=paneValues(def);paintPaneFoot()}
   });
+ }
+ /* 編集の中身を組む（窓と右の詳細で同じ）。右の詳細ではマスタの説明（`defHintHtml`）を出さない——説明は頭の ⓘ が持つ
+    （同じ字を2か所に出さない・§9.598）。 */
+ function fillMaintEditorForm(def,editing,docked){
+  const form=$('#maintEditorForm');if(!form)return;
+  /* **決めることの隣に、刷り上がりを置く**（§9.249 ③）。`asideHtml`を持つ
+     マスタだけ2段組みになる（持たないマスタは今までどおり1段）。 */
+  /* **窓の説明は一覧の説明と同じにしない**（§CLAUDE 8）。一覧の`hint`は
+     「このマスタは何か」を書くので長い。窓では**いま決めることの一言**だけを
+     出し、詳しくは各欄の説明が言う（`hintShort`を持たないマスタは今までどおり）。 */
+  const modalHint=def.hintShort||def.hint;
+  form.innerHTML=`${docked?'':defHintHtml(def,modalHint)}
+   <div class="mm-form-fields">${buildFieldControls(def,editing)}${
+    typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
+   ${typeof def.asideHtml==='function'?def.asideHtml(editing):''}`;
+  bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);WL.popMenu.tips(form);
+  if(typeof def.bindAside==='function')def.bindAside(form);
  }
  /* **段を切り替えても窓の大きさを変えない**（§9.463、利用者の指摘「モーダル
     サイズがころころ変わり安定せず」）。窓は画面の中央に置くので、段ごとに
@@ -1823,7 +2089,7 @@
  }
  function closeMaintEditor(){
   const modal=$('#maintEditorModal');if(!modal||modal.hidden)return;
-  modal.hidden=true;maintState.editing=null;
+  hideMaintEditor();maintState.editing=null;
   /* 描き直す先はタブごとに違う。**汎用の一覧を呼ぶと専用タブの中身が
      消える**ので、いまのタブに合わせる。 */
   /* 専用画面は登録簿（`WL.mm.special`・§9.324 R3）が持つ`onEditorClose`で
@@ -2015,10 +2281,11 @@
    /* 選べない段が選ばれたままなら、**上限まで下げる**（保存で断られる値を
       画面に残さない）。上限は並びの最後（サーバーが下から順に返す）。 */
    if(ok&&ok.length&&ok.indexOf(level.value)<0)level.value=ok[ok.length-1];
+   /* 選べない段があるときだけ、その権限区分で選べる段を言う（§9.598 1i・全部選べるときに同じ字を並べない）。 */
    if(note){
-    note.textContent=ok
-     ?`権限区分「${role.value}」で選べるのは ${ok.join('・')} です。`
-     :'選べるのは権限区分の上限までです（設備作業者は「非表示」だけ）。';
+    const narrowed=ok&&ok.length<level.options.length;
+    note.textContent=narrowed?`「${role.value}」で選べるのは ${ok.join('・')} です。`:'';
+    note.hidden=!narrowed;
    }
   };
   if(!role.dataset.capWired){role.dataset.capWired='1';role.addEventListener('change',apply)}
@@ -2350,8 +2617,25 @@
  async function submitMaint(rootSel){
   const root=rootSel||'#masterMaintForm';
   const def=currentDef(),uid=requireMaintUser();if(uid===null)return;const editing=maintState.editing;
-  const body={user_id:uid};let ok=true,firstMissing=null;
-  if(editing)body.id=editing.id;
+  const got=collectMaintBody(def,root),ok=got.ok,firstMissing=got.firstMissing;
+  const body=Object.assign({user_id:uid},editing?{id:editing.id}:{},got.body);
+  if(!ok){
+   /* **入っていない欄の段を開いてから断る**（§9.250 ④・§4）——段（タブ）に
+      分けたので、畳んだ先の欄を「入れてください」と言われても、どこにあるのか
+      分からない。開いてから知らせる。 */
+   const form=document.querySelector(root);
+   if(form&&firstMissing){
+    mmRevealField(form,firstMissing);
+    if(firstMissing.focus){try{firstMissing.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
+   }
+   showToast('入力を確認してください','必須項目が未入力です。',4000);return;
+  }
+  return submitMaintBody(def,editing,body);
+ }
+ /* 欄から送る値を集める（§9.49「data-field の value が最終的な値」）。**保存と右の詳細の「変更あり」が同じ答えを読む**
+    （§9.598）——型ごとの読み方を2か所に書かない。 */
+ function collectMaintBody(def,root){
+  const body={};let ok=true,firstMissing=null;
   def.fields.forEach(f=>{
    if(f.type==='equipment-multi'){body[f.k]=[...document.querySelectorAll(`${root} [data-equipment-field="${f.k}"]:checked`)].map(el=>el.value);return}
    if(f.type==='equipment-multi-text'){
@@ -2370,17 +2654,9 @@
    if(f.required&&!v){ok=false;if(!firstMissing)firstMissing=el}
    body[f.k]=v;
   });
-  if(!ok){
-   /* **入っていない欄の段を開いてから断る**（§9.250 ④・§4）——段（タブ）に
-      分けたので、畳んだ先の欄を「入れてください」と言われても、どこにあるのか
-      分からない。開いてから知らせる。 */
-   const form=document.querySelector(root);
-   if(form&&firstMissing){
-    mmRevealField(form,firstMissing);
-    if(firstMissing.focus){try{firstMissing.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
-   }
-   showToast('入力を確認してください','必須項目が未入力です。',4000);return;
-  }
+  return {body,ok,firstMissing};
+ }
+ async function submitMaintBody(def,editing,body){
   const endpoint=editing?def.endpoint+'/update':def.endpoint;
   try{
    setMaintLoading(true,editing?`${def.label}を更新しています…`:`${def.label}を登録しています…`);
@@ -2388,8 +2664,7 @@
    if(r===null)return; // 設備の新規/復元どちらもキャンセルされた
    // 編集モーダルから保存した場合は閉じてから一覧を更新する(closeMaintEditor
    // 自身もrenderMaintListを呼ぶが、直後のloadMaintで最新データに置き換わる)。
-   const modal=$('#maintEditorModal');
-   if(modal&&!modal.hidden){modal.hidden=true}
+   hideMaintEditor();
    // 連動登録(§5.3.1)で相手のマスタが増えている可能性があるため、
    // 選択肢のキャッシュは毎回捨てる(次に開いたとき新しい分類が出る)。
    invalidateComboCache();
@@ -2410,6 +2685,7 @@
    if(def.groupBy)mmOpenGroupOf(def,body[def.groupBy]);
    maintState.editing=null;await loadMaint(true);
    showToast&&showToast(def.label+(editing?'を更新しました':'を登録しました'),(r&&r.message)||'',3600);
+   return r||{};   // 保存した行の応答（`{id}`）——その場の欄（`inlineFields`）が保存した行を選び直す
   }catch(e){showToast&&showToast(editing?'更新できませんでした':'登録できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }
@@ -2516,10 +2792,11 @@
  }
  /* 幅は**指定があるものだけ**px で固定し、残りは今までどおり割合で分ける
     （§9.119と同じ考え方。全部を px にすると器の広さに追随しなくなる）。 */
- function maintGridTemplate(def){
-  const w=mmViewOf(def).widths||{};
-  const data=def.cols.map(c=>w[c.k]?`${Math.round(w[c.k])}px`:`minmax(0,${c.grow||1}fr)`).join(' ');
-  return maintShowsAudit(def)?`${data} 96px 128px 108px`:`${data} 108px`;
+ /* `widths`は幅を引いている途中の値（省けば保存した幅）。行の操作の列は持たない（§9.598・削除は詳細の ⋯）。 */
+ function maintGridTemplate(def,widths){
+  const w=widths||mmViewOf(def).widths||{},cw=mmContentW.get(def.key);
+  const data=def.cols.map((c,i)=>w[c.k]?`${Math.round(w[c.k])}px`:`minmax(0,${cw&&cw[i]?cw[i]:(c.grow||1)}fr)`).join(' ');
+  return maintShowsAudit(def)?`${data} 96px 128px`:data;
  }
  /* 並べ替えの物差し。**空欄は必ず最後**（向きを変えても最後）——空欄が
     先頭に集まると、探している行が画面の外へ押し出される（§9.187の
@@ -2687,25 +2964,26 @@
    renderMaintList();
   });
  }
+ /* 頭の件数と、いま効いている並び・列幅の印（§9.175・§9.250 ⑥）。
+    **覚えていることは画面に書き、忘れさせる手立ても同じ場所に置く**——黙って並べ替えたままだと「順番がおかしい」と
+    読まれる。件数はタブを持つ一覧ではタブが言う（同じ数を2か所に出さない・§9.598）。 */
+ function paintMaintCount(def,all){
+  const cnt=$('#masterMaintCount');if(!cnt)return;
+  const v=mmViewOf(def),sc=(def.cols||[]).find(c=>v.sort&&c.k===v.sort.k);
+  const wn=Object.keys(v.widths||{}).length;
+  const marks=[];
+  if(sc)marks.push(`並び: ${esc(sc.label)} ${v.sort.dir==='desc'?'降順':'昇順'}`);
+  if(wn)marks.push(`幅: ${wn}列`);
+  cnt.innerHTML=(mmViewsOf(def).length?'':`有効 ${all.length}件`)
+   +(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
+     +`<button type="button" id="mmViewReset" title="この表の並びと列幅を既定へ戻します">✕</button></span>`:'');
+  const rb=$('#mmViewReset');
+  if(rb)rb.onclick=()=>{mmViewSet(def,{sort:null,widths:{}});renderMaintList()};
+ }
  function renderMaintList(){
   const def=currentDef(),list=$('#masterMaintList');if(!list)return;
   const all=maintState.items||[],items=filteredMaintItems(def),tmpl=maintGridTemplate(def);
-  const cnt=$('#masterMaintCount');
-  if(cnt){
-   /* **覚えていることは画面に書き、忘れさせる手立ても同じ場所に置く**
-      （§9.175・§9.250 ⑥）。黙って並べ替えたままだと「順番がおかしい」と
-      読まれる。件数の隣に、いま効いている並びと戻すボタンを出す。 */
-   const v=mmViewOf(def),sc=(def.cols||[]).find(c=>v.sort&&c.k===v.sort.k);
-   const wn=Object.keys(v.widths||{}).length;
-   const marks=[];
-   if(sc)marks.push(`並び: ${esc(sc.label)} ${v.sort.dir==='desc'?'降順':'昇順'}`);
-   if(wn)marks.push(`幅: ${wn}列`);
-   cnt.innerHTML=`有効 ${all.length}件`
-    +(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
-      +`<button type="button" id="mmViewReset" title="この表の並びと列幅を既定へ戻します">✕</button></span>`:'');
-   const rb=$('#mmViewReset');
-   if(rb)rb.onclick=()=>{mmViewSet(def,{sort:null,widths:{}});renderMaintList()};
-  }
+  paintMaintCount(def,all);
   const showAudit=maintShowsAudit(def);
   /* 見出しは**押すと並べ替え・右端を引くと幅**（§9.250 ⑥）。
      いまの向きは矢印と`aria-sort`の両方で言う（色だけで伝えない・§CLAUDE 3）。 */
@@ -2728,14 +3006,17 @@
    if(view.wire)view.wire(list.querySelector('.mm-lview'),ctx);
    return;
   }
-  list.innerHTML=tabs.html+`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
+  list.innerHTML=tabs.html+`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}</div>`;
+  paintLevelLegend(def,list);
   bindListTabs(def,list);
   bindMaintHeadTools(def,list);
   if(!items.length){
    /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、
       押せるのに何も起きない・§CLAUDE 4）。 */
    renderMaintFoldTools(def,[]);
-   list.insertAdjacentHTML('beforeend',`<div class="mm-empty">有効なデータがありません。上のフォームから追加してください。</div>`);return}
+   /* 足す道は**今その画面にある1つ**を言う（追加は頭の右端・§9.598／欄を並べる形は一覧の上）。 */
+   const how=def.readOnly?'':defUsesEditorModal(def)?`右上の「＋ ${def.label}を追加」から足せます。`:'上の欄から足せます。';
+   list.insertAdjacentHTML('beforeend',`<div class="mm-empty">有効なデータがありません。${esc(how)}</div>`);return}
   const frag=document.createDocumentFragment();
   /* ---------- 親子で束ねる(§9.239 ⑥、利用者の指示) ----------
      「設備のカラムはマスタに親子関係を持たせ、設備単位でロールマスタを
@@ -2775,36 +3056,56 @@
    }
   });
   list.append(frag);
+  fitMaintColumns(def,list);
+ }
+ /* 列の幅は**中身を測った比**で配る（§9.598・1d）——同じ比（`grow`）で割ると、短い値の列が広く・長い値の列が「…」で切れる
+    （実測: 1536 で「120分（既…」）。中身なりの幅（見出しと先頭200行の最大）を比にするので、器に入るうちはどの列も切れない。
+    引いて決めた幅（`widths`）は測らない。測った比は`maintGridTemplate()`が読む（幅を引く途中のプレビューも同じ比）。 */
+ const mmContentW=new Map();
+ function fitMaintColumns(def,list){
+  const rows=[...list.querySelectorAll('.mm-row')],head=rows[0];
+  if(!head||rows.length<2)return;
+  const n=head.children.length,same=rows.filter(r=>r.children.length===n).slice(0,201);
+  same.forEach(r=>r.style.gridTemplateColumns=`repeat(${n},max-content)`);
+  const w=Array(n).fill(0);
+  same.forEach(r=>[...r.children].forEach((c,i)=>{w[i]=Math.max(w[i],c.getBoundingClientRect().width)}));
+  mmContentW.set(def.key,w.map(x=>Math.ceil(x)+8));
+  const t=maintGridTemplate(def);
+  rows.forEach(r=>r.style.gridTemplateColumns=t);
  }
  /* 一覧の1行（§9.537 で`renderMaintList`から切り出した）。計算の列は登録表（`MM_CELLS`）が描く。 */
  function maintRowEl(def,it,tmpl,showAudit,ctx){
-  const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');
+  const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;
+  row.dataset.mmId=String(it.id);
+  /* 押して開ける行だけが押す形（読むだけの表・読むだけの端末では押す形にしない・§CLAUDE 4）。 */
+  if(!def.readOnly){row.tabIndex=0;row.setAttribute('role','button');row.dataset.mmOpen=''}
   // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
   const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
-  row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
+  const how=def.readOnly?'':editorDocks(def)?'押すと右に詳細を開きます':defUsesEditorModal(def)?'押すと編集の窓を開きます':'押すと上の欄に読み込みます';
+  row.title=[how,showAudit?'':audit].filter(Boolean).join('\n');
   const det=mmDetailOf(def),open=det&&mmOpenSet(def).has(it.id);
   const cells=def.cols.map((c,ci)=>{
    const tw=det&&ci===0?`<button type="button" class="mm-rowtw" aria-expanded="${!!open}" title="${open?'閉じる':'この行の中身を開く'}">${open?'▾':'▸'}</button>`:'';
    const k=mmCellOf(c);
    if(k){const v=mmColText(c,it,ctx),h=k.html?k.html(it,ctx[c.cell]):esc(v);
     return `<span class="mm-calc" data-cell="${esc(c.cell)}" title="${esc(v)}">${tw}${h||'<em class="mm-blank">—</em>'}</span>`}
-   const v=cellText({...c,row:it},it[c.k]);
-   return `<span title="${esc(v)}">${tw}${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
-  const acts=def.readOnly?'<em class="mm-blank">—</em>'
-    :`<button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}`;
-  row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act">${acts}</span>`;
+   const cc={...c,row:it},v=cellText(cc,it[c.k]);
+   return `<span title="${esc(v)}">${tw}${cellHtml(cc,v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
+  row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}`;
   // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
   // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
   const edit=()=>{
+   if(editorDocks(def)){
+    if(paneDocked()&&maintState.editing&&maintState.editing.id===it.id)return;   // 開いている行をもう一度押しても作り直さない
+    afterLeave(()=>openMaintEditor(it));return;
+   }
    if(defUsesEditorModal(def)){openMaintEditor(it);return}
    maintState.editing=Object.assign({},it);renderMaintForm();
    const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'});
   };
-  const eb=row.querySelector('.mm-edit');if(eb)eb.onclick=e=>{e.stopPropagation();edit()};
   /* 行を開く（§9.538）。**押しても編集窓は開かない**（行の押下は編集なので伝えない）。 */
   const tw=row.querySelector('.mm-rowtw');
   if(tw)tw.onclick=e=>{e.stopPropagation();const o=mmOpenSet(def);o.has(it.id)?o.delete(it.id):o.add(it.id);renderMaintList()};
-  const del=row.querySelector('.mm-del');if(del)del.onclick=e=>{e.stopPropagation();deleteMaint(it)};
   if(!def.readOnly){
    row.onclick=()=>edit();row.ondblclick=()=>edit();
    row.onkeydown=e=>{if(e.target.closest('.mm-rowtw'))return;   // 開く印の Enter は開くだけ（§9.538）
@@ -2845,10 +3146,7 @@
     /* 引いている最中は**トラックだけ**入れ替える（行を作り直さない）。 */
     preview:w=>{
      const widths=Object.assign({},mmViewOf(def).widths||{},{[key]:w});
-     const tmpl=(()=>{
-      const data=def.cols.map(c=>widths[c.k]?`${Math.round(widths[c.k])}px`:`minmax(0,${c.grow||1}fr)`).join(' ');
-      return maintShowsAudit(def)?`${data} 96px 128px 108px`:`${data} 108px`;
-     })();
+     const tmpl=maintGridTemplate(def,widths);   // 式は1箇所（引いている途中の幅で）
      document.querySelectorAll('#masterMaintList .mm-row').forEach(r=>r.style.gridTemplateColumns=tmpl);
     },
     commit:w=>{
@@ -2888,24 +3186,45 @@
    :`この端末のマスタ編集は「${lv}」です（権限区分: ${a.role||'不明'}）。保存が要る場合は、アクセス権限マスタで「マスタ編集」を上げてもらってください。`;
  }
 
+ /* 器（頭の操作・上の帯・一覧）をどのマスタにも属さない形へ戻す。専用の画面は器に印や頭の操作を足していくので、
+    タブを移るたび（と、遅れて届いた前のタブが器を上書きしたあと）にここを通す。 */
+ function resetMaintShell(){
+  setHeadActs(null);
+  const f=$('#masterMaintForm');
+  /* 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。タブを移ったら必ず外す
+     (付いたままだと他のマスタで上部フォームが伸び縮みして一覧の高さが安定しない)。 */
+  if(f){f.hidden=false;f.classList.remove('mm-form-page')}
+  /* **器の高さを渡す印も必ず外す**（§9.222 ⑤。`mm-form-page`と同じ作法）。
+     外し忘れると、他のマスタの一覧がスクロールしない枠になって行が切れる。 */
+  const mList=$('#masterMaintList');
+  if(mList){mList.classList.remove('is-fill');mList.parentElement?.classList.remove('is-fill')}
+ }
+ /* 前のタブ（専用の画面）の読み込みが**後から届いて器を上書きした**とき、いまのタブを描き直す（§9.331）。
+    汎用の表は勝った側が控えた行（`maintState.items`）から**その場で**描く——取り直すと、届くまでの間（実測 10〜25ms・
+    6回中6回）前のタブの盤が見えたままになる（§9.598 1g で測った）。まだ届いていなければ、届いた側が一覧を描くので器と頭だけ戻す。
+    専用の画面は控えから描く口を持たないので取り直す。 */
+ function redrawAfterStale(){
+  const def=currentDef();
+  if(def.special)return loadMaintInner(false);
+  resetMaintShell();setMaintCountVisible(true);renderMaintForm();
+  if(paneDocked())quietHeadAct(paneDirty());   // 変更があるあいだだけ頭の「追加」は縁取り（塗りは足元の保存）
+  if(maintState.itemsKey===def.key)renderMaintList();
+  else{const l=$('#masterMaintList');if(l)l.innerHTML='<div class="mm-empty">読み込んでいます…</div>'}
+ }
  async function loadMaintInner(force){
   const def=currentDef();const title=$('#masterMaintTitle');
   /* いま何回目の読み込みか（§9.331）。**取りに行った応答は「いつの分か」で
      捨てる**（§9.200と同じ約束）——タブを切り替えると前の読み込みは止められ
      ないので、届いた時点で世代を突き合わせる。 */
   const gen=++maintState.loadGen;
+  maintState.itemsKey='';   // 控えの行は、この読み込みが届くまで「いまのタブの物」と言わない（前の訪問の行で描き直さない）
   /* 見出しは**その画面の呼び名**。「〜マスタ」を機械的に足すと
      「データ接続マスタ」のような読みにくい名前ができる。 */
-  if(title)title.textContent=def.titleText||(def.label+'マスタ');
+  if(title)paintMaintHead(def);
+  if(toolsOpenKey!==maintState.defKey)toolsOpenKey='';   // 別のマスタへ移ったら「⋯」の帯は畳む
+  if(paneDocked())hideMaintEditor();   // 読み直す前に右の詳細を閉じる（変更の有無は呼ぶ側が先に聞いている）
+  resetMaintShell();
   paintMasterEditLevel(def);
-  // 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。
-  // タブを移ったら必ず外す(付いたままだと他のマスタで上部フォームが
-  // 伸び縮みして一覧の高さが安定しない)。
-  $('#masterMaintForm')?.classList.remove('mm-form-page');
-  /* **器の高さを渡す印も必ず外す**（§9.222 ⑤。`mm-form-page`と同じ作法）。
-     外し忘れると、他のマスタの一覧がスクロールしない枠になって行が切れる。 */
-  const mList=$('#masterMaintList');
-  if(mList){mList.classList.remove('is-fill');mList.parentElement?.classList.remove('is-fill')}
   /* 専用画面（`special:`）は**登録簿**から引く（§9.324 R3）。各画面のファイルが
      読み込み時に`WL.mm.registerSpecial()`で名乗るので、画面を1つ足すときに
      ここへ`if`を1行足す必要が無い。**名乗っていない`special`は黙って汎用へ
@@ -2923,7 +3242,7 @@
        もう取ってあるので、控えから描けば足りる。取り直すと、描き終えた今のタブが
        「読み込んでいます…」へ1度戻る（共通設定で、数えた網が6回中3回0件を見た）。 */
     return Promise.resolve(sp.load(force)).then(()=>{
-     if(gen!==maintState.loadGen)return loadMaintInner(false);
+     if(gen!==maintState.loadGen)return redrawAfterStale();
     });}
    console.error('専用画面が登録されていません: '+def.special);
   }
@@ -2946,7 +3265,7 @@
       控え（`maintState.items`）まで書き換えると、いま開いているタブの
       一覧が前のタブの中身で並ぶ。 */
    if(gen!==maintState.loadGen)return;
-   maintState.items=items;
+   maintState.items=items;maintState.itemsKey=def.key;
    /* **語彙はサーバーだけが持つ**（§9.163）。GETの戻りの`items`以外の
       キー（ロールマスタの入出位置・接触面・駆動方式など）はここで控え、
       `master-suggest`の欄が候補として出す。画面へ写さないための1行。 */
@@ -2995,14 +3314,10 @@
     移動したときだけこのリスナーが呼ばれず、マスタ管理のパネルが画面下部に
     残ったまま重なる不具合になっていた(クリックの横取りに依存する作りは
     読み込み順序に左右されて壊れるので使わない)。 */
- // 一覧(DB)切替でも閉じる(report-dashboard.jsのexitReportViewと同じ考え方)。
- document.addEventListener('keydown',e=>{
-  if(!WL.modal.escCloses(e))return;
-  // 編集モーダルが開いていればそちらだけ閉じる(画面自体は開いたまま)。
-  if($('#maintEditorModal')&&!$('#maintEditorModal').hidden){closeMaintEditor();return}
- },true);
+ /* 編集の窓の Esc は`ensureMaintEditor()`の1つが受け持つ（§9.598 で2つ目を外した——右の詳細は Esc で閉じないのに、
+    こちらが黙って閉じていた）。 */
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();

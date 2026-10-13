@@ -237,6 +237,17 @@ async function listView(page){
    null,{ms:5000,what:'「表の見せ方」のパネルが開く'});
 }
 
+/* マスタの一覧の道具（Excel・見本・まとめて削除・親のマスタへ）は頭の「⋯」が開け閉めする（§9.598）。人と同じ道で開く。
+   道具を持たないマスタ（⋯が無い）では何もしない。 */
+async function mmTools(page){
+ await until(page,()=>!!document.querySelector('#masterMaintTools')||!!document.querySelector('#masterMaintAdd,#masterMaintForm:not([hidden])'),
+   null,{ms:15000,what:'マスタの頭が組み上がる'});
+ const shut=await page.evaluate(()=>{const f=document.getElementById('masterMaintForm'),b=document.getElementById('masterMaintTools');return !!b&&!!f&&f.hidden});
+ if(!shut)return;
+ await page.click('#masterMaintTools');
+ await until(page,()=>!document.getElementById('masterMaintForm').hidden,null,{ms:5000,what:'一覧の道具が開く'});
+}
+
 /* 計測の口は公開するものにだけ被せる（中で呼び合うぶんは二重に数えない）。 */
 const X={SETTLE,settle,paint,textOf,
  leaveFocus:traced('leaveFocus',leaveFocus),nav:traced('nav',nav),
@@ -244,5 +255,6 @@ const X={SETTLE,settle,paint,textOf,
  openSchedule:traced('openSchedule',openSchedule),poll:traced('poll',poll),opSave:traced('opSave',opSave),
  answerPrompt:traced('answerPrompt',answerPrompt),answerConfirm:traced('answerConfirm',answerConfirm),
  changed:traced('changed',changed),listView:traced('listView',listView),openRecordReport:traced('openRecordReport',openRecordReport),
+ mmTools:traced('mmTools',mmTools),
  track:(page,o)=>{const t=track(page,o);return {idle:traced('idle',t.idle),pending:t.pending}}};
 module.exports=X;

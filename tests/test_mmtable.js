@@ -170,7 +170,7 @@ run('test_mmtable: マスタ管理の一覧（呼び名の収まり・群の畳�
    const view=await page.evaluate(()=>({
      drop:!!document.querySelector('#mmDropTable'),
      add:!!document.querySelector('#masterMaintAdd'),
-     edits:document.querySelectorAll('#masterMaintList .mm-edit').length}));
+     edits:document.querySelectorAll('#masterMaintList .mm-row[data-mm-open]').length}));   // 押して開ける行（§9.598）
    rec('移行済みの表は読むだけ＋削除の入口が出る',
        view.drop&&!view.add&&view.edits===0,JSON.stringify(view));
   }else{

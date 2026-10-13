@@ -347,26 +347,28 @@ run('test_rbmodal: 帳票ブロックの編集窓を組み直す（§9.249 ③�
     .map(h=>({t:h.textContent.trim().slice(0,16),h:Math.round(h.getBoundingClientRect().height)}))
     .filter(x=>x.h>72));
   rec('説明が縦に長い列にならない（3行以内）',hints.length===0,JSON.stringify(hints));
+  /* §9.598 で見出しの`?`（押すと欄の下へ開く）をやめ、頭の行・共通設定と同じ ⓘ（`WL.popMenu.tips()`）にした。 */
   const more=await page.evaluate(()=>{
-   const s=[...document.querySelectorAll('#maintEditorForm .mm-field>span')].filter(x=>x.querySelector('.mm-more'));
-   return {n:s.length,titled:s.filter(x=>(x.getAttribute('title')||'').length>20).length};
+   const s=[...document.querySelectorAll('#maintEditorForm .mm-field>span .wl-tip-i[data-tip]')];
+   return {n:s.length,long:s.filter(x=>(x.dataset.tip||'').length>20).length,old:document.querySelectorAll('#maintEditorForm .mm-more').length};
   });
-  rec('短くした説明の続きは見出しのtitleから読める',more.n>=4&&more.n===more.titled,JSON.stringify(more));
-  /* 続きは**押すと開く**（§9.250 ④）。`title`は触る画面では読めないので、
-     「説明があるのに読めない」を残さない（§4）。 */
+  rec('短くした説明の続きは見出しの ⓘ から読める（`?`は残っていない）',more.n>=4&&more.n===more.long&&more.old===0,JSON.stringify(more));
+  /* 続きは**押すと開く**（§9.250 ④・触る画面でも読める）。押しても閉じない——閉じるのは外を押したとき。 */
   const acc=await page.evaluate(async()=>{
    const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-   const b=document.querySelector('.mm-tabpanel:not([hidden]) .mm-more');
+   const b=document.querySelector('.mm-tabpanel:not([hidden]) .mm-field>span .wl-tip-i');
    if(!b)return {none:true};
-   const before=!!document.querySelector('.mm-tabpanel:not([hidden]) .mm-more-body:not([hidden])');
+   const shown=()=>{const t=document.querySelector('.wl-menu.wl-tip');return t&&t.textContent.trim().length>10?t.textContent.trim().slice(0,12):''};
+   const before=shown();
+   b.click();await raf();await new Promise(r=>setTimeout(r,0));
+   const open=shown();
    b.click();await raf();
-   const body=b.closest('.mm-field').querySelector('.mm-more-body');
-   const open=!!body&&!body.hidden&&body.textContent.trim().length>10;
-   b.click();await raf();
-   return {before,open,closed:!!body&&body.hidden,aria:b.getAttribute('aria-expanded')};
+   const still=shown();
+   document.getElementById('maintEditorTitle').dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));await raf();
+   return {before,open,still,closed:!shown()};
   });
-  rec('くわしい説明は押すと開いて、もう一度押すと畳む',
-      acc.before===false&&acc.open===true&&acc.closed===true,JSON.stringify(acc));
+  rec('くわしい説明は押すと開き（押し直しても閉じない）、外を押すと閉じる',
+      !acc.before&&!!acc.open&&!!acc.still&&acc.closed===true,JSON.stringify(acc));
 
   /* ---- 6b) 紙の見本を四方から掴んで大きさを変えられる（§9.250 ④） ----
      利用者の指示「刷り上がりの見本という視覚表示があるのでこれを四方の

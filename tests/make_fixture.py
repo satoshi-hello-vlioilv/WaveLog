@@ -587,13 +587,16 @@ def fix_master(quiet: bool = False) -> None:
             # 網が「借りる」停止内容（`test_actualmatch`の`add_stop`は検証用設備の先頭の1件を使う）。
             # **論理削除で全部消えていた**（実測 2026-10-13: テスト設備Aの8件がすべて`有効=0`）——
             # `test_scstop`の後片付けが同じ名前の元からの行（段取り替え・清掃）まで消し、ほかの本も
-            # 借りた行を消して、借りる先が1件も無くなっていた。**足りなければ戻す**（中身は触らない）。
+            # 借りた行を消して、借りる先が1件も無くなっていた。**足りなければ戻す**。
+            # **中身（分類・標準所要分）も定義へ戻す**（§9.598 1g）——手で確かめたときに「刃の研磨」を保全・20分へ
+            # 書き換えたまま残り、`test_scstop`が「保全 2件」の所を3件と数えて、元のコードでも落ちていた（実測 2026-10-13）。
             for category, name, minutes in _STOP_FIX:
                 row = c.execute('SELECT [停止理由ID] FROM [設備停止マスタ] WHERE [設備名]=? AND [名称]=?',
                                 [_STOP_FIX_EQ, name]).fetchone()
                 if row:
-                    n = c.execute('UPDATE [設備停止マスタ] SET [有効]=-1 WHERE [停止理由ID]=? '
-                                  'AND ([有効] IS NULL OR [有効]=0)', [row[0]]).rowcount
+                    n = c.execute('UPDATE [設備停止マスタ] SET [有効]=-1,[分類]=?,[標準所要分]=? WHERE [停止理由ID]=? '
+                                  'AND ([有効] IS NULL OR [有効]=0 OR IFNULL([分類],\'\')<>? OR IFNULL([標準所要分],-1)<>?)',
+                                  [category, minutes, row[0], category, minutes]).rowcount
                 else:
                     n = c.execute("INSERT INTO [設備停止マスタ] ([設備名],[分類],[名称],[標準所要分],"
                                   "[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) "
