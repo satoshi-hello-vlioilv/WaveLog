@@ -166,6 +166,30 @@
 .mm-editor-modal.is-docked[hidden]{display:none}
 .mm-editor-modal.is-docked .mm-editor-dialog{width:100%;max-height:none;flex:1 1 auto;min-height:0;border-radius:0;box-shadow:none}
 .mm-editor-modal.is-docked .mm-editor-body .mm-field{flex:1 1 100%;max-width:100%}
+/* ---------- 表の値の印（§9.598・1d）----------
+   印は字から作る（`cellHtml()`）。既定・未設定は薄い字、段は ●◐○—（凡例つき）、札の並びは札と棒、運用モードは札。 */
+.mm-val-def{margin-left:var(--space-1);color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-body)}
+.mm-val-none{color:var(--muted)}
+.mm-val-lv{display:inline-block;width:10px;height:10px;border-radius:var(--radius-round);vertical-align:middle;flex:none;box-sizing:border-box}
+.mm-val-lv.is-full{background:var(--teal)}
+.mm-val-lv.is-half{background:linear-gradient(90deg,var(--teal) 50%,transparent 50%);border:1.5px solid var(--teal)}
+.mm-val-lv.is-view{border:1.5px solid var(--teal)}
+.mm-val-lv.is-none{height:2px;border-radius:var(--radius-xs);background:var(--line-strong)}
+.mm-val-legend{display:inline-flex;align-items:center;gap:var(--space-3);margin-left:auto;color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-body)}
+.mm-val-legend>span{display:inline-flex;align-items:center;gap:var(--space-1)}
+.mm-val-legendbar{display:flex;justify-content:flex-end;padding:var(--space-2) 0}
+.mm-val-tags{display:inline-flex;gap:var(--space-1);min-width:0}
+.mm-val-tag{display:inline-flex;align-items:center;height:20px;padding:0 var(--space-2);border-radius:var(--radius-xs);background:var(--teal-tint);color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);font-style:normal;white-space:nowrap}
+.mm-val-tag.is-off{background:none;color:var(--muted);box-shadow:inset 0 0 0 1px var(--line);text-decoration:line-through}
+.mm-val-tag.is-warn{background:var(--warn-bg);color:var(--warn-fg)}
+/* 選んだ行は地が淡い青緑なので、札の地を一段濃くする（地に溶けない）。 */
+.mm-row.editing .mm-val-tag:not(.is-off):not(.is-warn){background:var(--pale)}
+.mm-val-bar{display:inline-block;width:48px;height:6px;border-radius:var(--radius-xs);background:var(--surface-3);vertical-align:middle;overflow:hidden}
+.mm-val-bar>i{display:block;height:100%;background:var(--teal)}
+.mm-val-n{margin-left:var(--space-2);color:var(--muted);font-size:var(--fs-sm)}
+/* 欄と表を結ぶ: 入った欄の列は見出しが青緑の字、選んだ行のそのセルは一段濃い地（字に重ねない）。 */
+.mm-row.head>.mm-th.is-hot b{color:var(--teal-ink)}
+.mm-row.editing>.is-hot{background:var(--pale);border-radius:var(--radius-xs);box-shadow:0 0 0 var(--space-1) var(--pale)}
 .mm-editor-modal.is-docked .mm-form-hint{color:var(--muted);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .mm-form[hidden]{display:none}
 .mm-count{color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}

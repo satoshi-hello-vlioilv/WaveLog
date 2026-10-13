@@ -12,6 +12,8 @@
     4. 打つと「変更あり」で保存・キャンセルが押せる。キャンセルは元の値へ戻す（閉じない）
     5. 変更があるまま別の行・×・「戻る」を押すと聞く（黙って捨てない）。「戻って続ける」なら残る
     6. 開いているあいだ頭の「追加」は縁取り（塗りの主ボタンは足元の保存の1つ）。閉じれば塗りへ戻る
+    7. 表の値は印で言う（既定は薄い字・機能は札・入力内容は棒・段は ●◐○— と凡例）。列の幅は中身の比で、切れない。
+       欄に入ると同じ列が光り、打った値はその場でセルに出る（キャンセルで戻る）
    ============================================================ */
 'use strict';
 const H = require('./lib/harness.js');
@@ -141,8 +143,34 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
   const e = await pane();
   rec('5) 変更が無ければ別の行へそのまま替わる（聞かない）', e.open && e.title !== a.title && await page.evaluate(() => document.getElementById('appConfirmModal')?.hidden !== false), JSON.stringify({ title: e.title }));
  }
+ /* ---------- 7) 表の値の印と、欄と表を結ぶ（1d） ---------- */
+ const marks = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')];
+  const cut = rows.flatMap(r => [...r.children].filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.title || c.textContent.trim()));
+  return { cut, def: document.querySelectorAll('#masterMaintList .mm-val-def').length, tags: document.querySelectorAll('#masterMaintList .mm-val-tag').length,
+   bar: document.querySelectorAll('#masterMaintList .mm-val-bar').length, vw: innerWidth };
+ });
+ rec('7) 値は印で言う（既定は薄い字・機能は札・入力内容は棒）', marks.def > 0 && marks.tags > 0 && marks.bar > 0, JSON.stringify(marks));
+ rec('7) 列の幅は中身の比——詳細を開いたままでもセルが「…」で切れない', marks.cut.length === 0, JSON.stringify(marks));
+ const minF = '#maintEditorForm [data-field="standardMinutes"]';
+ await page.focus(minF);
+ const hot = await page.evaluate(() => ({ th: !!document.querySelector('#masterMaintList .mm-th.is-hot[data-col="standardMinutes"]'),
+  cell: (document.querySelector('#masterMaintList .mm-row.editing>.is-hot') || {}).title || '' }));
+ rec('7) 欄に入ると、表の同じ列の見出しと選んだ行のセルが光る', hot.th && !!hot.cell, JSON.stringify(hot));
+ await page.fill(minF, '95');
+ await W.until(page, () => ((document.querySelector('#masterMaintList .mm-row.editing>.is-hot') || {}).title || '') === '95分', null, { ms: 5000, what: '打った値がセルに出る' });
+ rec('7) 打った値はその場で表のセルに出る（保存の前に一覧の見え方が分かる）', true);
+ await page.click('#maintEditorCancel');
+ await W.until(page, c => ((document.querySelector('#masterMaintList .mm-row.editing>.is-hot') || {}).title || '') === c, hot.cell, { ms: 5000, what: 'キャンセルでセルも戻る' });
+ rec('7) キャンセルで表のセルも元へ戻る', true, hot.cell);
  await page.click('#maintEditorClose');
  await W.until(page, () => document.getElementById('maintEditorModal').hidden, null, { ms: 5000, what: '×で閉じる' });
+ await openNav('accessPermission');
+ const lv = await page.evaluate(() => ({ legend: [...document.querySelectorAll('#masterMaintList .mm-val-legend>span')].map(s => s.textContent.trim()),
+  marks: [...document.querySelectorAll('#masterMaintList .mm-row:not(.head) .mm-val-lv')].map(i => i.getAttribute('aria-label')).filter(Boolean).length,
+  all: document.querySelectorAll('#masterMaintList .mm-row:not(.head) .mm-val-lv').length }));
+ rec('7) 段の値は ●◐○— の印で、凡例が1つあり、印は字（aria-label）も持つ', lv.legend.join(',') === 'できる,一部,見るだけ,できない' && lv.all > 0 && lv.marks === lv.all, JSON.stringify(lv));
+ await openNav('equipment');
  const f = await page.evaluate(() => ({ quiet: !!document.querySelector('#masterMaintActs .mm-hd-primary.is-quiet'), grid: document.querySelector('#masterMaintPanel .mm-main').classList.contains('has-pane'), sel: !!document.querySelector('#masterMaintList .mm-row.editing') }));
  rec('6) 閉じれば「追加」は塗りへ戻り、一覧は横いっぱい・行の印も消える', !f.quiet && !f.grid && !f.sel, JSON.stringify(f));
 });

@@ -133,7 +133,10 @@ page=pg;
     if(!hit())document.querySelectorAll('#masterMaintNav [data-nav-fold]').forEach(g=>g.click());
     const b=hit();if(b)b.click();
    });
-   await page.waitForFunction(()=>document.querySelectorAll('#masterMaintList .mm-row').length>1,
+   /* **押した物そのもの**で待つ（testing.md）——「行が2つ以上」は押す前の一覧でも成り立つ。 */
+   await page.waitForFunction(()=>!!document.querySelector('#masterMaintNav [data-master="equipment"].active')
+     &&[...document.querySelectorAll('#masterMaintList .mm-row.head>span')].some(s=>s.textContent.trim()==='使える機能')
+     &&document.querySelectorAll('#masterMaintList .mm-row').length>1,
      null,{timeout:15000});
      await idle();
      };
@@ -149,8 +152,9 @@ page=pg;
    const row=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
      .find(r=>[...r.querySelectorAll('span')].some(s=>s.textContent.trim()===name));
    if(!row)return {行なし:true};
-   const cells=[...row.querySelectorAll('span')];
-   return {文字:(cells[i]||{}).textContent?cells[i].textContent.trim():''};
+   /* §9.598 で値は札・棒で描く（字はセルの title が持つ）。列は行の直下の子で数える（札の中の span を数えない）。 */
+   const c=row.children[i];
+   return {文字:c?(c.title||c.textContent.trim()):'',札:c?[...c.querySelectorAll('.mm-val-tag')].map(t=>t.textContent+(t.classList.contains('is-off')?'(外)':'')):[]};
   },n);
   await openEquipTab();
   const all=await cellOf(NAME);
@@ -161,6 +165,8 @@ page=pg;
   const some=await cellOf(NAME);
   rec('一部だけのときは残る機能の名前が並ぶ',
    some.文字==='測定 / 作業予定',JSON.stringify(some));
+  rec('札では外した機能を打ち消しで見せる（字は「帳票」のまま・§9.598）',
+   some.札.join(',')==='測定,作業予定,帳票(外)',JSON.stringify(some.札));
   await post('/api/equipment-master/update',{id:eid,name:NAME,disabledFeatures:['measure','schedule','report']});
   await pickEquipTab();
   const none=await cellOf(NAME);

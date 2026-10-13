@@ -1,4 +1,4 @@
-# マスタ管理の画面（43件）
+# マスタ管理の画面（45件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 一覧のセルは字（`cellText`）から作った印（`cellHtml()`）。既定は薄い字、未設定は字のまま薄く、段は ●◐○— と凡例 | `test_mmpane.js`・`test_eqfeature.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 一覧の列の幅は中身を測った比（`fitMaintColumns()`）。詳細の欄に入ると同じ列が光り、打った値はその場でセルへ | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
 | マスタの頭は画面名＋ⓘ＋用途の1行／右端に主の操作1つ（`setHeadActs()`）。Excel・まとめて削除は「⋯」の帯 | `test_headbar.js`・`test_rollwipe.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 汎用の表のマスタは「一覧＋右の詳細」。窓に残すのは組み立て・紙の見本・専用の画面の窓だけ（答えは`editorDocks()`の1箇所）。閉じるのは×だけ | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 右の詳細の「変更あり」は保存と同じ値の集め方（`collectMaintBody()`）。開いただけでは変更なしで、保存・キャンセルは押せない | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |

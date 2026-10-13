@@ -140,8 +140,11 @@ H.run('test_measitems: 入力内容を設備ごとに出し分ける（§9.392�
     if(!hit())document.querySelectorAll('#masterMaintNav [data-nav-fold]').forEach(g=>g.click());
     const b=hit();if(b)b.click();
    });
-   await page.waitForFunction(()=>document.querySelectorAll('#masterMaintList .mm-row').length>1,
-     null,{timeout:15000});
+   /* **押した物そのもの**で待つ（testing.md）——「行が2つ以上」は押す前の一覧でも成り立つ。設備のタブが選ばれ、
+      見出しに「使う入力内容」が出るまで。 */
+   await page.waitForFunction(()=>!!document.querySelector('#masterMaintNav [data-master="equipment"].active')
+     &&[...document.querySelectorAll('#masterMaintList .mm-row.head>span')].some(s=>s.textContent.trim()==='使う入力内容')
+     &&document.querySelectorAll('#masterMaintList .mm-row').length>1,null,{timeout:15000});
    await paint();
   };
   const cellOf=n=>page.evaluate(name=>{
@@ -151,8 +154,9 @@ H.run('test_measitems: 入力内容を設備ごとに出し分ける（§9.392�
    const row=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
      .find(r=>[...r.querySelectorAll('span')].some(s=>s.textContent.trim()===name));
    if(!row)return {行なし:true};
-   const cells=[...row.querySelectorAll('span')];
-   return {文字:(cells[i]||{}).textContent?cells[i].textContent.trim():''};
+   /* §9.598 で値は札・棒で描く（字はセルの title が持つ）。列は行の直下の子で数える（札の中の span を数えない）。 */
+   const c=row.children[i];
+   return {文字:c?(c.title||c.textContent.trim()):'',札:c?[...c.querySelectorAll('.mm-val-tag')].map(t=>t.textContent+(t.classList.contains('is-off')?'(外)':'')):[]};
   },n);
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:15000});

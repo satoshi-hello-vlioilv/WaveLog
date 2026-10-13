@@ -661,6 +661,58 @@
                          schedule:'予定の本体にする',finish:'完了突合の相手'};
  const CAPABILITY_SHORT={list:'一覧',measure:'測定',plan:'予定',quality:'結合',schedule:'予定本体',finish:'完了突合'};
  /* 一覧の表示用テキスト。保存値そのままだと '*' が生で見えて意味が伝わらない。 */
+ /* 「使わないほう」を持つ札の並び（`check-set`）の一覧の読み方（§9.392）。語彙は`meta[metaKey]`、保存値は行の`rowKey`。
+    字（`cellText`）と印（`cellHtml`）は**同じ答え**を読む。 */
+ const MM_CHECKSET={
+  equipmentFeatures:{metaKey:'equipmentFeatures',rowKey:'disabledFeatures',none:'なし（どこにも出ません）',mark:'tags'},
+  measureItems:{metaKey:'measureItems',rowKey:'disabledMeasureItems',none:'なし（測定できません）',mark:'bar'},
+ };
+ function checkSetState(col,v){
+  const cs=MM_CHECKSET[col.format];if(!cs)return null;
+  const all=(maintState.meta&&Array.isArray(maintState.meta[cs.metaKey]))?maintState.meta[cs.metaKey]:[];
+  if(!all.length)return null;
+  const raw=col.row&&col.row[cs.rowKey];
+  const off=new Set(Array.isArray(raw)?raw:String(raw??v??'').split(',').map(t=>t.trim()).filter(Boolean));
+  return {all,off,on:all.filter(o=>!off.has(o.key))};
+ }
+ /* ---------- 表の値を印にする（§9.598・1d）----------
+    字（`cellText`）は title・並べ替え・探すが使い、**セルの中身だけを印にする**（印は字から作る＝字と印が別のことを言わない）。
+    段の値は ●◐○—（凡例つき）、既定は値に薄い「既定」、未設定は字のまま薄く（§9.85／§9.231——「—」にすると「無い」と読める）、
+    札の並びは札・棒、運用モードは札。 */
+ const MM_LEVEL={'編集可':'full','可':'full','部分的編集可':'half','自分の分だけ':'half','閲覧のみ':'view','不可':'none','非表示':'none','変更不可':'none'};
+ const MM_LEVEL_LEGEND=[['full','できる'],['half','一部'],['view','見るだけ'],['none','できない']];
+ const levelMark=(lv,title)=>`<i class="mm-val-lv is-${lv}" role="img" aria-label="${esc(title)}"></i>`;
+ function levelLegendHtml(){
+  return `<span class="mm-val-legend" aria-label="印の読み方">${MM_LEVEL_LEGEND.map(([k,w])=>`<span>${levelMark(k,w)}${esc(w)}</span>`).join('')}</span>`;
+ }
+ /* 段の印を使う表は凡例を1つ（タブの帯の右端・無ければ表の上）。印だけで言わない（§CLAUDE 3）。 */
+ function paintLevelLegend(def,list){
+  if(!def.cols.some(c=>c.mark==='level'))return;
+  const bar=list.querySelector('.mm-ltabs');
+  if(bar)bar.insertAdjacentHTML('beforeend',levelLegendHtml());
+  else list.querySelector('.mm-row.head').insertAdjacentHTML('beforebegin',`<div class="mm-val-legendbar">${levelLegendHtml()}</div>`);
+ }
+ function cellHtml(col,text){
+  const t=String(text??'');if(!t)return '';
+  if(col.mark==='level'&&MM_LEVEL[t])return levelMark(MM_LEVEL[t],t);
+  const cs=MM_CHECKSET[col.format];
+  if(cs){
+   const st=checkSetState(col,t);
+   if(st&&st.on.length){
+    if(cs.mark==='bar'){
+     const pct=Math.round(st.on.length/st.all.length*100);
+     return `<span class="mm-val-bar" role="img" aria-label="${esc(t)}"><i style="width:${pct}%"></i></span><small class="mm-val-n">${st.on.length}/${st.all.length}</small>`;
+    }
+    return `<span class="mm-val-tags">${st.all.map(o=>`<i class="mm-val-tag${st.off.has(o.key)?' is-off':''}">${esc(o.label)}</i>`).join('')}</span>`;
+   }
+   return `<span class="mm-val-none">${esc(t)}</span>`;
+  }
+  if(col.format==='runMode')return `<i class="mm-val-tag${col.row&&col.row[col.k]==='strict'?' is-warn':''}">${esc(t)}</i>`;
+  const d=t.match(/^(.+?)（既定）$/);
+  if(d)return `${esc(d[1])}<span class="mm-val-def">既定</span>`;
+  if(t==='未設定')return `<span class="mm-val-none">未設定</span>`;
+  return esc(t);
+ }
  function cellText(col,value){
   const v=String(value??'');
   if(col.format==='maxStrips')return v.trim()===''?'40（既定）':v;
@@ -695,20 +747,12 @@
      **0個は「なし」と書き切る**（空欄にすると「まだ決めていない」と読める・§4）。 */
   /* **`check-set`の一覧は1つの書き方**（§9.392で2つ目が増えたので束ねた）。
      語彙は`meta[metaKey]`、保存値は行の`rowKey`（「使わないほう」）。 */
-  const checkSetSummary=(metaKey,rowKey,noneWord)=>{
-   const all=(maintState.meta&&Array.isArray(maintState.meta[metaKey]))?maintState.meta[metaKey]:[];
-   if(!all.length)return '';
-   const off=new Set(Array.isArray(col.row&&col.row[rowKey])?col.row[rowKey]
-    :String(v).split(',').map(t=>t.trim()).filter(Boolean));
-   const on=all.filter(o=>!off.has(o.key));
-   return !on.length?noneWord:on.length===all.length?'すべて':on.map(o=>o.label).join(' / ');
-  };
-  if(col.format==='equipmentFeatures')
-   return checkSetSummary('equipmentFeatures','disabledFeatures','なし（どこにも出ません）');
   /* 使う入力内容（§9.392）。**「なし」は作れない**（サーバーが断る）が、
-     古いデータで全部外れていることはあり得るので言葉は用意しておく。 */
-  if(col.format==='measureItems')
-   return checkSetSummary('measureItems','disabledMeasureItems','なし（測定できません）');
+     古いデータで全部外れていることはあり得るので言葉は用意しておく（`MM_CHECKSET`）。 */
+  if(MM_CHECKSET[col.format]){
+   const st=checkSetState(col,v);if(!st)return '';
+   return !st.on.length?MM_CHECKSET[col.format].none:st.on.length===st.all.length?'すべて':st.on.map(o=>o.label).join(' / ');
+  }
   /* 運用モード（§9.588）。呼び名はサーバーの語彙（`runModes`）——画面へ「通常／厳密」を書き写さない。 */
   if(col.format==='runMode'){
    const m=((maintState.meta&&maintState.meta.runModes)||[]).find(o=>o.key===v);
@@ -1793,6 +1837,7 @@
   $('#maintEditorMore').onclick=ev=>openRowMenu(ev.currentTarget,maintState.editing);
   const ef=$('#maintEditorForm');
   ef.addEventListener('input',paintPaneFoot);ef.addEventListener('change',paintPaneFoot);
+  ef.addEventListener('focusin',ev=>paneHotKey(paneFieldKey(ev.target)));
   ef.addEventListener('click',()=>requestAnimationFrame(paintPaneFoot));   // 札・±の押下（値は隠し欄が持つ）
   WL.modal.keepOpen(modal);
   /* **閉じ方は×／キャンセル／Escの3つ**（§9.221 ①）。背景クリックを
@@ -1841,16 +1886,49 @@
    .forEach(r=>r.classList.toggle('editing',id!=null&&r.dataset.mmId===String(id)));
  }
  const paneValues=def=>JSON.stringify(collectMaintBody(def,'#maintEditorForm').body);
- function paneDirty(){return paneDocked()&&paneSnap!==null&&paneValues(currentDef())!==paneSnap}
+ /* 変更の有無の答えは1つ（`vals`は集めた値があれば渡す・無ければ集める）。 */
+ function paneDirty(vals){
+  if(!paneDocked()||paneSnap===null)return false;
+  return (vals?JSON.stringify(vals):paneValues(currentDef()))!==paneSnap;
+ }
  /* 足元は1つの部品: 左に状態と記録者・右にキャンセルと保存。**変更が無いうちは押せない**（押しても何も起きない形にしない）。 */
  function paintPaneFoot(){
   if(!paneDocked())return;
-  const dirty=paneDirty(),isNew=!maintState.editing,id=currentUserId();
+  const def=currentDef(),vals=collectMaintBody(def,'#maintEditorForm').body;
+  const dirty=paneDirty(vals),isNew=!maintState.editing,id=currentUserId();
+  paneLiveRow(def,vals);
   const st=isNew?(dirty?'入力あり':'まだ入力がありません'):(dirty?'変更あり':'変更なし');
   const hint=$('#maintEditorHint');if(hint)hint.textContent=`${st}・記録者 ${id||'—'}`;
   const why=isNew?'入力すると押せます':'変更があると押せます';
   ['#maintEditorCancel','#maintEditorSave'].forEach(s=>{const b=$(s);if(b){b.disabled=!dirty;b.title=dirty?'':why}});
   $('#maintEditorModal').classList.toggle('is-dirty',dirty);
+ }
+ /* ---------- 欄と表を結ぶ（§9.598・1d・図と入力を結ぶ）----------
+    詳細の欄に入ると、選んだ行の同じセルの地と列の見出しが光る。打った値は**その場で**そのセルに出る（保存の前に一覧での
+    見え方が分かる）。キャンセルで元の値に戻り、閉じれば一覧を描き直す。 */
+ function paneFieldKey(el){
+  const box=el&&el.closest&&el.closest('.mm-field');if(!box)return '';
+  const f=box.querySelector('[data-field],[data-equipment-field],[data-equipment-all]');
+  return f?(f.dataset.field||f.dataset.equipmentField||f.dataset.equipmentAll||''):'';
+ }
+ function paneHotKey(k){
+  document.querySelectorAll('#masterMaintList .is-hot').forEach(e=>e.classList.remove('is-hot'));
+  if(!k||!paneDocked())return;
+  const def=currentDef(),i=def.cols.findIndex(c=>c.k===k);if(i<0)return;
+  const th=document.querySelector(`#masterMaintList .mm-row.head>.mm-th[data-col="${CSS.escape(k)}"]`);if(th)th.classList.add('is-hot');
+  const row=document.querySelector('#masterMaintList .mm-row.editing'),cell=row&&row.children[i];if(cell)cell.classList.add('is-hot');
+ }
+ function paneLiveRow(def,vals){
+  const ed=maintState.editing,row=ed&&document.querySelector('#masterMaintList .mm-row.editing');if(!row)return;
+  const it=Object.assign({},ed,vals);
+  def.cols.forEach((c,i)=>{
+   if(mmCellOf(c)||!(c.k in vals))return;   // 計算の列は登録表の答え（打った値では描き直さない）
+   const cell=row.children[i];if(!cell)return;
+   const cc={...c,row:it},v=cellText(cc,it[c.k]),tw=cell.querySelector('.mm-rowtw');
+   if(cell.title===v)return;
+   cell.title=v;cell.innerHTML=cellHtml(cc,v)||'<em class="mm-blank">—</em>';
+   if(tw)cell.prepend(tw);
+  });
  }
  /* 右の詳細を離れてよいか。変更が無ければそのまま、あれば聞く——行を押し替える・左の一覧で移る・追加・×・Esc・
     「戻る」の全部がここを通る（**黙って捨てない**）。 */
@@ -2677,8 +2755,8 @@
     （§9.119と同じ考え方。全部を px にすると器の広さに追随しなくなる）。 */
  /* `widths`は幅を引いている途中の値（省けば保存した幅）。行の操作の列は持たない（§9.598・削除は詳細の ⋯）。 */
  function maintGridTemplate(def,widths){
-  const w=widths||mmViewOf(def).widths||{};
-  const data=def.cols.map(c=>w[c.k]?`${Math.round(w[c.k])}px`:`minmax(0,${c.grow||1}fr)`).join(' ');
+  const w=widths||mmViewOf(def).widths||{},cw=mmContentW.get(def.key);
+  const data=def.cols.map((c,i)=>w[c.k]?`${Math.round(w[c.k])}px`:`minmax(0,${cw&&cw[i]?cw[i]:(c.grow||1)}fr)`).join(' ');
   return maintShowsAudit(def)?`${data} 96px 128px`:data;
  }
  /* 並べ替えの物差し。**空欄は必ず最後**（向きを変えても最後）——空欄が
@@ -2890,6 +2968,7 @@
    return;
   }
   list.innerHTML=tabs.html+`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}</div>`;
+  paintLevelLegend(def,list);
   bindListTabs(def,list);
   bindMaintHeadTools(def,list);
   if(!items.length){
@@ -2938,24 +3017,41 @@
    }
   });
   list.append(frag);
+  fitMaintColumns(def,list);
+ }
+ /* 列の幅は**中身を測った比**で配る（§9.598・1d）——同じ比（`grow`）で割ると、短い値の列が広く・長い値の列が「…」で切れる
+    （実測: 1536 で「120分（既…」）。中身なりの幅（見出しと先頭200行の最大）を比にするので、器に入るうちはどの列も切れない。
+    引いて決めた幅（`widths`）は測らない。測った比は`maintGridTemplate()`が読む（幅を引く途中のプレビューも同じ比）。 */
+ const mmContentW=new Map();
+ function fitMaintColumns(def,list){
+  const rows=[...list.querySelectorAll('.mm-row')],head=rows[0];
+  if(!head||rows.length<2)return;
+  const n=head.children.length,same=rows.filter(r=>r.children.length===n).slice(0,201);
+  same.forEach(r=>r.style.gridTemplateColumns=`repeat(${n},max-content)`);
+  const w=Array(n).fill(0);
+  same.forEach(r=>[...r.children].forEach((c,i)=>{w[i]=Math.max(w[i],c.getBoundingClientRect().width)}));
+  mmContentW.set(def.key,w.map(x=>Math.ceil(x)+8));
+  const t=maintGridTemplate(def);
+  rows.forEach(r=>r.style.gridTemplateColumns=t);
  }
  /* 一覧の1行（§9.537 で`renderMaintList`から切り出した）。計算の列は登録表（`MM_CELLS`）が描く。 */
  function maintRowEl(def,it,tmpl,showAudit,ctx){
   const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;
   row.dataset.mmId=String(it.id);
   /* 押して開ける行だけが押す形（読むだけの表・読むだけの端末では押す形にしない・§CLAUDE 4）。 */
-  if(!def.readOnly){row.tabIndex=0;row.setAttribute('role','button');row.dataset.mmOpen='';row.title='押すと右に詳細を開きます'}
+  if(!def.readOnly){row.tabIndex=0;row.setAttribute('role','button');row.dataset.mmOpen=''}
   // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
   const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
-  row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
+  const how=def.readOnly?'':editorDocks(def)?'押すと右に詳細を開きます':defUsesEditorModal(def)?'押すと編集の窓を開きます':'押すと上の欄に読み込みます';
+  row.title=[how,showAudit?'':audit].filter(Boolean).join('\n');
   const det=mmDetailOf(def),open=det&&mmOpenSet(def).has(it.id);
   const cells=def.cols.map((c,ci)=>{
    const tw=det&&ci===0?`<button type="button" class="mm-rowtw" aria-expanded="${!!open}" title="${open?'閉じる':'この行の中身を開く'}">${open?'▾':'▸'}</button>`:'';
    const k=mmCellOf(c);
    if(k){const v=mmColText(c,it,ctx),h=k.html?k.html(it,ctx[c.cell]):esc(v);
     return `<span class="mm-calc" data-cell="${esc(c.cell)}" title="${esc(v)}">${tw}${h||'<em class="mm-blank">—</em>'}</span>`}
-   const v=cellText({...c,row:it},it[c.k]);
-   return `<span title="${esc(v)}">${tw}${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
+   const cc={...c,row:it},v=cellText(cc,it[c.k]);
+   return `<span title="${esc(v)}">${tw}${cellHtml(cc,v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}`;
   // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
   // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。

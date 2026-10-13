@@ -75,7 +75,7 @@ run('test_equse: 設備の使い分けの表と効き先の図（§9.542）', as
    head: [...document.querySelectorAll('#masterMaintList .mm-row.head > *')].map(e => e.textContent.trim()).join('/'),
    badge: (document.querySelector('[data-ltab="eqUse"] .mm-ltab-b') || {}).textContent || '',
    /* 見出しの正解は**定義から起こす**（列を足したら網を書き直す、にしない・§9.389）。見るのは「2枚目のタブが一覧を変えない」こと。 */
-   want: WL.mm.MASTER_DEFS.find(d => d.key === 'equipment').cols.map(c => c.label).concat(['操作']).join('/') }));
+   want: WL.mm.MASTER_DEFS.find(d => d.key === 'equipment').cols.map(c => c.label).join('/') }));   // 行の操作の列は §9.598 でやめた
   const T = truth(SAMPLE);
   rec('② 主役は1枚目の一覧のまま（4行・見出しは変えない）', main.rows === 4 && main.head === main.want, JSON.stringify(main));
   rec('② 2枚目のタブの札が違いの合計を言う', main.badge === `違い ${T.total}`, main.badge);
