@@ -32,6 +32,8 @@ const SNAP=['設備停止マスタ','設備停止サブカテゴリマスタ','�
 H.run('test_stopsubui: 設備停止マスタの画面（§9.397）',
  async({page,rec,B,W,idle})=>{
  const snap=await H.masterSnapshot(SNAP);
+ /* 後片付けは`finally`（§9.598 1j で踏んだ: 途中で落ちた2回が分類を4行残し、次の撮影の左の一覧に出ていた）。 */
+ try{
  const post=(path,body)=>page.evaluate(async a=>{
   const r=await fetch(a.path,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(Object.assign({user_id:'test-stopsubui'},a.body))});
@@ -425,11 +427,13 @@ H.run('test_stopsubui: 設備停止マスタの画面（§9.397）',
  rec('設備停止マスタの画面が器からはみ出さない',fitS.over<=1,`はみ出し${fitS.over}px（器${fitS.w}px）`);
  rec('入力欄の中の字が切れていない',fitS.cut===0,`${fitS.cut}件`);
 
- // ---- 後片付け（この実行で増えた行だけ・§9.362 ⑤） ---------------------
+ }finally{
+ // ---- 後片付け（この実行で増えた行だけ・§9.362 ⑤）。落ちても必ず通る ---------------------
  const dropped=await H.dropNewMasterRows(snap);
  rec('後片付けで増やした行を消した',dropped>0,`${dropped}行`);
  const left=await H.masterSnapshot(SNAP);
  let rest=0;
  for(const [t,ids] of left)rest+=[...ids].filter(i=>!snap.get(t).has(i)).length;
  rec('触る前の状態へ戻っている',rest===0,`${rest}行残り`);
+ }
 },{mode:'edit',viewport:{width:1700,height:1000}});
