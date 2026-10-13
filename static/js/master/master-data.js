@@ -4537,11 +4537,12 @@
      meta?`<span class="mm-dhead-meta">${esc(meta)}</span>`:''}</div></div>${
      stop?`<button type="button" class="mm-btn-ghost mm-hd-more" id="ssbStopMore" aria-haspopup="menu" aria-expanded="false"
        aria-label="この停止内容の操作" title="この停止内容の操作（消すなど）"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`:''}</div>
-    <div class="ssb-tabs" role="tablist" aria-label="停止内容の段">${SSB_TABS.map(([k,l])=>{
+    ${/* 段の札は一覧の札と同じ部品（`.mm-ltab`・値は小札`.mm-ltab-b`・§9.598 の仕上げ）——同じ役目の物を2つの形にしない。 */''}
+    <div class="mm-ltabs ssb-tabs" role="tablist" aria-label="停止内容の段">${SSB_TABS.map(([k,l])=>{
      /* 開いている段の札は値を言わない（下の中身が同じ値を持つ）。新しい停止内容は、保存するまで基本しか決められない。 */
      const off=creating&&k!=='basic';
-     return `<button type="button" role="tab" class="ssb-tab${k===tab?' is-on':''}" data-ssb-tab="${k}" aria-selected="${k===tab}"${
-      off?' disabled title="保存すると決められます"':''}>${l}${k===tab||creating?'':`<i class="ssb-tab-now">${esc(ssbTabNow(stop,k))}</i>`}</button>`}).join('')}</div>
+     return `<button type="button" role="tab" class="mm-ltab ssb-tab${k===tab?' is-on':''}" data-ssb-tab="${k}" aria-selected="${k===tab}"${
+      off?' disabled title="保存すると決められます"':''}>${l}${k===tab||creating?'':`<i class="mm-ltab-b ssb-tab-now">${esc(ssbTabNow(stop,k))}</i>`}</button>`}).join('')}</div>
     <div class="ssb-tab-body" data-ssb-body="${tab}">${body}</div>
     ${ssbFootHtml(tab,creating)}
    </div>`;

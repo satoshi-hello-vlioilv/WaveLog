@@ -464,7 +464,9 @@
 .mm-ltabs{display:flex;gap:2px;border-bottom:2px solid var(--line);margin:0 0 var(--space-2)}
 .mm-ltab{display:inline-flex;align-items:center;gap:var(--space-2);border:0;border-bottom:3px solid transparent;margin-bottom:-2px;
  background:none;padding:var(--space-2) var(--space-3);font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--muted);border-radius:0}
-.mm-ltab:hover{color:var(--teal-dark);background:var(--pale)}
+.mm-ltab:hover:not(:disabled){color:var(--teal-dark);background:var(--pale)}
+/* まだ決められない段（新しい停止内容の内訳・挿入の条件など）。押せない形で、理由は title。 */
+.mm-ltab:disabled{cursor:default;opacity:var(--op-disabled)}
 .mm-ltab.is-on{color:var(--teal-dark);border-bottom-color:var(--teal)}
 .mm-ltab-b{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui);padding:0 var(--space-1);border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-2)}
 .mm-ltab-b.is-warn{background:var(--warn-fg);color:var(--surface)}
@@ -2557,17 +2559,8 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .ssb-stop-n{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--teal-dark)}
 .ssb-stop-n.is-blank{font-weight:var(--fw-body);color:var(--muted)}
 /* ---- 右＝選んだ停止内容の段（§9.590）。頭は`.mm-dhead`（勤務形態と同じ部品） ---- */
-/* 段の札は**いまの値**を添える（開かずに3つの子の状態が読める）。 */
-.ssb-tabs{display:flex;gap:var(--space-1);border-bottom:1px solid var(--line-soft);flex:none}
-.ssb-tab{display:inline-flex;align-items:center;gap:var(--space-2);height:var(--ctl-h-sm);padding:0 var(--space-3);
-  border:0;border-bottom:3px solid transparent;background:transparent;font-size:var(--fs-base-sm);
-  font-weight:var(--fw-strong);color:var(--ink-2);cursor:pointer;margin-bottom:-1px}
-.ssb-tab:hover:not(:disabled){color:var(--teal-dark)}
-.ssb-tab:disabled{color:var(--muted);cursor:default}
-.ssb-tab.is-on{border-bottom-color:var(--teal);color:var(--teal-ink)}
-.ssb-tab-now{font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui);padding:1px var(--space-2);
-  border-radius:var(--radius-pill);background:var(--surface-3);color:var(--ink-2)}
-.ssb-tab.is-on .ssb-tab-now{background:var(--teal-tint);color:var(--teal-ink)}
+/* 段の札は一覧の札（`.mm-ltab`・値の小札`.mm-ltab-b`）を使う——**いまの値**を添える（開かずに3つの子の状態が読める）。 */
+.ssb-tabs{flex:none}
 .ssb-tab-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto}
 /* 内訳の表は箱にしない（行の下線で区切る・1a の表と同じ）。足す行は表の最後の行で、列にそろえる（§9.598 1g）。 */
 .ssb-table{display:flex;flex-direction:column;min-height:0}
