@@ -32,10 +32,11 @@ import threading
 import unicodedata
 
 from . import query_join
-from .db_access import cfg, connect, tables, cols, WORK_DB_KEY
+from .db_access import (cfg, cfg_for, connect, no_pattern_file_text, pattern_files,
+                        source_pattern, tables, cols, WORK_DB_KEY)
 # 「定義の持ちもの」は定義を持つ側にある(§9.365)。ここから呼ぶ名前は
 # **同じ関数**——2つ置くと、片方だけ直した状態が作れる。
-from .query_join import finish_time_of, parse_finish_time, take_columns
+from .query_join import finish_time_of, parse_finish_time, start_time_of, take_columns
 from .logging_setup import app_logger
 from .quiet import quiet
 
@@ -72,6 +73,8 @@ def _table_of(entry, want, c):
 
 
 # ---- 読み込み（版が変わらなければ作り直さない）--------------------------
+# `want_rows`の3つ目の値。同じ鍵が2行以上あれば None を入れる（仕掛の行を引くとき）。
+UNIQUE_ROWS = 'unique'
 _cache = {}
 _lock = threading.Lock()
 
@@ -88,7 +91,15 @@ def _stamp(path):
         return (str(path), 0, 0)
 
 
-def _load(key, table, key_names, want_rows):
+def _source(key, equipment):
+    """読む先の設定。**設備ごとのファイルの相手（§9.595）はその設備の1ファイル**——
+    「実績_＊＊＊.sqlite3」の＊＊＊が予定の設備と一致するものだけを突き合わせる。"""
+    if source_pattern(key):
+        return cfg_for(key, equipment)
+    return cfg(key)
+
+
+def _load(key, table, key_names, want_rows, equipment=''):
     """そのデータソースを開いて、突合キー -> 行 の索引を作る。
 
     戻り値: (索引, 使えた列名の並び, エラー文字列)。列が1つも無ければ
@@ -96,7 +107,7 @@ def _load(key, table, key_names, want_rows):
     if not key:
         return {}, [], ''
     try:
-        entry = cfg(key)
+        entry = _source(key, equipment)
     except Exception as e:
         return {}, [], f'読み込み先が決まっていません: {e}'
     try:
@@ -121,6 +132,10 @@ def _load(key, table, key_names, want_rows):
                     k = tuple(norm_value(r[pos[n]]) for n, _c in used)
                     if any(x == '' for x in k):
                         continue
+                    if want_rows == UNIQUE_ROWS and k in index:
+                        # 1行に決まらない鍵は「分からない」(§9.595)。どちらかを選ばない。
+                        index[k] = None
+                        continue
                     index[k] = {columns[i]: r[i] for i in range(len(columns))}
             else:
                 quoted = ','.join('[' + col + ']' for _n, col in used)
@@ -136,22 +151,25 @@ def _load(key, table, key_names, want_rows):
         return {}, [], f'読み込みに失敗しました: {e}'
 
 
-def _cached(key, table, key_names, want_rows):
+def _cached(key, table, key_names, want_rows, equipment=''):
     """版が同じなら読み直さない。**控えの鍵に列の並びまで入れる**——
-    突合キーを変えた直後に前の索引を使うと、変えていないように見える。"""
+    突合キーを変えた直後に前の索引を使うと、変えていないように見える。
+    設備ごとのファイル（§9.595）は設備も鍵に入れる（設備ごとに別のファイル）。"""
     if not key:
         return {}, [], ''
+    if not source_pattern(key):
+        equipment = ''
     try:
-        path = cfg(key)['path']
+        path = _source(key, equipment)['path']
     except Exception as e:
         return {}, [], f'読み込み先が決まっていません: {e}'
-    slot = (key, str(table or ''), tuple(key_names), want_rows)
+    slot = (key, str(table or ''), tuple(key_names), want_rows, equipment)
     token = _stamp(path)
     with _lock:
         hit = _cache.get(slot)
         if hit and hit[0] == token:
             return hit[1], hit[2], hit[3]
-    index, used, err = _load(key, table, key_names, want_rows)
+    index, used, err = _load(key, table, key_names, want_rows, equipment)
     with _lock:
         _cache[slot] = (token, index, used, err)
     return index, used, err
@@ -166,7 +184,12 @@ def forget():
 # ---- 予定の側の値 ------------------------------------------------------
 def plan_values(entry_detail, plan_row, key_names):
     """予定の側の値。**明細（投入時の仕掛行の写し）を先に見て、無ければ
-    予定そのものの列**（ロット番号・検査番号・鋳造番号）で補う。
+    予定そのものの列**（ロット番号・検査番号・鋳造番号）で補い、それでも
+    無ければ**いまの仕掛の行**から読む（§9.595）。
+
+    最後の段は、明細に後から突合キーに足した列（BOX番号など）が無いときのため
+    ——明細は予定へ入れた時点の写しなので、そのあと足した列は入っていない。
+    仕掛の行は**ロット番号・鋳造番号で1行に決まったときだけ**使う（`work_row()`）。
 
     1つでも空なら None を返す——**足りない鍵で突き合わせない**。
     片方だけの鍵で当てにいくと、別のロットへ当たる。"""
@@ -176,17 +199,53 @@ def plan_values(entry_detail, plan_row, key_names):
                 '鋳造番号': (plan_row or {}).get('castingNo')}
     norm_detail = {norm_name(k): v for k, v in detail.items()}
     out = []
+    work = None
     for name in key_names:
         v = detail.get(name)
         if v in (None, ''):
             v = norm_detail.get(norm_name(name))
         if v in (None, ''):
             v = fallback.get(name)
+        if v in (None, ''):
+            if work is None:
+                work = work_row(detail, plan_row) or {}
+            v = work.get(name)
+            if v in (None, ''):
+                v = {norm_name(k): x for k, x in work.items()}.get(norm_name(name))
         v = norm_value(v)
         if not v:
             return None
         out.append(v)
     return tuple(out)
+
+
+# 仕掛の行を引く鍵（予定の行がいつも持っている2つ）。
+WORK_ROW_KEYS = ('ロット番号', '鋳造番号')
+
+
+def work_row(entry_detail, plan_row):
+    """予定のロットの、**いまの仕掛の行**（全列）。1行に決まらなければ None。
+
+    鍵はロット番号＋鋳造番号（予定の行がいつも持つ2つ）。仕掛の表に鋳造番号の
+    列が無ければロット番号だけで引く。読めない・同じ鍵が2行以上あるなら None
+    （推測しない）。"""
+    if not WORK_DB_KEY:
+        return None
+    detail = entry_detail if isinstance(entry_detail, dict) else {}
+    index, used, err = _cached(WORK_DB_KEY, '', list(WORK_ROW_KEYS), UNIQUE_ROWS)
+    if err or not used or 'ロット番号' not in used:
+        return None
+    vals = []
+    for name in used:
+        v = detail.get(name)
+        if v in (None, ''):
+            v = {'ロット番号': (plan_row or {}).get('lotNo'),
+                 '鋳造番号': (plan_row or {}).get('castingNo')}.get(name)
+        v = norm_value(v)
+        if not v:
+            return None
+        vals.append(v)
+    return index.get(tuple(vals))
 
 
 # ---- 1件ぶんの判定 -----------------------------------------------------
@@ -220,6 +279,11 @@ def _in_work(d, entry_detail, plan_row):
     return (k in index), ''
 
 
+def _equipment_of(plan_row):
+    """予定の行の設備名（設備ごとのファイルを選ぶ鍵・§9.595）。"""
+    return str((plan_row or {}).get('equipment') or '').strip()
+
+
 def _find_right(d, entry_detail, plan_row):
     """相手のデータで探す。戻り値: (当たった行 or None, 使った列, 理由)。"""
     right_key = str(d.get('right') or '')
@@ -228,7 +292,8 @@ def _find_right(d, entry_detail, plan_row):
     names = _right_keys(d)
     if not names:
         return None, [], '突合キーが登録されていません。'
-    index, used, err = _cached(right_key, d.get('rightTable'), names, True)
+    index, used, err = _cached(right_key, d.get('rightTable'), names, True,
+                               _equipment_of(plan_row))
     if err or not used:
         return None, [], err or '相手に突合キーの列がありません。'
     # 予定の側の値は**左の列名**で取り、右の並びへ直す（左右で名前が違って
@@ -243,22 +308,43 @@ def _find_right(d, entry_detail, plan_row):
     return index.get(k), used, ''
 
 
+def _right_summary(d):
+    """相手の側が読めているか（describe用）。設備ごとのファイルなら全部の設備を足し合わせる。"""
+    key = d.get('right')
+    names = _right_keys(d)
+    if not source_pattern(key):
+        index, used, err = _cached(key, d.get('rightTable'), names, True)
+        return len(index), used, err, []
+    rows, used, errs, files = 0, [], [], []
+    for equip, _path in sorted(pattern_files(key).values()):
+        index, u, err = _cached(key, d.get('rightTable'), names, True, equip)
+        rows += len(index)
+        used = used or u
+        files.append({'equipment': equip, 'rows': len(index), 'error': err})
+        if err:
+            errs.append(f'{equip}: {err}')
+    if not files:
+        errs.append(no_pattern_file_text(key))
+    return rows, used, ('／'.join(errs[:3]) if errs and not used else ''), files
+
+
 def describe():
     """いまの完了突合の設定と、読めているかどうか。画面と網が見る1箇所。"""
     defs = query_join.finish_definitions()
     out = []
     for d in defs:
         left_index, left_used, left_err = _cached(WORK_DB_KEY, d.get('leftTable'), _left_keys(d), False)
-        right_index, right_used, right_err = _cached(d.get('right'), d.get('rightTable'),
-                                                     _right_keys(d), True)
+        right_rows, right_used, right_err, files = _right_summary(d)
         out.append({
             'id': d.get('id'), 'name': d.get('name') or '', 'builtin': bool(d.get('builtin')),
             'left': d.get('left') or '', 'right': d.get('right') or '',
             'keys': list(d.get('keys') or []),
             'columns': list(d.get('columns') or []), 'prefix': d.get('prefix') or '',
             'finishColumn': d.get('finishColumn') or '',
+            'startColumn': d.get('startColumn') or '',
+            'finishWhen': d.get('finishWhen') or FINISH_WHEN_GONE,
             'workColumns': left_used, 'actualColumns': right_used,
-            'workRows': len(left_index), 'actualRows': len(right_index),
+            'workRows': len(left_index), 'actualRows': right_rows, 'actualFiles': files,
             'workError': left_err, 'actualError': right_err,
             'ready': bool(WORK_DB_KEY) and not left_err and bool(left_used),
         })
@@ -269,54 +355,81 @@ def describe():
             'ready': any(x['ready'] for x in out)}
 
 
+# 完了突合の「いつ完了にするか」(§9.595)。語彙は`master_repo.QUERY_JOIN_FINISH_WHEN`。
+FINISH_WHEN_GONE = 'gone'
+FINISH_WHEN_HIT = 'hit'
+
+
+def _hit_result(d, hit, used, missing, reason):
+    """当たった行から返す形（2つの道で同じ）。"""
+    return {'missing': missing, 'complete': True, 'actual': take_columns(d, hit),
+            'startedAt': start_time_of(d, hit), 'finishedAt': finish_time_of(d, hit),
+            'joinName': d.get('name') or '', 'finishWhen': d.get('finishWhen') or FINISH_WHEN_GONE,
+            'reason': reason or (f"「{d.get('name')}」に見つかりました（" + '／'.join(used) + 'で一致）。')}
+
+
 def lookup(entry_detail, plan_row):
     """1件ぶんの判定。戻り値は dict:
 
-      {'missing': True/False/None, 'actual': 持ち帰った値 or None,
-       'finishedAt': ISO文字列 or '', 'joinName': 定義名, 'reason': 説明}
+      {'missing': True/False/None, 'complete': 完了にするか, 'actual': 持ち帰った値 or None,
+       'startedAt': ISO文字列 or '', 'finishedAt': ISO文字列 or '', 'joinName': 定義名,
+       'finishWhen': 'gone'/'hit', 'reason': 説明}
+
+    完了にする道は2つ（§9.595）:
+      ⓪ 「実績に当たったら」の定義 … **仕掛を見ずに**相手で探し、当たれば完了
+         （利用者の指示。実績が先に届き、仕掛から消えるのは後になる運用のため）
+      ①② 「仕掛から消えたら」の定義 … 仕掛から消え、相手に当たれば完了（§9.364）
 
     `missing` が None のときは**判定できなかった**（読めない・鍵が足りない）。
     そのときは呼ぶ側が状態を1つも動かさない——分からないことを、分かった
     ことにしない。"""
-    blank = {'missing': None, 'actual': None, 'finishedAt': '', 'joinName': '', 'reason': ''}
+    blank = {'missing': None, 'complete': False, 'actual': None, 'startedAt': '',
+             'finishedAt': '', 'joinName': '', 'finishWhen': '', 'reason': ''}
     if not WORK_DB_KEY:
         return dict(blank, reason='役割「仕掛」のデータソースがありません。')
     defs = query_join.finish_definitions()
     if not defs:
         return dict(blank, reason='完了突合の設定がありません'
                                   '（マスタ管理 > クエリ結合で「完了突合」を1件登録します）。')
+    reasons = []
+    # ⓪ 当たったら完了の定義が先（表示順）。
+    for d in defs:
+        if (d.get('finishWhen') or FINISH_WHEN_GONE) != FINISH_WHEN_HIT:
+            continue
+        hit, used, why = _find_right(d, entry_detail, plan_row)
+        if hit:
+            return _hit_result(d, hit, used, None, '')
+        if why:
+            reasons.append(f"{d.get('name')}: {why}")
     # ① まだ仕掛にあるか。**1つでも「ある」と言えば動かさない**——消えたと
     #    決めるのは、全部の定義が「無い」と言えたときだけ（作業中のロットを
     #    完了にしてしまわないため）。
-    reasons = []
     decided = False
     for d in defs:
         present, why = _in_work(d, entry_detail, plan_row)
         if present is True:
             return dict(blank, missing=False, joinName=d.get('name') or '',
-                        reason='仕掛にあります。')
+                        reason=('／'.join(reasons) + '／' if reasons else '') + '仕掛にあります。')
         if present is False:
             decided = True
         elif why:
             reasons.append(f"{d.get('name')}: {why}")
     if not decided:
         return dict(blank, reason='／'.join(reasons) or '仕掛を読めませんでした。')
-    # ② 相手で探す。**先に当たった定義が正**（表示順）。
+    # ② 相手で探す。**先に当たった定義が正**（表示順）。⓪で探した定義も探し直す
+    #    （控えから引くだけ）——消えたロットはどの定義で当たっても完了。
     for d in defs:
         hit, used, why = _find_right(d, entry_detail, plan_row)
         if hit:
-            return {'missing': True, 'actual': take_columns(d, hit),
-                    'finishedAt': finish_time_of(d, hit), 'joinName': d.get('name') or '',
-                    'reason': f"「{d.get('name')}」に見つかりました（"
-                              + '／'.join(used) + 'で一致）。'}
-        if why:
+            return _hit_result(d, hit, used, True, '')
+        if why and (d.get('finishWhen') or FINISH_WHEN_GONE) != FINISH_WHEN_HIT:
             reasons.append(f"{d.get('name')}: {why}")
-    return {'missing': True, 'actual': None, 'finishedAt': '', 'joinName': '',
-            'reason': '仕掛から消えていますが、突合先に見つかりません'
-                      + (('（' + '／'.join(reasons) + '）') if reasons else '。')}
+    return dict(blank, missing=True,
+                reason='仕掛から消えていますが、突合先に見つかりません'
+                       + (('（' + '／'.join(reasons) + '）') if reasons else '。'))
 
 
 # **再公開**（§9.365）。突合の入口はここなので、`actual_match.take_columns()`
 # のような呼び方も通るようにしておく。実体は`query_join`の1つだけ。
-__all__ = ['norm_value', 'norm_name', 'plan_values', 'take_columns', 'finish_time_of',
-           'parse_finish_time', 'describe', 'lookup', 'forget']
+__all__ = ['norm_value', 'norm_name', 'plan_values', 'work_row', 'take_columns', 'finish_time_of',
+           'start_time_of', 'parse_finish_time', 'describe', 'lookup', 'forget']

@@ -22,7 +22,8 @@ from pathlib import Path
 
 from .db_access import (DBS, cfg, connect, tables, cols,
                         WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY,
-                        PURPOSE_WORK, PURPOSE_QUALITY, PURPOSE_SCHEDULE)
+                        PURPOSE_WORK, PURPOSE_QUALITY, PURPOSE_SCHEDULE,
+                        normalize_file_pattern, scan_pattern_folder)
 from .logging_setup import app_logger
 from .quiet import quiet
 
@@ -160,7 +161,39 @@ def _feature(ok, note, detail=''):
  return {'ok': bool(ok), 'note': note, 'detail': detail}
 
 
+def _describe_pattern(out, source, pattern, path=None):
+ """設備ごとのファイル（§9.595）の「できること」。**フォルダを一覧するだけ**で、ファイルは開かない。
+
+ 1つの表ではないので一覧・測定・予定には使えない、と言い切る（押しても何も起きない形にしない）。
+ 使い道は完了突合の相手で、どの設備のファイルが見つかったかを返す。"""
+ key = out['key']
+ folder = Path(path) if path is not None else Path((DBS.get(key) or {}).get('path') or '')
+ found, err = scan_pattern_folder(folder, pattern)
+ names = sorted(v[0] for v in found.values())
+ out['pattern'] = pattern
+ out['files'] = names
+ out['error'] = err or ('' if names else
+                        f'フォルダ「{folder}」に、型「{pattern}」に合うファイルがありません。')
+ why = '設備ごとのファイル（フォルダ＋ファイル名の型）なので、1つの一覧としては使えません。'
+ out['features'] = {k: _feature(False, why) for k in ('list', 'measure', 'plan', 'quality')}
+ out['features']['finish'] = _feature(
+  bool(names),
+  (f'完了突合の相手に使えます（見つかった設備: {"、".join(names)}）。' if names
+   else '型に合うファイルが無いので、まだ突き合わせられません。'))
+ return out
+
+
 def describe(source, path=None):
+ """1件ぶんの「できること」。設備ごとのファイル（§9.595）はフォルダを一覧するだけ、
+ それ以外は`_describe_file()`が1つのファイルを開いて確かめる。"""
+ pattern = normalize_file_pattern(source.get('filePattern'))
+ if pattern and source.get('active', True) and (path is not None or (source.get('key') or '') in DBS):
+  return _describe_pattern({'key': source.get('key') or '', 'table': '', 'columnCount': 0,
+                            'error': '', 'features': {}}, source, pattern, path)
+ return _describe_file(source, path)
+
+
+def _describe_file(source, path=None):
  """1件ぶんの「できること」。sourceはdata_source_rows()の1要素。
 
  `path`を渡すと**まだ保存していない下書き**でも確かめる（§9.168）。

@@ -60,6 +60,14 @@ def start(log):
    log.info('共有スケジュールの持ち主機構: 無効（各端末が自分で共有へ書きます）')
  except Exception as e:
   log.warning('持ち主機構を開始できませんでした: %s',e)
+ # 完了突合で当たった実績を予定へ残す見回り(§9.595)。実績データは1か月で消えるので、
+ # **誰も作業スケジュールを開かなくても**書込役の端末が裏で残す。書込役でなければ何もしない。
+ try:
+  from backend import actual_keep  # 遅延: 読めなくても起動は止めない（開いたときの保存は残る）
+  actual_keep.start()
+  log.info('実績の保持: %d分ごとに完了突合を見回ります',actual_keep.interval_sec()//60)
+ except Exception as e:
+  log.warning('実績の保持の見回りを開始できませんでした: %s',e)
  # 起動アイコンの付け替え(§9.554)。前に Start.vbs へ作ったショートカットを入口（この PC の exe）へ。
  # 窓の中でだけ・裏で（ショートカットを読むのに窓の副コマンドを起こすので、起動を待たせない）。
  try:

@@ -26,7 +26,7 @@ from .. import source_capability
 from .. import storage_layout
 from ..logging_setup import app_logger
 from ..db_access import (
- DBS, MEAS_DB, connect,
+ DBS, MEAS_DB, connect, EQUIPMENT_TOKEN, normalize_file_pattern,
  PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
  SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, SCHEDULE_SHARE_PATH,
  parse_match_keys,
@@ -550,6 +550,20 @@ def _match_keys_of(x,now):
  if 'matchKeys' not in x:return now
  return _json.dumps(parse_match_keys(x.get('matchKeys')),ensure_ascii=False)
 
+def _file_pattern_of(x,now):
+ """ファイル名の型(§9.595)。**送っていないときは今の値を残す**（§9.212 ②）。
+    型として読めない値（`{設備}`が無い・拡張子が違う）は空＝1つのファイルへ倒し、
+    保存を断る側で理由を言う（`_file_pattern_error`）。"""
+ if 'filePattern' not in x:return now
+ return normalize_file_pattern(x.get('filePattern'))
+
+def _file_pattern_error(x):
+ """打った型が型として読めないとき、その理由。読めれば None。"""
+ raw=str(x.get('filePattern') or '').strip()
+ if not raw or normalize_file_pattern(raw):return None
+ return (f'ファイル名の型「{raw}」を読めません。設備名の入る所に {EQUIPMENT_TOKEN} を1つだけ書き、'
+         '.sqlite3 などの拡張子で終えてください（例: 実績_{設備}.sqlite3）。')
+
 def _purpose_holder(cur,purpose,exclude_id=None):
  """その役割が今どのキーに付いているか。無ければ空文字。
 
@@ -581,7 +595,7 @@ def data_source_master_save():
  x=body({'id': any_,'key': str,'label': str,'rne': str,'table': str,'output': str,
          'share': str,'preferred': str,'purpose': str,'order': any_,'enabled': any_,
          'listed': any_,'mode': any_,'readMode': any_,'overridePath': any_,
-         'matchKeys': any_});uid=request_user_id(x)
+         'matchKeys': any_,'filePattern': any_});uid=request_user_id(x)
  key=x.text('key').upper()
  if not _KEY_RE.match(key):
   return jsonify(error='キーは半角英数と _ で1〜40文字にしてください（一覧のURLに使うため）。'),400
@@ -589,33 +603,36 @@ def data_source_master_save():
   return jsonify(error='MASTER はマスタDB自身に予約されています。別のキーにしてください。'),400
  label=x.text('label') or key
  purpose=_purpose_of(x)
+ bad=_file_pattern_error(x)
+ if bad:return jsonify(error=bad),400
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
   ensure_data_source_table(c);cur=c.cursor()
-  cur.execute('SELECT [ソースID],[読み方],[突合キー] FROM [データソースマスタ] WHERE [キー]=?',[key])
+  cur.execute('SELECT [ソースID],[読み方],[突合キー],[ファイル名の型] FROM [データソースマスタ] WHERE [キー]=?',[key])
   row=cur.fetchone()
   err=_purpose_conflict(cur,purpose,exclude_id=row[0] if row else None)
   if err:return jsonify(error=err),400
   # **送っていない読み方は今の値を残す**（§9.250 ⑩・§9.212 ②）。
   now_mode=str(row[1] or '') if row else ''
   now_match=str(row[2] or '') if row else ''
+  now_pattern=str(row[3] or '') if row else ''
   vals=[label,str(x.get('rne') or '').strip(),str(x.get('table') or '').strip() or '仕掛',
         str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
         str(x.get('preferred') or '').strip(),
         int(x.get('order') or 0),
         0 if str(x.get('enabled') or '').strip()=='無効' else -1,purpose,
         _read_mode_of(x,now_mode),
-        _listed_of(x,purpose),_match_keys_of(x,now_match),uid]
+        _listed_of(x,purpose),_match_keys_of(x,now_match),_file_pattern_of(x,now_pattern),uid]
   if row:
    cur.execute('UPDATE [データソースマスタ] SET [表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
                 '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,[読み方]=?,'
-                '[一覧表示]=?,[突合キー]=?,[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',vals+[row[0]])
+                '[一覧表示]=?,[突合キー]=?,[ファイル名の型]=?,[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',vals+[row[0]])
    registered=False;sid=row[0]
   else:
    cur.execute('INSERT INTO [データソースマスタ] ([表示名],[RNEファイル],[抽出テーブル],'
                 '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[役割],[読み方],[一覧表示],'
-                '[突合キー],[更新者ID],[キー],[登録者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
+                '[突合キー],[ファイル名の型],[更新者ID],[キー],[登録者ID],[登録日時],[更新日時]) '
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                vals+[key,uid])
    registered=True;sid=cur.lastrowid
   c.commit()
@@ -638,7 +655,7 @@ def data_source_master_update():
  x=body({'id': any_,'key': str,'label': str,'rne': str,'table': str,'output': str,
          'share': str,'preferred': str,'purpose': str,'order': any_,'enabled': any_,
          'listed': any_,'mode': any_,'readMode': any_,'overridePath': any_,
-         'matchKeys': any_});uid=request_user_id(x)
+         'matchKeys': any_,'filePattern': any_});uid=request_user_id(x)
  sid=x.get('id')
  if sid is None or str(sid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
  sid=int(sid)
@@ -649,15 +666,18 @@ def data_source_master_update():
   return jsonify(error='MASTER はマスタDB自身に予約されています。別のキーにしてください。'),400
  label=str(x.get('label') or '').strip() or key
  purpose=_purpose_of(x)
+ bad=_file_pattern_error(x)
+ if bad:return jsonify(error=bad),400
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
   ensure_data_source_table(c);cur=c.cursor()
-  cur.execute('SELECT [ソースID],[読み方],[突合キー] FROM [データソースマスタ] WHERE [ソースID]=?',[sid])
+  cur.execute('SELECT [ソースID],[読み方],[突合キー],[ファイル名の型] FROM [データソースマスタ] WHERE [ソースID]=?',[sid])
   cur_row=cur.fetchone()
   if not cur_row:return jsonify(error='指定のデータソースが見つかりません。'),400
   # **送っていない読み方は今の値を残す**（§9.250 ⑩・§9.212 ②）。
   now_mode=str(cur_row[1] or '')
   now_match=str(cur_row[2] or '')
+  now_pattern=str(cur_row[3] or '')
   # 付け替え先のキーが別の行で使われていないか。キーは一覧を指す識別子で、
   # 重なると「どちらの設定で読むのか」が決まらない。
   cur.execute('SELECT [ソースID] FROM [データソースマスタ] WHERE [キー]=? AND [ソースID]<>?',[key,sid])
@@ -667,7 +687,7 @@ def data_source_master_update():
   if err:return jsonify(error=err),400
   cur.execute('UPDATE [データソースマスタ] SET [キー]=?,[表示名]=?,[RNEファイル]=?,[抽出テーブル]=?,'
                '[出力ファイル]=?,[共有パス]=?,[既定テーブル]=?,[表示順]=?,[有効]=?,[役割]=?,[読み方]=?,'
-               '[一覧表示]=?,[突合キー]=?,[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',
+               '[一覧表示]=?,[突合キー]=?,[ファイル名の型]=?,[更新者ID]=?,[更新日時]=Now() WHERE [ソースID]=?',
               [key,label,str(x.get('rne') or '').strip(),
                str(x.get('table') or '').strip() or '仕掛',
                str(x.get('output') or '').strip(),str(x.get('share') or '').strip(),
@@ -675,7 +695,7 @@ def data_source_master_update():
                int(x.get('order') or 0),
                0 if str(x.get('enabled') or '').strip()=='無効' else -1,
                purpose,_read_mode_of(x,now_mode),_listed_of(x,purpose),
-               _match_keys_of(x,now_match),uid,sid])
+               _match_keys_of(x,now_match),_file_pattern_of(x,now_pattern),uid,sid])
   c.commit()
  if 'overridePath' in x:_save_source_override(key,x.get('overridePath'),uid)
  return jsonify(ok=True,id=sid,key=key,registered=False,updated_by=uid,
@@ -697,7 +717,7 @@ def data_source_master_probe():
   x=body({'id': any_,'key': str,'label': str,'rne': str,'table': str,'output': str,
          'share': str,'preferred': str,'purpose': str,'order': any_,'enabled': any_,
          'listed': any_,'mode': any_,'readMode': any_,'overridePath': any_,
-         'matchKeys': any_})
+         'matchKeys': any_,'filePattern': any_})
   from ..db_access import source_read_mode,_source_path,source_override_key
   key=str(x.get('key') or '').strip().upper() or 'PROBE'
   entry={'key':key,'label':str(x.get('label') or '').strip() or key,
@@ -707,7 +727,8 @@ def data_source_master_probe():
          'share':str(x.get('share') or '').strip(),
          'preferred':str(x.get('preferred') or '').strip(),
          'purpose':str(x.get('purpose') or '').strip(),
-         'mode':_read_mode_of(x)}
+         'mode':_read_mode_of(x),
+         'filePattern':_file_pattern_of(x,'')}
   # 直接指定は画面の下書きを使う（保存済みの上書きは見ない。**いま欄に
   # 入っている値**で確かめたいのがこのAPIの目的）。
   override=str(x.get('overridePath') or '').strip()

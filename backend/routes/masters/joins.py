@@ -13,6 +13,7 @@ from ..body import body, any_
 from ._base import bp
 from ...repositories.master_repo import (
  QUERY_JOIN_MULTI,
+ QUERY_JOIN_FINISH_WHEN,
  ensure_query_join_table,
  query_joins,
  query_join_save,
@@ -36,6 +37,8 @@ def _join_payload(x):
          'keys':x.get('keys'),'columns':x.get('columns'),'prefix':x.get('prefix'),
          'multi':x.get('multi'),'kind':x.get('kind'),'purpose':x.get('purpose'),
          'finishColumn':x.get('finishColumn'),
+         # 送られなければ None＝今の値のまま（§9.595。古い画面が消さない）。
+         'startColumn':x.get('startColumn'),'finishWhen':x.get('finishWhen'),
          'useInSchedule':True if sched is None else bool(sched),
          'order':x.get('order'),'enabled':x.get('enabled')}
 
@@ -43,7 +46,8 @@ def _join_payload(x):
 _JOIN_BODY={'columns': any_, 'enabled': any_, 'finishColumn': any_, 'keys': any_,
             'kind': any_, 'left': any_, 'leftTable': any_, 'multi': any_, 'name': any_,
             'order': any_, 'prefix': any_, 'purpose': any_, 'right': any_,
-            'rightTable': any_, 'useInSchedule': any_}
+            'rightTable': any_, 'useInSchedule': any_,
+            'startColumn': any_, 'finishWhen': any_}
 
 @bp.get('/api/query-join-master')
 @api_guard('クエリ結合マスタ読込失敗')
@@ -76,6 +80,7 @@ def query_join_master_list():
  return jsonify(ok=True,items=items,sources=sources,multiModes=list(QUERY_JOIN_MULTI),
                 kinds=query_join.JOIN_KINDS,kindDefault=query_join.JOIN_KIND_DEFAULT,
                 purposes=query_join.PURPOSES,purposeDefault=query_join.PURPOSE_LIST,
+                finishWhens=[{'key':k,'label':v} for k,v in QUERY_JOIN_FINISH_WHEN],
                 builtinEnabled=query_join.builtin_quality_enabled(),
                 builtin=_b(builtin))
 
@@ -132,7 +137,7 @@ def query_join_master_builtin():
 def query_join_master_probe():
  """保存する前に、いまのデータで実際に当ててみる。**読むだけ**。"""
  from ... import query_join
- from ...repositories.master_repo import normalize_join_keys, normalize_join_columns
+ from ...repositories.master_repo import normalize_join_keys, normalize_join_columns, finish_when_of
  x=body(dict(_JOIN_BODY,id=any_))
  # 用途の読み取りは`purpose_of()`の1箇所（知らない値は「一覧に列を足す」）。
  purpose=query_join.purpose_of({'purpose':x.get('purpose')})['key']
@@ -144,6 +149,8 @@ def query_join_master_probe():
     'prefix':str(x.get('prefix') or ''),'multi':str(x.get('multi') or 'first'),
     'kind':str(x.get('kind') or query_join.JOIN_KIND_DEFAULT),
     'purpose':purpose,'finishColumn':str(x.get('finishColumn') or ''),
+    'startColumn':str(x.get('startColumn') or ''),
+    'finishWhen':finish_when_of(x.get('finishWhen')),
     'active':True}
  if not d['keys']:
   return jsonify(ok=True,result={'ok':False,'reason':'突合キーを1組入れると、ここで結果を確かめられます。',

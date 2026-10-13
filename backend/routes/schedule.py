@@ -394,47 +394,9 @@ def _check_session(equipment):
 # 作業予定
 # ========================================================================
 def _persist_actual_sources(result):
- """実績でHITした行の写しを共有スケジュールへ残す(§9.364)。
-
- 利用者の指示:「スケジュールデータにHITした実績データを保存して実績データが
- 今度更新されてなくなっても保持できるようにしてください」。
-
- **書くのは書込役の端末が予定を開いたときだけ**（利用者の選択）。現場は
- 何も押さずに済み、閲覧だけの端末や中継先の端末は書かない。
-
-  ・持ち主が別の端末なら書かない（`should_relay()`）——あちらが開いたときに書く
-  ・閲覧モードでは書かない（書込ガードと同じ線引き）
-  ・**書けなくてもGETは通す**（fail-open）。予定が読めないことのほうが痛い。
-    黙って諦めない（§9.328）ので、理由は`warnings`で画面へ返す。
-  ・保存できたぶんは、いま返す応答の中でも「保存済み」に直す——同じ画面が
-    「未保存」と言い続けるのは、次に開くまで直らない嘘になる。"""
- pend=[e for e in (result.get('entries') or [])
-       if e.get('actualSource') and not e.get('actualSourceSaved') and e.get('id') is not None]
- if not pend:return ''
- if get_mode()=='view':return ''
- try:
-  from .. import schedule_owner  # 遅延: 中継は起動途中で組み上がる（`_relay_write()`と同じ）
-  if schedule_owner.should_relay():return ''
- except Exception as _e:
-  quiet('書込役を確かめられない（保存は見送る）',_e)
-  return ''
- uid=current_login_id();pc=current_pc_name()
- def fn(c):
-  n=0
-  for e in pend:
-   # **完了時刻と、どの定義で当たったかも一緒に残す**(§9.365)——値だけ残すと、
-   # 相手のデータが消えたあとに「いつ終わったのか」を二度と言えなくなる。
-   payload={'values':e['actualSource'],'finishedAt':e.get('finishedAt') or '',
-            'joinName':e.get('finishedBy') or '','savedAt':datetime.now().isoformat()}
-   if sr.plan_set_actual_json(c,e['id'],json.dumps(payload,ensure_ascii=False),uid,pc):n+=1
-  return {'saved':n}
- try:
-  schedule_sync.with_write(uid,pc,uid,fn)
- except Exception as e:
-  app_logger().warning('実績の写しを保存できませんでした: %s',e)
-  return f'実績で確認できた{len(pend)}件を予定へ保存できませんでした（{e}）。次に開いたときにもう一度試します。'
- for e in pend:e['actualSourceSaved']=True
- return ''
+ """当たった実績を予定へ残す(§9.364)。決まりは`actual_keep.persist()`の1箇所（裏の見回りと同じ）。"""
+ from .. import actual_keep  # 遅延: 起動の背景処理と同じモジュール（読み込みの順を縛らない）
+ return actual_keep.persist(result,current_login_id(),current_pc_name())
 
 @bp.get('/api/schedule/plan')
 def plan_list():

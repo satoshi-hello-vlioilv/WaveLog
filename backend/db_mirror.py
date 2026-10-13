@@ -638,12 +638,18 @@ def targets():
  ——写しを読ませると、他端末の予定が写しの間隔ぶん古いまま見え続ける。
 
  測定データは§9.268で足した(`records_targets`)。**自分が書くぶんは入らない。**"""
- from .db_access import DBS, PURPOSE_SCHEDULE
+ from .db_access import DBS, PURPOSE_SCHEDULE, pattern_files, pattern_mirror_key
  out = []
  for key, cfg in DBS.items():
   if (cfg or {}).get('role') != 'readonly':
    continue
   if (cfg or {}).get('purpose') == PURPOSE_SCHEDULE:
+   continue
+  if (cfg or {}).get('pattern'):
+   # 設備ごとのファイル(§9.595)。**フォルダそのものは写さない**——型に合う
+   # 1ファイルずつを、設備名の鍵(`<鍵>@<設備>`)で写す。読む側は`cfg_for()`。
+   for equip, path in pattern_files(key).values():
+    out.append((pattern_mirror_key(key, equip), path))
    continue
   out.append((key, Path(cfg['path'])))
  try:
