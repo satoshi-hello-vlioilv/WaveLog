@@ -61,7 +61,10 @@
    .rp-panel)と同じ枠に収め、中の.mm-dialogは寸法だけ枠いっぱいへ上書きする
    (内部構造を作り直さずに済ませるため。.rec-panel .record-dialogと同じ手法)。 */
 /* 全幅で使う（§9.593）。左のメニューを伏せた画面なので、器の外の余白と枠は要らない（ヘッダーの下からそのまま始める）。 */
-.mm-panel{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface-2);border-top:1px solid var(--line);overflow:hidden}
+/* 器の中の線は**淡い1種類**（§9.598・AA）。構造の線（`--line`）を器で宣言し直す——規則ごとに色を書き換えない。
+   入れ子の線（`--line-mid`）も同じ淡さへ。編集窓（`.mm-editor-modal`）は器の外に置かれるので同じ宣言を持つ。 */
+.mm-panel,.mm-editor-modal{--line:var(--line-soft);--line-mid:var(--line-soft)}
+.mm-panel{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface);border-top:1px solid var(--line);overflow:hidden}
 .mm-panel .mm-dialog{width:100%;max-width:none;height:100%;border-radius:0;box-shadow:none}
 .mm-dialog{position:relative;width:96vw;max-width:1500px;height:94vh;display:flex;flex-direction:column;background:var(--surface-2);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--elev-modal)}
 /* 見出しの濃色バンドは廃止(画面名はヘッダーの#fileNameが持つ)。残るのは
@@ -136,9 +139,8 @@
 .mm-toolbar-left{display:flex;align-items:baseline;gap:var(--gap-section);min-width:0}
 .mm-toolbar-left b{font-size:var(--fs-title);color:var(--ink);white-space:nowrap}
 .mm-count{color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
-.mm-btn-ghost{border:1px solid #9fb9b2;background:#fff;color:var(--ink-2);font-weight:var(--fw-strong);cursor:pointer;white-space:nowrap}
-.mm-btn-ghost:hover{background:var(--bg);border-color:#6da6ad}
-.mm-btn-ghost.sm{}
+.mm-btn-ghost{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.mm-btn-ghost:hover{background:var(--surface-2);border-color:var(--line-strong)}
 .mm-form{padding:12px 18px;background:#ffffff;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:var(--gap-section)}
 .mm-form-head{display:flex;align-items:center;gap:var(--gap-section);flex-wrap:wrap}
 .mm-mode-chip{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:5px 12px;border-radius:var(--radius-pill);font-weight:var(--fw-strong);font-size:var(--fs-base-sm);white-space:nowrap}
@@ -193,7 +195,9 @@
 .mm-tag{display:inline-flex;align-items:center;gap:var(--gap-hair);height:var(--ctl-h-xs);padding:0 4px 0 10px;border-radius:var(--radius-lg);background:var(--teal-tint);color:#0a6570;font-weight:var(--fw-ui);font-size:var(--fs-sm);white-space:nowrap}
 .mm-tag-remove{width:18px;height:18px;border:0;border-radius:var(--radius-round);background:transparent;color:#0a6570;font-size:var(--fs-base-sm);line-height:1;cursor:pointer;padding:0}
 .mm-tag-remove:hover{background:#0a657026}
-.mm-tag-box input.mm-tag-search{flex:1 1 100px;min-width:100px;height:26px;padding:var(--pad-chip);border:0;background:transparent;font-size:var(--fs-sm)}
+/* 中の字の欄は**縁を持たない**（札と字で1枚の枠・§9.598）。`.mm-field input:not()…`（詳細度0,3,1）が縁・高さ・200pxを
+   配ってくるので、同じ詳細度で**後に**書いて打ち消す（以前は負けていて、枠の中にもう1つ枠ができていた）。 */
+.mm-field .mm-tag-box input.mm-tag-search{flex:1 1 100px;min-width:100px;height:26px;padding:var(--pad-chip);border:0;background:transparent;font-size:var(--fs-sm)}
 .mm-tag-box input.mm-tag-search:focus-visible{outline:0;box-shadow:none}
 .mm-tag-suggest{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:230px;overflow:auto;display:flex;flex-direction:column;gap:var(--gap-hair);padding:var(--space-2);background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:var(--elev-pop)}
 .mm-tag-suggest[hidden]{display:none}
@@ -202,9 +206,9 @@
 .mm-tag-suggest-empty{padding:7px 10px;color:var(--muted);font-size:var(--fs-sm)}
 .mm-form-tail{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
 .mm-form-tail[hidden]{display:none}
-.mm-btn-primary{border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:var(--elev-pop)}
+/* 主ボタンは影を持たない（§9.598・参考の2つのアプリと同じ平らな面）。大きさは役割の表（10-roles）の補助の段。 */
+.mm-btn-primary{border:0;background:var(--teal);color:var(--surface);cursor:pointer}
 .mm-btn-primary:hover{background:var(--teal-dark)}
-.mm-btn-primary.sm{}
 .mm-form-hint{color:var(--muted);font-size:var(--fs-sm)}
 /* 入力項目が多いマスタ(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)は上部フォームを
    「追加ボタン+説明」だけに縮め、その分を一覧の表示領域へ回す。 *//* ---------- 設定ページ形式のマスタ(パス設定) §9.68 ----------
@@ -255,9 +259,9 @@
 .mm-form-compact .mm-form-head{gap:var(--space-3)}
 /* ---------- 汎用の編集専用モーダル(ARCHITECTURE.md「マスタ管理の画面形態」新設) ---------- */
 .mm-editor-dialog{width:min(760px,94vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--elev-modal)}
-.mm-editor-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);background:linear-gradient(90deg,var(--nav),#1f5560);color:#fff}
+.mm-editor-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);background:var(--surface);color:var(--ink);border-bottom:1px solid var(--line)}
 .mm-editor-head h2{margin:1px 0 0;font-size:var(--fs-title)}
-.mm-editor-head small{display:block;color:#8fd4d4;letter-spacing:.04em}
+.mm-editor-head small{display:block;color:var(--muted);font-size:var(--fs-sm)}
 .mm-editor-head .mm-close{margin-left:auto;width:var(--ctl-h-sm);height:var(--ctl-h-sm);font-size:var(--fs-lg)}
 .mm-editor-body{flex:1;min-height:0;overflow:auto;padding:var(--pad-dialog);display:flex;flex-direction:column;gap:var(--space-3);background:#ffffff}
 /* ---------- モーダルの中の欄は規格の幅で並べる(§9.221 ④、利用者の指摘) ----------
@@ -336,7 +340,7 @@
 .mm-imp-badge.unsupported{background:var(--bg);color:var(--muted)}
 /* 横スクロールは出さない(列はminmax(0,fr)で縮み、あふれる文字は省略記号)。
    生データタブだけは列数が読めないため、内側の.mm-raw-scrollが横スクロールを持つ。 */
-.mm-list-wrap{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 18px 18px}
+.mm-list-wrap{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 var(--space-5) var(--space-5)}
 .mm-list{display:flex;flex-direction:column}
 /* ---------- 器の高さを中まで届ける（§9.222 ⑤） ----------
    **`is-fill`が付いたタブだけ**、外側のスクロールをやめて中身へ高さを渡す。
@@ -346,10 +350,10 @@
    `loadMaintInner()`の1箇所。 */
 .mm-list-wrap.is-fill{overflow:hidden;display:flex;flex-direction:column;padding-bottom:var(--space-3)}
 .mm-list-wrap.is-fill>.mm-list{flex:1;min-height:0}
-.mm-row{display:grid;align-items:center;gap:var(--space-2);padding:0 var(--ctl-pad-x-sm);min-height:calc(var(--ctl-h) + 8px);border-bottom:1px solid var(--surface-3)}
-.mm-row.head{position:sticky;top:0;z-index:2;min-height:42px;background:var(--bg);border-bottom:2px solid var(--line-soft);color:var(--ink-2);font-weight:var(--fw-ui)}
-.mm-row:not(.head){background:#fff;cursor:pointer;transition:background .1s}
-.mm-row:not(.head):nth-child(even){background:var(--surface-2)}
+/* 表は**見出し32px・行40px・縞なし**（§9.598・LotScope の表）。行の線は一段淡い面の色、見出しは淡い地＋1本の線。 */
+.mm-row{display:grid;align-items:center;gap:var(--space-2);padding:0 var(--space-3);min-height:40px;border-bottom:1px solid var(--surface-3)}
+.mm-row.head{position:sticky;top:0;z-index:2;min-height:32px;background:var(--surface-2);border-bottom:1px solid var(--line);color:var(--ink-2);font-weight:var(--fw-ui)}
+.mm-row:not(.head){background:var(--surface);cursor:pointer;transition:background .1s}
 /* 計算の列（§9.537）。値は登録表が答える（`.mm-calc[data-cell]`）。
    ロールマスタ: 1周の帯（全行で同じ目盛り・色は当たる面）と見分けにくい相手の札（＝は橙・倍数は灰）。 */
 .mm-row>.mm-calc{min-width:0}
@@ -542,7 +546,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .lf-peek .lf-pgo{margin-top:var(--space-2);color:var(--teal-dark);font-weight:var(--fw-strong)}
 .mm-capn{font-variant-numeric:tabular-nums}
 .mm-capn.is-low{background:var(--warn-fg);color:var(--surface);border-radius:var(--radius-xs);padding:0 var(--space-1)}
-.mm-row:not(.head):hover{background:var(--teal-tint)}
+.mm-row:not(.head):hover{background:var(--surface-2)}
 .mm-row:not(.head):focus-visible{outline:0;box-shadow:inset 0 0 0 var(--edge-w) var(--teal)}
 .mm-row.editing{box-shadow:inset var(--bar-w) 0 0 var(--teal);background:var(--teal-tint)}
 .mm-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-base-sm)}
@@ -585,8 +589,9 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-fold-state{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);white-space:nowrap}
 .mm-fold-state span{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .mm-fold button[disabled]{opacity:var(--op-disabled);cursor:default}
-.mm-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md);margin-top:14px}
-.mm-empty.error{color:#8a2b2b;border-color:#d8a6a6;background:#fff5f5}
+/* 空の表示は**字だけ**（§9.598）。破線の箱は押せる面に見え、枠の中に枠を作る。 */
+.mm-empty{padding:var(--space-6) var(--space-4);text-align:center;color:var(--muted)}
+.mm-empty.error{color:var(--danger)}
 .mm-loading{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .mm-loading[hidden]{display:none}
 .mm-loading-box{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);border:1px solid #bcd9dd;border-radius:var(--radius-md);background:#fff;box-shadow:var(--elev-pop);color:#0a6570;font-weight:var(--fw-strong)}

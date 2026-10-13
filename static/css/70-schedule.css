@@ -1207,10 +1207,10 @@
 .shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:start}
 .shift-list{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0}
 .shift-list-head{font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.06em;color:var(--muted);padding:0 4px 2px}
-.shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;cursor:pointer;text-align:left;min-width:0;width:100%}
+.shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-card);border:1px solid transparent;border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:var(--surface);cursor:pointer;text-align:left;min-width:0;width:100%}
 .shift-list-item b{font-size:var(--fs-base-sm);color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shift-list-item small{font-size:var(--fs-sm);color:var(--muted)}
-.shift-list-item:hover{border-color:var(--teal);background:var(--surface-2)}
+.shift-list-item:hover{background:var(--surface-2)}
 .shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
 /* **器は中身の長さから決める**(CLAUDE.md §11)。以前は`flex:1 1 240px`＋
    `width:100%`で、勤務体系の名称（長くても20字ほど）の入力欄が枠いっぱい
