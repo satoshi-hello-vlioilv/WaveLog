@@ -2100,7 +2100,8 @@
   /* 畳みのままだが**見出しは他の行と同じ格子**（名前｜いまの値｜開く印・§9.598 1h）——箱の畳みが1つだけ別の形で浮いていた。 */
   return `<details class="pc-acc pc-ld is-row" id="pcLd">
     <summary><b class="pc-row-label">読み込みの見せ方</b><span class="pc-row-ctl"><span class="ld-sample">${WL.loader.html(16)}</span>
-     <span class="pc-acc-now pc-ld-now" id="pcLdNow"></span>${tipHtml(
+     <span class="pc-acc-now pc-ld-now" id="pcLdNow"></span>
+     <span class="mm-btn-ghost sm pc-ld-open" aria-hidden="true">一覧から選ぶ<i class="mm-hd-caret">▾</i></span>${tipHtml(
       `データを待っているあいだに出る動くしるしです。loaders.css（MIT）から${WL.loader.STYLES.length-1}種を写して**同梱**しています（回線が無い端末でも動きます）。`
       +'仲間ごとに並べてあります——まず仲間を1つ選び、その中の4〜5枚を見比べてください。')}</span></summary>
     <div class="pc-acc-body">${WL.loader.GROUPS.map(pcLdGroupHtml).join('')}</div>
@@ -2746,9 +2747,11 @@
    const live=items.filter(x=>!x.retired);
    const miss=live.filter(x=>x.path&&x.exists===false).length,pend=items.filter(x=>x.pending).length;
    const unset=live.filter(x=>!x.path).length;
-   /* 未設定は直す必要が無いこともある（§9.583）ので要対応に数えず、札の字で言う。 */
-   pcTabSet(form,'place',`${live.length}か所`+(unset?`・未設定${unset}`:'')+(miss?`・まだ無い${miss}`:'')+(pend?`・再起動待ち${pend}`:''),
-    miss+pend,'warn',['要対応',miss?`まだ無い置き場 ${miss}`:'',pend?`再起動待ち ${pend}`:''].filter(Boolean).join(' '),unset?`未設定 ${unset}`:'OK');
+   /* 未設定は直す必要が無いこともある（§9.583）ので要対応に数えず、札の字で言う。字は**何が起きているか**
+      （みんなで使う置き場が空＝この端末の中だけ・§9.598 1i）。手元の置き場は既定の道があるので空にならない。 */
+   const unsetWord=live.filter(x=>!x.path).every(x=>x.group==='share')?'共有なし':'未設定';
+   pcTabSet(form,'place',`${live.length}か所`+(unset?`・${unsetWord}${unset}`:'')+(miss?`・まだ無い${miss}`:'')+(pend?`・再起動待ち${pend}`:''),
+    miss+pend,'warn',['要対応',miss?`まだ無い置き場 ${miss}`:'',pend?`再起動待ち ${pend}`:''].filter(Boolean).join(' '),unset?`${unsetWord} ${unset}`:'OK');
   }else pcTabSet(form,'place',pathConfigState.storageError?'置き場を読めません':'',pathConfigState.storageError?'!':'','bad','置き場の一覧を読めませんでした',
    pathConfigState.storageError?'読めません':'確かめ中');
   const syncPend=form.querySelectorAll('.mm-tabpanel[data-tab-key="sync"] .pc-pending').length;
@@ -3331,7 +3334,7 @@
    shiftOpen({...shiftDraftFrom(null),name,segments:segs.map(x=>({...x}))},shiftDraftFrom(null));
    renderShiftPattern();
   });
-  WL.mm.setHeadActs({quiet:true,primary:{id:'shiftNew',label:'勤務体系を追加',title:'空から、またはテンプレートから作ります',
+  WL.mm.setHeadActs({primary:{id:'shiftNew',label:'勤務体系を追加',title:'空から、またはテンプレートから作ります',
    menu:[{label:'空の勤務体系',note:'区分を1つずつ足します',data:{shiftTmpl:'blank'},onClick:make('',[])}]
     .concat(SHIFT_TEMPLATES.map((t,i)=>({label:t.label,note:t.segments.map(x=>`${x.name} ${x.start}〜${x.end}`).join('・'),
      data:{shiftTmpl:String(i)},onClick:make(t.label,t.segments)})))}});
@@ -3371,12 +3374,12 @@
      <span class="shift-seg-act">
       <button type="button" class="shift-seg-up" title="上へ"${i===0?' disabled':''}>▲</button>
       <button type="button" class="shift-seg-down" title="下へ"${i===d.segments.length-1?' disabled':''}>▼</button>
-      <button type="button" class="shift-seg-del" title="この区分を削除">×</button></span>
+      <button type="button" class="shift-seg-more mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false" aria-label="この区分の操作" title="この区分の操作（消すなど）"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button></span>
     </div>`;
   };
   return `<div class="shift-editor">
     <aside class="shift-list">
-     <div class="shift-list-head">勤務体系 <i class="shift-list-n">${shiftState.patterns.length}</i></div>
+     <div class="shift-list-head">勤務体系 <i class="shift-list-n">${shiftState.patterns.length}件</i></div>
      ${shiftState.patterns.length?shiftState.patterns.map(p=>shiftListItemHtml(p,d.id)).join('')
        :'<div class="mm-empty-inline">まだありません。右上の「＋ 勤務体系を追加」からテンプレートで作れます。</div>'}
     </aside>
@@ -3455,7 +3458,10 @@
    el.querySelectorAll('input').forEach(inp=>inp.onchange=()=>{syncShiftDraft(list);renderShiftPattern()});
    const off=el.querySelector('select.shift-seg-dayoff');
    if(off)off.onchange=()=>{syncShiftDraft(list);renderShiftPattern()};
-   el.querySelector('.shift-seg-del').onclick=()=>{syncShiftDraft(list);shiftState.draft.segments.splice(i,1);renderShiftPattern()};
+   /* 区分を消すのは ⋯ のメニュー（§9.598 1i・行の×は主の動線に置いた危ない操作だった）。保存するまでは取り消せる（キャンセル）。 */
+   const more=el.querySelector('.shift-seg-more');
+   more.onclick=()=>WL.mm.openActMenu(more,[{label:'この区分を消す',danger:true,data:{shiftSegAct:'delete'},
+    note:'保存するまでは「キャンセル」で戻せます',onClick:()=>{syncShiftDraft(list);shiftState.draft.segments.splice(i,1);renderShiftPattern()}}],'この区分の操作');
    el.querySelector('.shift-seg-up').onclick=()=>{syncShiftDraft(list);if(i>0)shiftState.draft.segments.splice(i-1,0,shiftState.draft.segments.splice(i,1)[0]);renderShiftPattern()};
    el.querySelector('.shift-seg-down').onclick=()=>{syncShiftDraft(list);const a=shiftState.draft.segments;if(i<a.length-1)a.splice(i+1,0,a.splice(i,1)[0]);renderShiftPattern()};
   });
@@ -3475,6 +3481,8 @@
   const eqSelected=new Set((d.equipment||[]).map(String));
   const eqItems=(WL.records.equipmentMasterState.items||[]);
   paintShiftHead(form);
+  /* 器の高さを中まで届ける（設備停止と同じ・足元を右の下端へ・§9.598 1i）。外すのは`loadMaintInner()`の1箇所。 */
+  list.classList.add('is-fill');list.parentElement&&list.parentElement.classList.add('is-fill');
   list.innerHTML=shiftEditorHtml(d,eqItems,eqSelected);
   /* 別の体系へ移るときも、保存していない変更があれば聞く（`afterLeave`・黙って捨てない）。 */
   list.querySelectorAll('[data-shift-pattern]').forEach(b=>b.onclick=()=>WL.mm.afterLeave(()=>{
@@ -4417,7 +4425,7 @@
     頭の ⓘ（定義の`hint`）——一覧の上の説明の帯はやめた。 */
  function ssbPaintHead(form){
   form.innerHTML='';form.hidden=true;form.onsubmit=ev=>ev.preventDefault();
-  WL.mm.setHeadActs({quiet:true,primary:{id:'ssbAddStop',label:'停止内容を追加',
+  WL.mm.setHeadActs({primary:{id:'ssbAddStop',label:'停止内容を追加',
    title:'右の「基本」で新しい停止内容を作ります（いま選んでいる分類を連れて行きます）',
    onClick:()=>{const cur=ssbStop(ssbState.picked);ssbOpenNewStop(cur?String(cur.category||'').trim():'')}}});
  }

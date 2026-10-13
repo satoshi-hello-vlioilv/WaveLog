@@ -154,6 +154,22 @@ run('test_shift: 勤務体系の編集（テンプレート・保存・区分追
    return {n:l.querySelector('.shift-seg-name').value,s:l.querySelector('.shift-seg-start').value,prevEnd:els[els.length-2].querySelector('.shift-seg-end').value}});
  rec('区分追加時に直前の終了時刻を開始の初期値にする',added.s===added.prevEnd,JSON.stringify(added));
 
+ /* 1i（§9.598）: 区分を消すのは行の ⋯ のメニュー（主の動線に×を置かない）。保存するまではキャンセルで戻せる。 */
+ const nNow=await page.$$eval('.shift-seg',x=>x.length);
+ const segBtns=await page.evaluate(()=>({x:document.querySelectorAll('.shift-seg .shift-seg-del').length,more:document.querySelectorAll('.shift-seg .shift-seg-more').length}));
+ await page.locator('.shift-seg').last().locator('.shift-seg-more').click();
+ await W.until(page,()=>{const m=document.querySelector('#mmActMenu');return !!m&&!m.hidden&&!!m.querySelector('[data-shift-seg-act="delete"]')},null,{ms:4000,what:'区分の ⋯ に「この区分を消す」'});
+ const segDel=await page.evaluate(()=>{const b=document.querySelector('#mmActMenu [data-shift-seg-act="delete"]');return {danger:b.classList.contains('is-danger'),text:b.textContent}});
+ await page.click('#mmActMenu [data-shift-seg-act="delete"]');
+ await W.until(page,n=>document.querySelectorAll('.shift-seg').length===n-1,nNow,{ms:4000,what:'区分が1つ減る'});
+ rec('区分の行に×は無く、⋯ のメニュー（赤の字）から消す',segBtns.x===0&&segBtns.more===nNow&&segDel.danger,JSON.stringify({segBtns,segDel}));
+ /* 足元（キャンセル・保存）は右の下端（設備停止・右の詳細と同じ場所）。 */
+ const foot2=await page.evaluate(()=>{const f=document.querySelector('.shift-detail>.mm-dfoot').getBoundingClientRect(),w=document.querySelector('#masterMaintPanel .mm-list-wrap').getBoundingClientRect();return {fb:Math.round(f.bottom),wb:Math.round(w.bottom)}});
+ rec('足元は右の下端にある',foot2.wb-foot2.fb>=0&&foot2.wb-foot2.fb<=24,JSON.stringify(foot2));
+ /* 足して消したので元と同じ形なら「変更なし」でキャンセルは押せない（押せるときだけ押す）。 */
+ if(!(await page.$eval('#shiftCancel',b=>b.disabled)))await page.click('#shiftCancel');
+ await W.until(page,()=>/^変更なし/.test(document.querySelector('#shiftDirty')?.textContent||''),null,{ms:4000,what:'キャンセルで元へ'});
+
  /* **後始末。** 勤務体系はマスタDBに残り、実行をまたいで生き延びる(§9.121)。
     片付けないと、同じ名前の体系が回すたびに1件ずつ増えていく(実際に18件
     溜まっていた)。

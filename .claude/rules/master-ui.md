@@ -1,4 +1,4 @@
-# マスタ管理の画面（54件）
+# マスタ管理の画面（57件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 塗りの主ボタンはいつも1つ: 変更が無いあいだは頭の「＋ 〜を追加」、変更が出たら足元の「保存」（頭を縁取りにするのは`paintFootState()`の1箇所） | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 選ぶ札の印は2つの形（1つ選ぶ＝丸・`.mm-card-row.is-one`／いくつでも＝四角）。札の一言は選んでも薄い字 | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 一覧の列と詳細の欄は同じ呼び名。空欄の言い方も1つ（選択欄の空の札は定義の`blank`・空欄で起きることは`blankWhy`の ⓘ） | `test_mmpane.js`・`test_oplimit.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 共通設定の段は左の一覧（`pageTabsHtml(…,{rail:true})`）。札は絵・名前・副題・状態の札（`data-tab-state`・正常は中立） | `test_setpage.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 共通設定の名乗りはPC名だけ（IDとモードはヘッダー）。足元は状態と記録者＋キャンセル＋保存。作れない端末の事実は灰の字 | `test_setpage.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 専用の画面で定義の欄をその場で直すのは`WL.mm.inlineFields()`（組み立て・保存は窓と同じ）。足元の字は`paintFootState()` | `test_stopsubui.js`・`test_shift.js` | [§9.598](../../docs/decisions/9.598.md) |

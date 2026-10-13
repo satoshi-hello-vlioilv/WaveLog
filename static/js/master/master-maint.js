@@ -260,6 +260,9 @@
     else if(e.key==='Escape'&&find.value){e.preventDefault();find.value='';renderMaintNav()}
    });
   }
+  /* 送った一覧の上端には区切りの線（§9.598 1i）——途中の行が「マスタを探す」の下へ潜って切れたように見えていた。 */
+  const navEl=$('#masterMaintNav'),side=navEl&&navEl.closest('.mm-side');
+  if(navEl&&side)navEl.addEventListener('scroll',()=>side.classList.toggle('is-scrolled',navEl.scrollTop>0),{passive:true});
   renderMaintNav();
   return panel;
  }
@@ -679,7 +682,8 @@
    }
    return `<span class="mm-val-none">${esc(t)}</span>`;
   }
-  if(col.format==='runMode')return `<i class="mm-val-tag${col.row&&col.row[col.k]==='strict'?' is-warn':''}">${esc(t)}</i>`;
+  /* 運用モードは**厳密だけ札**（橙）。ふつう（通常）は既定と同じ薄い字——全行に同じ札が並ぶと、違う行が目に留まらない（§9.598 1i）。 */
+  if(col.format==='runMode')return col.row&&col.row[col.k]==='strict'?`<i class="mm-val-tag is-warn">${esc(t)}</i>`:`<span class="mm-val-none">${esc(t)}</span>`;
   const d=t.match(/^(.+?)（既定）$/);
   if(d)return `${esc(d[1])}<span class="mm-val-def">既定</span>`;
   if(t==='未設定')return `<span class="mm-val-none">未設定</span>`;
@@ -1136,7 +1140,8 @@
    },
    'select':(f,val)=>{
     /* 候補の顔ぶれは**サーバーが答える**ことがある（`optionsKey`＝一覧の応答の鍵・§9.526）。 */
-    const opts=selectOptionsOf(f).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
+    /* 空欄の札の字は定義の`blank`（一覧のセルと同じ言葉・§9.598 1i）。無ければ「（指定なし）」。 */
+    const opts=selectOptionsOf(f).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||f.blank||'（指定なし）')}</option>`).join('');
     /* **説明を書いたら出す**（§9.222 ⑧）。ここだけ`f.hint`を捨てていたので、
        マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
     return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`
@@ -1211,8 +1216,9 @@
       +`<span class="mm-card-txt"><b>${esc(c.label)}</b>`
       +`${c.note?`<small>${esc(c.note)}</small>`:''}</span></button>`;
     }).join('');
+    /* `is-one`＝1つだけ選ぶ札（右の詳細では丸の印・いくつでも選ぶ札は四角の印・§9.598 1i）。 */
     return `<div class="mm-field mm-field-area mm-cards">${fieldLabelHtml(f)}
-      <div class="mm-card-row">${cards}</div>
+      <div class="mm-card-row is-one">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
       ${list.length?'':'<small class="mm-field-hint">選べる候補をこの端末では読めませんでした。</small>'}
       ${fieldHintHtml(f)}</div>`;
@@ -1802,7 +1808,7 @@
      <div><small id="maintEditorEyebrow">MASTER</small><h2 id="maintEditorTitle">編集</h2></div>
      <button type="button" id="maintEditorMore" class="mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false"
       aria-label="この行の操作" title="この行の操作（削除など）" hidden><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
-     <button type="button" id="maintEditorClose" class="mm-close" aria-label="閉じる">×</button>
+     <button type="button" id="maintEditorClose" class="mm-close mm-btn-ghost mm-hd-more" aria-label="閉じる" title="閉じる"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     </header>
     <form class="mm-editor-body" id="maintEditorForm"></form>
     <!-- 下段は<footer>ではなく<div>にすること。メイン画面統合型ビューの
@@ -1899,6 +1905,8 @@
   if(stateEl)stateEl.textContent=`${st}・記録者 ${currentUserId()||'—'}`;
   const why=dirty?'':(isNew?'入力すると押せます':'変更があると押せます');
   (btns||[]).forEach(b=>{if(b){b.disabled=!dirty;b.title=why}});
+  /* **塗りの主ボタンはいつも1つ**（§9.598 1i）: 変更が無いうちは頭の「追加」、変更があれば足元の「保存」。 */
+  quietHeadAct(!!dirty);
  }
  /* ---------- 欄と表を結ぶ（§9.598・1d・図と入力を結ぶ）----------
     詳細の欄に入ると、選んだ行の同じセルの地と列の見出しが光る。打った値は**その場で**そのセルに出る（保存の前に一覧での
@@ -2023,7 +2031,7 @@
   modal.hidden=false;
   mmHoldTabHeight(form);
   paneSnap=null;
-  if(docked){quietHeadAct(true);markEditingRow(editing&&editing.id);paintPaneFoot()}
+  if(docked){markEditingRow(editing&&editing.id);paintPaneFoot()}
   /* **最初のフォーカスに「候補が出る欄」を選ばない**（§9.221 ④）。タグ入力は
      フォーカスした時点で候補の一覧を開くので、窓を開けた瞬間にその一覧が
      **他の欄の上へかぶさる**——欄を横に並べるようにしたぶん、下ではなく
@@ -2270,10 +2278,11 @@
    /* 選べない段が選ばれたままなら、**上限まで下げる**（保存で断られる値を
       画面に残さない）。上限は並びの最後（サーバーが下から順に返す）。 */
    if(ok&&ok.length&&ok.indexOf(level.value)<0)level.value=ok[ok.length-1];
+   /* 選べない段があるときだけ、その権限区分で選べる段を言う（§9.598 1i・全部選べるときに同じ字を並べない）。 */
    if(note){
-    note.textContent=ok
-     ?`権限区分「${role.value}」で選べるのは ${ok.join('・')} です。`
-     :'選べるのは権限区分の上限までです（設備作業者は「非表示」だけ）。';
+    const narrowed=ok&&ok.length<level.options.length;
+    note.textContent=narrowed?`「${role.value}」で選べるのは ${ok.join('・')} です。`:'';
+    note.hidden=!narrowed;
    }
   };
   if(!role.dataset.capWired){role.dataset.capWired='1';role.addEventListener('change',apply)}
@@ -3195,7 +3204,7 @@
   const def=currentDef();
   if(def.special)return loadMaintInner(false);
   resetMaintShell();setMaintCountVisible(true);renderMaintForm();
-  if(paneDocked())quietHeadAct(true);   // 右の詳細が開いていれば頭の「追加」は縁取りのまま
+  if(paneDocked())quietHeadAct(paneDirty());   // 変更があるあいだだけ頭の「追加」は縁取り（塗りは足元の保存）
   if(maintState.itemsKey===def.key)renderMaintList();
   else{const l=$('#masterMaintList');if(l)l.innerHTML='<div class="mm-empty">読み込んでいます…</div>'}
  }

@@ -1204,27 +1204,34 @@
 /* ---------- 勤務体系マスタの専用エディタ(親: 勤務体系 / 子: 勤務区分) ----------
    左に登録済みの体系、右にその中身。時刻はinput[type=time]で直打ちを避け、
    24時間バーで「どの時間帯が埋まっているか」を色で示す。 */
-.shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:start}
+/* 器の高さいっぱい（`is-fill`・設備停止と同じ）。足元は右の下端・中身が長ければ右だけ送る（§9.598 1i）。 */
+.shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:stretch;flex:1;min-height:0;padding-top:var(--space-4)}
+.shift-list{overflow:auto}
 .shift-list{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0}
-.shift-list-head{font-size:var(--fs-sm);font-weight:var(--fw-ui);letter-spacing:.06em;color:var(--muted);padding:0 4px 2px}
-.shift-list-n{font-style:normal;margin-left:var(--space-1)}
+.shift-list-head{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);padding:0 4px 2px}
+.shift-list-n{font-style:normal;margin-left:var(--space-1);color:var(--muted)}
 /* 左の一覧の小さな24時間の帯（§9.598）: 開かずに「どの時間帯を埋める体系か」を読む。 */
 .shift-mini24{position:relative;display:block;width:100%;height:4px;margin:2px 0;border-radius:var(--radius-xs);background:var(--surface-3);overflow:hidden}
 .shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-card);border:1px solid transparent;border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:var(--surface);cursor:pointer;text-align:left;min-width:0;width:100%}
 .shift-list-item b{font-size:var(--fs-base-sm);color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shift-list-item small{font-size:var(--fs-sm);color:var(--muted)}
 .shift-list-item:hover{background:var(--surface-2)}
-.shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
+.shift-detail{min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:var(--space-2)}
+.shift-detail>.mm-dfoot{margin-top:auto;position:sticky;bottom:0;background:var(--surface)}
 /* **器は中身の長さから決める**(CLAUDE.md §11)。以前は`flex:1 1 240px`＋
    `width:100%`で、勤務体系の名称（長くても20字ほど）の入力欄が枠いっぱい
    ——600px超——まで伸びていた。名称は`--w-xl`(22em)で頭打ちにし、余りは
    適用設備へ渡す（関係の近いものへ渡す。§9.126）。 */
-.shift-fields{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--space-3);align-items:start}
+/* 広い詳細の欄は**左に名前の列**（設備停止の基本・共通設定と同じ形・§9.598 1i）。名前の列の幅は`--w-md`の1つ。 */
+.shift-fields{display:flex;flex-direction:column;gap:var(--space-3)}
+.mm-field.shift-f-name{display:grid;grid-template-columns:var(--w-md) minmax(0,1fr);align-items:center;column-gap:var(--space-2)}
 .shift-f-name input{width:100%;max-width:var(--w-xl)}
 /* 適用設備: 見出し「適用設備 n/N」と操作は1行目、札はその下（§9.598）。**何が選ばれているかを文字で言う**(§3)——
    数は見出し、名前は札（同じことを2か所に並べない）。 */
-.mm-field.shift-f-eq{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:var(--space-2);min-width:0}
-.shift-f-eq>.shift-eq-picker{grid-column:1/-1}
+.mm-field.shift-f-eq{display:grid;grid-template-columns:var(--w-md) minmax(0,1fr) auto;align-items:start;column-gap:var(--space-2);min-width:0}
+.shift-f-eq>.shift-eq-head{grid-column:1;grid-row:1;display:flex;align-items:center;min-height:var(--ctl-h-sm)}
+.shift-f-eq>.shift-eq-picker{grid-column:2;grid-row:1;padding-top:0}
+.shift-f-eq>.shift-eq-act{grid-column:3;grid-row:1}
 .shift-eq-count{font-style:normal;margin-left:var(--space-1);color:var(--muted);font-weight:var(--fw-ui)}
 .shift-eq-act{display:flex;gap:var(--gap-inline)}
 /* 設備名のタグを**詰めて並べる**(§9.197、利用者の指示「コンパクトかつ
@@ -1295,6 +1302,7 @@
   border:none;background:none;height:auto}
 .shift-seg-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
 .shift-seg button{flex:none;width:26px;border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:var(--muted)}
+.shift-seg .shift-seg-more{height:auto;align-self:stretch}
 .shift-seg button:disabled{opacity:var(--op-disabled);cursor:default}
 .shift-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 /* ---------- 狭い枠に置いた仕掛一覧の横スクロール ----------

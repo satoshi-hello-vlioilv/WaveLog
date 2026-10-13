@@ -184,8 +184,10 @@
 .pc-acc.pc-ld.is-row>summary{display:grid;grid-template-columns:var(--pc-label-w,15em) minmax(0,1fr) var(--pc-state-w,8.5em);
   column-gap:var(--space-4);align-items:center;min-height:calc(var(--ctl-h) + var(--space-3));padding:var(--space-1) 0;border-radius:0}
 .pc-acc.pc-ld.is-row>summary::before{content:none}
-.pc-acc.pc-ld.is-row>summary::after{content:'▸';justify-self:end;color:var(--teal);font-size:var(--fs-sm)}
-.pc-acc.pc-ld.is-row[open]>summary::after{content:'▾'}
+/* 開く手がかりは右端の小さな ▸ ではなく、いまの値の隣のボタンの形（「「表示」を開く」と同じ部品・§9.598 1i）。 */
+.pc-acc.pc-ld.is-row>summary::after{content:none}
+.pc-ld-open{display:inline-flex;align-items:center;margin-left:var(--space-2)}
+.pc-acc.pc-ld.is-row[open] .pc-ld-open .mm-hd-caret{transform:rotate(180deg)}
 .pc-acc.pc-ld.is-row[open]>summary{border-bottom:0}
 
 /* ---- 共有と同期: 2群の小見出し＋1節1行の畳み ---- */

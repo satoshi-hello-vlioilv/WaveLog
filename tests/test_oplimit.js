@@ -55,11 +55,11 @@ run('test_oplimit: 設備マスタの最大ライン速度と、数の決まり�
     null,{timeout:20000});
   const heads=await page.$$eval('#masterMaintList .mm-row.head .mm-th,#masterMaintList .mm-row.head span',
     es=>es.map(s=>s.textContent.trim()));
-  rec('一覧に最大速度の列がある',heads.some(h=>/最大速度/.test(h)),heads.join('/'));
+  rec('一覧に最大ライン速度の列がある（詳細の欄と同じ呼び名・§9.598 1i）',heads.some(h=>/最大ライン速度/.test(h)),heads.join('/'));
   const cellOf=n=>page.evaluate(name=>{
    const hs=[...document.querySelectorAll('#masterMaintList .mm-row.head .mm-th,#masterMaintList .mm-row.head span')]
      .map(s=>s.textContent.trim());
-   const i=hs.findIndex(h=>/最大速度/.test(h));
+   const i=hs.findIndex(h=>/最大ライン速度/.test(h));
    const r=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
      .find(x=>x.children[0]?.textContent.trim()===name);
    return (r&&i>=0)?r.children[i]?.textContent.trim():null;
@@ -75,7 +75,7 @@ run('test_oplimit: 設備マスタの最大ライン速度と、数の決まり�
     .find(x=>x.children[0]?.textContent.trim()===n);if(r)r.click()},EQ);
   await page.waitForFunction(n=>document.querySelector('#maintEditorForm [data-field="name"]')?.value===n,
     EQ,{timeout:10000});
-  rec('行を押すと編集の窓が開き、最大速度の欄がその中にある',
+  rec('行を押すと編集の窓が開き、最大ライン速度の欄がその中にある',
       await page.evaluate(()=>!!document.querySelector('#maintEditorForm [data-field="maxLineSpeed"]')));
   await page.fill('#maintEditorForm [data-field="maxLineSpeed"]','350');
   await page.click('#maintEditorSave');
@@ -84,7 +84,7 @@ run('test_oplimit: 設備マスタの最大ライン速度と、数の決まり�
   await page.waitForFunction(n=>{
    const hs=[...document.querySelectorAll('#masterMaintList .mm-row.head .mm-th,#masterMaintList .mm-row.head span')]
      .map(s=>s.textContent.trim());
-   const i=hs.findIndex(h=>/最大速度/.test(h));
+   const i=hs.findIndex(h=>/最大ライン速度/.test(h));
    const r=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
      .find(x=>x.children[0]?.textContent.trim()===n);
    return !!r&&i>=0&&/350/.test(r.children[i]?.textContent||'');

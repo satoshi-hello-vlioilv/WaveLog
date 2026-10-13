@@ -86,6 +86,10 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
   await W.until(page, () => document.getElementById('maintEditorModal').hidden, null, { ms: 5000, what: '×で閉じる' });
  }
  const wantVis = want.filter(k => keys.includes(k));
+ /* 1i: 一覧の列と右の詳細の欄は**同じ呼び名**（同じ値を別の名前で呼ばない・§9.598）。右の詳細で開くマスタ全部を見る。 */
+ const names = await page.evaluate(ks => (WL.mm.MASTER_DEFS || []).filter(d => ks.includes(d.key)).flatMap(d => (d.cols || [])
+  .map(c => [d.key, c.label, ((d.fields || []).find(f => f.k === c.k) || {}).label]).filter(([, a, b]) => b && a !== b)), want);
+ rec('1) 一覧の列と右の詳細の欄は同じ呼び名', names.length === 0, JSON.stringify(names));
  rec('1) 窓で開いていた汎用の表のマスタは、行を押すと右に詳細が開く（窓で覆わない）',
   wantVis.length > 0 && wantVis.every(k => seen.includes(k)) && seen.every(k => wantVis.includes(k)), JSON.stringify({ seen, wantVis, modal, inline }));
  rec('1) 詳細は一覧の右に並び、窓の高さに収まる（足元が見える・頭が隠れない）', unfit.length === 0, JSON.stringify(unfit));
@@ -100,7 +104,20 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
  const a = await pane();
  const sel = await page.evaluate(() => { const r = document.querySelector('#masterMaintList .mm-row.editing'); return r ? r.textContent.trim().slice(0, 20) : ''; });
  rec('1) 頭は種類の小さな字とその行の名前・選んだ行に印', a.kind === '設備' && !!a.title && sel.startsWith(a.title), JSON.stringify({ kind: a.kind, title: a.title, sel }));
- rec('6) 開いているあいだ頭の「追加」は縁取り', a.quiet, JSON.stringify(a.quiet));
+ /* 塗りの主ボタンはいつも1つ（§9.598 1i）: 開いただけ（変更なし）なら頭の「追加」が塗り、打つと足元の「保存」へ移る。 */
+ rec('6) 開いただけでは頭の「追加」は塗りのまま（変更が無いので保存は押せない）', !a.quiet && !a.save, JSON.stringify({ quiet: a.quiet, save: a.save }));
+ /* 1i: × は ⋯ と同じ部品（同じ高さ・同じ大きさ）。 */
+ const hd = await page.evaluate(() => { const r = id => { const b = document.getElementById(id).getBoundingClientRect(); return { t: Math.round(b.top), h: Math.round(b.height), w: Math.round(b.width) }; }; return { more: r('maintEditorMore'), close: r('maintEditorClose') }; });
+ rec('6) 詳細の頭の × は ⋯ と同じ高さ・同じ大きさ', hd.more.t === hd.close.t && hd.more.h === hd.close.h && hd.more.w === hd.close.w, JSON.stringify(hd));
+ /* 1i: 欄が1つの節は見出しの線だけ（札の並びの上に2本目の線を引かない）・いくつでも選ぶ札は四角の印。 */
+ const cards = await page.evaluate(() => {
+  const f = document.getElementById('maintEditorForm');
+  const dbl = [...f.querySelectorAll('.mm-fieldgroup+.mm-field[data-solo] .mm-card-row')].filter(r => parseFloat(getComputedStyle(r).borderTopWidth) > 0).length;
+  const icos = [...f.querySelectorAll('[data-checkset-box] .mm-card-ico')].map(i => getComputedStyle(i).borderTopLeftRadius);
+  const m = f.querySelectorAll('.mm-fieldgroup+.mm-field[data-solo] .mm-card-row').length;
+  return { dbl, m, icos: [...new Set(icos)], n: icos.length };
+ });
+ rec('6) 欄が1つの節に二重の線が無い・いくつでも選ぶ札の印は四角（丸ではない）', cards.m > 0 && cards.dbl === 0 && cards.n > 0 && cards.icos.every(r => r !== '50%' && parseFloat(r) < 8), JSON.stringify(cards));
  rec('3) 削除は詳細の頭の ⋯', a.more, JSON.stringify(a.more));
  await page.click('#maintEditorMore');
  await W.until(page, () => { const m = document.getElementById('mmActMenu'); return !!m && !m.hidden; }, null, { ms: 5000, what: '⋯ のメニュー' });
@@ -117,6 +134,7 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
  await W.until(page, () => !document.getElementById('maintEditorSave').disabled, null, { ms: 5000, what: '保存が押せる' });
  const b = await pane();
  rec('4) 打つと「変更あり」で保存とキャンセルが押せる', /変更あり/.test(b.foot) && b.save && b.cancel, JSON.stringify({ foot: b.foot, save: b.save, cancel: b.cancel }));
+ rec('6) 打つと頭の「追加」は縁取りへ（塗りの主ボタンは足元の保存の1つ）', b.quiet, JSON.stringify(b.quiet));
 
  /* 5) 変更があるまま別の行を押すと聞く */
  if (rows >= 2) {
@@ -137,6 +155,7 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
  await W.until(page, () => document.getElementById('maintEditorSave').disabled, null, { ms: 5000, what: 'キャンセルで戻る' });
  const d = await pane();
  rec('4) キャンセルは元の値へ戻す（閉じない）', d.open && (await page.inputValue(field)) === was && /変更なし/.test(d.foot), JSON.stringify({ foot: d.foot }));
+ rec('6) キャンセルで変更が無くなれば頭の「追加」は塗りへ戻る', !d.quiet, JSON.stringify(d.quiet));
  /* 変更が無ければ別の行へそのまま替わる */
  if (rows >= 2) {
   await page.click('#masterMaintList .mm-row[data-mm-open] >> nth=1');
@@ -182,6 +201,10 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
  await page.click('#maintEditorClose');
  await W.until(page, () => document.getElementById('maintEditorModal').hidden, null, { ms: 5000, what: '×で閉じる' });
  await openNav('accessPermission');
+ /* 1i: 左の一覧を送ったら上端に区切りの線（途中の行が「マスタを探す」の下へ潜って切れたように見えない）。 */
+ const navS = await page.evaluate(() => { const n = document.getElementById('masterMaintNav'), s = n.closest('.mm-side');
+  return { top: Math.round(n.scrollTop), cls: s.classList.contains('is-scrolled'), line: getComputedStyle(n).borderTopColor }; });
+ rec('8) 左の一覧を送っているあいだは上端に区切りの線', navS.top === 0 ? !navS.cls : (navS.cls && navS.line !== 'rgba(0, 0, 0, 0)'), JSON.stringify(navS));
  const lv = await page.evaluate(() => ({ legend: [...document.querySelectorAll('#masterMaintList .mm-val-legend>span')].map(s => s.textContent.trim()),
   marks: [...document.querySelectorAll('#masterMaintList .mm-row:not(.head) .mm-val-lv')].map(i => i.getAttribute('aria-label')).filter(Boolean).length,
   all: document.querySelectorAll('#masterMaintList .mm-row:not(.head) .mm-val-lv').length }));
