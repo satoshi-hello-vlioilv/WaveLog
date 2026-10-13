@@ -827,6 +827,35 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .qj-span-box p{margin:0}
 .qj-span-box b{color:var(--teal-ink)}
 .qj-span-time{font-variant-numeric:tabular-nums}
+/* 完了突合の窓（§9.596）: 主の列（決める順）＋右の答えの列。右はいつも見える（窓の中で貼り付く）。 */
+.qj-fin{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:var(--space-4);align-items:start}
+.qj-fin-main{display:grid;gap:var(--space-3);min-width:0}
+.qj-fin-side{position:sticky;top:0;display:grid;gap:var(--gap-tight);min-width:0}
+.qj-fin-sent{margin:0;font-size:var(--fs-sm);color:var(--ink);line-height:2}
+.qj-fin-chip{display:inline;margin:0 var(--gap-hair);padding:0 var(--gap-tight);border:1px solid var(--teal);
+  border-radius:var(--radius-sm);background:var(--pale);color:var(--teal-ink);font:inherit;cursor:pointer}
+.qj-fin-chip:hover{background:var(--surface)}
+.qj-fin-chip.is-empty{border-style:dashed;color:var(--ink-2);background:var(--surface)}
+.qj-trial{display:grid;gap:var(--gap-tight);padding:var(--gap-tight) var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm)}
+.qj-trial h5{margin:0;font-size:var(--fs-sm);color:var(--ink)}
+.qj-trial-head{margin:0;color:var(--ink)}
+.qj-trial-head b{color:var(--teal-ink);font-variant-numeric:tabular-nums}
+.qj-trial-bar{display:flex;height:.7em;border-radius:var(--radius-sm);overflow:hidden;background:var(--surface-2)}
+.qj-trial-bar span{display:block}
+.qj-trial-bar .is-ok{background:var(--teal)}
+.qj-trial-bar .is-mid{background:var(--line-mid)}
+.qj-trial-bar .is-warn{background:var(--warn)}
+.qj-trial-row{display:grid;grid-template-columns:7.5em 3.5em minmax(0,1fr);gap:var(--gap-tight);align-items:baseline}
+.qj-trial-row b{text-align:right;font-variant-numeric:tabular-nums}
+.qj-trial-row.is-ok b{color:var(--teal-ink)}
+.qj-trial-row.is-warn b{color:var(--warn-fg)}
+.qj-trial-row i{font-style:normal;color:var(--ink-2)}
+.qj-add-preview{margin-top:var(--gap-tight);display:grid;gap:var(--gap-hair);overflow-x:auto}
+/* 札から移った欄を一瞬光らせる（どこへ移ったかを言う）。 */
+.qj-edit .is-flash{animation:qj-flash 1.2s ease-out}
+@keyframes qj-flash{from{box-shadow:0 0 0 3px var(--teal)}to{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.qj-edit .is-flash{animation:none}}
 /* 1日（0〜24時）の帯。作業がどの時間帯に・どれだけの長さあったかを描く。 */
 .qj-day{display:inline-block;position:relative;vertical-align:middle;width:10em;height:.7em;
   margin:0 var(--gap-tight);border-radius:var(--radius-sm);background:var(--surface-2)}

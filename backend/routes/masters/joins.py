@@ -11,6 +11,7 @@ from ...db_access import DBS, connect
 from ...access_mode import request_user_id
 from ..body import body, any_
 from ._base import bp
+from ... import actual_match, schedule_calc, schedule_sync
 from ...repositories.master_repo import (
  QUERY_JOIN_MULTI,
  QUERY_JOIN_FINISH_WHEN,
@@ -134,6 +135,17 @@ def query_join_master_builtin():
                 message='既定の品質データ結合を使います。' if on
                         else '既定の品質データ結合を解除しました。品質の列は一覧に出なくなります。')
 
+def _finish_trial(d):
+ """完了突合を**いまの予定で**試す（§9.596）。予定は共有スケジュールの手元の写しから読む（書かない・§9.325）。
+ 読めなければ理由を返す（下見そのものは止めない）。"""
+ try:
+  local,_stale=schedule_sync.fetch_snapshot()
+  with connect(local,True) as c:
+   plans=schedule_calc.trial_plans(c)
+  return actual_match.trial(d,plans)
+ except Exception as e:
+  return {'error':f'いまの予定を読めませんでした（{e}）。'}
+
 @bp.post('/api/query-join-master/probe')
 @api_guard('下見に失敗しました')
 def query_join_master_probe():
@@ -161,5 +173,5 @@ def query_join_master_probe():
  # **用途で見る場所が変わる**(§9.365)。完了突合が探すのは「仕掛から消えた」
  # ロットなので、いま仕掛にある行へ当てても0件にしかならない（相手の側を見る）。
  if d['purpose']==query_join.PURPOSE_FINISH:
-  return jsonify(ok=True,result=query_join.probe_finish(d))
+  return jsonify(ok=True,result=query_join.probe_finish(d),trial=_finish_trial(d))
  return jsonify(ok=True,result=query_join.probe(d))

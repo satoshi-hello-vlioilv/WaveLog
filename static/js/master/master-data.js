@@ -769,6 +769,34 @@
    </div>`;
  }
  const QJ_MULTI_LABEL={first:'最初の1件を使う',blank:'空にする（どれか決められないので出さない）'};
+ /* 用途ごとの言葉（§9.596）。**完了突合は「一覧に列を足す」ではない**——同じ窓を使うので、言い方だけは用途で
+    分ける（答えは`qjWord()`の1箇所。画面のあちこちに「完了突合なら」を書かない）。 */
+ const QJ_WORDS={
+  left:{list:'この一覧（足す先）',finish:'予定のロット（仕掛の列）'},
+  right:{list:'相手（持ってくる側）',finish:'実績のデータ'},
+  here:{list:'この一覧',finish:'予定のロット'},
+  other:{list:'相手',finish:'実績のデータ'},
+  nameHint:{list:'一覧の帯と、列の設定パネルの「結合」欄に出ます。',
+            finish:'作業スケジュールで「何で完了にしたか」に出ます。'},
+  enabledHint:{list:'「無効」にすると列を足しません（設定は残ります）。',
+               finish:'「無効」にするとこの突合では完了にしません（設定は残ります）。'},
+  keysHint:{list:'すべてのキーが一致した行だけを結び付けます。全角/半角と前後の空白は無視します。',
+            finish:'すべてのキーが一致した実績の行に当てます。全角/半角と前後の空白は無視します。予定のロットの値は、**予定へ入れたときの写し → いまの仕掛の行**の順に引きます。'},
+  prefixLabel:{list:'足す列の名前に付ける文字',finish:'持ち帰る列の名前に付ける文字'},
+  prefixHint:{list:'空のままだと、一覧に同じ名前の列があるものは**足しません**（元の一覧の値を残します）。付けると両方を並べられます。',
+              finish:'付けると、作業スケジュールの内容欄で仕掛の列と見分けられます（空のままでも全部持ち帰ります）。'},
+  multiHint:{list:'当たった件数は下の「結果」に出ます。',
+             finish:'同じキーの実績が2件以上あるとき。「空にする」なら、そのロットは完了にしません（右の答えに「決められない」と出ます）。'},
+  pairWarn:{list:'いま選んでいる表にこの列がありません',
+            finish:'この列が無い側があります（予定のロットの値は、予定へ入れたときの写しに無ければ当たりません）'},
+  noCols:{list:'相手の列がまだ分かりません。②でデータと表を選んでください。',finish:'実績のデータの列がまだ分かりません。③でデータと表を選んでください。'},
+  multiLabel:{list:'相手が2件以上あったら',finish:'実績に同じキーが2件以上あったら'},
+  pickAll:{list:'相手の列をすべて',finish:'実績のデータの列をすべて'},
+  addIntro:{list:'',finish:'当たった行から選んだ列を**この予定へ保存します**。実績のデータが次の更新で消えても、保存したぶんは残ります。'},
+  footer:{list:'足した列は一覧を開き直すと反映されます（サーバー再起動は要りません）。',
+          finish:'保存すると、次に作業スケジュールを開いたとき（と書込役の裏の見回り）から効きます。'}};
+ function qjIsFinish(){return qjEdit().purpose===QJ_PURPOSE_FINISH}
+ function qjWord(k){return (QJ_WORDS[k]||{})[qjIsFinish()?'finish':'list']||''}
  const QJ_LIST_COLS=[
   {k:'state',label:'状態'},
   {k:'purpose',label:'用途'},
@@ -985,7 +1013,12 @@
   $('#maintEditorEyebrow').textContent='クエリ結合';
   $('#maintEditorTitle').textContent=copy?'既定の結合を下敷きに作る'
     :(item&&item.id?`${item.name} を編集`:'結合を追加');
-  $('#maintEditorHint').textContent='足した列は一覧を開き直すと反映されます（サーバー再起動は要りません）。';
+  /* 完了突合の左は役割「仕掛」（§9.596）。古い行が別の左を持っていたら、開いた時点で寄せる（保存で直る）。 */
+  if(qjState.editing.purpose===QJ_PURPOSE_FINISH){
+   const work=sources.find(s=>s.purpose==='仕掛');
+   if(work&&qjState.editing.left!==work.key){qjState.editing.left=work.key;qjState.editing.leftTable=''}
+  }
+  qjState.trial=null;
   $('#maintEditorSave').textContent=(item&&item.id)?'更新を保存':'追加登録';
   $('#maintEditorSave').onclick=()=>saveQueryJoinEditor();
   renderQueryJoinEditor();
@@ -995,6 +1028,7 @@
  function qjEdit(){return qjState.editing||{}}
  function renderQueryJoinEditor(){
   const form=$('#maintEditorForm');if(!form)return;
+  $('#maintEditorHint').textContent=qjWord('footer');
   form.innerHTML=qjEditorHtml(qjEdit());
   form.onsubmit=ev=>{ev.preventDefault();saveQueryJoinEditor()};
   qjBindEditor(form);
@@ -1070,7 +1104,7 @@
   const hit=cols.filter(c=>!q||String(c).toLowerCase().includes(q));
   if(!hit.length)return `<p class="qj-fields-empty">「${esc(q)}」に当てはまる列がありません。</p>`;
   const pick=qjState.pick;
-  const other=side==='left'?'相手':'この一覧';
+  const other=side==='left'?qjWord('other'):qjWord('here');
   return hit.map(c=>{
    const n=qjKeyIndexOf(x,side,c);
    const on=!!(pick&&pick.side===side&&pick.col===c);
@@ -1091,8 +1125,8 @@
   const x=qjEdit(),p=qjState.pick;
   const n=(x.keys||[]).length;
   if(p){
-   const here=p.side==='left'?'この一覧':'相手';
-   const other=p.side==='left'?'相手':'この一覧';
+   const here=p.side==='left'?qjWord('here'):qjWord('other');
+   const other=p.side==='left'?qjWord('other'):qjWord('here');
    return `<span class="qj-status-now">${esc(here)}の<b>${esc(p.col)}</b>を選んでいます。`
     +`次に${esc(other)}の列を押すと結び付きます</span>`
     +`<button type="button" class="qj-status-cancel" id="qjPickCancel">選ぶのをやめる</button>`;
@@ -1114,7 +1148,7 @@
    return `<span class="qj-pair${bad?' is-missing':''}" data-qj-pair="${i}">`
     +`<i class="qj-pair-no">鍵${i+1}</i>`
     +`<b>${esc(k.left)}</b><i class="qj-pair-eq">＝</i><b>${esc(k.right)}</b>`
-    +(bad?'<i class="qj-pair-warn">いま選んでいる表にこの列がありません</i>':'')
+    +(bad?`<i class="qj-pair-warn">${esc(qjWord('pairWarn'))}</i>`:'')
     +`<button type="button" class="qj-pair-del" data-qj-keydel="${i}" title="この組を外す">×</button>`
     +`</span>`;
   }).join('');
@@ -1128,10 +1162,24 @@
   const meta=cnt
    ?`表: <b>${esc(s.c.table||s.table||'—')}</b> ／ <b>${cnt}</b>列`
    :(s.c.error?`<span class="is-warn">${esc(s.c.error)}</span>`:'列を読み込んでいます…');
+  /* 完了突合の左は**役割「仕掛」で決まる**（`finish_definitions()`が左＝仕掛の行だけを使う）。選べる形にすると、
+     選び替えた定義が黙って効かなくなる（§9.596）——名前と出どころだけを言う。 */
+  if(isL&&qjIsFinish()){
+   const src=(qjState.sources||[]).find(v=>v.key===x.left)||{};
+   return `<div class="qj-pane" data-qj-pane="left">
+   <div class="qj-pane-head">
+    <span class="qj-pane-tag">${esc(qjWord('left'))}</span>
+    <span class="qj-pane-meta">${esc(src.label||x.left||'—')} — 役割「仕掛」のデータで決まります（選び直せません）・${meta}</span>
+   </div>
+   <input type="search" class="qj-search" data-qj-search="left" placeholder="列名で絞り込み"
+     value="${esc((qjState.search||{}).left||'')}" autocomplete="off" spellcheck="false">
+   <div class="qj-fields" data-qj-list="left">${qjFieldsHtml('left')}</div>
+  </div>`;
+  }
   return `<div class="qj-pane" data-qj-pane="${side}">
    <div class="qj-pane-head">
-    <span class="qj-pane-tag${isL?'':' is-right'}">${isL?'この一覧（足す先）':'相手（持ってくる側）'}</span>
-    <select data-qj-field="${isL?'left':'right'}" data-qj-re aria-label="${isL?'足す先のデータ':'相手のデータ'}">${
+    <span class="qj-pane-tag${isL?'':' is-right'}">${esc(qjWord(isL?'left':'right'))}</span>
+    <select data-qj-field="${isL?'left':'right'}" data-qj-re aria-label="${esc(qjWord(isL?'left':'right'))}">${
       qjSourceOptions(isL?x.left:x.right)}</select>
     <select data-qj-field="${isL?'leftTable':'rightTable'}" data-qj-re aria-label="表">${
       qjOptions(s.c.tables||[],(isL?x.leftTable:x.rightTable)||'',isL?'どの表でも':'既定の表')}</select>
@@ -1151,10 +1199,10 @@
     <input type="radio" name="qjWhen" value="${esc(w.key)}"${w.key===now.key?' checked':''}>
     <b>${esc(w.label)}</b><span>${esc(w.summary||'')}</span></label>`).join('');
   const sel=(k,v)=>`<select data-qj-field="${k}" data-qj-re>${qjOptions((rc.columns||[]),v||'','選ばない')}</select>`;
-  return `<section class="qj-sec qj-sec-kind qj-sec-when">
-    <h4 class="mm-fieldgroup">③ いつ完了にするか — <span class="qj-kind-now">${esc(now.label||'')}</span></h4>
+  return `<section class="qj-sec qj-sec-kind qj-sec-when" data-qj-jump-to="when">
+    <h4 class="mm-fieldgroup">② いつ完了にするか — <span class="qj-kind-now">${esc(now.label||'')}</span></h4>
     ${cards?`<div class="qj-purposes qj-whens">${cards}</div>`:''}
-    <div class="mm-field qj-f-span"><span>作業時間にする列</span>
+    <div class="mm-field qj-f-span" data-qj-jump-to="span"><span>作業時間にする列</span>
      <div class="qj-span-row">
       <label class="qj-f-start"><span>開始の列</span>${sel('startColumn',x.startColumn)}</label>
       <span class="qj-span-arrow" aria-hidden="true">→</span>
@@ -1165,30 +1213,88 @@
     <div class="qj-span-sample" id="qjSpanSample">${qjSpanSampleHtml(x)}</div>
    </section>`;
  }
- /* 見本1件（開始→終了と1日の中の位置）と、当たった行の内訳。**数え方はサーバー**（`probe_finish`の
-    timed／inverted／sample）。1日の帯は0〜24時の中で作業がどこにあるかを描く（日をまたぐ分は右端で止める）。 */
+ /* 見本1件（§9.596）: **いまの予定で**当てて、作業時間を登録できた最初のロット（開始→終了・1日の中の位置・分）。
+    数えるのはサーバー（`trial`）。1日の帯は0〜24時の中で作業がどこにあるかを描く（日をまたぐ分は右端で止める）。 */
  function qjSpanSampleHtml(x){
-  const p=qjState.probe;
-  if(!x.startColumn||!x.finishColumn)return '<p class="mm-field-hint">開始と終了の列を選ぶと、いまのデータで当てた作業時間の見本がここに出ます。</p>';
-  if(qjState.probing&&!p)return '<p class="mm-field-hint">確かめています…</p>';
-  if(!p||!p.ok)return '<p class="mm-field-hint">突合キーで当たる行があると、作業時間の見本がここに出ます。</p>';
-  const unread=Math.max(0,(p.matched||0)-(p.timed||0)-(p.inverted||0));
-  const tally=`当たった ${p.matched}件のうち <b>作業時間を登録 ${p.timed||0}件</b>・時刻を読めない ${unread}件・終わりが始まりより前 ${p.inverted||0}件`;
-  const sm=p.sample;
-  if(!sm)return `<div class="qj-span-box"><p>${tally}</p></div>`;
+  const t=qjState.trial;
+  if(!x.startColumn||!x.finishColumn)return '<p class="mm-field-hint">開始と終了の列を選ぶと、いまの予定で当てた作業時間の見本がここに出ます。</p>';
+  if(!t||t.error)return '';
+  const hits=(t.examples||{}).hit||[];
+  const sm=hits.find(e=>e.timed);
+  if(!sm)return hits.length?'<p class="mm-field-hint is-warn">当たったロットはありますが、開始・終了の時刻を読めません（列か書式を確かめてください）。</p>':'';
   const d1=new Date(sm.startAt),d2=new Date(sm.endAt);
   const md=d=>`${d.getMonth()+1}/${d.getDate()}`,hm=d=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const mins=Math.round((d2.getTime()-d1.getTime())/60000);
   const left=(d1.getHours()*60+d1.getMinutes())/1440*100;
-  const width=Math.max(.6,Math.min(100-left,(sm.minutes||0)/1440*100));
-  const who=(sm.keys||[]).filter(Boolean).join('・');
-  return `<div class="qj-span-box">
-    <p>見本 <b>${esc(who)}</b>${sm.equipment?`（${esc(sm.equipment)}）`:''} → <b>完了</b>
+  const width=Math.max(.6,Math.min(100-left,mins/1440*100));
+  return `<div class="qj-span-box"><p>見本（いまの予定） <b>${esc(sm.lot)}</b>${sm.equipment?`（${esc(sm.equipment)}）`:''} → <b>完了</b>
      <span class="qj-span-time">${md(d1)} ${hm(d1)}</span>
      <span class="qj-day" title="1日（0〜24時）の中で作業がどこにあるか"><i style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%"></i></span>
      <span class="qj-span-time">${md(d2)===md(d1)?'':md(d2)+' '}${hm(d2)}</span>
-     <b>${Math.round(sm.minutes)}分</b>・出どころ「実績データ」</p>
-    <p>${tally}</p>
+     <b>${mins}分</b>・出どころ「実績データ」</p></div>`;
+ }
+ /* 右の列の頭: いまの設定を文で言う（§9.596）。札を押すとその欄へ（`data-qj-jump`）。 */
+ function qjFinSummaryHtml(x){
+  const whens=qjState.finishWhens||[];
+  const now=whens.find(w=>w.key===(x.finishWhen||'gone'))||{};
+  const src=(qjState.sources||[]).find(v=>v.key===x.right)||{};
+  const keys=(x.keys||[]).map(k=>k.right).filter(Boolean);
+  const chip=(jump,text,empty)=>`<button type="button" class="qj-fin-chip${text?'':' is-empty'}" data-qj-jump="${jump}">${esc(text||empty)}</button>`;
+  return `<p class="qj-fin-sent">予定のロットを${chip('keys',src.label||x.right,'実績のデータを選ぶ')}の
+    ${chip('keys',keys.join('・'),'突合キーを選ぶ')}で探し、${chip('when',now.label,'いつ完了にするか')}完了にして、
+    ${chip('span',x.startColumn&&x.finishColumn?`${x.startColumn} 〜 ${x.finishColumn}`:'',
+           '作業時間にする列を選ぶ')}${x.startColumn&&x.finishColumn?'を作業時間にする':''}。</p>`;
+ }
+ /* いまの予定で試した答え（§9.596）。種類の呼び名・意味・色の調子はサーバーの語彙（`TRIAL_KINDS`）。 */
+ function qjTrialHtml(){
+  const t=qjState.trial;
+  if(qjState.probing&&!t)return '<p class="mm-field-hint">いまの予定で確かめています…</p>';
+  if(!t)return '<p class="mm-field-hint">突合キーを選ぶと、いまの予定で当てた答えがここに出ます。</p>';
+  if(t.error)return `<p class="mm-field-hint is-warn">${esc(t.error)}</p>`;
+  const c=t.counts||{},n=t.plans||0,kinds=t.kinds||{},order=(t.order||[]).filter(k=>c[k]);
+  const bar=order.map(k=>`<span class="is-${esc((kinds[k]||{}).tone||'mid')}" style="width:${(100*c[k]/Math.max(1,n)).toFixed(1)}%"></span>`).join('');
+  const rows=order.map(k=>{const v=kinds[k]||{},ex=((t.examples||{})[k]||[]).slice(0,3);
+   /* 鍵が揃わないときは**どの鍵が無いか**を名前と件数で言う（直す列が分かる）。 */
+   const lack=k==='keys'?Object.entries(t.lacking||{}).map(([n,m])=>`「${esc(n)}」が無い ${m}件`).join('・'):'';
+   return `<div class="qj-trial-row is-${esc(v.tone||'mid')}"><span>${esc(v.label||k)}</span><b>${c[k]}件</b>
+    <i>${lack?lack+'。':esc(v.meaning||'')}${ex.length?` 例: ${ex.map(e=>esc(e.lot)+(e.equipment?`（${esc(e.equipment)}）`:'')).join('・')}`:''}</i></div>`}).join('');
+  return `<div class="qj-trial">
+    <h5>いまの予定で試す <span class="ds-probe-state">${qjState.probing?'確かめています…':''}</span></h5>
+    <p class="qj-trial-head">まだ完了していない作業 <b>${n}</b>件のうち、完了にする <b>${c.hit||0}</b>件（作業時間つき ${t.timed||0}件）</p>
+    ${n?`<div class="qj-trial-bar" aria-hidden="true">${bar}</div>${rows}`:'<p class="mm-field-hint">まだ完了していない作業の予定がありません。</p>'}
    </div>`;
+ }
+ /* ④ 何を足すか／何を持ち帰るか。完了突合では持ち帰った値の見本（`#qjAddPreview`）も置く(§9.596)。 */
+ function qjAddHtml(x,rc,kind,isFinish){
+  const pickAll=!(x.columns||[]).length;
+  const colList=(rc.columns||[]).filter(c=>!(x.keys||[]).some(k=>k.right===c));
+  return `<section class="qj-sec qj-sec-add">
+    <h4 class="mm-fieldgroup">${isFinish?'④ 何を持ち帰るか':'④ 何を足すか'}</h4>
+    ${isFinish?`<p class="mm-field-hint">${WL.markup(qjWord('addIntro'))}</p>`:''}
+    ${(kind.key&&!kind.matched&&!kind.rightOnly)?`<p class="mm-field-hint">
+      <b>この結合は列を足しません。</b>「${esc(kind.label)}」は相手に当たらなかった行だけを残す使い方なので、
+      相手の値がありません（足しても全部空欄になります）。列を足したいときは、③で
+      「${esc((qjKind('left')||{}).label||'左外部結合')}」などを選んでください。</p>`:`
+    <div class="qj-pick">
+     <label class="qj-radio"><input type="radio" name="qjPick" value="all" data-qj-re${pickAll?' checked':''}>
+      <span>${esc(qjWord('pickAll'))}</span></label>
+     <label class="qj-radio"><input type="radio" name="qjPick" value="some" data-qj-re${pickAll?'':' checked'}>
+      <span>選んだ列だけ<i>（${(x.columns||[]).length}列を選択中）</i></span></label>
+    </div>
+    ${pickAll?'':`<div class="qj-cols">${colList.length?colList.map(c=>
+      `<label class="qj-col"><input type="checkbox" data-qj-col="${esc(c)}"${(x.columns||[]).includes(c)?' checked':''}><span>${esc(c)}</span></label>`
+     ).join(''):`<p class="mm-field-hint">${esc(qjWord('noCols'))}</p>`}</div>`}
+    <div class="qj-add-opts">
+     <label class="mm-field"><span>${esc(qjWord('prefixLabel'))}</span>
+      <input data-qj-field="prefix" type="text" value="${esc(x.prefix||'')}" maxlength="20" autocomplete="off" spellcheck="false" placeholder="例: 品質_">
+      <small class="mm-field-hint">${WL.markup(qjWord('prefixHint'))}</small></label>
+     <label class="mm-field"><span>${esc(qjWord('multiLabel'))}</span>
+      <select data-qj-field="multi" data-qj-re>${qjOptions(
+        Object.keys(QJ_MULTI_LABEL).map(v=>({value:v,label:QJ_MULTI_LABEL[v]})),x.multi||'first')}</select>
+      <small class="mm-field-hint">${esc(qjWord('multiHint'))}</small></label>
+    </div>`}
+    ${isFinish?'<div class="qj-add-preview" id="qjAddPreview"></div>':''}
+   </section>`;
  }
  function qjEditorHtml(x){
   const lc=qjSide(x,'left').c,rc=qjSide(x,'right').c;
@@ -1206,8 +1312,6 @@
     <span class="qj-kind-short">${esc(k.short)}</span>
     <span class="qj-kind-rows">${esc(qjRowEffect(k))}</span>
    </label>`).join('');
-  const pickAll=!(x.columns||[]).length;
-  const colList=(rc.columns||[]).filter(c=>!(x.keys||[]).some(k=>k.right===c));
   /* 用途(§9.365)。**いちばん上に置く**——ここで決めた使いみちによって
      下の節の意味が変わる（③が消え、④が「持ち帰る値」になる）ので、
      決める順のとおりに並べる。 */
@@ -1217,28 +1321,27 @@
     <input type="radio" name="qjPurpose" value="${esc(pp.key)}"${pp.key===purpose.key?' checked':''}>
     <b>${esc(pp.label)}</b><span>${esc(pp.when||'')}</span>
    </label>`).join('');
-  return `<div class="qj-edit${isFinish?' is-finish':''}">
-   <section class="qj-sec qj-sec-name">
+  const sName=`<section class="qj-sec qj-sec-name">
     <h4 class="mm-fieldgroup">① これは何か</h4>
     ${purposeCards?`<div class="qj-purposes">${purposeCards}</div>`:''}
     <div class="qj-name-row">
      <label class="mm-field qj-f-name"><span>結合名</span>
       <input data-qj-field="name" type="text" value="${esc(x.name||'')}" required autocomplete="off" spellcheck="false">
-      <small class="mm-field-hint">一覧の帯と、列の設定パネルの「結合」欄に出ます。</small></label>
+      <small class="mm-field-hint">${esc(qjWord('nameHint'))}</small></label>
      <label class="mm-field qj-f-order"><span>表示順</span>
       <input data-qj-field="order" type="number" min="0" max="9999" value="${esc(String(x.order==null?0:x.order))}">
       <small class="mm-field-hint">小さいほど先に当たります。</small></label>
      <label class="mm-field qj-f-enabled"><span>使う / 使わない</span>
       <select data-qj-field="enabled" data-qj-re>${qjOptions(['有効','無効'],x.active===false?'無効':'有効')}</select>
-      <small class="mm-field-hint">「無効」にすると列を足しません（設定は残ります）。</small></label>
+      <small class="mm-field-hint">${esc(qjWord('enabledHint'))}</small></label>
     </div>
     ${isFinish?'':`<label class="qj-check">
      <input type="checkbox" data-qj-sched${x.useInSchedule===false?'':' checked'}>
      <span>作業スケジュール表でも使う<small>外すと、この結合の列は仕掛一覧にだけ出ます（予定を読むたびの往復も1本減ります）。</small></span>
     </label>`}
-   </section>
-   <section class="qj-sec qj-sec-merge">
-    <h4 class="mm-fieldgroup">② つなぐ2つのデータと突合キー</h4>
+   </section>`;
+  const sMerge=`<section class="qj-sec qj-sec-merge" data-qj-jump-to="keys">
+    <h4 class="mm-fieldgroup">${isFinish?'③ 実績のデータと突合キー':'② つなぐ2つのデータと突合キー'}</h4>
     <div class="qj-merge">
      ${qjPaneHtml('left')}
      <div class="qj-merge-mid" aria-hidden="true"><span class="qj-merge-eq">＝</span></div>
@@ -1247,10 +1350,10 @@
     <p class="qj-merge-status">${qjStatusHtml()}</p>
     <div class="qj-pairs">${qjPairsHtml(x)}</div>
     ${suggHtml}
-    <p class="mm-field-hint">すべてのキーが一致した行だけを結び付けます。全角/半角と前後の空白は無視します。
+    <p class="mm-field-hint">${WL.markup(qjWord('keysHint'))}
      選べるのは<b>データ接続に登録してあるデータ</b>だけです（一覧に出していないデータも選べます）。</p>
-   </section>
-   ${isFinish?qjWhenHtml(x,rc):`
+   </section>`;
+  const sKind=isFinish?qjWhenHtml(x,rc):`
    <section class="qj-sec qj-sec-kind">
     <h4 class="mm-fieldgroup">③ 結合の仕方 — <span class="qj-kind-now">${esc(kind.label||'')}</span></h4>
     ${kindCards?`<div class="qj-kinds">${kindCards}</div>
@@ -1260,34 +1363,18 @@
      ${qjSampleHtml(kind)}
      ${kind.rightOnly?'<p class="mm-field-hint is-warn">「相手にしかない行」を出すため、<b>相手の表を全部読みます</b>。また、一致しているかどうかはこの一覧の全行と突き合わせます（表示中のページだけでは決めません）。</p>':''}
     </div>`:'<p class="mm-field-hint">結合の仕方の一覧を読めませんでした。左外部結合（この一覧は全部残す）として扱います。</p>'}
-   </section>`}
-   <section class="qj-sec qj-sec-add">
-    <h4 class="mm-fieldgroup">${isFinish?'④ 何を持ち帰るか':'④ 何を足すか'}</h4>
-    ${isFinish?`<p class="mm-field-hint">当たった行から選んだ列を<b>この予定へ保存します</b>。
-     相手のデータが次の更新で消えても、保存したぶんは残ります。</p>`:''}
-    ${(kind.key&&!kind.matched&&!kind.rightOnly)?`<p class="mm-field-hint">
-      <b>この結合は列を足しません。</b>「${esc(kind.label)}」は相手に当たらなかった行だけを残す使い方なので、
-      相手の値がありません（足しても全部空欄になります）。列を足したいときは、③で
-      「${esc((qjKind('left')||{}).label||'左外部結合')}」などを選んでください。</p>`:`
-    <div class="qj-pick">
-     <label class="qj-radio"><input type="radio" name="qjPick" value="all" data-qj-re${pickAll?' checked':''}>
-      <span>相手の列をすべて</span></label>
-     <label class="qj-radio"><input type="radio" name="qjPick" value="some" data-qj-re${pickAll?'':' checked'}>
-      <span>選んだ列だけ<i>（${(x.columns||[]).length}列を選択中）</i></span></label>
-    </div>
-    ${pickAll?'':`<div class="qj-cols">${colList.length?colList.map(c=>
-      `<label class="qj-col"><input type="checkbox" data-qj-col="${esc(c)}"${(x.columns||[]).includes(c)?' checked':''}><span>${esc(c)}</span></label>`
-     ).join(''):'<p class="mm-field-hint">相手の列がまだ分かりません。②でデータと表を選んでください。</p>'}</div>`}
-    <div class="qj-add-opts">
-     <label class="mm-field"><span>足す列の名前に付ける文字</span>
-      <input data-qj-field="prefix" type="text" value="${esc(x.prefix||'')}" maxlength="20" autocomplete="off" spellcheck="false" placeholder="例: 品質_">
-      <small class="mm-field-hint">空のままだと、一覧に同じ名前の列があるものは<b>足しません</b>（元の一覧の値を残します）。付けると両方を並べられます。</small></label>
-     <label class="mm-field"><span>相手が2件以上あったら</span>
-      <select data-qj-field="multi" data-qj-re>${qjOptions(
-        Object.keys(QJ_MULTI_LABEL).map(v=>({value:v,label:QJ_MULTI_LABEL[v]})),x.multi||'first')}</select>
-      <small class="mm-field-hint">当たった件数は下の「結果」に出ます。</small></label>
-    </div>`}
-   </section>
+   </section>`;
+  const sAdd=qjAddHtml(x,rc,kind,isFinish);
+  /* 完了突合は**決める順の主の列＋いつも見える答えの列**（§9.596・7案→組合せ→3回目の M）。主の列は
+     ① これは何か → ② いつ完了にするか → ③ 実績のデータと突合キー → ④ 何を持ち帰るか。右の列は「いまの設定」を
+     文で言い（札を押すとその欄へ）、保存する前に**いまの予定で**当てた答えを出す。一覧の結合は今までどおり。 */
+  if(isFinish)return `<div class="qj-edit is-finish"><div class="qj-fin">
+    <div class="qj-fin-main">${sName}${sKind}${sMerge}${sAdd}</div>
+    <aside class="qj-fin-side" aria-label="いまの設定と、いまの予定で試した答え">
+     <div id="qjFinSummary">${qjFinSummaryHtml(x)}</div>
+     <div id="qjProbeBox" class="ds-probe"></div>
+    </aside></div></div>`;
+  return `<div class="qj-edit">${sName}${sMerge}${sKind}${sAdd}
    <section class="qj-sec qj-sec-result">
     <h4 class="mm-fieldgroup">⑤ 結果（保存する前の下見） <span class="ds-probe-state" id="qjProbeState"></span></h4>
     <div id="qjProbeBox" class="ds-probe"></div>
@@ -1319,10 +1406,18 @@
    if(el.matches('[data-qj-re]'))el.onchange=()=>{commit();renderQueryJoinEditor();qjRefreshColumns()};
    else{el.oninput=()=>{commit();qjProbeSoon()};el.onchange=()=>commit()}
   });
+  /* 「いまの設定」の札を押すと、その欄へ移って光らせる（§9.596・図と入力を結ぶ）。 */
+  form.onclick=ev=>{
+   const b=ev.target.closest('[data-qj-jump]');if(!b)return;
+   const to=form.querySelector(`[data-qj-jump-to="${b.dataset.qjJump}"]`);if(!to)return;
+   to.scrollIntoView({block:'center',behavior:'smooth'});
+   to.classList.remove('is-flash');void to.offsetWidth;to.classList.add('is-flash');
+   const f=to.querySelector('select,input:not([type=hidden]),button');if(f)f.focus({preventScroll:true});
+  };
   form.querySelectorAll('[name="qjWhen"]').forEach(el=>el.onchange=()=>{
    if(!el.checked)return;
    qjEdit().finishWhen=el.value;
-   renderQueryJoinEditor();
+   renderQueryJoinEditor();qjProbeSoon(0);
   });
   form.querySelectorAll('[name="qjKind"]').forEach(el=>el.onchange=()=>{
    if(!el.checked)return;
@@ -1504,15 +1599,18 @@
      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
    if(seq!==qjState.probeSeq)return;
    qjState.probe=r.result||null;
+   qjState.trial=r.trial||null;
   }catch(e){
    if(seq!==qjState.probeSeq)return;
    qjState.probe={ok:false,reason:e.message,sampled:0,matched:0,ambiguous:0,
                   addedColumns:0,addedColumnNames:[],table:'',examples:[]};
+   qjState.trial=null;
   }finally{
    if(seq===qjState.probeSeq){qjState.probing=false;qjRenderProbe()}
   }
  }
  function qjRenderProbe(){
+  if(qjIsFinish())return qjRenderFinishProbe();
   const box=$('#qjProbeBox'),state=$('#qjProbeState');if(!box)return;
   if(state)state.textContent=qjState.probing?'確かめています…':'';
   const p=qjState.probe;
@@ -1544,6 +1642,25 @@
     p.files.map(f=>esc(f.equipment)+(f.error?`（読めません: ${esc(f.error)}）`:` ${f.rows}行`)).join('・')}</p>`:'';
   box.innerHTML=head+rowLine+noteLine+amb+files+colLine+ex;
   const sm=$('#qjSpanSample');if(sm)sm.innerHTML=qjSpanSampleHtml(qjEdit());
+ }
+ /* 完了突合の下見（§9.596）: 右の列＝いまの予定で試した答え＋読んだファイル、②＝見本1件、④＝持ち帰る値の見本。
+    **同じ数を2箇所に出さない**——実績のデータの行数（何行に鍵が揃っているか）は相手の表の話なので④の見本の頭だけ。 */
+ function qjRenderFinishProbe(){
+  const box=$('#qjProbeBox');if(!box)return;
+  const p=qjState.probe||{};
+  const files=(p.files||[]).length?`<p class="mm-field-hint">読んだファイル（設備ごと）: ${
+    p.files.map(f=>esc(f.equipment)+(f.error?`（読めません: ${esc(f.error)}）`:` ${f.rows}行`)).join('・')}</p>`:'';
+  const ng=(qjState.probe&&!p.ok&&p.reason)?`<p class="mm-field-hint is-warn">${esc(p.reason)}</p>`:'';
+  const note=p.note?`<p class="mm-field-hint">${esc(p.note)}</p>`:'';
+  box.innerHTML=qjTrialHtml()+ng+note+files;
+  const sum=$('#qjFinSummary');if(sum)sum.innerHTML=qjFinSummaryHtml(qjEdit());
+  const sm=$('#qjSpanSample');if(sm)sm.innerHTML=qjSpanSampleHtml(qjEdit());
+  const pv=$('#qjAddPreview');if(!pv)return;
+  const names=p.addedColumnNames||[];
+  pv.innerHTML=(p.examples||[]).length?`<p class="mm-field-hint">持ち帰る値の見本（実績のデータの先頭の行・${names.length}列${
+    p.ambiguous?`・同じキーの行が2件以上 ${p.ambiguous}件`:''}）</p><table class="qj-ex"><thead><tr>${
+    Object.keys(p.examples[0]).map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>${
+    p.examples.map(r=>`<tr>${Object.values(r).map(v=>`<td>${esc(String(v))}</td>`).join('')}</tr>`).join('')}</tbody></table>`:'';
  }
  async function saveQueryJoinEditor(){
   const x=qjEdit();

@@ -76,6 +76,8 @@ make_db(FOLDER / '実績_ＬＳ４.sqlite3', 'BOX実績', ACOLS, [
     ('L5', 'C5', 'B5', '2026/10/03 13:05:00', '2026/10/03 13:50:00', '505'),
     # 時刻が逆転（作業時間にしない）。
     ('L7', 'C7', 'B7', '2026/10/04 10:00:00', '2026/10/04 09:00:00', '500'),
+    # 同じ鍵の2行目（§9.596）。「最初の1件を使う」なら上の L1 の時刻、「空にする」なら当てない。
+    ('L1', 'C1', 'B1', '2026/10/09 15:00:00', '2026/10/09 16:00:00', '999'),
 ])
 # 別の設備のファイル。L2 は LS4 の予定にあるが、こちらにしか無い（当ててはいけない）。
 make_db(FOLDER / '実績_LS5.sqlite3', 'BOX実績', ACOLS, [
@@ -181,6 +183,29 @@ try:
     done = run_plan(*plan(9, 'L1', 'C1', 'B1', state='取消'))
     rec('計画者が確定した取消は動かさない', done['state'] == '取消' and not done['actualSource'])
 
+    # ---- 5b. 相手が2件以上（§9.596）・いまの予定で試す ---------------------
+    DEF['multi'] = 'blank'
+    actual_match.forget()
+    pb = run_plan(*plan(1, 'L1', 'C1', 'B1'))
+    DEF['multi'] = 'first'
+    rec('「空にする」なら同じ鍵が2件ある行には当てない（理由の種類は ambiguous）',
+        pb['state'] == '予定' and not pb['actualSource'],
+        json.dumps({k: pb.get(k) for k in ('state', 'missingReason')}, ensure_ascii=False))
+    one = actual_match.lookup(plan(1, 'L1', 'C1', 'B1')[1], plan(1, 'L1', 'C1', 'B1')[0],
+                              [dict(DEF, multi='blank')])
+    rec('判定は種類を名乗る（字を読み比べない）', one['code'] == actual_match.CODE_AMBIGUOUS, one['code'])
+    plans = [plan(i, lot, cast, box)[::1] for i, lot, cast, box in
+             ((1, 'L1', 'C1', 'B1'), (2, 'L2', 'C2', 'B2'), (3, 'L3', 'C3', 'B3'),
+              (5, 'L5', 'C5', None), (7, 'L7', 'C7', 'B7'), (8, 'L8', 'C8', 'B8'), (9, 'L9', '', 'B9'))]
+    tr = actual_match.trial(dict(DEF), plans)
+    rec('いまの予定で試す: 当たる・仕掛にある・消えて当たらない・鍵が揃わない（どの鍵か）を数え、時刻つきを別に数える',
+        tr['plans'] == 7 and tr['counts']['hit'] == 4 and tr['counts']['inWork'] == 1
+        and tr['counts']['gone'] == 1 and tr['counts']['keys'] == 1 and tr['timed'] == 3
+        and tr['equipments'].get('LS4', {}).get('hit') == 4
+        and [e['lot'] for e in tr['examples']['hit']] == ['L1', 'L3', 'L5', 'L7']
+        and tr['lacking'] == {'鋳造番号': 1} and tr['kinds']['keys']['tone'] == 'warn',
+        json.dumps({k: tr[k] for k in ('plans', 'counts', 'timed')}, ensure_ascii=False))
+
     # ---- 6. 残す形 ---------------------------------------------------------
     pay = actual_keep._payload(p1)
     back = schedule_calc.saved_actual_source(json.dumps(pay, ensure_ascii=False))
@@ -239,8 +264,8 @@ try:
         and pr['startReadable'] == 5 and pr['finishReadable'] == 5,
         json.dumps({k: pr.get(k) for k in ('files', 'matched', 'startReadable', 'finishReadable', 'note')},
                    ensure_ascii=False))
-    rec('下見は作業時間の内訳（登録できる・逆転）と見本1件を言い、設備が違う同じ鍵を重なりと数えない',
-        pr['timed'] == 4 and pr['inverted'] == 1 and pr['ambiguous'] == 0
+    rec('下見は作業時間の内訳（登録できる・逆転）と見本1件を言い、重なりは同じファイルの中だけ数える（LS5のL2は数えない）',
+        pr['timed'] == 4 and pr['inverted'] == 1 and pr['ambiguous'] == 1
         and (pr['sample'] or {}).get('minutes') == 90.0 and (pr['sample'] or {}).get('equipment') == 'LS4'
         and all('\0' not in k for ex in pr['examples'] for k in ex),
         json.dumps({k: pr.get(k) for k in ('timed', 'inverted', 'ambiguous', 'sample')}, ensure_ascii=False))

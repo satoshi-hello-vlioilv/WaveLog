@@ -451,6 +451,28 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   await page.waitForFunction(()=>(document.querySelector('.qj-whens .qj-when.is-on b')||{}).textContent==='実績に当たったら',{timeout:20000});
   rec('札を押すと「いつ完了にするか」が切り替わり、見出しもその名前を言う',
       await page.evaluate(()=>/実績に当たったら/.test(document.querySelector('.qj-sec-when .mm-fieldgroup').textContent)));
+  /* §9.596: 完了突合の窓は「決める順の主の列＋右の答えの列」。左（予定のロット）は役割「仕掛」で決まるので選ばせない。
+     一覧の結合の言葉（足す先・足した列・一覧の帯）を出さない。右の札を押すとその欄へ移る。 */
+  await page.waitForFunction(()=>!!document.querySelector('.qj-fin-side .qj-trial, .qj-fin-side .mm-field-hint'),{timeout:20000});
+  const fin2=await page.evaluate(()=>{
+   const dlg=document.querySelector('.mm-editor-dialog'),t=dlg.innerText;
+   return {secs:[...document.querySelectorAll('.qj-fin-main .mm-fieldgroup')].map(h=>h.textContent.trim().charAt(0)),
+    side:!!document.querySelector('.qj-fin-side #qjProbeBox'),result:!!document.querySelector('.qj-sec-result'),
+    leftSelects:document.querySelectorAll('[data-qj-pane="left"] select').length,
+    rightSelects:document.querySelectorAll('[data-qj-pane="right"] select').length,
+    listWords:['足す先','足した列','一覧の帯','を足します','この一覧'].filter(w=>t.includes(w)),
+    chips:[...document.querySelectorAll('.qj-fin-chip')].map(b=>b.dataset.qjJump)};
+  });
+  rec('完了突合: 主の列は ①→②いつ完了→③実績と鍵→④持ち帰る、右に答え（⑤は無い）',
+      fin2.secs.join('')==='①②③④'&&fin2.side&&!fin2.result,JSON.stringify(fin2));
+  rec('完了突合: 予定のロット（左）はデータ・表を選ばせない（右は選べる）',
+      fin2.leftSelects===0&&fin2.rightSelects===2,JSON.stringify({l:fin2.leftSelects,r:fin2.rightSelects}));
+  rec('完了突合: 一覧の結合の言葉を出さない',fin2.listWords.length===0,JSON.stringify(fin2.listWords));
+  await page.evaluate(()=>{const b=document.querySelector('.qj-fin-chip[data-qj-jump="span"]');if(b)b.click()});
+  await page.waitForFunction(()=>document.querySelector('[data-qj-jump-to="span"]')?.classList.contains('is-flash'),{timeout:5000});
+  rec('右の「いまの設定」の札を押すと、その欄が光って焦点が移る',
+      await page.evaluate(()=>{const to=document.querySelector('[data-qj-jump-to="span"]');
+       return !!to&&to.classList.contains('is-flash')&&to.contains(document.activeElement)}));
   rec('完了突合では④が「何を持ち帰るか」になる',
       fin.secs.some(t=>t.includes('何を持ち帰るか')),JSON.stringify(fin.secs));
   rec('完了突合では「完了時刻にする列」を相手の列から選べる',

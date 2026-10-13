@@ -1214,6 +1214,18 @@ def _entry_of_row(r):
  return entry,detail
 
 
+def trial_plans(c):
+ """完了突合の下見（§9.596）が当てる予定: **まだ完了にしていない作業の親行**（全設備）。
+ 確定した完了／取消・保存済みの写しを持つ行は数えない（もう動かない）。戻り値: [(予定, 明細)]。"""
+ out=[]
+ for r in sr.plan_rows(c):
+  entry,detail=_entry_of_row(r)
+  if entry['kind']!='作業' or entry.get('parentId') is not None:continue
+  if entry['storedState'] in PLAN_TERMINAL_STATES or saved_actual_source(r[22]):continue
+  out.append((entry,detail))
+ return out
+
+
 def _finish_join_missing_note(entries):
  """完了突合が無いことは全行に共通(§9.462)。**行ではなくここで1回**言う——
  無いと「仕掛から消えたロット」を完了にできず、測定データだけが頼りになる。"""

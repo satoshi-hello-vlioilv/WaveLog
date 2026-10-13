@@ -1,4 +1,4 @@
-# 作業スケジュール（114件）
+# 作業スケジュール（115件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| いまの予定で試すのは`actual_match.trial()`の1箇所（内訳は`TRIAL_KINDS`）。「2件以上は空にする」の定義は完了にしない | `test_boxactual.py` | [§9.596](../../docs/decisions/9.596.md) |
 | 「実績に当たったら」は仕掛に残っても完了。探すのは同じ設備のファイルだけ・明細に無い鍵は仕掛の行（1行のとき）から | `test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
 | 完了の道は`_done_by_join()`の1本。開始・終了が読めて逆転していなければ作業時間（`join_times()`・手入力と同じ形・人が入れた時刻が先） | `test_boxactual.py`・`test_actualmatch.py` | [§9.595](../../docs/decisions/9.595.md) |
 | 当たった行を予定へ残すのは`actual_keep.persist()`の1箇所（予定を開いたとき＋書込役の裏の見回り・既定15分）。上書きしない・開始と条件も残す | `test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
