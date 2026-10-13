@@ -321,7 +321,8 @@ def main():
             blank = e
     rec('鍵が揃わない行は状態を動かさない（分からないことを分かったことにしない）',
         bool(blank) and blank['state'] == '予定' and blank.get('missingFromWork') is None
-        and '揃っていません' in str(blank.get('missingReason') or ''),
+        # §9.596: 理由は**足りない鍵を名指す**（「ロット番号」「鋳造番号」の値がありません）。
+        and 'の値がありません' in str(blank.get('missingReason') or ''),
         json.dumps({'state': blank and blank.get('state'),
                     'missing': blank and blank.get('missingFromWork'),
                     'reason': (blank or {}).get('missingReason')}, ensure_ascii=False)[:200])

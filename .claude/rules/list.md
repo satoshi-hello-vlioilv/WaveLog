@@ -1,4 +1,4 @@
-# 一覧と列（165件）
+# 一覧と列（166件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,7 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 完了突合の③は「いつ完了にするか」の札＋開始→終了の列＋見本の箱。数えるのは`probe_finish`（重なりはファイルごと） | `test_qjoinui.js`・`test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
+| 完了突合の窓は決める順の4節＋右に「いまの設定」の文（札で欄へ）と「いまの予定で試す」。用途で変わる字は`QJ_WORDS`の1箇所 | `test_qjoinui.js` | [§9.596](../../docs/decisions/9.596.md) |
+| 完了突合の②は（§9.596で③から）「いつ完了にするか」の札＋開始→終了の列＋見本の箱。数えるのは`probe_finish`（重なりはファイルごと） | `test_qjoinui.js`・`test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
 | 自動の幅の見積りは描かずに数える。半角は書体で測った表（`calibrateCharEm()`）、余白は計算済みのpx（`gridMetrics()`） | `test_listperf.js` | [§9.594](../../docs/decisions/9.594.md) |
 | 帯は1段目＝絞る（検索→プリセット→条件→列→スライサー→色付け）｜見せ方、2段目＝状態｜拡大・ページ | `test_listtoolsui.js`・`test_listbar.js` | [§9.591](../../docs/decisions/9.591.md) |
 | スライサー・色付けの数はサーバーが一覧と同じ絞り込み（`_table_where`）の全件で数える。スライサーは自分の列を外す | `test_listtools.py` | [§9.591](../../docs/decisions/9.591.md) |
