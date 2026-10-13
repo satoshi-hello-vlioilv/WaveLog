@@ -3185,7 +3185,7 @@
   {label:'交替勤務(4,5直)',segments:[
     {name:'4直',start:'11:00',end:'19:10'},{name:'5直',start:'21:20',end:'05:45',dayOffset:-1}]},
  ];
- let shiftState={patterns:[],selectedId:null,draft:null,loading:false};
+ let shiftState={patterns:[],selectedId:null,draft:null,loading:false,base:'',baseDraft:null};
  /* 適用設備の複数選択(勤務体系マスタ)。**入で選ばれている設備名**を配列で返す。
     印はタグの入切(aria-pressed)で持つ——チェックボックスは`.mm-field input`の
     `min-width:200px`に当たり、器の幅を全部取って**設備名の文字が押し出されて
@@ -3203,6 +3203,27 @@
               dayOffset:(x.dayOffset==null?null:Number(x.dayOffset))}))}
            :{id:null,equipment:[],name:'',segments:[]};
  }
+ /* 開く体系を決める（§9.598）。`base`は開いたときの値（比べる形に揃えた字）——変更の有無はこれと比べる。
+    テンプレートから作る新しい体系は「空の体系」を基準にする（作った時点で変更あり＝保存が押せる）。 */
+ function shiftOpen(draft,base){
+  shiftState.draft=draft;
+  shiftState.baseDraft=JSON.parse(JSON.stringify(base||draft));
+  shiftState.base=shiftNormJson(shiftState.baseDraft);
+ }
+ /* 比べる形: 日を跨がない区分の「日付の数え方」は意味を持たない（空）・跨ぐ区分の空は既定（−1）として数える
+    （画面の欄が出す値と同じ）。設備は順を問わない。 */
+ function shiftNormJson(d){
+  d=d||{};
+  return JSON.stringify({name:String(d.name||'').trim(),equipment:[...(d.equipment||[])].map(String).sort(),
+   segments:(d.segments||[]).map(s=>({name:String(s.name||''),start:s.start||'',end:s.end||'',
+    dayOffset:shiftCrossesMidnight(s)?shiftDayOffsetOf(s):null}))});
+ }
+ function shiftDirty(){
+  const list=$('#masterMaintList');
+  if(!shiftState.draft)return false;
+  if(list&&list.querySelector('.shift-editor'))syncShiftDraft(list);
+  return shiftNormJson(shiftState.draft)!==shiftState.base;
+ }
  async function loadShiftPatternMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
@@ -3212,7 +3233,7 @@
    const r=await api('/api/schedule/shift-pattern-master?scope=all');
    shiftState.patterns=r.items||[];
    if(!shiftState.patterns.some(p=>p.id===shiftState.selectedId))shiftState.selectedId=shiftState.patterns[0]?.id??null;
-   shiftState.draft=shiftDraftFrom(shiftState.patterns.find(p=>p.id===shiftState.selectedId));
+   shiftOpen(shiftDraftFrom(shiftState.patterns.find(p=>p.id===shiftState.selectedId)));
    renderShiftPattern();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
@@ -3231,22 +3252,25 @@
   {v:0,label:'暦どおり（0日）'},
   {v:1,label:'翌日として数える（＋1日）'},
  ];
- /* **何が選ばれているかを文字で言う**(§3)。チェックの見た目だけだと、
-    設備が多いときに「全設備共通なのか選び忘れなのか」が読めない。 */
- function shiftEqSummaryHtml(names,total){
+ /* **何が選ばれているかを文字で言う**(§3)。見出しに「n/N」（どれも選んでいなければ「全設備共通」）——名前は札が言うので
+    並べ直さない（§9.598・同じことを2か所に出さない）。 */
+ function shiftEqCountHtml(n,total){
   if(!total)return '';
-  return names.length
-   ? `<b>${names.length}</b> 設備に適用（${esc(names.slice(0,3).join('、'))}${names.length>3?' ほか':''}）`
-   : '<b>全設備共通</b>（どれも選んでいないので既定として使われます）';
+  /* `<i>`にしない——欄の見出しの中の`<i>`は必須の印（赤）の規則を受ける。 */
+  return n?`<span class="shift-eq-count">${n}/${total}</span>`
+   :'<span class="shift-eq-count is-all" title="どれも選んでいないので、全設備の既定として使われます">全設備共通</span>';
  }
  /* チェックのたびに**画面を組み直さないこと**——設備が多いと選ぶ器が
     スクロールごと巻き戻り、続けて選べない（§9.117と同じ罠）。文字だけ
     差し替える。 */
  function refreshShiftEqSummary(){
-  const sum=$('#masterMaintList .shift-eq-sum');
-  const names=selectedShiftEquipment();
-  if(sum)sum.innerHTML=shiftEqSummaryHtml(names,(WL.records.equipmentMasterState.items||[]).length);
+  const box=$('#masterMaintList .shift-eq-head');
+  const names=selectedShiftEquipment(),total=(WL.records.equipmentMasterState.items||[]).length;
+  const cnt=box&&box.querySelector('.shift-eq-count');
+  if(cnt)cnt.outerHTML=shiftEqCountHtml(names.length,total);
   const none=$('#shiftEqNone');if(none)none.disabled=!names.length;
+  const all=$('#shiftEqAll');if(all){all.disabled=names.length>=total;all.title=all.disabled?'すべて選ばれています':'すべての設備を選びます'}
+  paintShiftFoot();
  }
  function shiftCrossesMidnight(seg){
   const t=v=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(v||''));return m?(+m[1])*60+(+m[2]):null};
@@ -3279,30 +3303,35 @@
      }).join('')
    : '<span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span>';
  }
- function shiftFormHeadHtml(d){
-  return `<div class="mm-form-head">
-    <span class="mm-mode-chip ${d.id?'editing':'new'}">${d.id?`編集中 <b>${esc(d.name||'')}</b>`:'新規の勤務体系'}</span>
-    <button type="button" id="shiftNew" class="mm-btn-ghost sm">＋ 勤務体系を追加</button>
-    <span class="mm-form-hint">テンプレート:</span>
-    ${SHIFT_TEMPLATES.map((t,i)=>`<button type="button" class="mm-btn-ghost sm" data-shift-tmpl="${i}">${esc(t.label)}</button>`).join('')}
-   </div>
-   <p class="mm-def-hint">勤務体系(日勤・交替勤務など)の中に、各直の時間帯を並べます。作業スケジュールの「勤務」列は、予定の時刻が入る区分の名称を表示します。終了が開始以下の区分は翌日にまたがる勤務として扱い、<b>跨いだ後の時間帯は「日付の数え方」で決めた日付で数えます</b>（3直 23:00〜翌7:00 を1つの日としてまとめるための設定です）。適用設備を空欄にすると全設備の既定になり、設備を指定した体系があればそちらが優先されます。</p>`;
- }
- function wireShiftHead(form,d){
-  form.onsubmit=ev=>ev.preventDefault();
-  $('#shiftNew').onclick=()=>{shiftState.selectedId=null;shiftState.draft=shiftDraftFrom(null);renderShiftPattern()};
-  form.querySelectorAll('[data-shift-tmpl]').forEach(b=>b.onclick=()=>{
-   const t=SHIFT_TEMPLATES[+b.dataset.shiftTmpl];
-   shiftState.draft={...d,name:d.name||t.label,segments:t.segments.map(x=>({...x}))};
+ /* 頭の行（§9.598）: 主の操作は「＋ 勤務体系を追加 ▾」の1つ。空から・テンプレートから（新しい体系として作る）を選ぶ。
+    詳細がいつも見えている画面なので縁取り（塗りの主ボタンは足元の保存の1つ）。 */
+ function paintShiftHead(form){
+  form.innerHTML='';form.hidden=true;form.onsubmit=ev=>ev.preventDefault();
+  const make=(name,segs)=>()=>WL.mm.afterLeave(()=>{
+   shiftState.selectedId=null;
+   shiftOpen({...shiftDraftFrom(null),name,segments:segs.map(x=>({...x}))},shiftDraftFrom(null));
    renderShiftPattern();
   });
-
+  WL.mm.setHeadActs({quiet:true,primary:{id:'shiftNew',label:'勤務体系を追加',title:'空から、またはテンプレートから作ります',
+   menu:[{label:'空の勤務体系',note:'区分を1つずつ足します',data:{shiftTmpl:'blank'},onClick:make('',[])}]
+    .concat(SHIFT_TEMPLATES.map((t,i)=>({label:t.label,note:t.segments.map(x=>`${x.name} ${x.start}〜${x.end}`).join('・'),
+     data:{shiftTmpl:String(i)},onClick:make(t.label,t.segments)})))}});
+ }
+ /* 24時間の帯（§9.598）。区分の名前を帯に書き（色だけで言わない）、`data-seg`で入力中の行と結ぶ。`mini`は左の一覧の小さな帯。 */
+ function shiftBarHtml(segs,mini){
+  return (segs||[]).map((seg,i)=>shiftBarPieces(seg).map(([left,w])=>
+    `<span class="shift-bar-piece" data-i="${i%6}" data-seg="${i}" style="left:${left}%;width:${w}%" title="${esc(seg.name)} ${esc(seg.start)}〜${esc(seg.end)}">${mini?'':`<b>${esc(seg.name)}</b>`}</span>`).join('')).join('');
+ }
+ /* 左の一覧の1件: 名前・小さな24時間の帯・「n設備・m区分」（何に効くかを開かずに読める）。 */
+ function shiftListItemHtml(p,activeId){
+  const n=(p.equipment&&p.equipment.length)||0,segs=p.segments||[];
+  return `<button type="button" class="shift-list-item${p.id===activeId?' active':''}" data-shift-pattern="${p.id}">`
+   +`<b>${esc(p.name)}</b><span class="shift-mini24" aria-hidden="true">${shiftBarHtml(segs,true)}</span>`
+   +`<small title="${esc(p.equipmentText||'全設備共通')}">${n?`${n}設備`:'全設備共通'}・${segs.length}区分</small></button>`;
  }
  function shiftEditorHtml(d,eqItems,eqSelected){
   const eqChips=shiftEqChipsHtml(eqItems,eqSelected);
-  const eqSummary=shiftEqSummaryHtml([...eqSelected],eqItems.length);
-  const bars=d.segments.map((seg,i)=>shiftBarPieces(seg).map(([left,w])=>
-    `<span class="shift-bar-piece" data-i="${i%6}" style="left:${left}%;width:${w}%" title="${esc(seg.name)} ${esc(seg.start)}〜${esc(seg.end)}"></span>`).join('')).join('');
+  const bars=shiftBarHtml(d.segments);
   const segHead=`<div class="shift-seg-head">${
     SHIFT_SEG_COLS.map(c=>`<span class="shift-seg-h shift-seg-c-${c.k}">${esc(c.label)}</span>`).join('')}</div>`;
   const segRow=(seg,i)=>{
@@ -3328,28 +3357,27 @@
   };
   return `<div class="shift-editor">
     <aside class="shift-list">
-     <div class="shift-list-head">登録済みの勤務体系</div>
-     ${shiftState.patterns.length?shiftState.patterns.map(p=>`<button type="button" class="shift-list-item${p.id===d.id?' active':''}" data-shift-pattern="${p.id}">
-        <b>${esc(p.name)}</b><small>${esc(p.equipmentText||'全設備共通')} ・ ${(p.segments||[]).length}区分</small></button>`).join('')
-       :'<div class="mm-empty-inline">まだありません。テンプレートから作れます。</div>'}
+     <div class="shift-list-head">勤務体系 <i class="shift-list-n">${shiftState.patterns.length}</i></div>
+     ${shiftState.patterns.length?shiftState.patterns.map(p=>shiftListItemHtml(p,d.id)).join('')
+       :'<div class="mm-empty-inline">まだありません。右上の「＋ 勤務体系を追加」からテンプレートで作れます。</div>'}
     </aside>
     <section class="shift-detail">
+     <div class="shift-dhead"><div><small>勤務体系</small><h3>${esc(d.name||'新しい勤務体系')}</h3></div>
+      ${d.id?'<button type="button" class="mm-btn-ghost mm-hd-more" id="shiftMore" aria-haspopup="menu" aria-expanded="false" aria-label="この勤務体系の操作" title="この勤務体系の操作（削除など）"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>':''}</div>
      <div class="shift-fields">
       <label class="mm-field shift-f-name"><span>勤務体系の名称<i>*</i></span>
        <input id="shiftName" type="text" value="${esc(d.name)}" placeholder="例: 交替勤務(1,2,3直)" autocomplete="off"></label>
-      <div class="mm-field shift-f-eq"><span>適用設備</span>
-       <div class="shift-eq-bar">
-        <span class="shift-eq-sum">${eqSummary}</span>
-        ${eqItems.length?`<span class="shift-eq-act">
-          <button type="button" class="mm-btn-ghost sm" id="shiftEqAll">すべて選ぶ</button>
+      <div class="mm-field shift-f-eq"><span class="shift-eq-head">適用設備 ${shiftEqCountHtml(eqSelected.size,eqItems.length)}</span>
+       ${eqItems.length?`<span class="shift-eq-act">
+          <button type="button" class="mm-btn-ghost sm" id="shiftEqAll"${eqSelected.size>=eqItems.length?' disabled title="すべて選ばれています"':' title="すべての設備を選びます"'}>すべて選ぶ</button>
           <button type="button" class="mm-btn-ghost sm" id="shiftEqNone"${eqSelected.size?'':' disabled'}>全設備共通に戻す</button>
          </span>`:''}
-       </div>
        <div class="shift-eq-picker" id="shiftEquipment">${eqChips}</div></div>
      </div>
      <div class="shift-bar-wrap">
       <div class="shift-bar" title="24時間のうち、どの時間帯がどの区分か">${bars}<span class="shift-bar-noon"></span></div>
       <div class="shift-bar-scale"><span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>24時</span></div>
+      <div class="shift-cov" id="shiftCoverage" role="status"></div>
      </div>
      <div class="shift-segs" id="shiftSegs">${
        d.segments.length?segHead+d.segments.map(segRow).join('')
@@ -3357,11 +3385,12 @@
      </div>
      <div class="shift-actions">
       <button type="button" id="shiftAddSeg" class="mm-btn-ghost sm">＋ 区分を追加</button>
-      <span class="mm-form-hint" id="shiftCoverage"></span>
-      <span class="shift-actions-tail">
-       ${d.id?'<button type="button" id="shiftDelete" class="mm-btn-ghost sm">この勤務体系を削除</button>':''}
-       <button type="button" id="shiftSave" class="mm-btn-primary sm">保存</button>
-      </span>
+     </div>
+     <!-- 足元は1つの部品（§9.598・右の詳細と同じ）: 左に状態と記録者・右にキャンセルと保存。変更が無いうちは押せない。 -->
+     <div class="shift-foot">
+      <span class="mm-form-hint" id="shiftDirty"></span>
+      <button type="button" id="shiftCancel" class="mm-btn-ghost">キャンセル</button>
+      <button type="button" id="shiftSave" class="mm-btn-primary">保存</button>
      </div>
     </section>
    </div>`;
@@ -3426,27 +3455,53 @@
   const d=shiftState.draft||shiftDraftFrom(null);
   const eqSelected=new Set((d.equipment||[]).map(String));
   const eqItems=(WL.records.equipmentMasterState.items||[]);
-  form.innerHTML=shiftFormHeadHtml(d);
-  wireShiftHead(form,d);
+  paintShiftHead(form);
   list.innerHTML=shiftEditorHtml(d,eqItems,eqSelected);
-  list.querySelectorAll('[data-shift-pattern]').forEach(b=>b.onclick=()=>{
+  /* 別の体系へ移るときも、保存していない変更があれば聞く（`afterLeave`・黙って捨てない）。 */
+  list.querySelectorAll('[data-shift-pattern]').forEach(b=>b.onclick=()=>WL.mm.afterLeave(()=>{
    shiftState.selectedId=+b.dataset.shiftPattern;
-   shiftState.draft=shiftDraftFrom(shiftState.patterns.find(p=>p.id===shiftState.selectedId));
+   shiftOpen(shiftDraftFrom(shiftState.patterns.find(p=>p.id===shiftState.selectedId)));
    renderShiftPattern();
-  });
-  $('#shiftName').oninput=()=>{shiftState.draft.name=$('#shiftName').value};
+  }));
+  $('#shiftName').oninput=()=>{shiftState.draft.name=$('#shiftName').value;paintShiftFoot()};
   wireShiftEquipment(list);
   wireShiftSegments(list);
-  const del=$('#shiftDelete');if(del)del.onclick=()=>deleteShiftPattern(d);
+  const more=$('#shiftMore');
+  if(more)more.onclick=()=>WL.mm.openActMenu(more,[{label:'この勤務体系を削除…',title:'確かめる窓が出ます',danger:true,
+   data:{shiftAct:'delete'},onClick:()=>deleteShiftPattern(d)}],'この勤務体系の操作');
   $('#shiftSave').onclick=()=>{syncShiftDraft(list);saveShiftPattern()};
+  $('#shiftCancel').onclick=()=>{shiftState.draft=JSON.parse(JSON.stringify(shiftState.baseDraft));renderShiftPattern()};
+  const ed=list.querySelector('.shift-editor');
+  ed.addEventListener('input',paintShiftFoot);ed.addEventListener('change',paintShiftFoot);
+  ed.addEventListener('focusin',ev=>shiftHot(ev.target.closest('.shift-seg')));
   renderShiftCoverage(d);
+  paintShiftFoot();
  }
+ /* 入力中の区分の行と、帯の同じ区分を結ぶ（§9.598・図と入力）。 */
+ function shiftHot(row){
+  const list=$('#masterMaintList');if(!list)return;
+  list.querySelectorAll('.shift-seg.is-focus,.shift-bar-piece.is-hot').forEach(e=>e.classList.remove('is-focus','is-hot'));
+  if(!row)return;
+  row.classList.add('is-focus');
+  list.querySelectorAll(`.shift-bar .shift-bar-piece[data-seg="${CSS.escape(row.dataset.i)}"]`).forEach(p=>p.classList.add('is-hot'));
+ }
+ /* 足元: 状態と記録者。変更が無いうちは保存・キャンセルを押せない（新しい体系は名前と区分が入れば押せる）。 */
+ function paintShiftFoot(){
+  const st=$('#shiftDirty');if(!st)return;
+  const dirty=shiftDirty(),isNew=!(shiftState.draft&&shiftState.draft.id),id=currentUserId();
+  st.textContent=`${isNew?(dirty?'入力あり':'まだ入力がありません'):(dirty?'変更あり':'変更なし')}・記録者 ${id||'—'}`;
+  const why=isNew?'入力すると押せます':'変更があると押せます';
+  ['#shiftSave','#shiftCancel'].forEach(s=>{const b=$(s);if(b){b.disabled=!dirty;b.title=dirty?'':why}});
+ }
+ /* 帯の真下に、24時間を埋めているかを字と印で言う（§9.598・帯が「何を言っているか」を読ませる）。 */
  function renderShiftCoverage(d){
   const el=$('#shiftCoverage');if(!el)return;
   const total=d.segments.reduce((a,seg)=>a+shiftBarPieces(seg).reduce((x,[,w])=>x+w,0),0);
-  if(!d.segments.length){el.textContent='';return}
-  el.textContent=total>=99.5?'24時間をすべてカバーしています':`24時間のうち約${Math.round(total)}%をカバーしています`;
-  el.className='mm-form-hint'+(total>=99.5?' shift-cov-ok':'');
+  if(!d.segments.length){el.textContent='';el.className='shift-cov';return}
+  const ok=total>=99.5;
+  el.className='shift-cov '+(ok?'is-ok':'is-warn');
+  el.innerHTML=`<i class="fa-solid ${ok?'fa-circle-check':'fa-triangle-exclamation'}" aria-hidden="true"></i>`
+   +(ok?'24時間をすべてカバーしています':`24時間のうち約${Math.round(total)}%をカバーしています（すき間があります）`);
  }
  async function saveShiftPattern(){
   const uid=requireMaintUser();if(uid===null)return;
@@ -4885,7 +4940,7 @@
  WL.mm.registerSpecial('data-source',{load:loadDataSourceMaint,onEditorClose:()=>{dsState.editing=null;renderDataSourceList()}});
  WL.mm.registerSpecial('query-join',{load:loadQueryJoinMaint,onEditorClose:()=>{qjState.editing=null;renderQueryJoinList()}});
  WL.mm.registerSpecial('path-config',{load:loadPathConfigMaint});
- WL.mm.registerSpecial('shift-pattern',{load:loadShiftPatternMaint});
+ WL.mm.registerSpecial('shift-pattern',{load:loadShiftPatternMaint,dirty:shiftDirty});   // 保存していない変更は離れる前に聞く（§9.598）
  WL.mm.registerSpecial('cleanup',{load:loadCleanupMaint});
  WL.mm.registerSpecial('raw-table',{load:loadRawTableMaint});
  WL.mm.registerSpecial('presence',{load:loadPresenceMaint});

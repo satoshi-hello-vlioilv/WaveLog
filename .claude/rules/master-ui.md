@@ -1,4 +1,4 @@
-# マスタ管理の画面（47件）
+# マスタ管理の画面（49件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 専用の画面も「変更あり」を名乗る（`registerSpecial(key,{dirty})`）。離れる道は右の詳細と同じ`afterLeave()` | `test_shift.js` | [§9.598](../../docs/decisions/9.598.md) |
+| ⋯・▾ のメニューは`openActMenu()`の1つ。主の操作の作り方（空から・テンプレートから）は ▾ で選ぶ | `test_shift.js`・`test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 欄の説明の続きと空欄の理由は見出しの ⓘ の1つ（`fieldLabelHtml()`）。欄の下の説明は`fieldHintHtml()`の1つ | `test_mmpane.js`・`test_rbmodal.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 数の欄の空欄の値は欄の中の薄い字（定義の`blank`）。欄が1つの節は欄の名前を出さず見出しが持つ（必須・キーは除く） | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 一覧のセルは字（`cellText`）から作った印（`cellHtml()`）。既定は薄い字、未設定は字のまま薄く、段は ●◐○— と凡例 | `test_mmpane.js`・`test_eqfeature.js` | [§9.598](../../docs/decisions/9.598.md) |

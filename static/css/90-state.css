@@ -585,9 +585,10 @@ body.sc-mode #headerContextSource{display:none}
   .op-span-pick button.is-on,
   .rly-paper.is-on{background:var(--teal);border-color:var(--teal)}
 
-  /* 一覧から1つ選んだ行（2族）: **淡い地＋左の帯**（§9.598・LotScope と同じ選び方）。濃い塗りで選ばない——
+  /* 一覧から1つ選んだ行（3族）: **淡い地＋左の帯**（§9.598・LotScope と同じ選び方）。濃い塗りで選ばない——
      塗りの面は押す物（主ボタン）に見え、字を白へ反転させる規則も要る。表の行（`.mm-row.editing`）と同じ形。 */
   .ssb-stop.is-on,
+  .shift-seg.is-focus,
   .shift-list-item.active{background:var(--teal-tint);border-color:transparent;box-shadow:inset var(--bar-w) 0 0 var(--teal);color:var(--teal-ink)}
   .shift-list-item.active b{color:var(--teal-ink)}
   /* 右の詳細の札の行（§9.598・1e）は**チェックの印だけ**で選んだことを言う（行ごとに地を塗ると、既定で全部入りの9行が淡い塊になる）。 */

@@ -8,7 +8,7 @@
      master-data.js    データと接続・作業スケジュール・管理の専用画面
      master-opdata.js  操業データ項目・選択肢・記録した値の配置の専用画面
    ファイル間の受け渡しは **`WL.mm`** の1つだけ（素の`window.*`を増やさない）。
-   専用画面は `WL.mm.registerSpecial(key,{load,onEditorClose})` で名乗り、
+   専用画面は `WL.mm.registerSpecial(key,{load,onEditorClose,dirty})` で名乗り、
    盤は `WL.mm.special` の登録簿から引く——画面を1つ足しても盤の`if`を
    足さなくてよい。読み込み順は backend/routes/core.py の JS_FILES
    （master-defs.js → master-maint.js → 専用画面の3本）。
@@ -558,9 +558,12 @@
    $('#masterMaintTools').onclick=ev=>{const on=form.hidden;form.hidden=!on;toolsOpenKey=on?key:'';ev.currentTarget.setAttribute('aria-expanded',String(on))};
   }
   if(o.primary){
-   const p=o.primary;
-   box.insertAdjacentHTML('beforeend',`<button type="button" id="${esc(p.id)}" class="mm-btn-primary mm-hd-primary${o.quiet?' is-quiet':''}"${p.title?` title="${esc(p.title)}"`:''}>＋ ${esc(p.label)}</button>`);
-   $('#'+p.id).onclick=p.onClick;
+   const p=o.primary,menu=Array.isArray(p.menu)&&p.menu.length;
+   box.insertAdjacentHTML('beforeend',`<button type="button" id="${esc(p.id)}" class="mm-btn-primary mm-hd-primary${o.quiet?' is-quiet':''}"`
+    +`${menu?' aria-haspopup="menu" aria-expanded="false"':''}${p.title?` title="${esc(p.title)}"`:''}>＋ ${esc(p.label)}${menu?'<i class="mm-hd-caret" aria-hidden="true">▾</i>':''}</button>`);
+   const b=$('#'+p.id);
+   /* ▾ を持つ主の操作は押すと「どう作るか」を選ぶ（空から・テンプレートから）。選ぶまで何も作らない。 */
+   b.onclick=menu?()=>openActMenu(b,p.menu,p.label):p.onClick;
   }
  }
  function quietHeadAct(on){const b=$('#masterMaintActs .mm-hd-primary');if(b)b.classList.toggle('is-quiet',!!on)}
@@ -1863,6 +1866,9 @@
  const paneValues=def=>JSON.stringify(collectMaintBody(def,'#maintEditorForm').body);
  /* 変更の有無の答えは1つ（`vals`は集めた値があれば渡す・無ければ集める）。 */
  function paneDirty(vals){
+  /* 専用の画面は自分で名乗る（`registerSpecial(key,{dirty})`・勤務形態など）——離れるときに聞く道は右の詳細と同じ1本。 */
+  const sp=WL.mm.special[currentDef().special];
+  if(sp&&typeof sp.dirty==='function')return !!sp.dirty();
   if(!paneDocked()||paneSnap===null)return false;
   return (vals?JSON.stringify(vals):paneValues(currentDef()))!==paneSnap;
  }
@@ -1925,18 +1931,26 @@
   fillMaintEditorForm(def,maintState.editing,true);
   paneSnap=paneValues(def);paintPaneFoot();
  }
- /* 行の操作（⋯）。いまは削除だけ——危ない操作を主の動線（足元の保存の隣）に置かない。 */
- function openRowMenu(anchor,item){
-  const def=currentDef();if(!def.hasDelete||!item||!anchor)return;
-  let m=$('#mmRowMenu');
-  if(m&&!m.hidden){WL.popMenu.close();return}
-  if(!m){m=document.createElement('div');m.id='mmRowMenu';m.className='wl-menu mm-row-menu';m.setAttribute('role','menu');
-   m.setAttribute('aria-label','この行の操作');m.hidden=true;document.body.append(m)}
-  const word=def.deleteWord||'無効化（削除）';
-  m.innerHTML=`<button type="button" role="menuitem" class="is-danger" data-row-act="delete" title="確かめる窓が出ます">この${esc(def.label)}を${esc(word)}…</button>`;
-  m.querySelector('[data-row-act="delete"]').onclick=()=>{WL.popMenu.close();deleteMaint(item)};
+ /* ⋯（行の操作）・▾（作り方を選ぶ）のメニューは1つの部品（§9.598）。項目は`{label,note,danger,data,onClick}`。
+    `data`は項目の`data-*`（網や画面が項目を名指すため）。危ない項目は赤の字（主の動線に置かない操作だけをここへ）。 */
+ function openActMenu(anchor,items,label){
+  if(!anchor||!items||!items.length)return;
+  let m=$('#mmActMenu');
+  if(m&&!m.hidden&&m.__owner===anchor){WL.popMenu.close();return}
+  if(!m){m=document.createElement('div');m.id='mmActMenu';m.className='wl-menu mm-act-menu';m.setAttribute('role','menu');m.hidden=true;document.body.append(m)}
+  m.setAttribute('aria-label',label||'操作');m.__owner=anchor;
+  const attrs=o=>Object.entries(o||{}).map(([k,v])=>` data-${k.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())}="${esc(v)}"`).join('');
+  m.innerHTML=items.map((it,i)=>`<button type="button" role="menuitem" data-act-i="${i}"${it.danger?' class="is-danger"':''}${attrs(it.data)}`
+   +`${it.title?` title="${esc(it.title)}"`:''}><b>${esc(it.label)}</b>${it.note?`<small>${esc(it.note)}</small>`:''}</button>`).join('');
+  m.querySelectorAll('[data-act-i]').forEach(b=>{b.onclick=()=>{WL.popMenu.close();items[+b.dataset.actI].onClick()}});
   m.hidden=false;anchor.setAttribute('aria-expanded','true');
   WL.popMenu.open(m,{anchor,owner:anchor,onClose:()=>{m.hidden=true;anchor.setAttribute('aria-expanded','false')}});
+ }
+ /* 行の操作（⋯）。いまは削除だけ——危ない操作を主の動線（足元の保存の隣）に置かない。 */
+ function openRowMenu(anchor,item){
+  const def=currentDef();if(!def.hasDelete||!item)return;
+  openActMenu(anchor,[{label:`この${def.label}を${def.deleteWord||'無効化（削除）'}…`,title:'確かめる窓が出ます',danger:true,
+   data:{rowAct:'delete'},onClick:()=>deleteMaint(item)}],'この行の操作');
  }
  function openMaintEditor(item){
   const def=currentDef();if(!defUsesEditorModal(def))return;
@@ -3236,6 +3250,6 @@
     こちらが黙って閉じていた）。 */
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{setHeadActs,quietHeadAct,headTextOf,paneMayLeave,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();

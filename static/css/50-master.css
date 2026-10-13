@@ -149,6 +149,7 @@
 .mm-hd-primary.is-quiet{background:var(--surface);color:var(--teal-ink);box-shadow:inset 0 0 0 1px var(--teal)}
 .mm-hd-primary.is-quiet:hover{background:var(--teal-tint)}
 .mm-hd-more{width:var(--ctl-h-sm);padding:0;justify-content:center}
+.mm-hd-caret{margin-left:var(--space-1);font-style:normal;font-size:var(--fs-sm)}
 .mm-hd-more[aria-expanded="true"]{background:var(--teal-tint);border-color:var(--teal-soft)}
 .mm-hd-more[hidden]{display:none}
 /* ---------- 右の詳細（§9.598・AA）----------

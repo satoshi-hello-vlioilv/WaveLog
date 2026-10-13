@@ -103,11 +103,11 @@ H.run('test_mmpane: マスタの右の詳細（§9.598）', async ({ page, rec, 
  rec('6) 開いているあいだ頭の「追加」は縁取り', a.quiet, JSON.stringify(a.quiet));
  rec('3) 削除は詳細の頭の ⋯', a.more, JSON.stringify(a.more));
  await page.click('#maintEditorMore');
- await W.until(page, () => { const m = document.getElementById('mmRowMenu'); return !!m && !m.hidden; }, null, { ms: 5000, what: '⋯ のメニュー' });
- const menu = await page.evaluate(() => { const b = document.querySelector('#mmRowMenu [data-row-act="delete"]'); return b ? { text: b.textContent.trim(), color: getComputedStyle(b).color, danger: b.classList.contains('is-danger') } : null; });
+ await W.until(page, () => { const m = document.getElementById('mmActMenu'); return !!m && !m.hidden; }, null, { ms: 5000, what: '⋯ のメニュー' });
+ const menu = await page.evaluate(() => { const b = document.querySelector('#mmActMenu [data-row-act="delete"]'); return b ? { text: b.textContent.trim(), color: getComputedStyle(b).color, danger: b.classList.contains('is-danger') } : null; });
  rec('3) ⋯ の中に「この設備を…」の削除（赤の字）', !!menu && menu.danger && /^この設備を/.test(menu.text), JSON.stringify(menu));
  await page.keyboard.press('Escape');
- await W.until(page, () => { const m = document.getElementById('mmRowMenu'); return !m || m.hidden; }, null, { ms: 5000, what: '⋯ が閉じる' });
+ await W.until(page, () => { const m = document.getElementById('mmActMenu'); return !m || m.hidden; }, null, { ms: 5000, what: '⋯ が閉じる' });
  rec('3) メニューの Esc では詳細は閉じない', (await pane()).open, JSON.stringify(await page.evaluate(() => { const m = document.getElementById('maintEditorModal'); return { hidden: m.hidden, cls: m.className, parent: m.parentElement && m.parentElement.className, active: document.activeElement && (document.activeElement.id || document.activeElement.className) }; })));
 
  /* 4) 打つと「変更あり」・キャンセルで戻る */
