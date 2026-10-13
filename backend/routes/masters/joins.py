@@ -14,6 +14,7 @@ from ._base import bp
 from ...repositories.master_repo import (
  QUERY_JOIN_MULTI,
  QUERY_JOIN_FINISH_WHEN,
+ QUERY_JOIN_FINISH_WHEN_SUMMARY,
  ensure_query_join_table,
  query_joins,
  query_join_save,
@@ -80,7 +81,8 @@ def query_join_master_list():
  return jsonify(ok=True,items=items,sources=sources,multiModes=list(QUERY_JOIN_MULTI),
                 kinds=query_join.JOIN_KINDS,kindDefault=query_join.JOIN_KIND_DEFAULT,
                 purposes=query_join.PURPOSES,purposeDefault=query_join.PURPOSE_LIST,
-                finishWhens=[{'key':k,'label':v} for k,v in QUERY_JOIN_FINISH_WHEN],
+                finishWhens=[{'key':k,'label':v,'summary':QUERY_JOIN_FINISH_WHEN_SUMMARY.get(k,'')}
+                             for k,v in QUERY_JOIN_FINISH_WHEN],
                 builtinEnabled=query_join.builtin_quality_enabled(),
                 builtin=_b(builtin))
 

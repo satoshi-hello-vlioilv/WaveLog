@@ -2687,6 +2687,10 @@ _QUERY_JOIN_EXTRA_COLUMNS=(('結合方法','TEXT'),('用途','TEXT'),
 # 保存値は鍵、空＝`gone`（今までどおり「仕掛から消えて、相手に当たったら」）。
 # `hit`は仕掛に残っていても相手に当たった時点で完了（実績が先に届く運用のため）。
 QUERY_JOIN_FINISH_WHEN=(('gone','仕掛から消えたら'),('hit','実績に当たったら'))
+# 画面の札が言う中身（どちらを選ぶと何が起きるか）。語彙と同じ所に持つ（画面へ写さない）。
+QUERY_JOIN_FINISH_WHEN_SUMMARY={
+ 'gone':'仕掛から無くなったロットを相手で探します（仕掛に残っている間は予定のまま）。',
+ 'hit':'仕掛に残っていても、相手に当たった時点で完了にします。'}
 QUERY_JOIN_FINISH_WHEN_DEFAULT='gone'
 def finish_when_of(raw):
  v=str(raw or '').strip()

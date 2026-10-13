@@ -239,6 +239,11 @@ try:
         and pr['startReadable'] == 5 and pr['finishReadable'] == 5,
         json.dumps({k: pr.get(k) for k in ('files', 'matched', 'startReadable', 'finishReadable', 'note')},
                    ensure_ascii=False))
+    rec('下見は作業時間の内訳（登録できる・逆転）と見本1件を言い、設備が違う同じ鍵を重なりと数えない',
+        pr['timed'] == 4 and pr['inverted'] == 1 and pr['ambiguous'] == 0
+        and (pr['sample'] or {}).get('minutes') == 90.0 and (pr['sample'] or {}).get('equipment') == 'LS4'
+        and all('\0' not in k for ex in pr['examples'] for k in ex),
+        json.dumps({k: pr.get(k) for k in ('timed', 'inverted', 'ambiguous', 'sample')}, ensure_ascii=False))
     cap = source_capability.describe({'key': AK, 'label': '網', 'filePattern': PATTERN, 'active': True},
                                      path=FOLDER)
     rec('できることの判定はフォルダを一覧するだけ（一覧には使えない・完了突合に使える）',

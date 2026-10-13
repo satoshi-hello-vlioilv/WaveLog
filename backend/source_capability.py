@@ -174,11 +174,12 @@ def _describe_pattern(out, source, pattern, path=None):
  out['files'] = names
  out['error'] = err or ('' if names else
                         f'フォルダ「{folder}」に、型「{pattern}」に合うファイルがありません。')
- why = '設備ごとのファイル（フォルダ＋ファイル名の型）なので、1つの一覧としては使えません。'
- out['features'] = {k: _feature(False, why) for k in ('list', 'measure', 'plan', 'quality')}
+ # 一覧として使えないことは**1行で**言う（測定・予定・結合も一覧が前提なので、同じ理由を4行並べない）。
+ out['features'] = {'list': _feature(False, '設備ごとのファイルなので、1つの一覧としては使えません'
+                                           '（測定・予定・品質の結合も）。')}
  out['features']['finish'] = _feature(
   bool(names),
-  (f'完了突合の相手に使えます（見つかった設備: {"、".join(names)}）。' if names
+  (f'完了突合の相手に使えます（設備ごとに{len(names)}ファイル。顔ぶれは②の札）。' if names
    else '型に合うファイルが無いので、まだ突き合わせられません。'))
  return out
 

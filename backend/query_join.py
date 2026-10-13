@@ -105,11 +105,12 @@ PURPOSES = [
  {'key': PURPOSE_LIST, 'label': '一覧に列を足す', 'short': '列を足す',
   'summary': 'この一覧の行に、相手の列を足します。',
   'when': '品質・単価・在庫のような「参考として添えたい値」はこちら。'},
- {'key': PURPOSE_FINISH, 'label': '完了突合（仕掛から消えたロットを探す）', 'short': '完了突合',
-  'summary': '作業スケジュールに組んだロットが仕掛データから消えたとき、'
-             '相手のデータを突合キーで探します。当たれば**作業完了**、'
-             '当たらなければ**着手**として扱います。',
-  'when': '前工程の実績のように「終わったら仕掛から落ちる」データはこちら。'
+ # §9.595: 「実績に当たったら」（仕掛に残っていても完了）を足したので、名前は「消えたロットを探す」に限らない。
+ # 当たらずに仕掛から消えたロットも完了（§9.514。§9.364の「着手」は撤回）。
+ {'key': PURPOSE_FINISH, 'label': '完了突合（実績で予定を完了にする）', 'short': '完了突合',
+  'summary': '作業スケジュールに組んだロットを相手のデータで探し、当たれば**作業完了**にします'
+             '（開始・終了の列を選べば、その時刻を作業時間として登録します）。',
+  'when': '前工程やBOXの実績のように「終わったことが分かる」データはこちら。'
           '当たった行はこの予定へ保存するので、実績側から消えても残ります。'},
 ]
 _PURPOSE_BY_KEY = {p['key']: p for p in PURPOSES}
@@ -273,7 +274,7 @@ def take_columns(d, row):
     pref = str((d or {}).get('prefix') or '')
     out = {}
     for name, v in (row or {}).items():
-        if want and name not in want:
+        if (want and name not in want) or name == _EQUIP_TAG:
             continue
         out[(pref + name) if pref else name] = v
     return out
@@ -814,6 +815,10 @@ def _finish_sources(key):
  return out
 
 
+# 下見で読んだ行に「どの設備のファイルか」を添える印（列名とぶつからない字）。持ち帰る値には入れない。
+_EQUIP_TAG = '\0設備'
+
+
 def _probe_read(src, d, rights, sample):
  """相手の1ファイルを読む。戻り値: (表, 列, 行, 突合キーの列, 理由)。"""
  try:
@@ -866,6 +871,8 @@ def probe_finish(d, sample=2000):
     out['files'].append({'equipment': equip, 'rows': 0, 'error': why})
    continue
   t1, cs1, rows1, hit1, why1 = _probe_read(src, d, rights, sample)
+  for r in rows1:
+   r[_EQUIP_TAG] = equip
   t = t or t1
   if equip:
    out['files'].append({'equipment': equip, 'rows': len(rows1), 'error': why1})
@@ -885,24 +892,41 @@ def probe_finish(d, sample=2000):
  return out
 
 
+def _work_span(d, r):
+ """当たった行の作業時間。(開始ISO, 終了ISO, 分) か、読めない・逆転なら (開始, 終了, None)。"""
+ st, en = start_time_of(d, r), finish_time_of(d, r)
+ if not st or not en:
+  return st, en, None
+ mins = (datetime.fromisoformat(en) - datetime.fromisoformat(st)).total_seconds() / 60
+ return st, en, (round(mins, 1) if mins >= 0 else None)
+
+
 def _probe_tally(out, d, rows, cs, hit):
- """読めた行を数えて、下見の答え（件数・時刻を読めた数・持ち帰る列と実例・注意）を入れる。"""
+ """読めた行を数えて、下見の答え（件数・時刻を読めた数・作業時間の見本と内訳・持ち帰る列と実例・注意）を
+ 入れる。**同じ鍵の重なりはファイルごとに数える**（設備ごとのファイルでは、設備が違えば同じロットでも別物・§9.595）。"""
  t = out['table']
  out['sampled'] = len(rows)
+ out['timed'] = out['inverted'] = 0
+ out['sample'] = None
  seen = set()
  for r in rows:
   k = tuple(norm_value(r.get(h)) for h in hit)
   if any(x == '' for x in k):
    continue
+  k = (r.get(_EQUIP_TAG, ''),) + k
   if k in seen:
    out['ambiguous'] += 1
    continue
   seen.add(k)
   out['matched'] += 1
-  if finish_time_of(d, r):
-   out['finishReadable'] += 1
-  if start_time_of(d, r):
-   out['startReadable'] += 1
+  st, en, mins = _work_span(d, r)
+  out['finishReadable'] += bool(en)
+  out['startReadable'] += bool(st)
+  if st and en:
+   out['timed' if mins is not None else 'inverted'] += 1
+  if out['sample'] is None and mins is not None:
+   out['sample'] = {'equipment': r.get(_EQUIP_TAG, ''), 'keys': [str(r.get(h) or '') for h in hit],
+                    'startAt': st, 'endAt': en, 'minutes': mins}
  pairs = _added_names(d, cs, [], set(hit))
  out['addedColumnNames'] = [n for _src, n in pairs]
  out['addedColumns'] = len(out['addedColumnNames'])

@@ -72,7 +72,9 @@ run('test_dsrestart: 名称の変更が再起動待ちであることを画面�
 
   /* ---- 3) 押すとデータ接続の設定が開く ---- */
   await page.click('#navRestartPending');
-  await page.waitForSelector('#masterMaintList',{timeout:15000});
+  /* **押した結果そのもの**（データ接続の行）を待つ（§9.522）。器（#masterMaintList）は押す前の描画で
+     もう在り、一覧の取得が遅い回だけ行が0のまま読んで落ちていた（2026-10-13 に通しで1回・単独では緑）。 */
+  await page.waitForSelector('.ds-row:not(.ds-row-head)',{timeout:15000});
   const opened=await page.evaluate(()=>{
    const on=document.querySelector('#masterMaintNav .is-active,#masterMaintNav [aria-current="true"]');
    return {mode:document.body.classList.contains('mm-mode'),

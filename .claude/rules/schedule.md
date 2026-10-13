@@ -1,4 +1,4 @@
-# 作業スケジュール（111件）
+# 作業スケジュール（114件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 「実績に当たったら」は仕掛に残っても完了。探すのは同じ設備のファイルだけ・明細に無い鍵は仕掛の行（1行のとき）から | `test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
+| 完了の道は`_done_by_join()`の1本。開始・終了が読めて逆転していなければ作業時間（`join_times()`・手入力と同じ形・人が入れた時刻が先） | `test_boxactual.py`・`test_actualmatch.py` | [§9.595](../../docs/decisions/9.595.md) |
+| 当たった行を予定へ残すのは`actual_keep.persist()`の1箇所（予定を開いたとき＋書込役の裏の見回り・既定15分）。上書きしない・開始と条件も残す | `test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
 | 固定の列の既定の幅は`scColDefaultW()`の1箇所。書式の決まった列は`sample`を見出しの行で描いて測る（太字・`w`より狭くしない） | `test_fit.js` | [§9.594](../../docs/decisions/9.594.md) |
 | 開始の状態は`startStateOf()`の1箇所（押せる／押せない／出さない）。厳密モードで押せない開始は鍵つきの灰の面で残す（半透明にしない） | `test_strictmode.js` | [§9.592](../../docs/decisions/9.592.md) |
 | 運用モードは作業スケジュールの「運用」の札（いつも出す）から切り替える。口は`/api/schedule/run-mode`、許す端末は`line_ops_allowed()` | `test_strictmode.js`・`test_strictstart.py` | [§9.592](../../docs/decisions/9.592.md) |

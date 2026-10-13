@@ -698,7 +698,7 @@
     書くと、増やしたときに片方だけ古い並びを見る。 */
  const QJ_PURPOSE_FINISH='完了突合';
  let qjState={items:[],sources:[],builtin:null,
-              purposes:[],purposeDefault:'',builtinEnabled:true,kinds:[],kindDefault:'left',
+              purposes:[],purposeDefault:'',finishWhens:[],builtinEnabled:true,kinds:[],kindDefault:'left',
               loaded:false,editing:null,
               cols:{},probe:null,probeSeq:0,probing:false,probeSig:'',
               /* 突合キーを選んでいる最中の状態(§9.197)。`pick`＝1つ目に押した列、
@@ -793,6 +793,8 @@
    qjState.items=r.items||[];qjState.sources=r.sources||[];qjState.builtin=r.builtin||null;
    qjState.kinds=r.kinds||[];qjState.kindDefault=r.kindDefault||'left';
    qjState.purposes=r.purposes||[];qjState.purposeDefault=r.purposeDefault||'';
+   /* 完了突合の「いつ完了にするか」(§9.595)。語彙と札の中身はサーバーが持つ。 */
+   qjState.finishWhens=r.finishWhens||[];
    qjState.builtinEnabled=r.builtinEnabled!==false;
    qjState.loaded=true;
    renderQueryJoinForm();renderQueryJoinList();
@@ -875,7 +877,7 @@
           left:b.left||'',leftTable:b.leftTable||'',right:b.right||'',rightTable:b.rightTable||'',
           keys:(b.keys||[]).map(k=>({left:k.left,right:k.right})),
           columns:[],prefix:'',multi:b.multi||'first',kind:b.kind||qjState.kindDefault,
-          purpose:'',finishColumn:'',useInSchedule:true,
+          purpose:'',finishColumn:'',startColumn:'',finishWhen:'',useInSchedule:true,
           order:(qjState.items.length+1)*10,active:true};
  }
  async function qjToggleBuiltin(on){
@@ -973,7 +975,7 @@
    rightTable:'',keys:[],columns:[],prefix:'',multi:'first',
    kind:qjState.kindDefault||'left',
    purpose:(opts&&opts.purpose)||qjState.purposeDefault||'',
-   finishColumn:'',useInSchedule:true,
+   finishColumn:'',startColumn:'',finishWhen:'',useInSchedule:true,
    order:(qjState.items.length+1)*10,active:true};
   if(!qjState.editing.kind)qjState.editing.kind=qjState.kindDefault||'left';
   qjState.probe=null;qjState.probeSig='';
@@ -1140,6 +1142,54 @@
    <div class="qj-fields" data-qj-list="${side}">${qjFieldsHtml(side)}</div>
   </div>`;
  }
+ /* ③ いつ完了にするか（完了突合だけ・§9.595）。**決める順に**: 完了の条件の札 → 作業時間にする列（開始→終了）
+    → いまのデータで当てた見本1件と内訳。見本は下見の答えを読むだけ（判定を画面に写さない）。 */
+ function qjWhenHtml(x,rc){
+  const whens=qjState.finishWhens||[];
+  const now=whens.find(w=>w.key===(x.finishWhen||'gone'))||whens[0]||{};
+  const cards=whens.map(w=>`<label class="qj-purpose qj-when${w.key===now.key?' is-on':''}">
+    <input type="radio" name="qjWhen" value="${esc(w.key)}"${w.key===now.key?' checked':''}>
+    <b>${esc(w.label)}</b><span>${esc(w.summary||'')}</span></label>`).join('');
+  const sel=(k,v)=>`<select data-qj-field="${k}" data-qj-re>${qjOptions((rc.columns||[]),v||'','選ばない')}</select>`;
+  return `<section class="qj-sec qj-sec-kind qj-sec-when">
+    <h4 class="mm-fieldgroup">③ いつ完了にするか — <span class="qj-kind-now">${esc(now.label||'')}</span></h4>
+    ${cards?`<div class="qj-purposes qj-whens">${cards}</div>`:''}
+    <div class="mm-field qj-f-span"><span>作業時間にする列</span>
+     <div class="qj-span-row">
+      <label class="qj-f-start"><span>開始の列</span>${sel('startColumn',x.startColumn)}</label>
+      <span class="qj-span-arrow" aria-hidden="true">→</span>
+      <label class="qj-f-finish"><span>終了の列</span>${sel('finishColumn',x.finishColumn)}</label>
+     </div>
+     <small class="mm-field-hint">両方読めた行は、その時刻を<b>作業時間</b>として登録して完了にします（人が入れた時刻があればそちらが先）。
+      終了だけなら完了時刻として記録し、開始の時刻は入力を求めます。</small></div>
+    <div class="qj-span-sample" id="qjSpanSample">${qjSpanSampleHtml(x)}</div>
+   </section>`;
+ }
+ /* 見本1件（開始→終了と1日の中の位置）と、当たった行の内訳。**数え方はサーバー**（`probe_finish`の
+    timed／inverted／sample）。1日の帯は0〜24時の中で作業がどこにあるかを描く（日をまたぐ分は右端で止める）。 */
+ function qjSpanSampleHtml(x){
+  const p=qjState.probe;
+  if(!x.startColumn||!x.finishColumn)return '<p class="mm-field-hint">開始と終了の列を選ぶと、いまのデータで当てた作業時間の見本がここに出ます。</p>';
+  if(qjState.probing&&!p)return '<p class="mm-field-hint">確かめています…</p>';
+  if(!p||!p.ok)return '<p class="mm-field-hint">突合キーで当たる行があると、作業時間の見本がここに出ます。</p>';
+  const unread=Math.max(0,(p.matched||0)-(p.timed||0)-(p.inverted||0));
+  const tally=`当たった ${p.matched}件のうち <b>作業時間を登録 ${p.timed||0}件</b>・時刻を読めない ${unread}件・終わりが始まりより前 ${p.inverted||0}件`;
+  const sm=p.sample;
+  if(!sm)return `<div class="qj-span-box"><p>${tally}</p></div>`;
+  const d1=new Date(sm.startAt),d2=new Date(sm.endAt);
+  const md=d=>`${d.getMonth()+1}/${d.getDate()}`,hm=d=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const left=(d1.getHours()*60+d1.getMinutes())/1440*100;
+  const width=Math.max(.6,Math.min(100-left,(sm.minutes||0)/1440*100));
+  const who=(sm.keys||[]).filter(Boolean).join('・');
+  return `<div class="qj-span-box">
+    <p>見本 <b>${esc(who)}</b>${sm.equipment?`（${esc(sm.equipment)}）`:''} → <b>完了</b>
+     <span class="qj-span-time">${md(d1)} ${hm(d1)}</span>
+     <span class="qj-day" title="1日（0〜24時）の中で作業がどこにあるか"><i style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%"></i></span>
+     <span class="qj-span-time">${md(d2)===md(d1)?'':md(d2)+' '}${hm(d2)}</span>
+     <b>${Math.round(sm.minutes)}分</b>・出どころ「実績データ」</p>
+    <p>${tally}</p>
+   </div>`;
+ }
  function qjEditorHtml(x){
   const lc=qjSide(x,'left').c,rc=qjSide(x,'right').c;
   const kind=qjKind(x.kind)||{};
@@ -1200,17 +1250,12 @@
     <p class="mm-field-hint">すべてのキーが一致した行だけを結び付けます。全角/半角と前後の空白は無視します。
      選べるのは<b>データ接続に登録してあるデータ</b>だけです（一覧に出していないデータも選べます）。</p>
    </section>
-   ${isFinish?`<section class="qj-sec qj-sec-kind">
-    <h4 class="mm-fieldgroup">③ 当たったらどうなるか</h4>
-    <p class="qj-kind-summary">${esc(purpose.summary||'')}</p>
-    <p class="mm-field-hint">完了突合は「当たったら完了にする」の1通りなので、結合の仕方は選びません。
-     当たらなかったロットは<b>着手</b>として扱います（仕掛から消えている＝少なくとも手は付いている）。</p>
-   </section>`:`
+   ${isFinish?qjWhenHtml(x,rc):`
    <section class="qj-sec qj-sec-kind">
     <h4 class="mm-fieldgroup">③ 結合の仕方 — <span class="qj-kind-now">${esc(kind.label||'')}</span></h4>
     ${kindCards?`<div class="qj-kinds">${kindCards}</div>
     <div class="qj-kind-detail">
-     <p class="qj-kind-summary">${esc(kind.summary||'')}</p>
+     <p class="qj-kind-summary">${WL.markup(kind.summary||'')}</p>
      <p class="mm-field-hint">${esc(kind.when||'')}</p>
      ${qjSampleHtml(kind)}
      ${kind.rightOnly?'<p class="mm-field-hint is-warn">「相手にしかない行」を出すため、<b>相手の表を全部読みます</b>。また、一致しているかどうかはこの一覧の全行と突き合わせます（表示中のページだけでは決めません）。</p>':''}
@@ -1241,12 +1286,6 @@
       <select data-qj-field="multi" data-qj-re>${qjOptions(
         Object.keys(QJ_MULTI_LABEL).map(v=>({value:v,label:QJ_MULTI_LABEL[v]})),x.multi||'first')}</select>
       <small class="mm-field-hint">当たった件数は下の「結果」に出ます。</small></label>
-     ${isFinish?`<label class="mm-field qj-f-finish"><span>完了時刻にする列</span>
-      <select data-qj-field="finishColumn" data-qj-re>${qjOptions(
-        (rc.columns||[]),x.finishColumn||'','選ばない（時刻は記録しません）')}</select>
-      <small class="mm-field-hint">ここで選んだ列の日時を<b>完了時刻</b>として予定に記録します。
-       スケジュール表の「さかのぼり」で隠せるのは、時刻が入った行だけです
-       （選ばない・読めない場合は完了にはしますが、常に表示されます）。</small></label>`:''}
     </div>`}
    </section>
    <section class="qj-sec qj-sec-result">
@@ -1279,6 +1318,11 @@
       作り替わるとカーソルが飛ぶ。組み直すのは選択肢(data-qj-re)だけ。 */
    if(el.matches('[data-qj-re]'))el.onchange=()=>{commit();renderQueryJoinEditor();qjRefreshColumns()};
    else{el.oninput=()=>{commit();qjProbeSoon()};el.onchange=()=>commit()}
+  });
+  form.querySelectorAll('[name="qjWhen"]').forEach(el=>el.onchange=()=>{
+   if(!el.checked)return;
+   qjEdit().finishWhen=el.value;
+   renderQueryJoinEditor();
   });
   form.querySelectorAll('[name="qjKind"]').forEach(el=>el.onchange=()=>{
    if(!el.checked)return;
@@ -1448,6 +1492,7 @@
               keys:(x.keys||[]).filter(k=>k.left&&k.right),columns:x.columns,
               prefix:x.prefix,multi:x.multi,kind:x.kind||qjState.kindDefault,
               purpose:x.purpose||'',finishColumn:x.finishColumn||'',
+              startColumn:x.startColumn||'',finishWhen:x.finishWhen||'',
               name:x.name||'(下見)'};
   const sig=JSON.stringify(body);
   if(sig===qjState.probeSig)return;
@@ -1494,7 +1539,11 @@
     Object.keys(p.examples[0]).map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>${
     p.examples.map(r=>`<tr>${Object.values(r).map(v=>`<td>${esc(String(v))}</td>`).join('')}</tr>`).join('')
    }</tbody></table>`:'';
-  box.innerHTML=head+rowLine+noteLine+amb+colLine+ex;
+  /* 設備ごとのファイル(§9.595)は**どの設備のファイルを読んだか**を言う（型の打ち間違いはここでしか気づけない）。 */
+  const files=(p.files||[]).length?`<p class="mm-field-hint">読んだファイル（設備ごと）: ${
+    p.files.map(f=>esc(f.equipment)+(f.error?`（読めません: ${esc(f.error)}）`:` ${f.rows}行`)).join('・')}</p>`:'';
+  box.innerHTML=head+rowLine+noteLine+amb+files+colLine+ex;
+  const sm=$('#qjSpanSample');if(sm)sm.innerHTML=qjSpanSampleHtml(qjEdit());
  }
  async function saveQueryJoinEditor(){
   const x=qjEdit();
@@ -1504,6 +1553,7 @@
               keys:(x.keys||[]).filter(k=>k.left&&k.right),columns:x.columns,
               prefix:x.prefix,multi:x.multi,kind:x.kind||qjState.kindDefault,order:x.order,
               purpose:x.purpose||'',finishColumn:x.finishColumn||'',
+              startColumn:x.startColumn||'',finishWhen:x.finishWhen||'',
               useInSchedule:x.useInSchedule!==false,
               enabled:x.active===false?'無効':'有効'};
   try{
@@ -1587,6 +1637,21 @@
    return opt(v,taken?`${v}（いまは ${who}）`:v,cur);
   }).join('');
  }
+ /* 設備ごとのファイル(§9.595)。型を入れると上の欄は**フォルダ**の意味になる（名前で言い替える）。
+    見つかった設備は下見（`capability.files`）の答えを札で並べるだけ。 */
+ const DS_SHARE_FILE='共有パスの .sqlite3',DS_SHARE_FOLDER='共有フォルダ（ファイル名の型を使うとき）';
+ function dsPatternHtml(x){
+  return `<label class="mm-field ds-f-pattern"><span>ファイル名の型（設備ごとのファイル）</span>
+    <input data-field="filePattern" type="text" value="${esc(x.filePattern||'')}" placeholder="例: 実績_{設備}.sqlite3" autocomplete="off" spellcheck="false">
+    <span class="ds-pattern-found" id="dsPatternFound"></span>
+    <small class="mm-field-hint">例: 実績_LS4.sqlite3 → 設備「LS4」（{設備} の所が設備名）。空欄なら上のファイル1つを読みます。</small></label>`;
+ }
+ function dsPatternFoundHtml(cap){
+  if(!cap||!cap.pattern)return '';
+  const files=cap.files||[];
+  return files.length?files.map(n=>`<span class="ds-pattern-chip">${esc(n)}</span>`).join('')
+   :`<span class="ds-pattern-none">${esc(cap.error||'型に合うファイルがありません。')}</span>`;
+ }
  function dsEditorHtml(x,isNew){
   const mode=x.readMode||(x.overridePath?'direct':(x.mode||'share'));
   // 役割「仕掛」は一覧から隠せない（隠すと測定・予定投入の入口が消える）。
@@ -1607,8 +1672,9 @@
   const rneNote=dsState.assets.confExists?''
     :`この端末には接続情報 symnavim.conf がありません（${dsState.assets.assetsDir||''}）。置くまで抽出は動きません。`;
   const modeBlock=m=>{
-   if(m.v==='share')return pf('share','共有パスの .sqlite3',x.share,'file',
-     'ファイル名だけなら既定の共有フォルダ配下を探します。UNC（\\\\サーバー\\共有\\…）も入れられます。');
+   if(m.v==='share')return pf('share',x.filePattern?DS_SHARE_FOLDER:DS_SHARE_FILE,x.share,'file',
+     'ファイル名だけなら既定の共有フォルダ配下を探します。UNC（\\\\サーバー\\共有\\…）も入れられます。')
+     +dsPatternHtml(x);
    if(m.v==='rne')return `${f('rne','RNE（抽出定義）ファイル',x.rne,'','ファイル名だけなら「RNE資材の置き場」の rne/ 配下です。')}
      ${f('table','抽出テーブル',x.table,'','RNEの中の表の名前。未入力なら「仕掛」です。')}
      ${pf('output','作った .sqlite3 の置き場',x.output,'file','ファイル名だけなら db/ 配下です。')}
@@ -1683,6 +1749,7 @@
    order:val('order'),enabled:val('enabled'),listed:val('listed')!=='出さない',
    rne:val('rne'),table:val('table'),
    output:val('output'),share:val('share'),preferred:val('preferred'),
+   filePattern:String(val('filePattern')||'').trim(),
    overridePath:String(val('overridePath')||'').trim()};
   /* 「直接読む」以外を選んでいるときは上書きを**空で送る＝解除する**。
      直接指定は保存値を持たず、パス設定マスタの上書きの有無そのものなので、
@@ -1730,6 +1797,10 @@
      <span class="mm-cap-note">${esc(v.note||'')}${v.detail?`<i>${esc(v.detail)}</i>`:''}</span>
     </div>`;
   }).join('');
+  const found=$('#dsPatternFound');if(found)found.innerHTML=dsPatternFoundHtml(cap);
+  /* 型を入れたら上の欄は「フォルダ」と名乗る（打ちながら言い替える）。 */
+  const lab=document.querySelector('[data-path-drop="share"]')?.closest('.mm-field-path')?.querySelector(':scope>span');
+  if(lab)lab.textContent=dsDraft()?.filePattern?DS_SHARE_FOLDER:DS_SHARE_FILE;
   box.innerHTML=`${cap.error?`<p class="mm-cap-error">${esc(cap.error)}</p>`:''}
    ${rows||'<p class="mm-cap-error">まだ確かめていません。</p>'}
    <p class="mm-cap-foot">${esc(cap.table?`読んだのは表「${cap.table}」の${cap.columnCount}列です。`:'')}
