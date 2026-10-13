@@ -2066,7 +2066,11 @@ function paintViewBack(def,from){
  btn.hidden=!viewBackTo;
  btn.querySelector('span').textContent=name?`${name}へ戻る`:'戻る';
  btn.title=name?`「${name}」の画面へ戻ります`:'前の画面へ戻ります';
- btn.onclick=()=>{if(viewBackTo&&viewBackTo.isConnected)viewBackTo.click()};
+ /* 画面が`beforeLeave`を名乗っていれば先に聞く（保存していない変更・§9.598）。断られたら留まる。 */
+ btn.onclick=async()=>{
+  if(def.beforeLeave&&!await def.beforeLeave())return;
+  if(viewBackTo&&viewBackTo.isConnected)viewBackTo.click();
+ };
 }
 function enterView(key,opts){
  WL.currentView=String(key||'');

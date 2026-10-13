@@ -150,6 +150,23 @@
 .mm-hd-primary.is-quiet:hover{background:var(--teal-tint)}
 .mm-hd-more{width:var(--ctl-h-sm);padding:0;justify-content:center}
 .mm-hd-more[aria-expanded="true"]{background:var(--teal-tint);border-color:var(--teal-soft)}
+.mm-hd-more[hidden]{display:none}
+/* ---------- 右の詳細（§9.598・AA）----------
+   汎用の表のマスタは「一覧＋右の詳細」。器は`.mm-main`の格子——頭の行は横いっぱい、一覧の上の道具と一覧は左、
+   詳細は右の列（窓のように覆わないので、一覧を見たまま直せる）。幅は採点で決めた 360px（1536×864 でも一覧の主な列が残る）。
+   **隠す規則も同じ強さで書く**——`.record-modal[hidden]`より後ろの`display:flex`が勝ち、閉じても残る。 */
+.mm-panel{--mm-pane-w:360px}
+.mm-main.has-pane{display:grid;grid-template-columns:minmax(0,1fr) var(--mm-pane-w);grid-template-rows:auto auto minmax(0,1fr)}
+.mm-main.has-pane>.mm-toolbar{grid-column:1/-1;grid-row:1}
+.mm-main.has-pane>.mm-form{grid-column:1;grid-row:2}
+.mm-main.has-pane>.mm-list-wrap{grid-column:1;grid-row:3}
+.mm-main.has-pane>.mm-editor-modal{grid-column:2;grid-row:2/4}
+/* 窓の土台は中身を真ん中へ置く（`place-items:center`）——詳細では器いっぱいへ伸ばす（伸ばさないと中身の高さのまま上下へはみ出す）。 */
+.mm-editor-modal.is-docked{position:static;inset:auto;z-index:auto;display:flex;place-items:stretch;min-height:0;overflow:hidden;background:var(--surface);border-left:1px solid var(--line)}
+.mm-editor-modal.is-docked[hidden]{display:none}
+.mm-editor-modal.is-docked .mm-editor-dialog{width:100%;max-height:none;flex:1 1 auto;min-height:0;border-radius:0;box-shadow:none}
+.mm-editor-modal.is-docked .mm-editor-body .mm-field{flex:1 1 100%;max-width:100%}
+.mm-editor-modal.is-docked .mm-form-hint{color:var(--muted);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .mm-form[hidden]{display:none}
 .mm-count{color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
 .mm-btn-ghost{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;white-space:nowrap}
@@ -275,7 +292,10 @@
 .mm-editor-head{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);background:var(--surface);color:var(--ink);border-bottom:1px solid var(--line)}
 .mm-editor-head h2{margin:1px 0 0;font-size:var(--fs-title)}
 .mm-editor-head small{display:block;color:var(--muted);font-size:var(--fs-sm)}
-.mm-editor-head .mm-close{margin-left:auto;width:var(--ctl-h-sm);height:var(--ctl-h-sm);font-size:var(--fs-lg)}
+/* 頭は「種類と名前（伸びる）／⋯／×」。×を右端へ押すのは名前の器（⋯ が無い窓でも同じ並び）。 */
+.mm-editor-head>div:first-child{flex:1 1 auto;min-width:0}
+.mm-editor-head h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mm-editor-head .mm-close{width:var(--ctl-h-sm);height:var(--ctl-h-sm);font-size:var(--fs-lg)}
 .mm-editor-body{flex:1;min-height:0;overflow:auto;padding:var(--pad-dialog);display:flex;flex-direction:column;gap:var(--space-3);background:#ffffff}
 /* ---------- モーダルの中の欄は規格の幅で並べる(§9.221 ④、利用者の指摘) ----------
    「モーダル内のUIサイズの設計がモーダル横幅いっぱいまで伸びているケースが
@@ -567,8 +587,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-user{color:#175c49;font-weight:var(--fw-strong)}
 .mm-date{color:var(--muted);font-variant-numeric:tabular-nums}
 .mm-blank{color:#aab6b9;font-style:normal}
-.mm-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
-.mm-act button{font-weight:var(--fw-strong);cursor:pointer;border:1px solid}
 .mm-edit{background:var(--teal);color:#fff;border-color:var(--teal)}
 .mm-edit:hover{background:var(--teal-dark)}
 .mm-del{background:#fff6f6;color:var(--danger);border-color:#dbb0b0}

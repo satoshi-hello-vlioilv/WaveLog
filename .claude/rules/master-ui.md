@@ -1,4 +1,4 @@
-# マスタ管理の画面（39件）
+# マスタ管理の画面（43件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| マスタの頭は画面名＋ⓘ＋用途の1行／右端に主の操作1つ（`setHeadActs()`）。Excel・まとめて削除は「⋯」の帯 | `test_headbar.js`・`test_rollwipe.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 汎用の表のマスタは「一覧＋右の詳細」。窓に残すのは組み立て・紙の見本・専用の画面の窓だけ（答えは`editorDocks()`の1箇所）。閉じるのは×だけ | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 右の詳細の「変更あり」は保存と同じ値の集め方（`collectMaintBody()`）。開いただけでは変更なしで、保存・キャンセルは押せない | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 右の詳細を離れる道（行・左の一覧・追加・×・再読込・戻る）は`afterLeave()`を通る。変更があれば聞く・無ければその場で | `test_mmpane.js`・`test_modalkeep.js` | [§9.598](../../docs/decisions/9.598.md) |
 | マスタ管理は全幅（左のメニュー・使用設備の案内・現場段取り／使用設備の札を伏せる・モードの札は残す）。出る道はヘッダーの「◯◯へ戻る」 | `test_mmshell.js` | [§9.593](../../docs/decisions/9.593.md) |
 | マスタの一覧は平らな行（30px・1文字の印なし）。「マスタを探す」は畳んだ群の中まで・Esc は字だけ消す | `test_mmshell.js` | [§9.593](../../docs/decisions/9.593.md) |
 | 設備停止マスタは左＝分類 → 停止内容の木／右＝選んだ停止内容の段（基本・内訳・挿入の条件）。段の札がいまの値を言う（`SSB_TABS`の1箇所） | `test_stopsubui.js`・`test_stoprulemaster.js` | [§9.590](../../docs/decisions/9.590.md) |

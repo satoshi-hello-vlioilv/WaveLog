@@ -378,6 +378,9 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .wl-menu button:hover:not(:disabled){background:var(--menu-item-hover)}
 .wl-menu button:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
 .wl-menu button:disabled{color:var(--muted);cursor:not-allowed;opacity:1}
+/* 取り消せない操作の項目（削除など）は赤の字（赤は取り消せない操作だけ・§9.338）。 */
+.wl-menu button.is-danger{color:var(--danger)}
+.wl-menu button.is-danger:hover:not(:disabled){background:var(--danger-bg)}
 
 /* ---- ここから下は面ごとの値。**土台より後に書くこと**（同点なので後が勝つ） ---- */
 /* モード・同期・表の切り替え・再読込・フィルタ・ヒント・見本・「表示」の8面が
