@@ -36,8 +36,8 @@
 import unicodedata
 from datetime import datetime
 
-from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cfg, cols, connect, path_config_value,
-                        qi, tables)
+from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cfg, cfg_for, cols, connect,
+                        no_pattern_file_text, path_config_value, pattern_files, qi, tables)
 from .logging_setup import app_logger
 from . import source_capability
 from .quiet import quiet
@@ -105,11 +105,12 @@ PURPOSES = [
  {'key': PURPOSE_LIST, 'label': '一覧に列を足す', 'short': '列を足す',
   'summary': 'この一覧の行に、相手の列を足します。',
   'when': '品質・単価・在庫のような「参考として添えたい値」はこちら。'},
- {'key': PURPOSE_FINISH, 'label': '完了突合（仕掛から消えたロットを探す）', 'short': '完了突合',
-  'summary': '作業スケジュールに組んだロットが仕掛データから消えたとき、'
-             '相手のデータを突合キーで探します。当たれば**作業完了**、'
-             '当たらなければ**着手**として扱います。',
-  'when': '前工程の実績のように「終わったら仕掛から落ちる」データはこちら。'
+ # §9.595: 「実績に当たったら」（仕掛に残っていても完了）を足したので、名前は「消えたロットを探す」に限らない。
+ # 当たらずに仕掛から消えたロットも完了（§9.514。§9.364の「着手」は撤回）。
+ {'key': PURPOSE_FINISH, 'label': '完了突合（実績で予定を完了にする）', 'short': '完了突合',
+  'summary': '作業スケジュールに組んだロットを相手のデータで探し、当たれば**作業完了**にします'
+             '（開始・終了の列を選べば、その時刻を作業時間として登録します）。',
+  'when': '前工程やBOXの実績のように「終わったことが分かる」データはこちら。'
           '当たった行はこの予定へ保存するので、実績側から消えても残ります。'},
 ]
 _PURPOSE_BY_KEY = {p['key']: p for p in PURPOSES}
@@ -273,16 +274,15 @@ def take_columns(d, row):
     pref = str((d or {}).get('prefix') or '')
     out = {}
     for name, v in (row or {}).items():
-        if want and name not in want:
+        if (want and name not in want) or name == _EQUIP_TAG:
             continue
         out[(pref + name) if pref else name] = v
     return out
 
 
-def finish_time_of(d, row):
-    """当たった行の「完了日時」（§9.365）。列が未指定・空・読めない書式なら
-    空文字——**推測しない**。呼ぶ側は完了にはするが、時刻不明として扱う。"""
-    col = str((d or {}).get('finishColumn') or '').strip()
+def _time_of(row, col):
+    """当たった行の、その列の日時をISOへ。列が未指定・空・読めない書式なら空文字。"""
+    col = str(col or '').strip()
     if not col or not isinstance(row, dict):
         return ''
     v = row.get(col)
@@ -290,6 +290,18 @@ def finish_time_of(d, row):
         hit = _resolve_key_column(list(row.keys()), col)
         v = row.get(hit) if hit else None
     return parse_finish_time(v)
+
+
+def start_time_of(d, row):
+    """当たった行の「開始日時」（§9.595、利用者の指示「BOX実績_作業開始_日付…を使って
+    作業時間を登録し」）。読み方は完了日時と同じ1本（`_time_of`）。"""
+    return _time_of(row, (d or {}).get('startColumn'))
+
+
+def finish_time_of(d, row):
+    """当たった行の「完了日時」（§9.365）。列が未指定・空・読めない書式なら
+    空文字——**推測しない**。呼ぶ側は完了にはするが、時刻不明として扱う。"""
+    return _time_of(row, (d or {}).get('finishColumn'))
 
 
 # ---- 完了突合の定義(§9.365・§9.367) ------------------------------------
@@ -356,6 +368,15 @@ def _right_label(d):
  return (DBS.get(key) or {}).get('label') or key or '相手'
 
 
+def _no_right_reason(key):
+ """一覧に足す結合の相手が読めない理由。設備ごとのファイル（§9.595）は1つの表ではない、と言い分ける。"""
+ if (DBS.get(key or '') or {}).get('pattern'):
+  return (f'相手のデータソース「{key}」は設備ごとのファイルなので、'
+          '一覧に足す結合の相手にはできません（用途「完了突合」で使います）。')
+ return (f'相手のデータソース「{key}」が登録されていません'
+         '（無効にした・キーを変えた・再起動していない、のいずれかです）。')
+
+
 def source_cfg(key):
  """データソースの設定を**読む場所（写し）で**返す。無ければNone。
 
@@ -367,6 +388,10 @@ def source_cfg(key):
  「書込中の共有を読むと壊れる」も一緒に戻ってくる）。実際に一覧と
  スケジュールの読み込みが遅い原因の1つがこれだった。"""
  if not key or key not in DBS:
+  return None
+ if DBS[key].get('pattern'):
+  # 設備ごとのファイル(§9.595)は1つの表ではない。一覧に足す結合の相手にはならない
+  # （完了突合は`_finish_sources()`が設備ごとに読む）。
   return None
  try:
   return cfg(key)
@@ -557,9 +582,7 @@ def _apply_one(d, base_key, base_table, columns, rows):
    d, reason='この一覧に突合キーの列がありません: ' + '・'.join(missing))
  right_cfg = source_cfg(d.get('right') or '')
  if not right_cfg:
-  return columns, rows, _info(
-   d, reason=f'相手のデータソース「{d.get("right")}」が登録されていません'
-             '（無効にした・キーを変えた・再起動していない、のいずれかです）。')
+  return columns, rows, _info(d, reason=_no_right_reason(d.get('right')))
  lefts = [hit for _, hit in left_cols]
  # 相手にしかない行を出す結合は、表示中の行が無くても意味がある。
  if not rows and not kind['rightOnly']:
@@ -770,65 +793,140 @@ def probe(d, sample=200):
  return out
 
 
+def _finish_sources(key):
+ """完了突合の相手を読む先の並び。[(設備名 or '', 設定 or None, 読めない理由)]。
+
+ **設備ごとのファイルの相手（§9.595）は、フォルダにある全部の設備**——下見は
+ どの設備のファイルが型に合ったかまで言う（打ち間違いはここでしか気づけない）。"""
+ entry = DBS.get(key) if key else None
+ if not entry:
+  return [('', None, '相手のデータソースが登録されていません。')]
+ if not entry.get('pattern'):
+  return [('', source_cfg(key), '')]
+ found = pattern_files(key)
+ if not found:
+  return [('', None, no_pattern_file_text(key))]
+ out = []
+ for equip, _path in sorted(found.values()):
+  try:
+   out.append((equip, cfg_for(key, equip), ''))
+  except Exception as e:
+   out.append((equip, None, str(e)))
+ return out
+
+
+# 下見で読んだ行に「どの設備のファイルか」を添える印（列名とぶつからない字）。持ち帰る値には入れない。
+_EQUIP_TAG = '\0設備'
+
+
+def _probe_read(src, d, rights, sample):
+ """相手の1ファイルを読む。戻り値: (表, 列, 行, 突合キーの列, 理由)。"""
+ try:
+  with connect(src['path'], src.get('role', 'readonly') == 'readonly') as c:
+   names = tables(c)
+   t = str(d.get('rightTable') or '').strip() or (
+       src.get('preferred') if src.get('preferred') in names
+       else (names[0] if names else ''))
+   if not t or t not in names:
+    return t, [], [], [], f'相手の表「{t or "(未指定)"}」がありません。'
+   cs = list(cols(c, t, source=src['path']))
+   hit = [_resolve_key_column(cs, n) for n in rights]
+   lost = [n for n, h in zip(rights, hit) if not h]
+   if lost:
+    return t, cs, [], hit, f'相手の表「{t}」に突合キーの列がありません: ' + '・'.join(lost)
+   cur = c.cursor()
+   cur.execute(f'SELECT * FROM {qi(t)} LIMIT {int(sample)}')
+   return t, cs, [dict(zip(cs, r)) for r in cur.fetchall()], hit, ''
+ except Exception as e:
+  return '', [], [], [], f'相手のデータを読めません: {e}'
+
+
 def probe_finish(d, sample=2000):
  """完了突合の下見（§9.365）。**当てる相手の側を見る**——完了突合が探すのは
  「仕掛から消えた」ロットなので、いま仕掛にある行へ当ててみても0件にしか
  ならず、設定が正しいかどうかを何も言えない。
 
- 代わりに答えるのは3つ:
+ 代わりに答えるのは4つ:
    ① 相手に何行あって、突合キーが揃っている行はいくつか
-   ② 完了日時の列を、いくつの行で実際に読めたか
+   ② 完了日時・開始日時の列を、いくつの行で実際に読めたか（開始は§9.595）
    ③ 当たったとき何が持ち帰られるか（列の名前と実例）
+   ④ 設備ごとのファイルなら、どの設備のファイルを読んだか（§9.595）
  """
  out = {'ok': False, 'reason': '', 'sampled': 0, 'matched': 0, 'ambiguous': 0,
         'addedColumns': 0, 'addedColumnNames': [], 'table': '', 'examples': [],
         'kind': PURPOSE_FINISH, 'kindLabel': _PURPOSE_BY_KEY[PURPOSE_FINISH]['label'],
         'rowsAfter': 0, 'droppedRows': 0, 'addedRows': 0, 'note': '',
-        'finishColumn': str(d.get('finishColumn') or ''), 'finishReadable': 0}
+        'finishColumn': str(d.get('finishColumn') or ''), 'finishReadable': 0,
+        'startColumn': str(d.get('startColumn') or ''), 'startReadable': 0,
+        'files': []}
  rights = [str(k.get('right') or '') for k in (d.get('keys') or []) if k.get('right')]
  if not rights:
   out['reason'] = '突合キーを1組入れると、ここで結果を確かめられます。'
   return out
- right_cfg = source_cfg(d.get('right') or '')
- if not right_cfg:
-  out['reason'] = '相手のデータソースが登録されていません。'
-  return out
- try:
-  with connect(right_cfg['path'], right_cfg.get('role', 'readonly') == 'readonly') as c:
-   names = tables(c)
-   t = str(d.get('rightTable') or '').strip() or (
-       right_cfg.get('preferred') if right_cfg.get('preferred') in names
-       else (names[0] if names else ''))
-   if not t or t not in names:
-    out['reason'] = f'相手の表「{t or "(未指定)"}」がありません。'
-    return out
-   cs = list(cols(c, t, source=right_cfg['path']))
-   hit = [_resolve_key_column(cs, n) for n in rights]
-   lost = [n for n, h in zip(rights, hit) if not h]
-   if lost:
-    out['table'] = t
-    out['reason'] = f'相手の表「{t}」に突合キーの列がありません: ' + '・'.join(lost)
-    return out
-   cur = c.cursor()
-   cur.execute(f'SELECT * FROM {qi(t)} LIMIT {int(sample)}')
-   rows = [dict(zip(cs, r)) for r in cur.fetchall()]
- except Exception as e:
-  out['reason'] = f'相手のデータを読めません: {e}'
-  return out
+ rows, cs, hit, t, errors = [], [], [], '', []
+ for equip, src, why in _finish_sources(d.get('right') or ''):
+  if src is None:
+   errors.append(why)
+   if equip:
+    out['files'].append({'equipment': equip, 'rows': 0, 'error': why})
+   continue
+  t1, cs1, rows1, hit1, why1 = _probe_read(src, d, rights, sample)
+  for r in rows1:
+   r[_EQUIP_TAG] = equip
+  t = t or t1
+  if equip:
+   out['files'].append({'equipment': equip, 'rows': len(rows1), 'error': why1})
+  if why1:
+   errors.append((f'{equip}: ' if equip else '') + why1)
+   continue
+  rows.extend(rows1)
+  cs = cs or cs1
+  hit = hit or hit1
  out['table'] = t
+ if not rows and errors:
+  out['reason'] = errors[0] if len(errors) == 1 else '／'.join(errors[:3])
+  return out
+ _probe_tally(out, d, rows, cs, hit)
+ if errors and out['ok']:
+  out['note'] = ((out['note'] + ' ') if out['note'] else '') + '読めなかったファイル: ' + '／'.join(errors[:3])
+ return out
+
+
+def _work_span(d, r):
+ """当たった行の作業時間。(開始ISO, 終了ISO, 分) か、読めない・逆転なら (開始, 終了, None)。"""
+ st, en = start_time_of(d, r), finish_time_of(d, r)
+ if not st or not en:
+  return st, en, None
+ mins = (datetime.fromisoformat(en) - datetime.fromisoformat(st)).total_seconds() / 60
+ return st, en, (round(mins, 1) if mins >= 0 else None)
+
+
+def _probe_tally(out, d, rows, cs, hit):
+ """読めた行を数えて、下見の答え（件数・時刻を読めた数・作業時間の見本と内訳・持ち帰る列と実例・注意）を
+ 入れる。**同じ鍵の重なりはファイルごとに数える**（設備ごとのファイルでは、設備が違えば同じロットでも別物・§9.595）。"""
+ t = out['table']
  out['sampled'] = len(rows)
+ out['timed'] = out['inverted'] = 0
+ out['sample'] = None
  seen = set()
  for r in rows:
   k = tuple(norm_value(r.get(h)) for h in hit)
   if any(x == '' for x in k):
    continue
+  k = (r.get(_EQUIP_TAG, ''),) + k
   if k in seen:
    out['ambiguous'] += 1
    continue
   seen.add(k)
   out['matched'] += 1
-  if finish_time_of(d, r):
-   out['finishReadable'] += 1
+  st, en, mins = _work_span(d, r)
+  out['finishReadable'] += bool(en)
+  out['startReadable'] += bool(st)
+  if st and en:
+   out['timed' if mins is not None else 'inverted'] += 1
+  if out['sample'] is None and mins is not None:
+   out['sample'] = {'equipment': r.get(_EQUIP_TAG, ''), 'keys': [str(r.get(h) or '') for h in hit],
+                    'startAt': st, 'endAt': en, 'minutes': mins}
  pairs = _added_names(d, cs, [], set(hit))
  out['addedColumnNames'] = [n for _src, n in pairs]
  out['addedColumns'] = len(out['addedColumnNames'])
@@ -848,4 +946,6 @@ def probe_finish(d, sample=2000):
                  '完了にはしますが、さかのぼりでは常に表示されます。')
  elif not out['finishColumn']:
   out['note'] = '完了日時の列が未指定です。完了にはしますが、さかのぼりでは常に表示されます。'
- return out
+ elif out['startColumn'] and not out['startReadable']:
+  out['note'] = (f'開始日時の列「{out["startColumn"]}」を読めた行がありません。'
+                 '作業時間は登録されず、時刻の入力を求めます。')

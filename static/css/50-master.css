@@ -809,6 +809,28 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .qj-purpose input{position:absolute;opacity:0;width:0;height:0}
 .qj-purpose b{font-size:var(--fs-sm);color:var(--ink)}
 .qj-purpose span{font-size:var(--fs-tiny);color:var(--ink-2)}
+/* データ接続の「ファイル名の型」(§9.595)。見つかった設備は読み取り専用の札（押せる枠にしない・§10）。 */
+.ds-pattern-found{display:flex;flex-wrap:wrap;gap:var(--gap-hair);margin-top:var(--gap-hair)}
+.ds-pattern-chip{padding:0 var(--gap-tight);border-radius:var(--radius-sm);background:var(--surface-2);
+  color:var(--ink-2);font-size:var(--fs-sm)}
+.ds-pattern-none{font-size:var(--fs-sm);color:var(--warn-fg)}
+/* 完了突合の③（§9.595）。完了の条件の札は**用途の札と同じ顔**（`.qj-purpose`を名乗る）。
+   作業時間は「開始の列 → 終了の列」を1行に並べ、見本の箱が当てた結果を言う。 */
+.qj-whens{margin-bottom:var(--gap-tight)}
+.qj-span-row{display:flex;align-items:flex-end;gap:var(--space-2);flex-wrap:wrap}
+.qj-span-row label{display:grid;gap:var(--gap-hair);font-size:var(--fs-sm);color:var(--ink-2)}
+.qj-span-row select{max-width:var(--w-lg)}
+.qj-span-arrow{padding-bottom:var(--gap-tight);color:var(--muted)}
+.qj-span-box{margin-top:var(--gap-tight);padding:var(--gap-tight) var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface);
+  display:grid;gap:var(--gap-hair);font-size:var(--fs-sm);color:var(--ink)}
+.qj-span-box p{margin:0}
+.qj-span-box b{color:var(--teal-ink)}
+.qj-span-time{font-variant-numeric:tabular-nums}
+/* 1日（0〜24時）の帯。作業がどの時間帯に・どれだけの長さあったかを描く。 */
+.qj-day{display:inline-block;position:relative;vertical-align:middle;width:10em;height:.7em;
+  margin:0 var(--gap-tight);border-radius:var(--radius-sm);background:var(--surface-2)}
+.qj-day i{position:absolute;top:0;bottom:0;border-radius:var(--radius-sm);background:var(--teal)}
 /* 「作業スケジュール表でも使う」(§9.365)。**入力欄風の枠を付けない**（§10）
    ——押せる場所はチェックだけ。 */
 .qj-check{display:flex;align-items:flex-start;gap:var(--gap-inline);

@@ -15,6 +15,8 @@
 """
 from pathlib import Path
 import hashlib
+import os
+import unicodedata
 import json as _json
 import threading
 import time
@@ -69,6 +71,11 @@ def cfg(k):
                    'マスタ管理 > データソースの「キー」と合っているか確認してください。')
  entry=DBS[k]
  if entry.get('role')!='readonly':return entry
+ if entry.get('pattern'):
+  # 設備ごとのファイル(§9.595)。**フォルダは1つの表として開けない**——読むのは`cfg_for()`。
+  raise ValueError(f'データソース「{entry.get("label") or k}」は設備ごとのファイルです'
+                   f'（フォルダ「{entry["path"]}」・型「{entry["pattern"]}」）。'
+                   '一覧としては開けません（完了突合の相手として使います）。')
  # **共有は直接読まない**（§9.582・docs/SHARED_READ.md の R8）。写しがまだ無ければ理由を言って断る
  # （以前は写しが無い・引けないと共有の元を返していた＝DataRelay の置き換えを止めうる読み方）。
  from . import db_mirror  # 遅延: db_mirror は起動時にこのモジュールの設定を読む（循環を避ける）
@@ -413,6 +420,10 @@ def ensure_data_source_table(c):
  # データソースを差し替えたときにキーだけ前のまま残る。空欄＝既定。
  if DATA_SOURCE_TABLE in tables(c):
   add_missing_columns(c,DATA_SOURCE_TABLE,(('突合キー','TEXT'),))
+ # 設備ごとのファイル(§9.595)。**型を持つ行はフォルダを指す**（例: `実績_{設備}.sqlite3`）。
+ # 空欄＝今までどおり1つのファイル（既存の行の動きを変えない）。
+ if DATA_SOURCE_TABLE in tables(c):
+  add_missing_columns(c,DATA_SOURCE_TABLE,(('ファイル名の型','TEXT'),))
  # 役割の呼び名を今のものへ寄せる(§9.193)。**保存値を1つに保つ**——
  # 読む側の別名(_PURPOSE_ALIASES)だけで済ませると、役割の重なりを見る
  # SQL(`WHERE [役割]=?`)が旧い値の行を見落とし、「仕掛」が2件付いた状態を
@@ -437,13 +448,15 @@ def data_source_rows(c,include_disabled=False):
  has_mode='読み方' in have
  has_listed='一覧表示' in have
  has_match='突合キー' in have
+ has_pattern='ファイル名の型' in have
  cur=c.cursor()
  cur.execute('SELECT [ソースID],[キー],[表示名],[RNEファイル],[抽出テーブル],[出力ファイル],'
              '[共有パス],[既定テーブル],[表示順],[有効],'
              +('[役割]' if has_purpose else "''")+','
              +('[読み方]' if has_mode else "''")+','
              +('[一覧表示]' if has_listed else 'NULL')+','
-             +('[突合キー]' if has_match else "''")+' FROM [データソースマスタ] '
+             +('[突合キー]' if has_match else "''")+','
+             +('[ファイル名の型]' if has_pattern else "''")+' FROM [データソースマスタ] '
              'ORDER BY [表示順],[キー]')
  out=[];seen={}
  for r in cur.fetchall():
@@ -469,7 +482,9 @@ def data_source_rows(c,include_disabled=False):
               # 空欄＝出す。役割「仕掛」だけは隠せない（隠すと主画面が消える）。
               'listed':(True if r[12] is None else bool(r[12])) or purpose==PURPOSE_WORK,
               # 実績との突合キー(§9.364)。空欄は既定として読む側が補う。
-              'matchKeys':str(r[13] or '').strip()})
+              'matchKeys':str(r[13] or '').strip(),
+              # 設備ごとのファイルの型(§9.595)。空欄＝1つのファイル。
+              'filePattern':normalize_file_pattern(r[14])})
  return out
 
 _DATA_SOURCE_SEEDED_KEY='__data_sources_seeded__'
@@ -492,6 +507,61 @@ def seed_data_sources(c):
                 d['preferred'],d['order'],'seed','seed'])
  set_path_config(c,_DATA_SOURCE_SEEDED_KEY,'done','seed')
  c.commit()
+ return True
+
+# ---- 実績の置き場の登録（§9.595、一度きり） --------------------------
+# 利用者の指示「実績データを『\\Nlmsrvngy03\Read\【New】実績』に配置する」「実績_LS4.sqlite3
+# といったような、『実績_＊＊＊.sqlite3』の＊＊＊が設備名となるファイル」。
+# **一度きり**（目印）——登録したあとは他のデータソースと同じで、置き場も型も画面で直せる。
+ACTUAL_FOLDER_REGISTERED_KEY='__actual_folder_registered__'
+ACTUAL_FOLDER_DEFAULT='\\\\Nlmsrvngy03\\Read\\【New】実績'
+ACTUAL_FOLDER_PATTERN='実績_{設備}.sqlite3'  # 型の印は`EQUIPMENT_TOKEN`（下で定義）と同じ字
+ACTUAL_FOLDER_SOURCE_KEY='BOXACT'
+ACTUAL_FOLDER_LABEL='実績（設備ごと）'
+
+def register_actual_folder(c):
+ """実績の置き場（設備ごとのファイル）をデータソースマスタへ1行入れる。戻り値: そのキー or None。
+
+ 何度呼んでも同じ（目印があれば、型を持つ行のキーを返すだけ）。**既に型を持つ行があれば
+ 作らない**（利用者が自分で入れた行が正）。役割は「実績」が空いていればそれ、埋まっていれば
+ 「その他」（役割は1件だけ・§9.193）。一覧には出さない（1つの表ではない）。"""
+ ensure_data_source_table(c)
+ cur=c.cursor()
+ cur.execute("SELECT [キー] FROM [データソースマスタ] WHERE Trim(Coalesce([ファイル名の型],''))<>'' "
+             'ORDER BY [表示順],[ソースID]')
+ row=cur.fetchone()
+ if row or path_config_rows(c).get(ACTUAL_FOLDER_REGISTERED_KEY):
+  if not path_config_rows(c).get(ACTUAL_FOLDER_REGISTERED_KEY):
+   set_path_config(c,ACTUAL_FOLDER_REGISTERED_KEY,'done','migrate:actual-folder')
+  return str(row[0]) if row else None
+ key=ACTUAL_FOLDER_SOURCE_KEY;n=2
+ while cur.execute('SELECT 1 FROM [データソースマスタ] WHERE [キー]=?',[key]).fetchone():
+  key=f'{ACTUAL_FOLDER_SOURCE_KEY}{n}';n+=1
+ taken=cur.execute('SELECT 1 FROM [データソースマスタ] WHERE [役割]=? AND [有効]<>0',
+                   [PURPOSE_ACTUAL]).fetchone()
+ order=int((cur.execute('SELECT Max([表示順]) FROM [データソースマスタ]').fetchone() or [0])[0] or 0)+10
+ cur.execute('INSERT INTO [データソースマスタ] ([キー],[表示名],[RNEファイル],[抽出テーブル],'
+             '[出力ファイル],[共有パス],[既定テーブル],[表示順],[有効],[役割],[一覧表示],[ファイル名の型],'
+             '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+             "VALUES (?,?,'','','',?,'',?,-1,?,0,?,?,?,Now(),Now())",
+             [key,ACTUAL_FOLDER_LABEL,ACTUAL_FOLDER_DEFAULT,order,
+              PURPOSE_OTHER if taken else PURPOSE_ACTUAL,ACTUAL_FOLDER_PATTERN,
+              'migrate:actual-folder','migrate:actual-folder'])
+ set_path_config(c,ACTUAL_FOLDER_REGISTERED_KEY,'done','migrate:actual-folder')
+ c.commit()
+ return key
+
+def adopt_data_source(c,key):
+ """起動のあとに入れた1行を、**このプロセスでも**読めるようにする（§9.595の一度きりの登録）。
+
+ データソースは起動時に1回だけ決まる（§9.183）が、移行で入れた行まで再起動を待たせると、
+ 更新した最初の起動で突き合わせが1回も効かない。**まだ`DBS`に無いキーだけ**足す——
+ 既にあるキーの読み先は変えない（再起動待ちの決まりはそのまま）。"""
+ if not key or key in DBS:return False
+ hit=[r for r in data_source_rows(c) if r['key']==key]
+ if not hit:return False
+ DATA_SOURCES.append(hit[0])
+ DBS[key]=_dbs_entry(hit[0])
  return True
 
 def _master_data_sources():
@@ -597,6 +667,109 @@ if _sikalot_source_raw and _sikalot_source_raw not in _VALID_SIKALOT_SOURCES:
 # 更新するローカルSQLite3(db/sikalotnow.sqlite3・db/sikalotdef.sqlite3、
 # backend/rne_scheduler.pyが背景スレッドで更新)を読む運用に切り替えられる。
 # ネットワーク共有への到達性が無い/不安定な環境向けの切替で、2つのDBを
+# ---------- 設備ごとのファイル（§9.595、利用者の指示） ----------
+# 「実績_LS4.sqlite3といったような、『実績_＊＊＊.sqlite3』の＊＊＊が設備名となるファイルを検索
+#  設備名が一致するものを突合せ対象とし」
+# データソースの行が**ファイル名の型**（`{設備}`を1つ含む）を持つと、その行の置き場はフォルダになり、
+# 型に合うファイルが設備ごとに1つずつの読み先になる。設備名の比べ方は`normalize_equipment_name`
+# （全角・半角と大小のゆれを吸収）。**型の答え・フォルダの一覧・設備で引く道はここ1箇所**。
+EQUIPMENT_TOKEN='{設備}'
+FILE_PATTERN_MAX=80
+def normalize_file_pattern(raw):
+ """保存値・画面からの入力を型へ寄せる。`{設備}`がちょうど1つ・拡張子が DB のものだけを型と認める
+ （それ以外は空＝1つのファイル）。全角の括弧で打っても通るよう`｛設備｝`も読む。"""
+ v=str(raw or '').strip().replace('｛','{').replace('｝','}')[:FILE_PATTERN_MAX]
+ if v.count(EQUIPMENT_TOKEN)!=1 or '/' in v or '\\' in v:return ''
+ if not v.lower().endswith(DB_FILE_SUFFIXES):return ''
+ return v
+
+def _pattern_parts(pattern):
+ head,_tok,tail=pattern.partition(EQUIPMENT_TOKEN)
+ return unicodedata.normalize('NFKC',head).casefold(),unicodedata.normalize('NFKC',tail).casefold()
+
+def equipment_of_file(pattern,name):
+ """ファイル名が型に合えば、その設備名の部分（元の綴り）。合わなければ空。"""
+ head,tail=_pattern_parts(pattern)
+ n=unicodedata.normalize('NFKC',str(name or ''))
+ low=n.casefold()
+ if not (low.startswith(head) and low.endswith(tail)) or len(low)<=len(head)+len(tail):return ''
+ return n[len(head):len(n)-len(tail)].strip()
+
+def scan_pattern_folder(folder,pattern):
+ """フォルダの中の、型に合うファイル。戻り値: ({設備名(正規化): (設備名, パス)}, 読めない理由)。
+ **ファイル名だけを見る**（開かない・共有を掴まない）。同じ設備が2つ当たったら先の1つ。"""
+ out={}
+ try:
+  for f in os.scandir(folder):
+   if not f.is_file():continue
+   equip=equipment_of_file(pattern,f.name)
+   if equip:out.setdefault(normalize_equipment_name(equip),(equip,Path(f.path)))
+ except OSError as e:
+  return out,f'フォルダ「{folder}」を一覧できません（{e}）'
+ return out,''
+
+_PATTERN_LIST_TTL=30.0
+_pattern_list_cache={}
+_pattern_list_said={}
+_pattern_list_lock=threading.Lock()
+def pattern_files(key):
+ """型を持つデータソースの、フォルダにある**設備ごとのファイル**。{設備名(正規化): (設備名, 元のパス)}。
+ フォルダの一覧は30秒だけ使い回す（予定の1行ごとに共有のフォルダを見に行かない）。読めなければ空。"""
+ entry=DBS.get(key) or {}
+ pattern=entry.get('pattern') or ''
+ if not pattern:return {}
+ folder=Path(entry['path'])
+ now=time.time()
+ with _pattern_list_lock:
+  hit=_pattern_list_cache.get(key)
+  if hit and hit[0]==str(folder) and now-hit[1]<_PATTERN_LIST_TTL:return hit[2]
+ out,err=scan_pattern_folder(folder,pattern)
+ with _pattern_list_lock:
+  # 読めない理由は**変わったときだけ**記録へ残す（写しの係が毎周呼ぶので、同じ1行で埋めない）。
+  said=_pattern_list_said.get(key)
+  _pattern_list_said[key]=err
+  _pattern_list_cache[key]=(str(folder),now,out)
+ if err and err!=said:app_logger().warning('データソース「%s」: %s',key,err)
+ return out
+
+def source_pattern(key):
+ """そのデータソースが設備ごとのファイルなら {'folder': 置き場, 'pattern': 型}、違えば None。
+ **型の有無を聞くのはここ**（`DBS`を直に見ない・読み先は`cfg()`／`cfg_for()`）。"""
+ entry=DBS.get(key) or {}
+ if not entry.get('pattern'):return None
+ return {'folder':entry['path'],'pattern':entry['pattern']}
+
+def no_pattern_file_text(key):
+ """型に合うファイルが1つも無いときの文（下見・突合の説明が同じ字を出す）。"""
+ sp=source_pattern(key) or {}
+ return f'フォルダ「{sp.get("folder")}」に、型「{sp.get("pattern")}」に合うファイルがありません。'
+
+def pattern_mirror_key(key,equipment):
+ """設備ごとのファイルの写しの鍵。設備名は正規化して入れる（綴りのゆれで写しが2つに割れない）。"""
+ return f'{key}@{normalize_equipment_name(equipment)}'
+
+class NoEquipmentFile(LookupError):
+ """型に合うフォルダに、その設備のファイルが無い。"""
+
+def cfg_for(k,equipment):
+ """そのデータソースの、**この設備の**設定。型が無ければ`cfg(k)`と同じ。
+ 型があれば、フォルダから設備名の一致するファイルを選び、その写しを指す（共有は直接読まない・R8）。
+ 無ければ`NoEquipmentFile`（理由つき）。"""
+ entry=DBS.get(k) or {}
+ if not entry.get('pattern'):return cfg(k)
+ files=pattern_files(k)
+ hit=files.get(normalize_equipment_name(equipment))
+ if not hit:
+  raise NoEquipmentFile(f'「{entry["path"]}」に{entry["pattern"].replace(EQUIPMENT_TOKEN,str(equipment or "（設備なし）"))}がありません'
+                        f'（見つかった設備: {"、".join(v[0] for v in files.values()) or "なし"}）。')
+ from . import db_mirror  # 遅延: db_mirror は起動時にこのモジュールの設定を読む（循環を避ける）
+ mkey=pattern_mirror_key(k,hit[0])
+ local=db_mirror.read_path(mkey,hit[1])
+ if local is None:raise db_mirror.NotCopiedYet(db_mirror.not_ready_text(mkey))
+ out=dict(entry);out['path_remote']=hit[1];out['path']=Path(local);out['mirrored']=Path(local)!=hit[1]
+ out['equipment']=hit[0]
+ return out
+
 # まとめて1つのスイッチで切り替える(個別切替は用途が無いため)。
 SIKALOT_SOURCE='local' if _sikalot_source_raw=='local' else 'network'
 SIKALOTNOW_LOCAL_PATH=DB_DIR/"sikalotnow.sqlite3"
@@ -661,14 +834,19 @@ DATA_SOURCES=_master_data_sources() or [
   'order':d['order'],'active':True,'id':None,'purpose':d['purpose'],'listed':True}
  for d in _DEFAULT_DATA_SOURCES]
 
-DBS={s['key']:{"path":_source_path(s),"label":s['label'],"role":"readonly",
-               "preferred":s.get('preferred') or s.get('table') or '仕掛',
-               "purpose":s.get('purpose') or PURPOSE_OTHER,
-               # 左メニューに並べるか(§9.193)。**読むこと自体は止めない**
-               # ——結合の相手として引くのはこのフラグと無関係。
-               "listed":bool(s.get('listed',True)),
-               "engine":"sqlite","source":s}
-     for s in DATA_SOURCES}
+def _dbs_entry(s):
+ """データソースの行 → このプロセスが読む設定（`DBS`の1件）。作り方はここ1箇所。"""
+ return {"path":_source_path(s),"label":s['label'],"role":"readonly",
+         "preferred":s.get('preferred') or s.get('table') or '仕掛',
+         "purpose":s.get('purpose') or PURPOSE_OTHER,
+         # 左メニューに並べるか(§9.193)。**読むこと自体は止めない**
+         # ——結合の相手として引くのはこのフラグと無関係。
+         "listed":bool(s.get('listed',True)),
+         # 設備ごとのファイル(§9.595)。あれば`path`はフォルダで、読むのは`cfg_for()`。
+         "pattern":s.get('filePattern') or '',
+         "engine":"sqlite","source":s}
+
+DBS={s['key']:_dbs_entry(s) for s in DATA_SOURCES}
 DBS["MASTER"]={"path":_MASTER_PATH,"label":"マスタ一覧","role":"master",
                "purpose":PURPOSE_OTHER,"listed":True,
                "preferred":"オペレータマスタ","engine":"sqlite"}

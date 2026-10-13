@@ -135,6 +135,9 @@ _SOURCE_FIX = (
 # 触らない**という上の決まりの唯一の例外——この行はここでしか作られない
 # ので、名前を入れないと一覧が開けない。
 _ACTUAL_TABLE = '実績'
+# 網が借りる設備停止（`fix_master`の9b）。名前は`test_scstop`の種と同じものを含む（後片付けで消される側）。
+_STOP_FIX_EQ = 'テスト設備A'
+_STOP_FIX = (('段取り', '段取り替え', 45), ('', '刃の研磨', 30), ('', '清掃', 15))
 # 3直。`日付補正`は§9.195（跨いだ後の時間帯にだけ当てる）。
 _SHIFT_NAME = '交替勤務(1,2,3直)'
 _SHIFT_SEGMENTS = (('1直', '07:00', '15:00', 10, None),
@@ -376,6 +379,21 @@ def fix_master(quiet: bool = False) -> None:
                 if got:
                     note('  完了突合の行が無いので、移行の目印を外しました'
                          '（次の起動で作り直します）')
+        # 2d) 実績の置き場とBOX実績の完了突合（§9.595）。**起動の一度きりの登録**は検証用マスタにも
+        #     入るが、網の前提（完了突合は1件・仕掛のフィクスチャにBOX番号は無い・置き場は社内の共有）を
+        #     崩す——完了突合が2件になり、止めたはずの突合が別の定義で完了させる（実測で12件落ちた）。
+        #     **登録した行だけ片付け、目印は立てたまま**にする（作り直させない）。登録の作り方と
+        #     突き合わせは`test_boxactual`が一時のマスタ・一時の置き場で見る。
+        if {'クエリ結合マスタ', 'データソースマスタ', 'パス設定マスタ'} <= have:
+            n = (c.execute("DELETE FROM [クエリ結合マスタ] WHERE [登録者ID]='migrate:box-actual'").rowcount
+                 + c.execute("DELETE FROM [データソースマスタ] "
+                             "WHERE [登録者ID]='migrate:actual-folder'").rowcount)
+            for mark in ('__actual_folder_registered__', '__box_actual_join_registered__'):
+                c.execute("INSERT OR IGNORE INTO [パス設定マスタ] ([設定キー],[設定値],[登録者ID],[更新者ID],"
+                          "[登録日時],[更新日時]) VALUES (?,'done','fixture','fixture',"
+                          "datetime('now'),datetime('now'))", [mark])
+            if n:
+                note('  起動が登録した実績の置き場・BOX実績突合を%d件片付けました（目印は残す）' % n)
         # 3) 勤務体系＋勤務区分＋設備の紐づけ
         if {'勤務体系マスタ', '勤務区分マスタ'} <= have:
             for w in _JUNK_SHIFT:
@@ -566,6 +584,23 @@ def fix_master(quiet: bool = False) -> None:
             # 親を失った内訳（親だけ消した本の置き土産）。
             c.execute('DELETE FROM [設備停止サブカテゴリマスタ] WHERE [停止理由ID] '
                       'NOT IN (SELECT [停止理由ID] FROM [設備停止マスタ])')
+            # 網が「借りる」停止内容（`test_actualmatch`の`add_stop`は検証用設備の先頭の1件を使う）。
+            # **論理削除で全部消えていた**（実測 2026-10-13: テスト設備Aの8件がすべて`有効=0`）——
+            # `test_scstop`の後片付けが同じ名前の元からの行（段取り替え・清掃）まで消し、ほかの本も
+            # 借りた行を消して、借りる先が1件も無くなっていた。**足りなければ戻す**（中身は触らない）。
+            for category, name, minutes in _STOP_FIX:
+                row = c.execute('SELECT [停止理由ID] FROM [設備停止マスタ] WHERE [設備名]=? AND [名称]=?',
+                                [_STOP_FIX_EQ, name]).fetchone()
+                if row:
+                    n = c.execute('UPDATE [設備停止マスタ] SET [有効]=-1 WHERE [停止理由ID]=? '
+                                  'AND ([有効] IS NULL OR [有効]=0)', [row[0]]).rowcount
+                else:
+                    n = c.execute("INSERT INTO [設備停止マスタ] ([設備名],[分類],[名称],[標準所要分],"
+                                  "[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) "
+                                  "VALUES (?,?,?,?,0,-1,'fixture','fixture',datetime('now'),datetime('now'))",
+                                  [_STOP_FIX_EQ, category, name, minutes]).rowcount
+                if n:
+                    note(f'  設備停止「{name}」を使える状態へ戻しました')
         if '設備停止時間マスタ' in have:
             for m in _STOP_MINUTES_SEEDS:
                 row = c.execute('SELECT [時間ID] FROM [設備停止時間マスタ] '

@@ -196,6 +196,19 @@ def plan_set_actual_json(c_share,plan_id,payload,uid,pc=''):
              [payload,uid,pc,plan_id])
  return bool(cur.rowcount)
 
+def plan_equipments_unsaved_actual(c_share):
+ """完了突合の写しをまだ持たない作業の親行がある設備（§9.595 裏の保持が回る先）。
+
+ **終わった・取り消した行は数えない**——保持が要るのは、これから実績に当たる行だけ。
+ 表が無ければ空。"""
+ if PLAN_TABLE not in tables(c_share):return []
+ cur=c_share.cursor()
+ cur.execute(f'SELECT DISTINCT [設備名] FROM [作業予定] WHERE [種別]=? '
+             f'AND ([有効] IS NULL OR [有効]<>0) AND [{PLAN_PARENT_COLUMN}] IS NULL '
+             f"AND ([{PLAN_ACTUAL_JSON_COLUMN}] IS NULL OR Trim([{PLAN_ACTUAL_JSON_COLUMN}])='') "
+             f"AND ([状態] IS NULL OR [状態] NOT IN ('完了','取消'))",['作業'])
+ return [str(r[0]) for r in cur.fetchall() if str(r[0] or '').strip()]
+
 def _next_plan_order(c_share,equipment):
  cur=c_share.cursor()
  cur.execute('SELECT Max([表示順]) FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])

@@ -603,11 +603,13 @@
     見えないので、**できること／できない理由**をここで言い切る。
     判定はサーバー(backend/source_capability.py)の1箇所が持ち、画面は
     受け取った結果を並べるだけ——判定を画面にも書くと、2つの答えが出る。 */
- const CAPABILITY_ORDER=['list','measure','plan','quality','schedule'];
+ /* `finish`＝設備ごとのファイル（§9.595）が完了突合の相手として使えるか。名乗るのはそのデータソースだけで、
+    **使い道はそれだけなので先頭**（窓が縦に収まらない端末でも、できることが先に見える）。 */
+ const CAPABILITY_ORDER=['finish','list','measure','plan','quality','schedule'];
  const CAPABILITY_LABEL={list:'一覧として見る',measure:'測定を開く',
                          plan:'スケジュールへ投入',quality:'品質として結合',
-                         schedule:'予定の本体にする'};
- const CAPABILITY_SHORT={list:'一覧',measure:'測定',plan:'予定',quality:'結合',schedule:'予定本体'};
+                         schedule:'予定の本体にする',finish:'完了突合の相手'};
+ const CAPABILITY_SHORT={list:'一覧',measure:'測定',plan:'予定',quality:'結合',schedule:'予定本体',finish:'完了突合'};
  /* 一覧の表示用テキスト。保存値そのままだと '*' が生で見えて意味が伝わらない。 */
  function cellText(col,value){
   const v=String(value??'');

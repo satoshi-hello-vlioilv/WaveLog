@@ -1,4 +1,4 @@
-# 検証（テスト）（63件）
+# 検証（テスト）（64件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -13,6 +13,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 網が借りるマスタの行（検証用設備の停止内容）はフィクスチャが戻す（`make_fixture`の`_STOP_FIX`）。後片付けが同じ名前の元の行まで消す網がある | `test_actualmatch.py` | [§9.595](../../docs/decisions/9.595.md) |
 | 字の寸法を見る網が落ちたら書体のせいにせず、決め打ちの寸法（px・em の係数・式の変数の`parseFloat`）を疑う | `test_fit.js`・`test_listperf.js` | [§9.594](../../docs/decisions/9.594.md) |
 | 左メニューの行き先は`W.nav(page,sel)`で押す（全幅の画面＝マスタ管理は左を伏せるので「戻る」で出てから） | `test_mmshell.js` | [§9.593](../../docs/decisions/9.593.md) |
 | 画面のJSの型の検査は`tests/lib/js_types.js`の1本。公開の型は名乗っている式から起こす（宣言の写しを持たない）。件数はファイルごとに下げる方向だけ | `test_tscheck.py` | [§9.566](../../docs/decisions/9.566.md) |

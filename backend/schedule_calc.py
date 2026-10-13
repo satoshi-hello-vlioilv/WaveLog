@@ -474,76 +474,93 @@ def saved_actual_source(stored_actual_json):
   quiet('保存した実績を読めない（突合し直す）',_e);return None
  if not (isinstance(saved,dict) and saved):return None
  values=saved.get('values') if isinstance(saved.get('values'),dict) else saved
+ # 開始日時（§9.595）と「いつ完了にしたか」は後から足した鍵。古い保存には無い（＝今までの意味）。
  return {'values':values,'finishedAt':str(saved.get('finishedAt') or '') or None,
-         'joinName':str(saved.get('joinName') or '')}
+         'startedAt':str(saved.get('startedAt') or '') or None,
+         'joinName':str(saved.get('joinName') or ''),
+         'finishWhen':str(saved.get('finishWhen') or '')}
+
+# 「実績に当たったら」で完了にした理由の字(§9.595)。保存済みと突き合わせたばかりで分ける。
+DONE_BY_HIT='実績データに見つかったため完了にしました（仕掛に残っていても完了にする設定です）。'
+DONE_BY_HIT_SAVED='実績データで確認済みです（この予定に保存してあります）。'
+# 突合の時刻を作業時間に使うときの出どころ(§9.595)。手で入れた時刻（`MANUAL_END_FROM_*`）と見分ける。
+JOIN_TIMES_FROM='実績データ'
+
+def join_times(entry):
+ """完了突合が持ち帰った開始・完了の時刻を、**作業時間**の形（手で入れた時刻と同じ形）にする（§9.595）。
+
+ 利用者の指示「BOX実績_作業開始_日付と BOX実績_作業終了_日付を使って作業時間を登録し、完了データへ
+ 移行する」。両方読めて、終わりが始まりより前でないときだけ。**人が入れた時刻が先**——呼ぶ側は
+ 手入力が無いときだけ使う。分単位にそろえる（手入力と同じ刻み）。"""
+ st=entry.get('startedAt');en=entry.get('finishedAt')
+ if not st or not en:return None
+ try:a=_parse_dt(st);b=_parse_dt(en)
+ except Exception as _e:
+  quiet('突合の時刻を読めない（作業時間にしない）',_e);return None
+ if a is None or b is None or b<a:return None
+ a=a.replace(second=0,microsecond=0);b=b.replace(second=0,microsecond=0)
+ name=str(entry.get('finishedBy') or '')
+ return {'startAt':a.isoformat(timespec='minutes'),'endAt':b.isoformat(timespec='minutes'),
+         'endFrom':JOIN_TIMES_FROM,'source':f'{JOIN_TIMES_FROM}（{name}）' if name else JOIN_TIMES_FROM,
+         'by':name}
+
+# 完了突合が予定へ付ける欄と、その空の値(§9.364・§9.365・§9.514・§9.595)。**測定データの実績とは別の欄**
+# ——出どころが違うものを同じ欄に入れると、どちらの根拠で完了したのか言えなくなる。
+_ACTUAL_SOURCE_BLANK={
+ 'missingFromWork':None,'missingReason':'','actualSource':None,'actualSourceSaved':False,
+ 'finishedAt':None,      # 突合で分かった完了時刻(§9.365)
+ 'startedAt':None,       # 突合で分かった開始時刻(§9.595)。完了とそろえば作業時間
+ 'finishedBy':'',        # 当たった定義の名前
+ 'finishWhen':'',        # どの条件で完了にしたか（'gone'＝仕掛から消えて当たった／'hit'＝実績に当たった）
+ 'autoDone':False,       # 人が確かめる前に「終わった」とみなした行か（§9.514）。時刻の登録を促す材料
+ 'doneReason':''}
+DONE_BY_GONE='仕掛から消えており、完了突合で確認できました。'
+DONE_BY_GONE_SAVED='仕掛から消えており、突合で確認済みです（この予定に保存してあります）。'
+DONE_GONE_NO_HIT=('仕掛から消えています（突合先には見つかりません）。'
+                  '仕掛から無くなったロットは作業が終わったものとして完了にしています。')
+
+def _done_by_join(entry,found,saved):
+ """突合で当たった（または保存してあった）行で完了にする。`found`は
+ {values, finishedAt, startedAt, joinName, finishWhen, missing}。**完了日時が読めなくても完了にする**
+ （利用者の指示）——時刻が無い行はさかのぼりで隠さない側へ倒す。"""
+ by_hit=found.get('finishWhen')==actual_match.FINISH_WHEN_HIT
+ entry.update(state='完了',autoDone=True,actualSource=found['values'],actualSourceSaved=saved,
+              finishedAt=str(found.get('finishedAt') or '') or None,
+              startedAt=str(found.get('startedAt') or '') or None,
+              finishedBy=str(found.get('joinName') or ''),
+              finishWhen=found.get('finishWhen') or actual_match.FINISH_WHEN_GONE,
+              # 「実績に当たったら」は仕掛から消えたかどうかを見ていない（§9.595）。
+              missingFromWork=found.get('missing') if by_hit else True,
+              doneReason=DONE_BY_HIT if by_hit else DONE_BY_GONE)
+ if saved:entry['missingReason']=DONE_BY_HIT_SAVED if by_hit else DONE_BY_GONE_SAVED
 
 def _apply_actual_source(entry,detail,stored_actual_json):
- """仕掛から消えたロットを「完了」または「着手」として扱う(§9.364)。
+ """完了突合で予定を完了へ移す(§9.364・§9.514・§9.595)。
 
- 利用者の指示:「作業スケジュール表に組んだロットが、仕掛データから消えた
- 場合は、作業完了または作業開始したものとして扱いたい」——実績にHITすれば
- **完了**、HITしなければ（実績が未設定のときも含めて）**着手**。
+ 完了にするのは3つ: ①保存済みの写しがある ②「実績に当たったら」の定義に当たった（仕掛に残っていても）
+ ③仕掛から消えた（突合先に当たれば値も持ち帰る。当たらなくても完了・時刻は人が入れる）。
 
- **保存済みの実績が最優先。** 実績データは次の抽出で消える（前工程が
- 終わった行は落ちる）ので、一度HITしたら共有スケジュールへ写しを残す
- （書くのは書込役だけ・§4.2）。ここは読むだけ。
+ **保存済みの実績が最優先。** 実績データは次の抽出・1か月の保持で消えるので、一度当たったら
+ 共有スケジュールへ写しを残す（書くのは書込役だけ・§4.2 `actual_keep`）。ここは読むだけ。
 
- 触るのは**親の作業行で、まだ「予定」のもの**だけ:
-  ・計画者が確定した完了／取消（`PLAN_TERMINAL_STATES`）は動かさない
-  ・測定データと突合できた行（`actual`）はそちらが正
-  ・子ロットは親にぶら下がる明細行なので、単独で状態を持たせない
- """
- entry['missingFromWork']=None
- entry['missingReason']=''
- entry['actualSource']=None
- entry['actualSourceSaved']=False
- # 突合で分かった完了時刻(§9.365)。**測定データの実績とは別の欄**——出どころが
- # 違うものを同じ欄に入れると、どちらの根拠で完了したのか言えなくなる。
- entry['finishedAt']=None
- entry['finishedBy']=''
- # 人が確かめる前に「終わった」とみなした行か（§9.514）。時刻の登録を促す材料。
- entry['autoDone']=False
- entry['doneReason']=''
+ 触るのは**親の作業行で、まだ「予定」のもの**だけ（確定した完了／取消・測定データの実績・子ロットは触らない）。"""
+ entry.update(_ACTUAL_SOURCE_BLANK)
  if entry['kind']!='作業' or entry.get('parentId') is not None:return
  if entry['state'] in PLAN_TERMINAL_STATES or entry.get('actual') is not None:return
  saved=saved_actual_source(stored_actual_json)
  if saved:
   # **一度突き合わせたものは、相手から消えても保持する**（利用者の指示）。
-  entry['state']='完了'
-  entry['missingFromWork']=True
-  entry['actualSource']=saved['values']
-  entry['actualSourceSaved']=True
-  entry['finishedAt']=saved['finishedAt']
-  entry['finishedBy']=saved['joinName']
-  entry['missingReason']='仕掛から消えており、突合で確認済みです（この予定に保存してあります）。'
-  entry['autoDone']=True
-  entry['doneReason']='仕掛から消えており、完了突合で確認できました。'
+  _done_by_join(entry,saved,True)
   return
  hit=actual_match.lookup(detail,entry)
  entry['missingReason']=hit.get('reason') or ''
- if hit.get('missing') is not True:
-  # False（仕掛にある）／None（判定できない）はどちらも状態を動かさない。
-  entry['missingFromWork']=hit.get('missing')
+ if hit.get('complete'):
+  _done_by_join(entry,dict(hit,values=hit['actual']),False)
   return
- entry['missingFromWork']=True
- entry['autoDone']=True
- if hit.get('actual'):
-  entry['state']='完了'
-  entry['doneReason']='仕掛から消えており、完了突合で確認できました。'
-  entry['actualSource']=hit['actual']
-  # **完了日時が読めなくても完了にする**（利用者の指示）。時刻が無い行は
-  # さかのぼりで隠さない側へ倒す——隠すと「完了にしたはずの行がどこにも
-  # 無い」になる。
-  entry['finishedAt']=str(hit.get('finishedAt') or '') or None
-  entry['finishedBy']=str(hit.get('joinName') or '')
- else:
-  # **仕掛から消えた＝作業は終わっている**（§9.514、利用者の指示「作業スケジュールの
-  # データの中で仕掛からなくなったものは基本的に作業完了しているので、このアプリで
-  # 完了させていなくても、基本的に完了側にデータを移行するように」）。
-  # §9.364・§9.462の「着手（作業中として扱う）」は撤回——開始時刻の無い作業中の行が
-  # 「〜継続中」のまま居座り、いつまでも完了にならなかった。時刻は人に入れてもらう。
-  entry['state']='完了'
-  entry['doneReason']='仕掛から消えています（突合先には見つかりません）。仕掛から無くなったロットは作業が終わったものとして完了にしています。'
+ entry['missingFromWork']=hit.get('missing')
+ if hit.get('missing') is not True:return   # 仕掛にある／判定できない は動かさない
+ # **仕掛から消えた＝作業は終わっている**（§9.514。§9.364・§9.462の「着手」は撤回）。
+ entry.update(state='完了',autoDone=True,doneReason=DONE_GONE_NO_HIT)
 
 def derive_state(stored_state,actual):
  """§7.4。計画者が明示的に確定した完了/取消は実績突合より優先する。"""
@@ -977,6 +994,8 @@ def _plan_entries(raw_rows,actual_index):
   _apply_actual_source(entry,detail,r[22])
   # 手で入れた実際の時刻（§9.514）。**測定データの実績があればそちらが正**。
   entry['manual']=manual_times(r[23] if len(r)>23 else None) if actual is None else None
+  # 完了突合の開始・完了の時刻（§9.595）。**人が入れた時刻が無いときだけ**作業時間に使う。
+  if actual is None and entry['manual'] is None:entry['manual']=join_times(entry)
   if actual is not None:matched_keys.add(actual['key'])
   _apply_start_flag(entry,actual,r[24] if len(r)>24 else None)
   entry['stopSkips']=stop_skips(r[25] if len(r)>25 else None)
@@ -1189,7 +1208,9 @@ def _entry_of_row(r):
         # 並べ替えただけの人が「入れた人」に見えると責任の所在が変わる。
         'createdBy':str(r[19] or ''),'createdPc':str(r[20] or ''),
         'updatedBy':str(r[17] or ''),'updatedPc':str(r[21] or ''),
-        'createdAt':_iso(r[15]),'updatedAt':_iso(r[16])}
+        'createdAt':_iso(r[15]),'updatedAt':_iso(r[16]),
+        # 設備ごとの実績ファイルを選ぶ鍵(§9.595)。画面へは渡さない（`_finalize_actuals`が外す）。
+        'equipment':str(r[1] or '')}
  return entry,detail
 
 
@@ -1482,6 +1503,7 @@ def _finalize_actuals(entries,now):
   e.pop('storedState')
   e['actual']=_actual_view(e,actual,now)
   e.pop('manual',None)
+  e.pop('equipment',None)
   e['actualRecordId']=(actual or {}).get('id') or e.get('actualRecordId')
 
 

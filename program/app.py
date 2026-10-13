@@ -83,6 +83,22 @@ try:
 except Exception as _e:
  app_logger().warning('突合キーの移行に失敗しました: %s',_e)
 
+# 実績の置き場（設備ごとのファイル）とBOX実績の完了突合を1回だけ登録する（§9.595）。
+# 入れたデータソースは**この起動から**読めるようにする（更新した最初の起動で突き合わせを止めない）。
+# **失敗しても起動は続ける**（突き合わせが効かないだけで、予定は今までどおり出る）。
+try:
+ from backend.repositories import master_repo as _mr
+ with db_access.connect(db_access.DBS['MASTER']['path'],False) as _c:
+  _key=db_access.register_actual_folder(_c)
+  db_access.adopt_data_source(_c,_key)
+  _made=_mr.migrate_box_actual_join(_c,db_access.WORK_DB_KEY,_key)
+ if _made:
+  app_logger().info('実績の置き場「%s」と完了突合「%s」（結合ID %s）を登録しました。'
+                    'マスタ管理 > データ接続・クエリ結合から直せます。',
+                    db_access.ACTUAL_FOLDER_DEFAULT,_mr.BOX_ACTUAL_JOIN_NAME,_made)
+except Exception as _e:
+ app_logger().warning('実績の置き場の登録に失敗しました: %s',_e)
+
 # ========================================================================
 # キャッシュの方針(§9.97)
 # ------------------------------------------------------------------------

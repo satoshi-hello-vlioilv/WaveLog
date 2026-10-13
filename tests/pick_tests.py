@@ -543,17 +543,17 @@ RULES = [
     # --- サーバー(その他) --------------------------------------------
     ('backend/access_mode.py', g('権限', '保存の帯', 'test_nav', 'test_crudroutes', 'test_colscope',
                                  'test_mastershare')),
-    ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
+    ('backend/db_access.py', g('接続', '一覧', 'test_setpage', 'test_boxactual')),
     # データソースの「できること」の判定(§9.163)。列名の別名解決も
     # ここが持つので、品質結合(/api/table)の網も回す。
     # §9.365: 完了突合もこのエンジンに乗る（用途・完了日時列・スケジュール利用）。
     ('backend/query_join.py', g('接続', '列', 'test_dsnav', 'test_sccontent',
-                                'test_finishjoin', 'test_actualmatch')),
-    ('backend/source_capability.py', g('test_dscap', 'test_datasource', 'test_dsnav',
+                                'test_finishjoin', 'test_actualmatch', 'test_boxactual')),
+    ('backend/source_capability.py', g('test_dscap', 'test_datasource', 'test_dsnav', 'test_boxactual',
                                        'test_tablequery', 'test_uiux',
                                        # §9.285 ④: 仕掛の生の列を帳票の候補へ
                                        'test_rbcatalog')),
-    ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache',
+    ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache', 'test_boxactual',
                                'test_atomicio', 'test_cleanup', 'test_srcread')),
     # 不要ファイルの掃除(§9.249 (1))。置き場の判定を触ると対象が変わるので、
     # 写し・置き場の網も一緒に回す。
@@ -568,17 +568,19 @@ RULES = [
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource', 'test_cleanup')),
     # 権限区分・マスタ編集の判定もここが持つ（§9.272/§9.322）ので「権限」ごと。
-    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart')),
+    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart', 'test_boxactual')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
-                                   'test_actualmatch', 'test_finishjoin', 'test_strictstart')),
+                                   'test_actualmatch', 'test_finishjoin', 'test_strictstart', 'test_boxactual')),
     # 仕掛から消えたロットの突合（§9.364・§9.365）。
     ('backend/actual_match.py', g('test_actualmatch', 'test_finishjoin',
-                                  'test_datasource', 'test_dscap')),
+                                  'test_datasource', 'test_dscap', 'test_boxactual')),
+    # 完了突合で当たった実績を予定へ残す（開いたとき・裏の見回り・§9.595）。
+    ('backend/actual_keep.py', g('test_boxactual', 'test_actualmatch', 'test_finishjoin')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),
     ('backend/schedule_watch.py', g('スケジュール')),
     # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と

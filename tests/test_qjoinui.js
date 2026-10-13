@@ -435,8 +435,22 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
    opts:[...(document.querySelector('[data-qj-field="finishColumn"]')||{options:[]}).options].length,
   }));
   rec('完了突合では結合の仕方を出さない（押せるのに効かない設定を残さない）',
-      fin.kinds===0&&fin.secs.some(t=>t.includes('当たったらどうなるか')),
+      fin.kinds===0&&fin.secs.some(t=>t.includes('いつ完了にするか')),
       JSON.stringify(fin.secs));
+  /* §9.595: ③は「いつ完了にするか」の札2枚（語彙はサーバー）＋作業時間にする列（開始→終了）＋見本の箱。 */
+  const when=await page.evaluate(()=>({
+   cards:[...document.querySelectorAll('.qj-whens .qj-when b')].map(x=>x.textContent.trim()),
+   on:document.querySelector('.qj-whens .qj-when.is-on b')?.textContent.trim()||'',
+   start:!!document.querySelector('.qj-sec-when [data-qj-field="startColumn"]'),
+   finish:!!document.querySelector('.qj-sec-when [data-qj-field="finishColumn"]'),
+   sample:!!document.getElementById('qjSpanSample')}));
+  rec('完了突合の③: 札2枚（既定は仕掛から消えたら）・開始と終了の列・見本の箱',
+      when.cards.length===2&&when.on==='仕掛から消えたら'&&when.start&&when.finish&&when.sample,JSON.stringify(when));
+  await page.evaluate(()=>{const el=[...document.querySelectorAll('[name="qjWhen"]')].find(x=>x.value==='hit');
+   if(el){el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))}});
+  await page.waitForFunction(()=>(document.querySelector('.qj-whens .qj-when.is-on b')||{}).textContent==='実績に当たったら',{timeout:20000});
+  rec('札を押すと「いつ完了にするか」が切り替わり、見出しもその名前を言う',
+      await page.evaluate(()=>/実績に当たったら/.test(document.querySelector('.qj-sec-when .mm-fieldgroup').textContent)));
   rec('完了突合では④が「何を持ち帰るか」になる',
       fin.secs.some(t=>t.includes('何を持ち帰るか')),JSON.stringify(fin.secs));
   rec('完了突合では「完了時刻にする列」を相手の列から選べる',

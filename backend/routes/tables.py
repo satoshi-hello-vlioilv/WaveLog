@@ -16,7 +16,7 @@ from .. import query_join
 from .. import sort_order
 from .. import db_mirror
 from .. import xlsx_io
-from ..db_access import (DBS, qi, connect, cols, tables, cfg,
+from ..db_access import (DBS, qi, connect, cols, tables, cfg, pattern_files, cfg_for, source_pattern, no_pattern_file_text,
                          WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY)
 from ..logging_setup import app_logger
 from ..errors import os_error_hint
@@ -298,7 +298,18 @@ def api_table_columns():
  k=request.args.get('db','');t=request.args.get('table','')
  want_samples=request.args.get('samples')=='1'
  try:
-  cf=cfg(k)
+  # 設備ごとのファイル(§9.595)は**1つの設備のファイルで**列を見る（`equipment`、無ければ先頭）。
+  # どの設備のファイルを見たか・ほかに何があるかも返す（列がファイルごとに違えば気づける）。
+  files=[]
+  equip=''
+  if source_pattern(k):
+   files=sorted(v[0] for v in pattern_files(k).values())
+   if not files:
+    return jsonify(error=no_pattern_file_text(k),tables=[],files=[]),400
+   equip=request.args.get('equipment') or files[0]
+   cf=cfg_for(k,equip)
+  else:
+   cf=cfg(k)
   with connect(cf['path'],cf['role']=='readonly') as c:
    names=tables(c)
    if not t:
@@ -325,7 +336,7 @@ def api_table_columns():
       if len(vals)>=3:break
      samples[c2]=vals
    return jsonify(ok=True,db=k,table=t,tables=names,columns=cs,
-                  normalized=normalized,samples=samples)
+                  normalized=normalized,samples=samples,files=files,equipment=equip)
  except Exception as e:
   app_logger().warning('/api/table-columns db=%s table=%s で失敗しました: %s',k,t,e)
   return jsonify(error=str(e),hint=_error_hint(e)),500
