@@ -78,6 +78,9 @@
   const bad=!st||!st.reachable;
   if(bad){panel.dataset.tabBadge='!';panel.dataset.tabTone='bad';panel.dataset.tabBadgeTitle='要対応 更新の置き場に届きません'}
   else{delete panel.dataset.tabBadge;delete panel.dataset.tabTone;delete panel.dataset.tabBadgeTitle}
+  /* 左の一覧の状態の札（§9.598 1h）。配る版が未定なのは「決めること」（橙）、次の起動でそろうのは「更新待ち」。正常は中立。 */
+  panel.dataset.tabState=!st?'読めません':!st.reachable?'届きません':!rel?'未定':(st.pending?'更新待ち':'OK');
+  panel.dataset.tabStateTone=bad?'bad':(!rel||st.pending)?'warn':'';
   if(form&&typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
  }
  /* ① → ② → ③ の流れ。いまの値を各段に書く（図と字を結ぶ）。 */

@@ -47,6 +47,10 @@ run('test_setpage: §9.68 パス設定を設定ページ形式へ / データ引
     names:tabs.map(t=>(t.querySelector('.mm-fieldgroup')||{}).textContent||''),
     icons:tabs.filter(t=>t.querySelector('.mm-tab-icon')).length,
     sums:tabs.map(t=>(t.querySelector('.mm-tab-sum')||{}).textContent.trim()),
+    /* §9.598 1h: 札は左の一覧。副題（何の段か）・状態の札（OK・要対応 N・停止中…）・いまの一言は札の title。 */
+    rail:!!document.querySelector('.pc-page>.mm-tabbar.is-page.is-rail'),
+    states:tabs.map(t=>{const b=t.querySelector('.mm-tab-badge');return b&&!b.hidden?b.textContent.trim():''}),
+    titles:tabs.map(t=>t.title||''),
     shownPanels:[...document.querySelectorAll('.mm-tabpanel.is-page')].filter(x=>!x.hidden).length,
     /* 段の名前を中でもう一度見出しで言わない（§9.583・§CLAUDE 8） */
     rep:[...document.querySelectorAll('#masterMaintForm h3,#masterMaintForm h4,#masterMaintForm h5')]
@@ -56,8 +60,10 @@ run('test_setpage: §9.68 パス設定を設定ページ形式へ / データ引
  rec('段は5つ（この端末・置き場・共有と同期・RNE抽出・アプリの更新）',
      JSON.stringify(p.names)===JSON.stringify(NAMES),p.names.join('／'));
  /* **札が状態を言う**（§9.583 ①、利用者の報告「タブがわかりにくい」）——絵・名前・いまの一言。 */
- rec('札は絵と「いまの一言」を持つ（開かずに状態が読める）',
-     p.icons===5&&p.sums.every(s=>s.length>0),JSON.stringify(p.sums));
+ rec('札は左の一覧で、絵・名前・副題（何の段か）を持つ（§9.598 1h）',
+     p.rail&&p.icons===5&&p.sums.every(s=>s.length>0),JSON.stringify(p.sums));
+ rec('札は状態を字で言い（OK・要対応 N・停止中…）、いまの一言は札の title が持つ（開かずに状態が読める）',
+     p.states.every(s=>s.length>0)&&p.titles.every(s=>s.length>0),JSON.stringify({states:p.states,titles:p.titles}));
  rec('開いている段は1つだけ',p.shownPanels===1,`${p.shownPanels}段`);
  rec('上の図・章のレール・段の名前の見出しの繰り返しは無い（主役の場所を空ける）',
      !p.oldMap&&p.rep.length===0,JSON.stringify({旧:p.oldMap,繰り返し:p.rep}));
@@ -154,11 +160,35 @@ run('test_setpage: §9.68 パス設定を設定ページ形式へ / データ引
   const b=document.querySelector('#pcWho b');
   const cs=d[0]?getComputedStyle(d[0]):null;
   return {欄:d.length,PC名:b?b.textContent:'',出どころ:(document.querySelector('#pcWho small')||{}).textContent||'',
-   枠:cs?parseFloat(cs.borderTopWidth):-1,名乗り直す:!!document.querySelector('[data-pc-field="pc_name"]')};
+   枠:cs?parseFloat(cs.borderTopWidth):-1,名乗り直す:!!document.querySelector('[data-pc-field="pc_name"]'),
+   /* ログインIDとモードはヘッダーの札が言う（§9.598 1h・同じ情報を2か所に出さない）。 */
+   頭のID:((document.getElementById('mmHead')||{}).textContent||'').trim().slice(0,30),
+   頭のモード:((document.getElementById('accessModeLabel')||{}).textContent||'').trim()};
  });
  rec('この端末のPC名・出どころ・名乗り直す欄がある（§9.208 ⑧）',
-   who.欄===3&&!!who.PC名&&who.PC名!=='（取得できていません）'&&!!who.出どころ&&who.名乗り直す,JSON.stringify(who));
+   who.欄===1&&!!who.PC名&&who.PC名!=='（取得できていません）'&&!!who.出どころ&&who.名乗り直す,JSON.stringify(who));
+ rec('ログインIDとモードは名乗りに重ねず、ヘッダーの札が言う',!!who.頭のID&&!!who.頭のモード,JSON.stringify(who));
  rec('名乗り（読むだけ）に入力欄風の枠を付けない',who.枠===0,String(who.枠));
+ /* §9.598 1h: 足元は右の詳細と同じ並び——状態と記録者＋キャンセル＋保存（変更が無いうちは押せない）。キャンセルは描いたときの値へ。 */
+ const ft=await page.evaluate(()=>{
+  const f=document.querySelector('#masterMaintForm'),el=f.querySelector('[data-pc-field="pc_name"]');
+  const st=()=>({txt:(f.querySelector('#pcDirty')||{}).textContent||'',cancel:f.querySelector('#pcCancel').disabled,
+   save:f.querySelector('#pcSave button[type=submit]').disabled});
+  const s0=st(),was=el.value;
+  el.value=was+'ZZ';el.dispatchEvent(new Event('input',{bubbles:true}));
+  const s1=st();
+  f.querySelector('#pcCancel').click();
+  return {s0,s1,s2:{...st(),back:el.value===was}};
+ });
+ rec('足元はキャンセル＋保存（変更が無いうちは押せない）・キャンセルで描いたときの値へ戻る',
+   ft.s0.cancel&&ft.s0.save&&/^変更なし・記録者/.test(ft.s0.txt)&&!ft.s1.cancel&&!ft.s1.save&&/^変更 1件/.test(ft.s1.txt)
+   &&ft.s2.back&&ft.s2.cancel&&/^変更なし/.test(ft.s2.txt),JSON.stringify(ft));
+ /* 起動アイコンを作れない端末（Windows 以外）は誤りではなく端末の事実——灰の字で言い、行き先は押せない形（§9.598 1h）。 */
+ await W.until(page,()=>!/確認しています/.test((document.querySelector('#pcShortcut [data-sc-state]')||{}).textContent||''),null,{ms:10000,what:'起動アイコンの状態が届く'});
+ const lnk=await page.evaluate(()=>{const s=document.querySelector('#pcShortcut [data-sc-state]'),b=document.getElementById('pcScOpen');
+  return {cls:s?s.className:'',txt:s?s.textContent:'',off:b?b.disabled:null}});
+ rec('起動アイコンを作れない端末は灰の字で言い、行き先を押せない形にする（作れる端末では押せる）',
+   /is-na/.test(lnk.cls)?lnk.off===true&&!/is-bad/.test(lnk.cls):lnk.off===false,JSON.stringify(lnk));
 
  // 他タブへ移ると設定ページ用の指定が残らない
  await tab('アクセス権限');

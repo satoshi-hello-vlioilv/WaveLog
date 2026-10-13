@@ -3426,6 +3426,20 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   line-height:18px;text-align:center;background:var(--warn-bg);color:var(--warn-fg)}
 .mm-tab-badge.is-bad{background:var(--danger-bg);color:var(--danger)}
 .mm-tab-badge[hidden]{display:none}
+/* 段の札を**左の一覧**に（§9.598 1h・`pageTabsHtml(…,{rail:true})`）: 1件＝絵｜名前と副題（何の段か）｜状態の札。
+   一覧は右の線1本で段の中身と分ける（箱にしない）。選んだ札は「淡い地＋左の帯」（一覧から選んだ行と同じ・90-state.css）。
+   状態の札は**正常＝中立**・要対応＝橙・届かない＝赤（状態チップの決まり・§9.338）。 */
+.pc-page.is-rail{flex-direction:row}
+.pc-page>.mm-tabbar.is-page.is-rail{flex:0 0 var(--mm-rail-w,232px);width:auto;flex-direction:column;align-items:stretch;
+  gap:var(--space-1);padding:var(--space-2);border-bottom:0;border-right:1px solid var(--line);overflow-y:auto}
+.mm-tabbar.is-page.is-rail .mm-tab{grid-template-columns:auto minmax(0,1fr) auto;row-gap:2px;margin:0;padding:var(--space-2) var(--space-3);
+  border:0;border-radius:var(--radius-sm)}
+.mm-tabbar.is-page.is-rail .mm-tab.is-on{border:0}
+.mm-tabbar.is-page.is-rail .mm-tab-sum{grid-column:2;color:var(--muted)}
+.mm-tabbar.is-page.is-rail .mm-tab-badge{grid-column:3;grid-row:1/3;align-self:center;margin-left:var(--space-2);padding:0 var(--space-2);
+  font-weight:var(--fw-ui);background:var(--surface-3);color:var(--ink-2)}
+.mm-tabbar.is-page.is-rail .mm-tab-badge.is-warn{background:var(--warn-bg);color:var(--warn-fg)}
+.mm-tabbar.is-page.is-rail .mm-tab-badge.is-bad{background:var(--danger-bg);color:var(--danger)}
 .mm-tabpanel.is-page{display:flex;flex-direction:column;flex-wrap:nowrap;
   gap:var(--space-3);align-items:stretch;min-width:0}
 /* **畳んだ段は必ず消す。** `.mm-tabpanel[hidden]{display:none}`と詳細度が同点

@@ -1,4 +1,4 @@
-# マスタ管理の画面（52件）
+# マスタ管理の画面（54件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 共通設定の段は左の一覧（`pageTabsHtml(…,{rail:true})`）。札は絵・名前・副題・状態の札（`data-tab-state`・正常は中立） | `test_setpage.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 共通設定の名乗りはPC名だけ（IDとモードはヘッダー）。足元は状態と記録者＋キャンセル＋保存。作れない端末の事実は灰の字 | `test_setpage.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 専用の画面で定義の欄をその場で直すのは`WL.mm.inlineFields()`（組み立て・保存は窓と同じ）。足元の字は`paintFootState()` | `test_stopsubui.js`・`test_shift.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 設備停止の基本はその場で直し、新しい停止内容も右の基本で作る（分類を連れて行く）。消すは ⋯、分の棒は同じ目盛り | `test_stopsubui.js`・`test_master.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 前のタブの読み込みが後から届いたら、汎用の表は控えの行から**その場で**描き直す（`redrawAfterStale()`） | `test_mmswitch.js` | [§9.598](../../docs/decisions/9.598.md) |
@@ -29,7 +31,7 @@
 | 挿入の条件は決まりの札（文で読む）＋押した札の中で「組み立てる｜式を書く」＋右に「いまの予定の境目で試す」（`WL.stopRuleBoard`）。使えない式は保存の前に止める | `test_stoprulemaster.js` | [§9.590](../../docs/decisions/9.590.md) |
 | 操業データ項目の設定窓は決める順の3列。行の置き場所は`OP_SECS`の1箇所（`main`／`more`／`danger`）、行は`data-op-row`で名乗る | `test_opui.js` | [§9.587](../../docs/decisions/9.587.md) |
 | 細部は「細かい設定」に畳む（見出しはいまの値・開け閉めは`opState.more`）。長い説明は ⓘ、選ばせ方の盤は開かずに並べる | `test_opui.js` | [§9.587](../../docs/decisions/9.587.md) |
-| 共通設定は5段。札は絵・名前・要対応の数・いまの一言で、段が`data-tab-sum`／`data-tab-badge`で名乗る | `test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |
+| 【§9.598で左の一覧に改めた】共通設定は5段。札は絵・名前・要対応の数・いまの一言で、段が`data-tab-sum`／`data-tab-badge`で名乗る | `test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |
 | 共通設定の段の中は「1行＝名前｜欄｜状態」（`pcKit().row`）。説明は ⓘ、置き場の行の補足は ⋯ | `test_setpage.js`・`test_storageui.js` | [§9.583](../../docs/decisions/9.583.md) |
 | 置き場は群ごとに畳める表（みんなで使う→この端末の中→読むだけ）。見出しが件数と状態を言う | `test_storageui.js`・`test_setpage.js` | [§9.583](../../docs/decisions/9.583.md) |
 | 共通設定の保存の帯は保存する欄（`[data-pc-field]`）がある段だけ。段の切り替えは`mm-tab`で器へ知らせる | `test_setpage.js` | [§9.557](../../docs/decisions/9.557.md) |

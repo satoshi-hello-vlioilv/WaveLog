@@ -179,7 +179,14 @@
 .pc-who dd{margin:0;display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
 .pc-who b{font-size:var(--fs-title);color:var(--ink)}
 .pc-who small{font-size:var(--fs-sm);color:var(--ink-2)}
-#pcLd{margin-top:var(--space-3)}
+/* 読み込みの見せ方は畳みのまま、見出しは**他の行と同じ格子**（名前｜いまの値｜開く印・§9.598 1h）。箱を外し、開く印は右端。 */
+.pc-acc.pc-ld.is-row{border:0;border-radius:0;border-bottom:1px solid var(--line-soft);background:none}
+.pc-acc.pc-ld.is-row>summary{display:grid;grid-template-columns:var(--pc-label-w,15em) minmax(0,1fr) var(--pc-state-w,8.5em);
+  column-gap:var(--space-4);align-items:center;min-height:calc(var(--ctl-h) + var(--space-3));padding:var(--space-1) 0;border-radius:0}
+.pc-acc.pc-ld.is-row>summary::before{content:none}
+.pc-acc.pc-ld.is-row>summary::after{content:'▸';justify-self:end;color:var(--teal);font-size:var(--fs-sm)}
+.pc-acc.pc-ld.is-row[open]>summary::after{content:'▾'}
+.pc-acc.pc-ld.is-row[open]>summary{border-bottom:0}
 
 /* ---- 共有と同期: 2群の小見出し＋1節1行の畳み ---- */
 .pc-sub{display:flex;align-items:center;gap:var(--space-2);margin:var(--space-3) 0 var(--space-2);
@@ -252,10 +259,9 @@
 .rne-out dd.is-bad,.rne-note.is-bad{color:var(--danger)}
 .rne-note{margin:var(--space-2) 0 0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
 
-/* ---- 保存の帯: 保存｜変えた数｜再起動待ち｜誰の名前で ---- */
-.pc-dirty{font-size:var(--fs-sm);color:var(--ink-2)}
+/* ---- 保存の帯（§9.598 1h・右の詳細と同じ並び）: 変えた数と記録者｜再起動待ち｜キャンセル｜保存 ---- */
+.pc-dirty{margin-right:auto;font-size:var(--fs-sm);color:var(--muted)}
 .pc-dirty.is-dirty{color:var(--warn-fg);font-weight:var(--fw-strong)}
-.pc-save-who{margin-left:auto;font-size:var(--fs-sm);color:var(--ink-2)}
 
 /* ---- 読み込みの見せ方の盤（§9.436、利用者の指示「広いエリアでわかりやすく
    選べるように」）。29種を**族ごとに**並べ、見本を大きく出す。 ---- */

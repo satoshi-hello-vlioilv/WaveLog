@@ -2014,12 +2014,13 @@
      ④ **共有と同期は1節1行の畳み**（同時に開くのは1つ）。見出しにいまの値。
      ⑤ 保存の帯は「保存｜変えた数｜再起動待ち」——押す前に何が変わるかを言う。
     保存の仕組み（`[data-pc-field]`／`[data-lc-field]`を集めて送る）は変えていない。 */
+ /* `sub`＝左の一覧の副題（何の段か・決まった字・8字まで）。状態は札（`data-tab-state`）が言う（§9.598 1h）。 */
  const PC_TABS=[
-  {key:'terminal',name:'この端末',icon:'fa-desktop'},
-  {key:'place',name:'置き場',icon:'fa-folder-tree'},
-  {key:'sync',name:'共有と同期',icon:'fa-arrows-rotate'},
-  {key:'rne',name:'RNE抽出',icon:'fa-file-export'},
-  {key:'update',name:'アプリの更新',icon:'fa-cloud-arrow-down'},
+  {key:'terminal',name:'この端末',icon:'fa-desktop',sub:'名前と見え方'},
+  {key:'place',name:'置き場',icon:'fa-folder-tree',sub:'共有と手元'},
+  {key:'sync',name:'共有と同期',icon:'fa-arrows-rotate',sub:'見張りと書き込み'},
+  {key:'rne',name:'RNE抽出',icon:'fa-file-export',sub:'定期の抽出'},
+  {key:'update',name:'アプリの更新',icon:'fa-cloud-arrow-down',sub:'配る版'},
  ];
  /* 選ばせる設定の顔ぶれは**ここ1箇所**（欄の選択肢・畳んだ見出しのいまの値・札の一言が同じ答えを読む）。
     `def`はサーバーの既定、`short`は札の一言に使う短い言い方。 */
@@ -2096,11 +2097,12 @@
  /* 読み込みの見せ方の盤。器は**共通設定の他の節と同じ畳み**（`.pc-acc`）——29種の盤を
     そのまま置くと段が1687pxになる。畳んだままでも見出しが**いまの見せ方そのもの**を動かして見せる。 */
  function pcLdHtml(){
-  return `<details class="pc-acc pc-ld" id="pcLd">
-    <summary><span class="ld-sample">${WL.loader.html(16)}</span><b>読み込みの見せ方</b>
+  /* 畳みのままだが**見出しは他の行と同じ格子**（名前｜いまの値｜開く印・§9.598 1h）——箱の畳みが1つだけ別の形で浮いていた。 */
+  return `<details class="pc-acc pc-ld is-row" id="pcLd">
+    <summary><b class="pc-row-label">読み込みの見せ方</b><span class="pc-row-ctl"><span class="ld-sample">${WL.loader.html(16)}</span>
      <span class="pc-acc-now pc-ld-now" id="pcLdNow"></span>${tipHtml(
       `データを待っているあいだに出る動くしるしです。loaders.css（MIT）から${WL.loader.STYLES.length-1}種を写して**同梱**しています（回線が無い端末でも動きます）。`
-      +'仲間ごとに並べてあります——まず仲間を1つ選び、その中の4〜5枚を見比べてください。')}</summary>
+      +'仲間ごとに並べてあります——まず仲間を1つ選び、その中の4〜5枚を見比べてください。')}</span></summary>
     <div class="pc-acc-body">${WL.loader.GROUPS.map(pcLdGroupHtml).join('')}</div>
    </details>`;
  }
@@ -2137,7 +2139,8 @@
   if(shortcutState.error)return {cls:'is-bad',text:shortcutState.error};
   const info=shortcutState.info;
   if(!shortcutState.loaded||!info)return {cls:'',text:'確認しています…'};
-  if(!info.supported)return {cls:'is-bad',text:info.why||'この端末では作れません'};
+  /* 作れない端末は**誤りではなく端末の事実**（灰の字・§9.598 1h）。赤は直すべきことだけ。 */
+  if(!info.supported)return {cls:'is-na',text:info.why||'この端末では作れません',off:true};
   return info.exists?{cls:'is-done',text:`作成済み（${info.updatedAt||'日時不明'}）`}
                     :{cls:'is-todo',text:'まだ作っていません'};
  }
@@ -2149,6 +2152,9 @@
    el.className='lnk-state'+(f.cls?' '+f.cls:'');
    el.textContent=f.text;
   });
+  /* 作れない端末では行き先（「表示」で作る）も押せない形（押しても作れない・§CLAUDE 4）。 */
+  const go=document.getElementById('pcScOpen');
+  if(go){go.disabled=!!f.off;go.title=f.off?f.text:''}
   renderShortcutPanel();
  }
  /* 「表示」の節の中身。**値はサーバーの答えから入れる**（§9.163）——共通設定を
@@ -2481,18 +2487,17 @@
   const pcNow=act.pc_name||(term&&term.pcName())||'';
   const pcFrom=act.pc_name_source||(term&&term.pcNameSource())||'';
   /* 読み取り専用の値に入力欄風の枠を付けない（§CLAUDE 10）——名前と値を横に並べた1行。 */
+  /* 名乗りは **PC名だけ**（§9.598 1h）。ログインIDとモードはヘッダーの札（👤・モード）が言う——同じ情報を2か所に出さない。 */
   return `<dl class="pc-who" id="pcWho">
     <div><dt>PC名</dt><dd><b>${esc(pcNow||'（取得できていません）')}</b><small>${esc(pcFrom||'出どころ不明')}</small></dd></div>
-    <div><dt>ログインID</dt><dd><b>${esc((term&&term.loginId())||'（取得できていません）')}</b><small>OS</small></dd></div>
-    <div><dt>モード</dt><dd><b>${esc(pcModeWord())}</b><small>アクセス権限マスタ</small></dd></div>
    </dl>
    <div class="pc-rows">
     ${K.row('pc_name','名前を決め打ちする',K.text('pc_name','空欄なら OS から自動で取ります'),
      {tip:'アクセス権限マスタとの照合・記録の「更新端末名」・編集中の持ち主表示は、**すべてこの名前**を見ます。自動で取れない端末だけ、ここで名乗ってください。'})}
     ${pcLookRowHtml(K)}
     ${pcShortcutHtml(K)}
+    ${pcLdHtml()}
    </div>
-   ${pcLdHtml()}
    <div id="pcNotes"></div>`;
  }
  /* いまのモードの言葉（ヘッダーのバッジと同じ字）。 */
@@ -2566,12 +2571,14 @@
  }
  /* ページの骨組み（札 → 段 → 保存の帯）。**札は動かさず段の中だけ送る**（`scroll:true`）。 */
  function pcPageHtml(bodies){
-  return `<div class="pc-page">${pageTabsHtml(PC_TABS.map(t=>({...t,body:bodies[t.key]})),{scroll:true})}</div>
+  /* 段は左の一覧（§9.598 1h・`rail`）。足元は右の詳細・勤務形態・設備停止と同じ並び——左に状態と記録者、右にキャンセルと保存
+     （変更が無いうちは押せない・字は`WL.mm.paintFootState()`）。 */
+  return `<div class="pc-page is-rail">${pageTabsHtml(PC_TABS.map(t=>({...t,body:bodies[t.key]})),{scroll:true,rail:true})}</div>
   <div class="pc-save" id="pcSave">
-   <button type="submit" class="mm-btn-primary">保存</button>
-   <span class="pc-dirty" id="pcDirty" aria-live="polite">変更なし</span>
+   <span class="mm-form-hint pc-dirty" id="pcDirty" aria-live="polite">変更なし</span>
    <span class="pc-chip is-warn pc-restart" id="pcRestartCount" hidden></span>
-   <span class="pc-save-who" id="pcSaveWho"></span>
+   <button type="button" class="mm-btn-ghost" id="pcCancel">キャンセル</button>
+   <button type="submit" class="mm-btn-primary">保存</button>
   </div>`;
  }
  /* 保存の帯は**保存する欄がある段だけ**に出す（§9.556 B9）。欄の無い段で「保存」を
@@ -2593,17 +2600,19 @@
  function pcPaintDirty(form){
   const el=form.querySelector('#pcDirty');if(!el)return;
   const n=pcFieldsOf(form).filter(f=>f.dataset.pcInit!=null&&f.value!==f.dataset.pcInit).length;
-  el.textContent=n?`変更 ${n}件・まだ保存していません`:'変更なし';
+  WL.mm.paintFootState(el,[form.querySelector('#pcCancel'),form.querySelector('#pcSave button[type=submit]')],false,!!n,n);
   el.classList.toggle('is-dirty',!!n);
+ }
+ /* キャンセル＝描いたときの値へ戻す（§9.598・右の詳細と同じ。段は閉じない）。戻した欄は`change`で知らせる（いまの値の札が追う）。 */
+ function pcRevert(form){
+  pcFieldsOf(form).forEach(f=>{
+   if(f.dataset.pcInit==null||f.value===f.dataset.pcInit)return;
+   f.value=f.dataset.pcInit;f.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  pcPaintDirty(form);
  }
  function onPcEdit(ev){
   if(ev.target&&ev.target.matches&&ev.target.matches('[data-pc-field],[data-lc-field]'))pcPaintDirty(ev.currentTarget);
- }
- /* 誰の名前で記録するか（保存すると更新者として残る）。IDは後から届くことがある。 */
- function paintPcSaveWho(form){
-  const el=form.querySelector('#pcSaveWho');if(!el)return;
-  const id=currentUserId();
-  el.textContent=id?`更新者 ${id} として記録します`:'更新者IDが分かりません（右上の 👤 で確かめられます）';
  }
  /* 共通設定の配線（保存・段・行き先・⋯・ⓘ・「表示」の行き先・起動アイコン）。 */
  function wirePathConfigForm(form){
@@ -2638,7 +2647,8 @@
   document.addEventListener('wl:look-change',renderLook);
   /* デスクトップの起動アイコン（§9.445）。**ここは行き先だけ**——いまの状態を取りに行って塗る。 */
   paintShortcut();loadShortcut();
-  pcMarkClean(form);pcPaintDirty(form);paintPcSaveWho(form);
+  pcMarkClean(form);pcPaintDirty(form);
+  const cancel=form.querySelector('#pcCancel');if(cancel)cancel.onclick=()=>pcRevert(form);
  }
  /* 段を名前（鍵）で開く。図・行・他の画面から連れて来るとき、**飛ぶ＝段を切り替えること**。 */
  function pcShowTab(form,key){
@@ -2714,24 +2724,33 @@
  /* ---- 札の一言と要対応の数（§9.583 ①）。**段が自分で名乗る**（`data-tab-sum`／`data-tab-badge`）。
     数は「直す・確かめる必要があるもの」だけ（未設定は直す必要が無いこともあるので数えず、字で言う）。 */
  let rneLast=null;
- function pcTabSet(form,key,sum,badge,tone,title){
+ /* `state`＝左の一覧の状態の札（§9.598 1h）。要対応があればその数（`要対応 N`・橙／赤）、無ければ段の一言（OK・停止中・未設定 N…）。
+    **正常は中立の色**（状態チップの決まり・§9.338——青緑は「選んでいる」の色なので使わない）。 */
+ function pcTabSet(form,key,sum,badge,tone,title,state){
   const p=form.querySelector(`.mm-tabpanel[data-tab-key="${key}"]`);if(!p)return;
   p.dataset.tabSum=sum||'';
   if(badge){p.dataset.tabBadge=String(badge);p.dataset.tabTone=tone||'warn';p.dataset.tabBadgeTitle=title||''}
   else{delete p.dataset.tabBadge;delete p.dataset.tabTone;delete p.dataset.tabBadgeTitle}
+  const n=Number(badge);
+  p.dataset.tabState=badge?(Number.isFinite(n)&&n>0?`要対応 ${n}`:(state||'要対応')):(state||'OK');
+  p.dataset.tabStateTone=badge?(tone||'warn'):'';
  }
  function paintPcTabs(){
   const form=$('#masterMaintForm');if(!form||!form.querySelector('.pc-page'))return;
   const term=(window.WL&&WL.terminal)||null,act=pathConfigState.active||{};
-  pcTabSet(form,'terminal',[act.pc_name||(term&&term.pcName())||'',(term&&term.loginId())||'',pcModeWord()].filter(Boolean).join('・'));
+  const pcNow=act.pc_name||(term&&term.pcName())||'';
+  pcTabSet(form,'terminal',[pcNow,(term&&term.loginId())||'',pcModeWord()].filter(Boolean).join('・'),
+   pcNow?0:'!','warn','要対応 PC名を取得できていません',pcNow?'OK':'名前なし');
   const st=pathConfigState.storage,items=(st&&st.items)||[];
   if(items.length){
    const live=items.filter(x=>!x.retired);
    const miss=live.filter(x=>x.path&&x.exists===false).length,pend=items.filter(x=>x.pending).length;
    const unset=live.filter(x=>!x.path).length;
+   /* 未設定は直す必要が無いこともある（§9.583）ので要対応に数えず、札の字で言う。 */
    pcTabSet(form,'place',`${live.length}か所`+(unset?`・未設定${unset}`:'')+(miss?`・まだ無い${miss}`:'')+(pend?`・再起動待ち${pend}`:''),
-    miss+pend,'warn',['要対応',miss?`まだ無い置き場 ${miss}`:'',pend?`再起動待ち ${pend}`:''].filter(Boolean).join(' '));
-  }else pcTabSet(form,'place',pathConfigState.storageError?'置き場を読めません':'',pathConfigState.storageError?'!':'','bad','置き場の一覧を読めませんでした');
+    miss+pend,'warn',['要対応',miss?`まだ無い置き場 ${miss}`:'',pend?`再起動待ち ${pend}`:''].filter(Boolean).join(' '),unset?`未設定 ${unset}`:'OK');
+  }else pcTabSet(form,'place',pathConfigState.storageError?'置き場を読めません':'',pathConfigState.storageError?'!':'','bad','置き場の一覧を読めませんでした',
+   pathConfigState.storageError?'読めません':'確かめ中');
   const syncPend=form.querySelectorAll('.mm-tabpanel[data-tab-key="sync"] .pc-pending').length;
   pcTabSet(form,'sync',`${pcChoiceShort('schedule_watch_enabled')}・${pcChoiceShort('schedule_owner_enabled')}`,syncPend,'warn','要対応 再起動待ち '+syncPend);
   if(rneLast){
@@ -2739,7 +2758,7 @@
    /* 資材が無いのを**要対応に数えるのは使うとき**（定期実行が回る・取得元が local）だけ。使わない端末では字で言う。 */
    const uses=!!s.enabled||s.source==='local';
    pcTabSet(form,'rne',(s.running?'抽出中':(s.enabled?`定期 ${s.intervalSec}秒ごと`:'定期 停止中'))+(miss?'・資材なし':''),
-    uses?miss:0,'bad','要対応 足りない資材 '+miss);
+    uses?miss:0,'bad','要対応 足りない資材 '+miss,s.running?'抽出中':(s.enabled?'OK':'停止中'));
   }
   if(typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
  }

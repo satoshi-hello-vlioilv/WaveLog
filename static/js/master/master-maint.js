@@ -876,6 +876,8 @@
  /* 札は**絵・名前・要対応の数・いまの一言**（§9.583、利用者の報告「タブがわかりにくい」）。
     絵（`icon`＝Font Awesome の名前）は任意。数は段が`data-tab-badge`で名乗る（`paint`が描く）。
     `opt.scroll`を渡すと**札は動かさず中身だけを送る**（段を切り替える場所を探させない）。 */
+ /* `opt.rail`（§9.598 1h）＝札を**左の一覧**に縦に並べる: 絵・名前・副題（`sub`＝何の段か・決まった字）・状態の札
+    （段が`data-tab-state`で名乗る＝OK・要対応 N・停止中…）。いまの一言は札の`title`へ（副題と2行で言わない）。 */
  function pageTabsHtml(items,opt){
   const o=opt||{};
   const tabs=items.map((x,i)=>
@@ -885,12 +887,12 @@
    +(x.icon?`<i class="fa-solid ${esc(x.icon)} mm-tab-icon" aria-hidden="true"></i>`:'')
    +`<span class="mm-fieldgroup">${esc(x.name)}</span>`
    +`<em class="mm-tab-badge" data-mmtab-badge="${i}" hidden></em>`
-   +`<small class="mm-tab-sum" data-mmtab-sum="${i}"></small></button>`).join('');
+   +`<small class="mm-tab-sum" data-mmtab-sum="${i}">${o.rail?esc(x.sub||''):''}</small></button>`).join('');
   const panels=items.map((x,i)=>
    `<section class="mm-tabpanel is-page" role="tabpanel" id="mmPanel${i}"`
    +`${x.key?` data-tab-key="${esc(x.key)}"`:''}`
    +` aria-labelledby="mmTab${i}" data-mmtab="${i}"${i?' hidden':''}>${x.body}</section>`).join('');
-  return `<div class="mm-tabbar is-page" role="tablist">${tabs}</div>`
+  return `<div class="mm-tabbar is-page${o.rail?' is-rail':''}" role="tablist"${o.rail?' aria-orientation="vertical"':''}>${tabs}</div>`
    +`<div class="mm-tabbody is-page${o.scroll?' is-scroll':''}">${panels}</div>`;
  }
  /* 畳み。`open`を渡したときだけ開いた状態で出す（既定は畳む）。
@@ -929,15 +931,20 @@
    /* 段が替わったことを器へ知らせる（段ごとに出し分ける物——保存の帯など——は器の持ち主が受ける） */
    form.dispatchEvent(new CustomEvent('mm-tab',{detail:{panel:panels[i]}}));
   };
+  const rail=bar.classList.contains('is-rail');
   const paint=()=>panels.forEach((p,i)=>{
    const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);
-   if(el)el.textContent=mmTabSummaryText(p);
-   /* 要対応の数（§9.583）。**数だけで言わない**——札の`title`に何の数かを書く（色だけで伝えない・§CLAUDE 3）。 */
+   /* 左の一覧（`rail`）の2行目は決まった副題（何の段か）——いまの一言は札の`title`が持つ。 */
+   if(rail){if(tabs[i])tabs[i].title=mmTabSummaryText(p)}
+   else if(el)el.textContent=mmTabSummaryText(p);
+   /* 要対応の数（§9.583）。**数だけで言わない**——札の`title`に何の数かを書く（色だけで伝えない・§CLAUDE 3）。
+      左の一覧では**状態の札**（`data-tab-state`＝OK・要対応 N・停止中…・字で言う）。 */
    const b=bar.querySelector(`[data-mmtab-badge="${i}"]`);
    if(b){
-    const n=p.dataset.tabBadge||'';
+    const n=rail?(p.dataset.tabState||''):(p.dataset.tabBadge||'');
+    const tone=rail?p.dataset.tabStateTone:p.dataset.tabTone;
     b.hidden=!n;b.textContent=n;
-    b.className='mm-tab-badge'+(p.dataset.tabTone?' is-'+p.dataset.tabTone:'');
+    b.className='mm-tab-badge'+(tone?' is-'+tone:'');
     b.title=p.dataset.tabBadgeTitle||'';
    }
   });
@@ -952,9 +959,11 @@
   tabs.forEach((t,i)=>{
    t.onclick=()=>show(i);
    t.onkeydown=e=>{
-    if(['ArrowRight','ArrowLeft'].indexOf(e.key)<0)return;
+    /* 左の一覧（縦）は ↑↓ も効く（横の札は ←→）。 */
+    const fwd=['ArrowRight'].concat(rail?['ArrowDown']:[]),back=['ArrowLeft'].concat(rail?['ArrowUp']:[]);
+    if(fwd.indexOf(e.key)<0&&back.indexOf(e.key)<0)return;
     e.preventDefault();
-    const nx=(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+    const nx=(i+(fwd.indexOf(e.key)>=0?1:-1)+tabs.length)%tabs.length;
     show(nx);tabs[nx].focus();
    };
   });
@@ -1884,8 +1893,9 @@
   $('#maintEditorModal').classList.toggle('is-dirty',dirty);
  }
  /* 足元の状態の字と、キャンセル・保存を押せるか（§9.598）。右の詳細・勤務形態・設備停止の基本が**同じ答え**を読む。 */
- function paintFootState(stateEl,btns,isNew,dirty){
-  const st=isNew?(dirty?'入力あり':'まだ入力がありません'):(dirty?'変更あり':'変更なし');
+ function paintFootState(stateEl,btns,isNew,dirty,count){
+  /* `count`＝変えた欄の数（分かる画面だけ・共通設定）。押す前に何が変わるかを言う（§9.583 ⑤）。 */
+  const st=isNew?(dirty?'入力あり':'まだ入力がありません'):(dirty?(count?`変更 ${count}件`:'変更あり'):'変更なし');
   if(stateEl)stateEl.textContent=`${st}・記録者 ${currentUserId()||'—'}`;
   const why=dirty?'':(isNew?'入力すると押せます':'変更があると押せます');
   (btns||[]).forEach(b=>{if(b){b.disabled=!dirty;b.title=why}});
