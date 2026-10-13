@@ -65,7 +65,7 @@
    入れ子の線（`--line-mid`）も同じ淡さへ。編集窓（`.mm-editor-modal`）は器の外に置かれるので同じ宣言を持つ。 */
 .mm-panel,.mm-editor-modal{--line:var(--line-soft);--line-mid:var(--line-soft)}
 .mm-panel{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface);border-top:1px solid var(--line);overflow:hidden}
-.mm-panel .mm-dialog{width:100%;max-width:none;height:100%;border-radius:0;box-shadow:none}
+.mm-panel .mm-dialog{width:100%;max-width:none;height:100%;border-radius:0;box-shadow:none;background:var(--surface)}
 .mm-dialog{position:relative;width:96vw;max-width:1500px;height:94vh;display:flex;flex-direction:column;background:var(--surface-2);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--elev-modal)}
 /* 見出しの濃色バンドは廃止(画面名はヘッダーの#fileNameが持つ)。残るのは
    更新者IDの入力で、これはヘッダーの操作列(#headerViewBar)へ移る。パネル内に
@@ -135,9 +135,22 @@
 .mm-nav-label{min-width:0;font-size:var(--fs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mm-main{min-width:0;display:flex;flex-direction:column;min-height:0}
 /* 操作が抜けて見出しだけになったので、行の高さは文字ぶんで足りる。 */
-.mm-toolbar{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-card);background:#fff;border-bottom:1px solid var(--line)}
-.mm-toolbar-left{display:flex;align-items:baseline;gap:var(--gap-section);min-width:0}
-.mm-toolbar-left b{font-size:var(--fs-title);color:var(--ink);white-space:nowrap}
+/* 頭の行（§9.598・AA）: 左＝画面名（--fs-xl）・ⓘ・札、その下に用途の1行／右端＝主の操作1つと「⋯」。 */
+.mm-toolbar{display:flex;align-items:center;gap:var(--space-4);padding:var(--space-3) var(--space-5);background:var(--surface);border-bottom:1px solid var(--line)}
+.mm-toolbar-left{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;flex:1 1 auto}
+.mm-hd-title{display:flex;align-items:center;gap:var(--space-2);min-width:0;max-width:100%}
+.mm-hd-title h1{margin:0;font-size:var(--fs-xl);line-height:1.25;font-weight:var(--fw-strong);color:var(--ink);white-space:nowrap}
+.mm-hd-info:empty{display:none}
+.mm-hd-lead{margin:0;max-width:100%;color:var(--muted);font-size:var(--fs-base-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mm-hd-lead[hidden]{display:none}
+.mm-hd-acts{display:flex;align-items:center;gap:var(--space-2);flex:none}
+.mm-hd-acts:empty{display:none}
+/* 詳細が見えているあいだの「追加」は縁取り（塗りの主ボタンは詳細の足元の保存の1つ）。 */
+.mm-hd-primary.is-quiet{background:var(--surface);color:var(--teal-ink);box-shadow:inset 0 0 0 1px var(--teal)}
+.mm-hd-primary.is-quiet:hover{background:var(--teal-tint)}
+.mm-hd-more{width:var(--ctl-h-sm);padding:0;justify-content:center}
+.mm-hd-more[aria-expanded="true"]{background:var(--teal-tint);border-color:var(--teal-soft)}
+.mm-form[hidden]{display:none}
 .mm-count{color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
 .mm-btn-ghost{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;white-space:nowrap}
 .mm-btn-ghost:hover{background:var(--surface-2);border-color:var(--line-strong)}

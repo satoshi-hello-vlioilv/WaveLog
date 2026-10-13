@@ -611,10 +611,18 @@ run('test_rbcells: 帳票ブロックを「セル」で組む（§9.274、利用
   // ---- ⑥ 説明の量 -------------------------------------------------------
   await page.evaluate(()=>{const m=document.querySelector('#maintEditorModal');if(m)m.hidden=true});
   await paint();
-  const hints=async()=>page.evaluate(()=>({
-   lv:document.documentElement.getAttribute('data-hint'),
-   def:(document.querySelector('#masterMaintForm .mm-def-hint')||{}).textContent||'',
-   more:document.querySelectorAll('#masterMaintForm .mm-more').length}));
+  /* 量が効くのは**欄の下の説明**（§9.598 で一覧の上の説明は頭の ⓘ と用途の1行へ移した）。設備の追加を開いて読み、閉じる。 */
+  const hints=async()=>{
+   await page.click('#masterMaintAdd');
+   await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:8000});
+   const h=await page.evaluate(()=>{
+    /* 札の並びの「いまの状態」の一言（`data-checkset-note`）は説明ではない（量の段で消さない）ので数えない。 */
+    const hs=[...document.querySelectorAll('#maintEditorForm .mm-field-hint:not([data-checkset-note])')].map(e=>e.textContent.trim()).filter(Boolean);
+    return {lv:document.documentElement.getAttribute('data-hint'),def:hs.join(' '),ends:hs.length>0&&hs.every(t=>/。$/.test(t))}});
+   await page.click('#maintEditorClose');
+   await W.until(page,()=>!!document.querySelector('#maintEditorModal')?.hidden,null,{ms:5000,what:'設備の編集を閉じる'});
+   return h;
+  };
   /* §9.276 ②。**帯ではなく浮きメニュー**になったので、押して開いてから選ぶ。
      `#mmHintMenu`は`body`直下（`#mmHead`は`overflow`を持つ器の中）。 */
   const setHint=async v=>{
@@ -634,7 +642,7 @@ run('test_rbcells: 帳票ブロックを「セル」で組む（§9.274、利用
   const off=await hints();
   await setHint('full');
   rec('⑥ 「短め」は最初の1文だけ（文の途中で切らない）',
-      short.def.length>0&&short.def.length<full.def.length&&/。$/.test(short.def),
+      short.def.length>0&&short.def.length<full.def.length&&short.ends,
       JSON.stringify({full:full.def.length,short:short.def}));
   rec('⑥ 「出さない」で説明が消える',off.def==='' &&off.lv==='off',JSON.stringify(off));
   rec('⑥ 通常へ戻せる（片道にしない）',(await hints()).def===full.def);

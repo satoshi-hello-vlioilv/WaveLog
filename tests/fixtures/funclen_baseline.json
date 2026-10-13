@@ -9,7 +9,7 @@
  ],
  "backend/query_join.py": [
   1,
-  41
+  39
  ],
  "backend/repositories/bladeset_repo.py": [
   1,
@@ -85,11 +85,7 @@
  ],
  "static/js/master/master-data.js": [
   4,
-  161
- ],
- "static/js/master/master-maint.js": [
-  1,
-  9
+  144
  ],
  "static/js/master/master-opdata.js": [
   3,

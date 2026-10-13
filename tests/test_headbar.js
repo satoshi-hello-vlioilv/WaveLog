@@ -312,8 +312,10 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
  }
 
  /* マスタ管理は移設(§9.100)の当事者なので、個別に確かめる。
-    再読込がヘッダーにあり、パネルには見出しだけが残ること。絞り込みは§9.556で外した
-    （利用者の指示「最上部の絞り込みの検索バーもあまり意味がないので基本的に削除」）。 */
+    再読込と更新者IDはヘッダーにあること。絞り込みは§9.556で外した
+    （利用者の指示「最上部の絞り込みの検索バーもあまり意味がないので基本的に削除」）。
+    **パネルの頭に置いてよいのはその画面の操作だけ**（§9.598）——主の操作（＋ 〜を追加）・一覧の道具を開く ⋯・
+    説明の ⓘ・群の開閉と並びの戻し（前から）。それ以外の操作（再読込など）を頭へ持ち込まない。 */
  await W.nav(page,'#openMasterMaint');
  await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},'mmHead',{ms:10000,what:'マスタ管理の操作列がヘッダーへ載る'});
  await idle();
@@ -321,15 +323,17 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
   const inBar=id=>!!document.querySelector('#headerViewBar #'+id);
   return {
    search:!!document.getElementById('masterMaintSearch'),reload:inBar('reloadMasterMaint'),user:inBar('masterUserId'),
-   toolbarCtls:document.querySelectorAll('.mm-toolbar input,.mm-toolbar button,.mm-toolbar select').length,
+   toolbarCtls:[...document.querySelectorAll('.mm-toolbar input,.mm-toolbar button,.mm-toolbar select')]
+     .filter(e=>!e.matches('.mm-hd-primary,.mm-hd-more,[data-tip],[data-mm-fold],#mmViewReset'))
+     .map(e=>e.id||e.className||e.tagName),
    title:!!document.querySelector('.mm-toolbar #masterMaintTitle'),
   };
  });
  rec('マスタ管理: 絞り込みの欄は無い（§9.556）',!mm.search);
  rec('マスタ管理: 再読込がヘッダーにある',mm.reload);
  rec('マスタ管理: 更新者IDもヘッダーのまま',mm.user);
- rec('マスタ管理: パネルに残るのは見出しだけ(操作は0件)',mm.toolbarCtls===0&&mm.title,
-     '操作 '+mm.toolbarCtls+'件 / 見出し '+mm.title);
+ rec('マスタ管理: パネルの頭に残るのは見出しとその画面の操作だけ（＋追加・⋯・ⓘ）',mm.toolbarCtls.length===0&&mm.title,
+     '頭の外の操作 '+JSON.stringify(mm.toolbarCtls)+' / 見出し '+mm.title);
 
  /* 相乗りは**入るときだけ**（§9.509）。窓を狭めたら2行目へ移り、戻したら1行目へ戻る——載せたまま
     画面名を札の下へ潰さない（§9.508 のあと1366pxで「マス」しか見えなかった）。 */

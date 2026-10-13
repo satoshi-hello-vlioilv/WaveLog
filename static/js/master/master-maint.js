@@ -514,6 +514,51 @@
     リード文へそのまま効き、`**強調**`も同じ書き方でよい。
     **「出さない」でも節は残す**——押したときだけ開く入口なので、消すと
     短くした人が全文へ辿り着けなくなる（§9.234 ①・`?`と同じ約束）。 */
+ /* ---------- 頭の行（§9.598・AA）----------
+    どのマスタも同じ形で言う: 画面名（左の一覧と同じ呼び名）・用途の1行・ⓘ（説明の残りと畳んだ節）。
+    用途は呼び名の「—」の後ろ（`titleText`）、無ければ説明の最初の1文。**同じ字を2か所に出さない**——
+    用途に使った文は ⓘ に入れない。 */
+ function headTextOf(def){
+  const t=String((def&&def.titleText)||''),i=t.indexOf('—');
+  const sub=i>=0?t.slice(i+1).trim():'';
+  const hint=String((def&&def.hint)||'');
+  const sents=hint.split('。').filter(s=>s.trim()).map(s=>s+'。');
+  return {name:(def&&def.label)||t,lead:String((def&&def.lead)||sub||sents[0]||'').replace(/\*\*/g,''),
+   info:sub?hint:sents.slice(1).join('')};
+ }
+ function paintMaintHead(def){
+  const h=headTextOf(def);
+  const title=$('#masterMaintTitle');if(title)title.textContent=h.name;
+  const lead=$('#masterMaintLead');if(lead){lead.textContent=h.lead;lead.hidden=!h.lead}
+  const slot=$('#masterMaintInfo');if(!slot)return;
+  const secs=hintSectionsHtml(def);
+  slot.innerHTML=(h.info||secs)?tipHtml(h.info||h.name):'';
+  const b=slot.querySelector('[data-tip]');if(!b)return;
+  b.__wlTipHtml=()=>(h.info?`<div class="wl-tip-body">${WL.markup(h.info)}</div>`:'')+secs;
+  WL.popMenu.tips(slot);
+ }
+ /* 頭の右端（§9.598）: 主の操作は1つだけ（`primary`）。一覧の上の道具（Excel・まとめて削除・見本など）は「⋯」で
+    開け閉めする帯（`tools`＝`#masterMaintForm`の中身）。専用の画面もここへ名乗る（各自の器に「追加」を置かない）。
+    `quiet`は詳細が見えているあいだ——塗りの主ボタンは詳細の足元の保存の1つにする（AA の決まり）。
+    `links`は1押しで行く約束の入口（縁取りのボタン・HTML）で、⋯ と主の操作の左に並ぶ。 */
+ let toolsOpenKey='';   // 「⋯」の帯を開いているマスタ（別のマスタへ移ると畳む）
+ function setHeadActs(o){
+  const box=$('#masterMaintActs'),form=$('#masterMaintForm');if(!box)return;
+  o=o||{};box.innerHTML=o.links||'';
+  if(o.tools&&form){
+   /* 開け閉めは**同じマスタにいる間は覚える**——取り込みのあとに一覧を読み直しても、結果の字が畳まれて消えない。 */
+   const key=maintState.defKey,open=toolsOpenKey===key;
+   box.insertAdjacentHTML('beforeend',`<button type="button" class="mm-btn-ghost mm-hd-more" id="masterMaintTools" aria-expanded="${open}" aria-controls="masterMaintForm" aria-label="一覧の道具" title="${esc(o.tools)}"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`);
+   form.hidden=!open;
+   $('#masterMaintTools').onclick=ev=>{const on=form.hidden;form.hidden=!on;toolsOpenKey=on?key:'';ev.currentTarget.setAttribute('aria-expanded',String(on))};
+  }
+  if(o.primary){
+   const p=o.primary;
+   box.insertAdjacentHTML('beforeend',`<button type="button" id="${esc(p.id)}" class="mm-btn-primary mm-hd-primary${o.quiet?' is-quiet':''}"${p.title?` title="${esc(p.title)}"`:''}>＋ ${esc(p.label)}</button>`);
+   $('#'+p.id).onclick=p.onClick;
+  }
+ }
+ function quietHeadAct(on){const b=$('#masterMaintActs .mm-hd-primary');if(b)b.classList.toggle('is-quiet',!!on)}
  function hintSectionsHtml(def){
   const secs=(def&&def.hintMore)||[];
   if(!secs.length)return '';
@@ -1671,8 +1716,7 @@
     ?`<button type="button" id="mmDropTable" class="mm-btn-danger sm"
         title="この表をマスタDBから丸ごと消します（取り消せません）">この表を削除</button>`:'';
    form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip">読み取り専用</span>
-     <span class="mm-form-hint">この表は見るだけです。追加・編集はできません。</span>${drop}</div>
-    ${defHintHtml(def)}`;
+     <span class="mm-form-hint">この表は見るだけです。追加・編集はできません。</span>${drop}</div>`;
    form.onsubmit=ev=>ev.preventDefault();
    const db=$('#mmDropTable');
    if(db)db.onclick=()=>WL.mm.dropRetiredTable(def);
@@ -1680,18 +1724,15 @@
   }
   if(defUsesEditorModal(def)){
    form.classList.add('mm-form-compact');
-   form.innerHTML=`<div class="mm-form-head">
-     <span class="mm-mode-chip new">新規登録</span>
-     <button type="button" id="masterMaintAdd" class="mm-btn-primary sm">＋ ${esc(def.label)}を追加</button>
-     <span class="mm-form-hint">一覧の行をクリック（またはダブルクリック・「編集」ボタン）で編集ウィンドウを開きます。</span>
-     ${sampleReportHtml(def)}
-     ${linkMasterHtml(def)}
-     ${bulkDeleteHtml(def)}
-    </div>
-    ${defHintHtml(def)}
-    ${excelIoHtml(def)}`;
+   /* 追加は頭の右端（§9.598）。**1押しで行く約束の入口**（見本で帳票を見る・§9.253／親子のマスタへ・§9.254）は
+      頭に見えたまま置き、たまに使う物と危ない物（Excel・まとめて削除）だけを「⋯」の帯へ畳む（説明は頭の ⓘ）。 */
+   const tools=bulkDeleteHtml(def).trim(),xio=excelIoHtml(def);
+   form.innerHTML=(tools?`<div class="mm-form-head">${tools}</div>`:'')+xio;
    form.onsubmit=ev=>ev.preventDefault();
-   const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
+   setHeadActs({primary:{id:'masterMaintAdd',label:`${def.label}を追加`,onClick:()=>openMaintEditor(null)},
+    links:[linkMasterHtml(def),sampleReportHtml(def)].join('').trim(),
+    tools:(tools||xio)?'一覧の道具（Excel の書き出し・取り込み、まとめて削除など）':''});
+   if(!tools&&!xio)form.hidden=true;
    bindExcelIo(def);bindBulkDelete(def);bindSampleReport(def);bindLinkMaster(def);
    return;
   }
@@ -1699,7 +1740,6 @@
   const controls=buildFieldControls(def,editing);
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
   form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${sampleReportHtml(def)}${linkMasterHtml(def)}${bulkDeleteHtml(def)}</div>
-   ${defHintHtml(def)}
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>
@@ -2687,25 +2727,26 @@
    renderMaintList();
   });
  }
+ /* 頭の件数と、いま効いている並び・列幅の印（§9.175・§9.250 ⑥）。
+    **覚えていることは画面に書き、忘れさせる手立ても同じ場所に置く**——黙って並べ替えたままだと「順番がおかしい」と
+    読まれる。件数はタブを持つ一覧ではタブが言う（同じ数を2か所に出さない・§9.598）。 */
+ function paintMaintCount(def,all){
+  const cnt=$('#masterMaintCount');if(!cnt)return;
+  const v=mmViewOf(def),sc=(def.cols||[]).find(c=>v.sort&&c.k===v.sort.k);
+  const wn=Object.keys(v.widths||{}).length;
+  const marks=[];
+  if(sc)marks.push(`並び: ${esc(sc.label)} ${v.sort.dir==='desc'?'降順':'昇順'}`);
+  if(wn)marks.push(`幅: ${wn}列`);
+  cnt.innerHTML=(mmViewsOf(def).length?'':`有効 ${all.length}件`)
+   +(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
+     +`<button type="button" id="mmViewReset" title="この表の並びと列幅を既定へ戻します">✕</button></span>`:'');
+  const rb=$('#mmViewReset');
+  if(rb)rb.onclick=()=>{mmViewSet(def,{sort:null,widths:{}});renderMaintList()};
+ }
  function renderMaintList(){
   const def=currentDef(),list=$('#masterMaintList');if(!list)return;
   const all=maintState.items||[],items=filteredMaintItems(def),tmpl=maintGridTemplate(def);
-  const cnt=$('#masterMaintCount');
-  if(cnt){
-   /* **覚えていることは画面に書き、忘れさせる手立ても同じ場所に置く**
-      （§9.175・§9.250 ⑥）。黙って並べ替えたままだと「順番がおかしい」と
-      読まれる。件数の隣に、いま効いている並びと戻すボタンを出す。 */
-   const v=mmViewOf(def),sc=(def.cols||[]).find(c=>v.sort&&c.k===v.sort.k);
-   const wn=Object.keys(v.widths||{}).length;
-   const marks=[];
-   if(sc)marks.push(`並び: ${esc(sc.label)} ${v.sort.dir==='desc'?'降順':'昇順'}`);
-   if(wn)marks.push(`幅: ${wn}列`);
-   cnt.innerHTML=`有効 ${all.length}件`
-    +(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
-      +`<button type="button" id="mmViewReset" title="この表の並びと列幅を既定へ戻します">✕</button></span>`:'');
-   const rb=$('#mmViewReset');
-   if(rb)rb.onclick=()=>{mmViewSet(def,{sort:null,widths:{}});renderMaintList()};
-  }
+  paintMaintCount(def,all);
   const showAudit=maintShowsAudit(def);
   /* 見出しは**押すと並べ替え・右端を引くと幅**（§9.250 ⑥）。
      いまの向きは矢印と`aria-sort`の両方で言う（色だけで伝えない・§CLAUDE 3）。 */
@@ -2735,7 +2776,9 @@
    /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、
       押せるのに何も起きない・§CLAUDE 4）。 */
    renderMaintFoldTools(def,[]);
-   list.insertAdjacentHTML('beforeend',`<div class="mm-empty">有効なデータがありません。上のフォームから追加してください。</div>`);return}
+   /* 足す道は**今その画面にある1つ**を言う（追加は頭の右端・§9.598／欄を並べる形は一覧の上）。 */
+   const how=def.readOnly?'':defUsesEditorModal(def)?`右上の「＋ ${def.label}を追加」から足せます。`:'上の欄から足せます。';
+   list.insertAdjacentHTML('beforeend',`<div class="mm-empty">有効なデータがありません。${esc(how)}</div>`);return}
   const frag=document.createDocumentFragment();
   /* ---------- 親子で束ねる(§9.239 ⑥、利用者の指示) ----------
      「設備のカラムはマスタに親子関係を持たせ、設備単位でロールマスタを
@@ -2896,7 +2939,9 @@
   const gen=++maintState.loadGen;
   /* 見出しは**その画面の呼び名**。「〜マスタ」を機械的に足すと
      「データ接続マスタ」のような読みにくい名前ができる。 */
-  if(title)title.textContent=def.titleText||(def.label+'マスタ');
+  if(title)paintMaintHead(def);
+  if(toolsOpenKey!==maintState.defKey)toolsOpenKey='';   // 別のマスタへ移ったら「⋯」の帯は畳む
+  setHeadActs(null);{const f=$('#masterMaintForm');if(f)f.hidden=false}
   paintMasterEditLevel(def);
   // 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。
   // タブを移ったら必ず外す(付いたままだと他のマスタで上部フォームが
@@ -3003,6 +3048,6 @@
  },true);
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{setHeadActs,quietHeadAct,headTextOf,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();
