@@ -1215,11 +1215,6 @@
 .shift-list-item small{font-size:var(--fs-sm);color:var(--muted)}
 .shift-list-item:hover{background:var(--surface-2)}
 .shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
-/* 詳細の頭（§9.598・右の詳細と同じ形）: 種類の小さな字＋名前／⋯（削除など）。 */
-.shift-dhead{display:flex;align-items:center;gap:var(--space-3);padding-bottom:var(--space-2);border-bottom:1px solid var(--line)}
-.shift-dhead>div{flex:1 1 auto;min-width:0}
-.shift-dhead small{display:block;color:var(--muted);font-size:var(--fs-sm)}
-.shift-dhead h3{margin:0;font-size:var(--fs-title);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* **器は中身の長さから決める**(CLAUDE.md §11)。以前は`flex:1 1 240px`＋
    `width:100%`で、勤務体系の名称（長くても20字ほど）の入力欄が枠いっぱい
    ——600px超——まで伸びていた。名称は`--w-xl`(22em)で頭打ちにし、余りは
@@ -1302,9 +1297,6 @@
 .shift-seg button{flex:none;width:26px;border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:var(--muted)}
 .shift-seg button:disabled{opacity:var(--op-disabled);cursor:default}
 .shift-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
-/* 足元は1つの部品（右の詳細と同じ）: 左に状態と記録者・右にキャンセルと保存。 */
-.shift-foot{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);padding-top:var(--space-3);border-top:1px solid var(--line)}
-.shift-foot>.mm-form-hint{margin-right:auto;color:var(--muted)}
 /* ---------- 狭い枠に置いた仕掛一覧の横スクロール ----------
    ポップアップ表示(.sc-float-body)・分割表示(.sc-split-wrap)では、一覧の
    幅より表の方が広いのが普通。既定のoverflow:autoだと「今は足りている」

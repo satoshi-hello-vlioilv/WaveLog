@@ -1,4 +1,4 @@
-# マスタ管理の画面（49件）
+# マスタ管理の画面（52件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 専用の画面で定義の欄をその場で直すのは`WL.mm.inlineFields()`（組み立て・保存は窓と同じ）。足元の字は`paintFootState()` | `test_stopsubui.js`・`test_shift.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 設備停止の基本はその場で直し、新しい停止内容も右の基本で作る（分類を連れて行く）。消すは ⋯、分の棒は同じ目盛り | `test_stopsubui.js`・`test_master.js` | [§9.598](../../docs/decisions/9.598.md) |
+| 前のタブの読み込みが後から届いたら、汎用の表は控えの行から**その場で**描き直す（`redrawAfterStale()`） | `test_mmswitch.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 専用の画面も「変更あり」を名乗る（`registerSpecial(key,{dirty})`）。離れる道は右の詳細と同じ`afterLeave()` | `test_shift.js` | [§9.598](../../docs/decisions/9.598.md) |
 | ⋯・▾ のメニューは`openActMenu()`の1つ。主の操作の作り方（空から・テンプレートから）は ▾ で選ぶ | `test_shift.js`・`test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 欄の説明の続きと空欄の理由は見出しの ⓘ の1つ（`fieldLabelHtml()`）。欄の下の説明は`fieldHintHtml()`の1つ | `test_mmpane.js`・`test_rbmodal.js` | [§9.598](../../docs/decisions/9.598.md) |

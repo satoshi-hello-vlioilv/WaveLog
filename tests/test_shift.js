@@ -131,7 +131,7 @@ run('test_shift: 勤務体系の編集（テンプレート・保存・区分追
     キャンセルで開いたときの値へ戻る（閉じない）。 */
  await W.until(page,()=>/^変更なし/.test(document.querySelector('#shiftDirty')?.textContent||''),null,{ms:8000,what:'保存の後は「変更なし」'});
  const foot1=await page.evaluate(()=>({save:document.querySelector('#shiftSave')?.disabled,cancel:document.querySelector('#shiftCancel')?.disabled,
-  more:!!document.querySelector('#shiftMore'),delInFoot:!!document.querySelector('.shift-foot [id*="Del"],.shift-actions [id*="Del"]')}));
+  more:!!document.querySelector('#shiftMore'),delInFoot:!!document.querySelector('.mm-dfoot [id*="Del"],.shift-actions [id*="Del"]')}));
  rec('保存の後は「変更なし」で保存・キャンセルを押せない・削除は足元に無い',foot1.save&&foot1.cancel&&foot1.more&&!foot1.delInFoot,JSON.stringify(foot1));
  await page.click('#shiftMore');
  await W.until(page,()=>{const m=document.querySelector('#mmActMenu');return !!m&&!m.hidden&&!!m.querySelector('[data-shift-act="delete"]')},null,{ms:4000,what:'⋯ のメニューに削除が出る'});

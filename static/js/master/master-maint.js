@@ -20,7 +20,7 @@
  WL.mm.special=WL.mm.special||{};
  WL.mm.registerSpecial=(key,handlers)=>{WL.mm.special[key]=handlers};
  const MASTER_DEFS=WL.mm.MASTER_DEFS,MASTER_GROUPS=WL.mm.MASTER_GROUPS;
- let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,meta:{},loadGen:0};
+ let maintState={defKey:MASTER_DEFS[0].key,items:[],itemsKey:'',editing:null,meta:{},loadGen:0};   // `itemsKey`＝`items`がどのマスタの行か
  /* ---------- 専用タブを持たないマスタ（§9.249 ②） ----------
     タブの一覧は**固定のMASTER_DEFSと、サーバーが答える表から作った分**の
     2本立て。**どちらも同じ`def`の形**にしてあるので、一覧・編集モーダル・
@@ -1101,14 +1101,14 @@
     const strayBoxes=strays.map(n=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(n)}" checked hidden>`).join('');
     // 補足文はマスタごとに意味が違う(権限の対象か/停止内容の対象か)ので
     // def側からf.tagHintで渡す。未指定はアクセス権限マスタの従来文言。
-    const tagHint=f.tagHint||'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
+    const tagHint=f.tagHint!==undefined?f.tagHint:'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
     return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1">${fieldLabelHtml(f)}
      <div class="mm-tagfield-inner">
       <label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
-     <small class="mm-field-hint">${hintHtml(tagHint)}</small></div>`;
+     ${fieldHintHtml({hint:tagHint})}</div>`;
    },
    'equipment-multi':(f,val,editing)=>{
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
@@ -1136,6 +1136,8 @@
    /* 別マスタ連動の選択欄(§5.3.1)。選ぶだけで済むのが基本で、無い値は
       「＋ 新しく追加」から入力する。保存時に相手のマスタへも登録される。 */
    'master-combo':(f,val,editing)=>{
+    /* 欄の下の説明は定義の`hint`（空文字＝出さない）、書いていなければ使い方の一言。 */
+    const tip=f.hint!==undefined?f.hint:'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。';
     return `<div class="mm-field mm-combo" data-combo="${f.k}" data-combo-endpoint="${esc(f.source&&f.source.endpoint||'')}" data-combo-valuekey="${esc(f.source&&f.source.valueKey||'name')}">
       ${fieldLabelHtml(f)}
       <div class="mm-combo-inner">
@@ -1143,7 +1145,7 @@
        <input data-field="${f.k}" type="hidden" value="${esc(val)}">
        <input class="mm-combo-new" data-combo-new="${f.k}" type="text" placeholder="新しい${esc(f.label)}を入力" autocomplete="off" hidden>
       </div>
-      <small class="mm-field-hint">${hintHtml(f.hint||'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。')}</small></div>`;
+      ${fieldHintHtml({hint:tip})}</div>`;
    },
    /* 候補を出すだけの自由記述（§9.239 ⑥）。**選択肢で塞がない**——
       現場の呼び名は事前に数え切れないので、一覧に無い値も打てるようにする。
@@ -1876,13 +1878,17 @@
  function paintPaneFoot(){
   if(!paneDocked())return;
   const def=currentDef(),vals=collectMaintBody(def,'#maintEditorForm').body;
-  const dirty=paneDirty(vals),isNew=!maintState.editing,id=currentUserId();
+  const dirty=paneDirty(vals);
   paneLiveRow(def,vals);
-  const st=isNew?(dirty?'入力あり':'まだ入力がありません'):(dirty?'変更あり':'変更なし');
-  const hint=$('#maintEditorHint');if(hint)hint.textContent=`${st}・記録者 ${id||'—'}`;
-  const why=isNew?'入力すると押せます':'変更があると押せます';
-  ['#maintEditorCancel','#maintEditorSave'].forEach(s=>{const b=$(s);if(b){b.disabled=!dirty;b.title=dirty?'':why}});
+  paintFootState($('#maintEditorHint'),[$('#maintEditorCancel'),$('#maintEditorSave')],!maintState.editing,dirty);
   $('#maintEditorModal').classList.toggle('is-dirty',dirty);
+ }
+ /* 足元の状態の字と、キャンセル・保存を押せるか（§9.598）。右の詳細・勤務形態・設備停止の基本が**同じ答え**を読む。 */
+ function paintFootState(stateEl,btns,isNew,dirty){
+  const st=isNew?(dirty?'入力あり':'まだ入力がありません'):(dirty?'変更あり':'変更なし');
+  if(stateEl)stateEl.textContent=`${st}・記録者 ${currentUserId()||'—'}`;
+  const why=dirty?'':(isNew?'入力すると押せます':'変更があると押せます');
+  (btns||[]).forEach(b=>{if(b){b.disabled=!dirty;b.title=why}});
  }
  /* ---------- 欄と表を結ぶ（§9.598・1d・図と入力を結ぶ）----------
     詳細の欄に入ると、選んだ行の同じセルの地と列の見出しが光る。打った値は**その場で**そのセルに出る（保存の前に一覧での
@@ -1930,6 +1936,27 @@
   const def=currentDef(),form=$('#maintEditorForm');if(!form)return;
   fillMaintEditorForm(def,maintState.editing,true);
   paneSnap=paneValues(def);paintPaneFoot();
+ }
+ /* ---------- 専用の画面の中の「その場の欄」（§9.598 1g） ----------
+    専用の画面（設備停止の「基本」の段など）が、定義の`fields`をその場で直す欄として置く。組み立て・配線・値の集め方・保存は
+    右の詳細と同じ（`buildFieldControls`／`collectMaintBody`／`submitMaint`）——欄の作り方を2か所に持たない。
+    `item`＝直す行（無ければ新しい行・`seed`は最初から入れておく値）。返すのは`{isNew,dirty(),save()}`で、`save()`は
+    保存した行の応答（`{id}`）を返す。`onChange`は打つ・選ぶたび（足元の「変更あり」を塗り直す）。 */
+ function inlineFields(host,{item=null,seed=null,onChange=null}={}){
+  const def=currentDef(),sel='#'+CSS.escape(host.id);
+  host.classList.add('mm-editor-body','mm-inline-fields');   // 欄の寸法は窓・右の詳細と同じ規則（`.mm-editor-body`）
+  host.innerHTML=`<div class="mm-form-fields">${buildFieldControls(def,item||seed)}</div>`;
+  bindEquipmentPickers(host);bindInputHelpers(host);WL.popMenu.tips(host);
+  const now=()=>JSON.stringify(collectMaintBody(def,sel).body);
+  let snap=null;
+  const tell=()=>{if(onChange)onChange()};
+  host.addEventListener('input',tell);host.addEventListener('change',tell);
+  host.addEventListener('click',()=>requestAnimationFrame(tell));   // 札・±の押下（値は隠し欄が持つ）
+  /* 開いたときの値は**欄の配線が済んだあと**に写す（右の詳細と同じ・数の3桁区切りや隠し欄の初期値が入ってから）。 */
+  requestAnimationFrame(()=>{snap=now();tell()});
+  return {isNew:!item,
+   dirty:()=>snap!==null&&now()!==snap,
+   save:()=>{maintState.editing=item?Object.assign({},item):null;return submitMaint(sel)}};
  }
  /* ⋯（行の操作）・▾（作り方を選ぶ）のメニューは1つの部品（§9.598）。項目は`{label,note,danger,data,onClick}`。
     `data`は項目の`data-*`（網や画面が項目を名指すため）。危ない項目は赤の字（主の動線に置かない操作だけをここへ）。 */
@@ -2636,6 +2663,7 @@
    if(def.groupBy)mmOpenGroupOf(def,body[def.groupBy]);
    maintState.editing=null;await loadMaint(true);
    showToast&&showToast(def.label+(editing?'を更新しました':'を登録しました'),(r&&r.message)||'',3600);
+   return r||{};   // 保存した行の応答（`{id}`）——その場の欄（`inlineFields`）が保存した行を選び直す
   }catch(e){showToast&&showToast(editing?'更新できませんでした':'登録できませんでした',e.message,6500)}
   finally{setMaintLoading(false)}
  }
@@ -3136,27 +3164,45 @@
    :`この端末のマスタ編集は「${lv}」です（権限区分: ${a.role||'不明'}）。保存が要る場合は、アクセス権限マスタで「マスタ編集」を上げてもらってください。`;
  }
 
+ /* 器（頭の操作・上の帯・一覧）をどのマスタにも属さない形へ戻す。専用の画面は器に印や頭の操作を足していくので、
+    タブを移るたび（と、遅れて届いた前のタブが器を上書きしたあと）にここを通す。 */
+ function resetMaintShell(){
+  setHeadActs(null);
+  const f=$('#masterMaintForm');
+  /* 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。タブを移ったら必ず外す
+     (付いたままだと他のマスタで上部フォームが伸び縮みして一覧の高さが安定しない)。 */
+  if(f){f.hidden=false;f.classList.remove('mm-form-page')}
+  /* **器の高さを渡す印も必ず外す**（§9.222 ⑤。`mm-form-page`と同じ作法）。
+     外し忘れると、他のマスタの一覧がスクロールしない枠になって行が切れる。 */
+  const mList=$('#masterMaintList');
+  if(mList){mList.classList.remove('is-fill');mList.parentElement?.classList.remove('is-fill')}
+ }
+ /* 前のタブ（専用の画面）の読み込みが**後から届いて器を上書きした**とき、いまのタブを描き直す（§9.331）。
+    汎用の表は勝った側が控えた行（`maintState.items`）から**その場で**描く——取り直すと、届くまでの間（実測 10〜25ms・
+    6回中6回）前のタブの盤が見えたままになる（§9.598 1g で測った）。まだ届いていなければ、届いた側が一覧を描くので器と頭だけ戻す。
+    専用の画面は控えから描く口を持たないので取り直す。 */
+ function redrawAfterStale(){
+  const def=currentDef();
+  if(def.special)return loadMaintInner(false);
+  resetMaintShell();setMaintCountVisible(true);renderMaintForm();
+  if(paneDocked())quietHeadAct(true);   // 右の詳細が開いていれば頭の「追加」は縁取りのまま
+  if(maintState.itemsKey===def.key)renderMaintList();
+  else{const l=$('#masterMaintList');if(l)l.innerHTML='<div class="mm-empty">読み込んでいます…</div>'}
+ }
  async function loadMaintInner(force){
   const def=currentDef();const title=$('#masterMaintTitle');
   /* いま何回目の読み込みか（§9.331）。**取りに行った応答は「いつの分か」で
      捨てる**（§9.200と同じ約束）——タブを切り替えると前の読み込みは止められ
      ないので、届いた時点で世代を突き合わせる。 */
   const gen=++maintState.loadGen;
+  maintState.itemsKey='';   // 控えの行は、この読み込みが届くまで「いまのタブの物」と言わない（前の訪問の行で描き直さない）
   /* 見出しは**その画面の呼び名**。「〜マスタ」を機械的に足すと
      「データ接続マスタ」のような読みにくい名前ができる。 */
   if(title)paintMaintHead(def);
   if(toolsOpenKey!==maintState.defKey)toolsOpenKey='';   // 別のマスタへ移ったら「⋯」の帯は畳む
   if(paneDocked())hideMaintEditor();   // 読み直す前に右の詳細を閉じる（変更の有無は呼ぶ側が先に聞いている）
-  setHeadActs(null);{const f=$('#masterMaintForm');if(f)f.hidden=false}
+  resetMaintShell();
   paintMasterEditLevel(def);
-  // 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。
-  // タブを移ったら必ず外す(付いたままだと他のマスタで上部フォームが
-  // 伸び縮みして一覧の高さが安定しない)。
-  $('#masterMaintForm')?.classList.remove('mm-form-page');
-  /* **器の高さを渡す印も必ず外す**（§9.222 ⑤。`mm-form-page`と同じ作法）。
-     外し忘れると、他のマスタの一覧がスクロールしない枠になって行が切れる。 */
-  const mList=$('#masterMaintList');
-  if(mList){mList.classList.remove('is-fill');mList.parentElement?.classList.remove('is-fill')}
   /* 専用画面（`special:`）は**登録簿**から引く（§9.324 R3）。各画面のファイルが
      読み込み時に`WL.mm.registerSpecial()`で名乗るので、画面を1つ足すときに
      ここへ`if`を1行足す必要が無い。**名乗っていない`special`は黙って汎用へ
@@ -3174,7 +3220,7 @@
        もう取ってあるので、控えから描けば足りる。取り直すと、描き終えた今のタブが
        「読み込んでいます…」へ1度戻る（共通設定で、数えた網が6回中3回0件を見た）。 */
     return Promise.resolve(sp.load(force)).then(()=>{
-     if(gen!==maintState.loadGen)return loadMaintInner(false);
+     if(gen!==maintState.loadGen)return redrawAfterStale();
     });}
    console.error('専用画面が登録されていません: '+def.special);
   }
@@ -3197,7 +3243,7 @@
       控え（`maintState.items`）まで書き換えると、いま開いているタブの
       一覧が前のタブの中身で並ぶ。 */
    if(gen!==maintState.loadGen)return;
-   maintState.items=items;
+   maintState.items=items;maintState.itemsKey=def.key;
    /* **語彙はサーバーだけが持つ**（§9.163）。GETの戻りの`items`以外の
       キー（ロールマスタの入出位置・接触面・駆動方式など）はここで控え、
       `master-suggest`の欄が候補として出す。画面へ写さないための1行。 */
@@ -3250,6 +3296,6 @@
     こちらが黙って閉じていた）。 */
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();
