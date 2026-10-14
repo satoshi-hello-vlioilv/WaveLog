@@ -258,14 +258,14 @@
   const g=colorOf(rs.sel),w=g&&g.widths.find(x=>x.id===id);if(!w)return;
   if(!await confirmModal({title:'この幅を消す',eyebrow:'ゴムリング',
     bodyHtml:`<p class="confirm-modal-message">「${esc(g.color)}」の幅 ${fmt(w.width)}mm（${w.qty||0}本）を消します。</p>`,
-    confirmLabel:'消す',cancelLabel:'やめる'}))return;
+    confirmLabel:'削除する'}))return;
   if(await guarded(async()=>{await post('/api/bladeset-ring-master/delete',{id})},'消せませんでした')){delete rs.edits[`qty:${id}`];await load(true)}
  }
  async function delColor(){
   const g=colorOf(rs.sel);if(!g)return;
   if(!await confirmModal({title:'この色を消す',eyebrow:'ゴムリング',
     bodyHtml:`<p class="confirm-modal-message">「${esc(g.color)}」の幅 ${g.widths.length}種（合計 ${g.total}本）をすべて消します。元に戻せません。</p>`,
-    confirmLabel:'消す',cancelLabel:'やめる'}))return;
+    confirmLabel:'削除する'}))return;
   if(await guarded(async uid=>{await post('/api/bladeset/ring-colors',{equipment:rs.equipment,current:g.color,delete:true,user_id:uid})},'消せませんでした')){
    rs.sel='';rs.edits={};await load(true);
   }

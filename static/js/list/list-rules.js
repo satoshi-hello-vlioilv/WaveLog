@@ -564,7 +564,7 @@
       消すと、その列は<b>元の値のまま</b>表示されます。</p>`
    : '<p class="confirm-modal-message">このルールを使っている列は、元の値のまま表示されます。</p>';
   const ok=await confirmModal({title:`表示ルール「${ruleName}」を削除`,
-                              bodyHtml:where,confirmLabel:'削除する',cancelLabel:'やめる'});
+                              bodyHtml:where,confirmLabel:'削除する'});
   if(!ok)return;
   try{
    const r=await api('/api/display-rule-master/delete',{method:'POST',headers:{'Content-Type':'application/json'},

@@ -265,7 +265,7 @@
   const x=setOf(bb.sel),b=x&&x.rows.find(r=>r.id===id);if(!b)return;
   if(!await confirmModal({title:'この刃厚を消す',eyebrow:'刃',
     bodyHtml:`<p class="confirm-modal-message">セット ${esc(x.group)} の刃厚 ${fmt(b.thickness)}mm（${b.qty||0}枚）を消します。</p>`,
-    confirmLabel:'消す',cancelLabel:'やめる'}))return;
+    confirmLabel:'削除する'}))return;
   if(await run(async()=>{await K().post('/api/bladeset-blade-master/delete',{id})},'消せませんでした')){
    Object.keys(bb.edits||{}).filter(k=>k.startsWith(`row:${id}:`)).forEach(k=>delete bb.edits[k]);await load(true);
   }
@@ -274,7 +274,7 @@
   const x=setOf(bb.sel);if(!x)return;
   if(!await confirmModal({title:'このセットを消す',eyebrow:'刃',
     bodyHtml:`<p class="confirm-modal-message">セット ${esc(x.group)} の刃 ${x.rows.length}行（合計 ${x.total}枚）をすべて消します。元に戻せません。</p>`,
-    confirmLabel:'消す',cancelLabel:'やめる'}))return;
+    confirmLabel:'削除する'}))return;
   if(await run(async uid=>{await K().post('/api/bladeset/blade-sets',{equipment:bb.equipment,group:x.group,delete:true,user_id:uid})},'消せませんでした')){
    const ids=new Set(x.rows.map(r=>String(r.id)));
    Object.keys(bb.edits||{}).filter(k=>k.startsWith(`set:${x.group}:`)||ids.has(k.split(':')[1])).forEach(k=>delete bb.edits[k]);

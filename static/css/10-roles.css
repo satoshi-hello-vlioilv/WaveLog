@@ -195,12 +195,12 @@
    刃組の在庫表が25px・地なし・薄い灰、判定表が39px、選択肢の値が白の地で、画面を移るたびに表の頭の形が変わった。
    各表のクラスには並び・揃えなど「その表だけの違い」しか書かない。
    ============================================================ */
-.mm-row.head,.oc-row.is-head,.bk-table thead th,.rt-table thead th,.mm-raw-table th{
+.mm-row.head,.oc-row.is-head,.rly-row.is-head,.bk-table thead th,.rt-table thead th,.mm-raw-table th{
   background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-ui);border-bottom:1px solid var(--line)}
 /* 字の大きさは**セル**へ当てる。選択肢の値（`.oc-row`）は列の幅を em で書いているので、行に当てると見出しと本文で
    同じ列が別の幅に解け、左端が最大25pxずれた（1366px・§9.193と同じ罠）。 */
-.mm-row.head,.oc-row.is-head>span,.bk-table thead th,.rt-table thead th,.mm-raw-table th{font-size:var(--fs-sm)}
-.mm-row.head,.oc-row.is-head{min-height:var(--th-h)}
+.mm-row.head,.oc-row.is-head>span,.rly-row.is-head>span,.bk-table thead th,.rt-table thead th,.mm-raw-table th{font-size:var(--fs-sm)}
+.mm-row.head,.oc-row.is-head,.rly-row.is-head{min-height:var(--th-h)}
 /* 上下の余白は0（高さが決める）。判定表の見出しは「＋ 条件の列を追加」（30px）を持ち、余白4pxずつで39pxに伸びていた */
 .bk-table thead th,.rt-table thead th,.mm-raw-table th{height:var(--th-h);padding-block:0;vertical-align:middle}
 }

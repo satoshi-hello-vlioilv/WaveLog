@@ -552,7 +552,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* **危ない操作は確認する**（§CLAUDE 5）。誰から引き取るのか・なぜ
       引き取れるのかを書く（§6。理由の分からない入れ替わりを作らない）。 */
    const ok=await confirmModal({title:'書込役をこのPCが引き取りますか？',
-     confirmLabel:'引き取る',cancelLabel:'やめる',danger:true,
+     confirmLabel:'引き取る',danger:true,
      bodyHtml:`<p class="confirm-modal-message">${esc(p.label||'')}</p>`
       +`<ul class="confirm-modal-list"><li>${esc(p.note||'')}</li>`
       +`<li>引き取ると、このPCが共有スケジュールへ書く役になります（他のPCは`
@@ -10167,7 +10167,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      <p class="confirm-modal-note">直せるのはこの3つです。設備と区分は変えられません
       ——別の設備・別の区分にしたいときは、いったん外して入れ直してください。</p>
     </div>`,
-   confirmLabel:'変える',cancelLabel:'やめる'});
+   confirmLabel:'変える'});
   const name=String(($('#scStopEditName')||{}).value||'').trim().slice(0,60);
   const minRaw=String(($('#scStopEditMin')||{}).value||'').trim();
   const remark=String(($('#scStopEditRemark')||{}).value||'').trim().slice(0,200);
@@ -10284,7 +10284,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     <label class="sc-comment-field"><span>内容</span>
      <textarea id="scCommentText" rows="3" maxlength="200" placeholder="例）このロットから新しい刃に交換すること"></textarea></label>
     <p class="confirm-modal-note">${esc(where)}</p>`,
-   confirmLabel:'入れる',cancelLabel:'やめる'});
+   confirmLabel:'入れる'});
   const box=document.getElementById('scCommentText');
   const text=String(box&&box.value||'').trim().slice(0,200);
   if(!ok)return;
@@ -10559,7 +10559,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       追い越したら枠は何もしなくなります。
       <b>時刻まで決めたいとき</b>は、行の右クリックから「いまの日時で固定する」を使ってください。</p>
     </div>`,
-   confirmLabel:entry?'変える':'入れる',cancelLabel:'やめる'});
+   confirmLabel:entry?'変える':'入れる'});
   /* **選んだ札の面を追随させる**（§9.229 ②「選んだ札のほうが濃い」）。
      窓は`confirmModal`が組み立てるので、**待つ前に**配線する
      ——`await`のあとでは、もう選び終わっている。 */

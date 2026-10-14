@@ -1,4 +1,4 @@
-# マスタ管理の画面（82件）
+# マスタ管理の画面（83件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -13,6 +13,7 @@
 | 左の一覧の2行の項目は40pxの1つ（余白`--space-1`／`--space-2`・行送り1.3）。共通設定などの段の札も同じ | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 一覧の頭は`.mm-panehead`の1つ（何の一覧・件数）。件数を頭に置いたら札の行の右に同じ数を出さない | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 本文の中の「＋ 追加」は`.mm-btn-ghost`の1つ。同じ操作の動詞は「追加」（足す・つくるを使わない） | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
+| 1押しで行く見本の帳票は一覧の札の行の右の行き先（`sampleViewHtml()`）。試し印刷・親子のマスタへは頭の ⋯（`headMoreItems()`） | `test_rbsample.js`・`test_rlmaster.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 0件の表も見出しの字で列の幅を取る（`fitMaintColumns()`を空でも通す） | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 設定の窓の決める物は右下の足元（`.pc-save`・`paintFootState()`）。変えるまで押せない・キャンセルは捨てて描き直す | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 操業データ項目の盤は上の切り替え（`.op-boardseg`）で1枚ずつ出す。盤は全部描いて伏せ、掴んだカード・群を札へ運ぶとその盤が開く。足すのはいま見ている盤 | `test_mmboard.js`・`test_oppad.js` | [§9.602](../../docs/decisions/9.602.md) |

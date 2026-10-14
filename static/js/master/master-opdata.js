@@ -3521,7 +3521,7 @@
  async function opDeleteChoiceValue(id){
   const row=(opState.choices||[]).find(c=>String(c.id)===String(id));if(!row)return;
   const uid=requireMaintUser();if(uid===null)return;
-  if(!(await confirmModal({message:`「${row.name}」から「${row.value}」を消しますか？\nこのまとまりを使っている項目すべてから消えます。`,confirmLabel:'消す',danger:true})))return;
+  if(!(await confirmModal({message:`「${row.name}」から「${row.value}」を消しますか？\nこのまとまりを使っている項目すべてから消えます。`,confirmLabel:'削除する',danger:true})))return;
   try{
    await api('/api/operation-choice-master/delete',{method:'POST',
      headers:{'Content-Type':'application/json'},
@@ -4480,7 +4480,7 @@
   const pick=$('#rlEqPick');
   if(pick)pick.onchange=async()=>{
    /* 候補を絞り直すと盤を読み直す——保存していない並びは捨てる前に聞く（黙って捨てない・§9.598）。 */
-   if(rlState.dirty&&!await confirmModal({title:'候補の設備を変える',message:'保存していない並びの変更があります。捨てて、候補の設備を変えますか？',confirmLabel:'捨てて変える'})){pick.value=rlState.equipment;return}
+   if(rlState.dirty&&!await WL.mm.confirmDiscard('並び','候補の設備を変えて読み直します')){pick.value=rlState.equipment;return}
    rlState.equipment=pick.value;rlState.rows=null;loadRecordLayoutMaint(true)};
   const save=$('#rlSave');if(save)save.onclick=()=>rlSaveLayout();
   const cancel=$('#rlCancel');if(cancel)cancel.onclick=()=>{rlState.rows=null;rlState.dirty=false;renderRecordLayout();rlSay('')};

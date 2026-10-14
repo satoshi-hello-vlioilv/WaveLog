@@ -700,7 +700,7 @@
    const f=this.cols[ci],n=this.rows.filter(r=>this.condsOf(r,f).length).length;
    if(n&&!await confirmModal({title:'列を消す',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">「${esc(this.colLabel(f))}」の条件 ${n}個も一緒に消えます。</p>`,
-     confirmLabel:'消す',cancelLabel:'やめる'}))return;
+     confirmLabel:'削除する'}))return;
    this.cols.splice(ci,1);
    this.rows.forEach(r=>{r.conditions=(r.conditions||[]).filter(c=>c.field!==f)});
    this.touch();this.render();
@@ -712,7 +712,7 @@
    const empty=this.rows.filter(r=>r.fresh&&!(r.conditions||[]).length).length;
    if(empty&&!await confirmModal({title:'条件の無い決まり',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">条件が1つも無い決まりが ${empty}行あります。条件の無い行は既定の行と同じ意味になるので、保存では落とします。</p>`,
-     confirmLabel:'落として保存する',cancelLabel:'やめる'}))return false;
+     confirmLabel:'落として保存する'}))return false;
    const dead=this.rows.map((r,i)=>this.rowDead(r)||this.shadowOf(i)?i:-1).filter(i=>i>=0);
    if(dead.length&&!await confirmModal({title:'当たらない決まり',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">${dead.map(i=>`${i+1}行目（→ ${esc(this.o.answerLabel(this.rows[i]))}）`).join('・')}は、`
@@ -737,7 +737,7 @@
   async reset(){
    if(!await confirmModal({title:'未登録に戻す',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">「${esc(this.o.label)}」の表の登録を消します。以後は${esc(this.o.seedNote)}で決めます。</p>`,
-     confirmLabel:'未登録に戻す',cancelLabel:'やめる'}))return;
+     confirmLabel:'未登録に戻す'}))return;
    try{return await this.send({reset:true})}catch(e){await alertModal('戻せませんでした：'+(e&&e.message?e.message:e));return false}
   }
   /* 書く段取り（更新者ID → 送る → 読み直す）は1つ（§9.574 で盤ごとの写しを1つへ）。盤は送り先（`endpoint`）・

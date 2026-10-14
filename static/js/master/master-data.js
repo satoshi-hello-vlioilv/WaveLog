@@ -3998,7 +3998,7 @@
 
  async function pzForget(key){
   const t=((presenceState.data||{}).fleet?.terminals||[]).find(x=>x.key===key);if(!t)return;
-  if(!await confirmModal({confirmLabel:'消す',facts:[{text:'戻せません',danger:true}],message:`${t.login||'（不明）'}／${t.pc||'（不明）'} の接続の記録を消します。`
+  if(!await confirmModal({confirmLabel:'削除する',facts:[{text:'戻せません',danger:true}],message:`${t.login||'（不明）'}／${t.pc||'（不明）'} の接続の記録を消します。`
      +'使わなくなった端末を「最新でない端末」の数から外すためのものです。',danger:true}))return;
   try{await api('/api/presence/forget',{method:'POST',body:JSON.stringify({key})});
       showToast('記録を消しました',`${t.login||''}／${t.pc||''}`)}
@@ -4600,7 +4600,7 @@
   if(!row){ssbSay(`「${name}」は分類マスタに登録されていません（停止内容の側で使われているだけです）。`,true);return}
   if(!(await confirmModal({message:`分類「${name}」をマスタから消しますか？\n`
     +(used?`この分類を使っている停止内容が ${used}件 あります。停止内容そのものは消えませんが、分類の選択肢からは消えます。\n`:'')
-    +'これまでに入れた予定の記録は、その予定の中に残ります。',confirmLabel:'消す',danger:true})))return;
+    +'これまでに入れた予定の記録は、その予定の中に残ります。',confirmLabel:'削除する',danger:true})))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    await api('/api/schedule/stop-category-master/delete',
@@ -4625,7 +4625,7 @@
   const subs=ssbSubsOf(row.id);
   if(!(await confirmModal({message:`停止内容「${row.name}」を消しますか？\n`
     +(subs.length?`その内訳 ${subs.length}件（${subs.map(x=>x.name).join('、')}）も一緒に消えます。\n`:'')
-    +'これまでに入れた予定の記録は、その予定の中に残ります。',confirmLabel:'消す',danger:true})))return;
+    +'これまでに入れた予定の記録は、その予定の中に残ります。',confirmLabel:'削除する',danger:true})))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    await api('/api/schedule/stop-reason-master/delete',
@@ -4767,7 +4767,7 @@
   const kids=ssbSubsOf(ssbPickedId()).filter(x=>Number(x.parentSubId||0)===Number(id));
   if(!(await confirmModal({message:`「${cur.name}」を内訳から消しますか？\n`
     +(kids.length?`この下の内訳 ${kids.length}件（${kids.map(k=>k.name).join('、')}）も一緒に消えます。\n`:'')
-    +'これまでに入れた予定の内訳の記録は、その予定の中に残ります。',confirmLabel:'消す',danger:true})))return;
+    +'これまでに入れた予定の内訳の記録は、その予定の中に残ります。',confirmLabel:'削除する',danger:true})))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    await api('/api/schedule/stop-sub-master/delete',
@@ -4896,7 +4896,7 @@
     if(!cur)return;
     const label=WL.duration.text(Number(cur.minutes));
     if(!(await confirmModal({message:`「${label}」を選択肢から消しますか？\n`
-      +'これまでに入れた予定の時間は変わりません（消えるのは選択肢だけです）。',confirmLabel:'消す',danger:true})))return;
+      +'これまでに入れた予定の時間は変わりません（消えるのは選択肢だけです）。',confirmLabel:'削除する',danger:true})))return;
     const uid=requireMaintUser();if(uid===null)return;
     try{
      await api('/api/schedule/stop-minutes-master/delete',

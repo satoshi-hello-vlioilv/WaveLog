@@ -80,7 +80,7 @@
    const x=rowOf(+b.dataset.id);if(!x)return;
    if(!await confirmModal({title:'この行を消す',eyebrow:o.what,
      bodyHtml:`<p class="confirm-modal-message">${esc(o.title(x))}（${x.qty||0}${o.unit}）を消します。元に戻せません。<br>しばらく使わないだけなら「候補」を外してください（行は残ります）。</p>`,
-     confirmLabel:'消す',cancelLabel:'やめる'}))return;
+     confirmLabel:'削除する'}))return;
    if(await K().guarded(st,async()=>{await K().post(o.path+'/delete',{id:x.id})},'消せませんでした')){
     Object.keys(st.edits||{}).filter(k=>k.startsWith(`row:${x.id}:`)).forEach(k=>delete st.edits[k]);
     WL.mm.headSay(`${o.title(x)} を消しました`);await o.reload();

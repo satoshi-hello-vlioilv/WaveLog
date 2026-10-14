@@ -190,11 +190,15 @@ run('test_rbsample: 見本のロットで帳票を見る・試し印刷（§9.25
 
   /* ---- 1) 帳票ブロックマスタから1押しで開く ---- */
   await page.waitForSelector('#mmSampleView',{timeout:15000});
+  /* 見本の帳票は札の行の右の行き先（1押し）、試し印刷は頭の ⋯ の項目（§9.604・主の操作の横に副の操作を並べない） */
+  await page.click('#masterMaintMore');
+  await page.waitForSelector('#mmActMenu:not([hidden]) [data-mm-act="samplePrint"]',{timeout:5000});
   const tools=await page.evaluate(()=>({
-   見る:!!document.getElementById('mmSampleView'),
-   刷る:!!document.getElementById('mmSamplePrint'),
+   見る:!!document.querySelector('#masterMaintList .mm-lbar #mmSampleView'),
+   刷る:!!document.querySelector('#mmActMenu:not([hidden]) [data-mm-act="samplePrint"]'),
    説明:(document.getElementById('mmSampleView')||{}).title||''}));
-  rec('帳票ブロックマスタに「見本で帳票を見る」と「試し印刷」が並ぶ',
+  await page.keyboard.press('Escape');
+  rec('帳票ブロックマスタに「見本で帳票を見る」（札の行・1押し）と「試し印刷」（頭の ⋯）がある',
       tools.見る&&tools.刷る,JSON.stringify(tools));
   rec('押す前に何が起きるかを名乗る（実データが要らないことも書く）',
       /見本/.test(tools.説明)&&/実データ/.test(tools.説明),tools.説明);

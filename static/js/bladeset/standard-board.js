@@ -154,7 +154,7 @@
   if(!sb.row)return;
   if(!await confirmModal({title:'すべて既定へ戻す',eyebrow:'刃組基準値',
     bodyHtml:`<p class="confirm-modal-message">${esc(sb.equipment)} の登録（設定 ${changedCount()}項目）を消し、すべて既定値に戻します。元に戻せません。</p>`,
-    confirmLabel:'既定へ戻す',cancelLabel:'やめる'}))return;
+    confirmLabel:'既定へ戻す'}))return;
   if(await K().guarded(sb,async()=>{await K().post('/api/bladeset-standard-master/delete',{id:sb.row.id})},'戻せませんでした')){sb.edits={};await load(true)}
  }
  async function load(force){

@@ -1869,9 +1869,9 @@
   const autoPos=bs.every(b=>!(b.col&&b.row));
   const same=[sameRows?`<span class="mm-same-i"><b>高さ</b>${esc(rlyRowsWord(info,bs[0]&&bs[0].rows))}</span>`:'',
    autoPos?'<span class="mm-same-i"><b>置き場所</b>自動（紙で組み換えるで決める）</span>':''].filter(Boolean);
+  /* 一覧の頭はほかの一覧と同じ形（何の一覧・件数・§9.604）。どの紙かは上の対象の札が言う（札の title に説明）——頭で言い直さない。 */
   const head=`<div class="rly-blocks-head">
-    <b>${esc(rlyLabel(info.equipment))}の紙</b>
-    <span class="oc-count">塊 ${info.blocks.length}件（出す ${shown}／出さない ${info.blocks.length-shown}）</span>
+    <div class="mm-panehead"><b>塊</b><span>${info.blocks.length}件（出す ${shown}／出さない ${info.blocks.length-shown}）</span></div>
     <span class="rly-grid">紙の割り
      <span class="mm-seg" role="group" aria-label="紙の列数">${(info.gridChoices||[]).map(n=>
        `<button type="button" data-rly-cols="${n}" class="${n===info.grid?'is-on':''}"${ro} title="紙を横${n}マスに割ります">${n}列</button>`).join('')}</span>
@@ -1900,7 +1900,8 @@
      ${autoPos?'':`<span class="rly-cell rly-pos" title="置き場所は「紙で組み換える」で決めます">${esc(pos)}</span>`}
     </div>`;
   }).join('');
-  return `<div class="rly-blocks">
+  /* どの紙を描いたかは器が名乗る（網は頭の字で見分けない）。 */
+  return `<div class="rly-blocks" data-rly-paper="${esc(info.equipment||'')}">
     ${head}
     ${same.length?`<div class="mm-same"><span class="mm-same-k">全行で同じ</span>${same.join('')}</div>`:''}
     <div class="rly-table${sameRows?'':' has-rows'}${autoPos?'':' has-pos'}" role="table">
@@ -1928,7 +1929,7 @@
   const pos=b.col&&b.row?`${b.col}列 ${b.row}段`:'自動（紙で組み換えるで決める）';
   return `<aside class="rly-detail" aria-label="選んだ塊">
     ${mini}
-    <div class="mm-dhead"><div><div class="mm-dhead-line"><small>塊</small><h3>${esc(b.label)}</h3></div></div>
+    <div class="mm-dhead"><div><small>塊</small><h3>${esc(b.label)}</h3></div>
      ${b.id?`<button type="button" id="rlyBlockMore" class="mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false" aria-label="この塊の操作" title="中身を直す（帳票ブロック）"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`:''}</div>
     <div class="rly-dform">
      <div class="rly-dline"><span>紙に出す</span><span class="mm-seg" role="group" aria-label="紙に出す">

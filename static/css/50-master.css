@@ -2873,10 +2873,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-bulk-pick.is-all{border-color:var(--danger-border);background:var(--danger-bg)}
 .mm-bulk-need{color:var(--ink-2);font-size:var(--fs-micro)}
 .mm-bulk-tip{color:var(--ink-2);font-size:var(--fs-micro);line-height:1.5}
-/* 見本のロットで帳票を見る（§9.253）。**追加の隣に置く**——実データが
-   要らない確認は危ない操作ではないので、主要動線の中で構わない
-   （消す操作だけが右端へ離れる・§CLAUDE 5）。 */
-.mm-sample-tools{display:flex;align-items:center;gap:var(--gap-tight);flex:0 0 auto}
 
 /* ==========================================================
    「記録した値」の配置（§9.243、利用者の指示）
@@ -3553,7 +3549,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
    右端がずれていた。表の幅は中身なり（`width:max-content`）なので、器の`min-content`＝表の幅。頭の行はその中で右へ寄せる。 */
 .rly-blocks:has(>.rly-table){width:min-content;max-width:100%}
 .rly-blocks-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
-.rly-blocks-head>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
+.rly-blocks-head>.mm-panehead{margin:0}
 /* 紙の割り（列×段）。**いまの値を札で言う**（§CLAUDE 3）——分割の切り替え（`.mm-seg`）。 */
 .rly-grid{display:flex;align-items:center;gap:var(--space-2);margin-left:auto;
   font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
@@ -3566,9 +3562,8 @@ html[data-hint="off"] .mm-def-hint{display:none}
 /* 表は中身の幅で止める（§9.599 の型・行の罫線が右の空きまで走らない）。 */
 .rly-table.has-rows .rly-row,.rly-table.has-pos .rly-row{grid-template-columns:var(--rly-cols) var(--w-sm)}
 .rly-table.has-rows.has-pos .rly-row{grid-template-columns:var(--rly-cols) var(--w-sm) var(--w-sm)}
-.rly-row.is-head{position:sticky;top:0;z-index:1;min-height:0;padding-bottom:var(--space-1);background:var(--surface);
-  border-bottom:1px solid var(--line);color:var(--ink-2);font-weight:var(--fw-strong)}
-.rly-row.is-head>span{font-size:var(--fs-sm)}
+/* 地・字・高さ・下の線は「表の見出し」の役割（10-roles.css・§9.604）。列の幅は em なので字の大きさはセルが持つ。 */
+.rly-row.is-head{position:sticky;top:0;z-index:1}
 .rly-row[data-rly-key]{cursor:pointer}
 .rly-row[data-rly-key]:hover{background:var(--surface-2)}
 /* **出していない塊は薄い字。ただし色だけで伝えない**（§CLAUDE 3）——「出さない」の字が言う。 */

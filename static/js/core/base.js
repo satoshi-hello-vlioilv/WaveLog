@@ -2521,7 +2521,7 @@ WL.closeGuard=(()=>{
   if(!rs.length){say('close');return}
   asking=true;say('asking');
   try{
-   const ok=await confirmModal({title:'WaveLog を閉じますか？',confirmLabel:'閉じる',cancelLabel:'やめる',danger:true,
+   const ok=await confirmModal({title:'WaveLog を閉じますか？',confirmLabel:'閉じる',danger:true,
      bodyHtml:'<ul class="confirm-modal-list">'+rs.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>'});
    say(ok?'close':'stay');
   }finally{asking=false}

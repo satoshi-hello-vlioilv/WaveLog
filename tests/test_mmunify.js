@@ -108,6 +108,22 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  /* ---------- 測定データの保存（設定の段の札＝左の一覧の2行の項目） ---------- */
  await openNav('measStorage', '.mm-tabbar.is-rail .mm-tab');
  const railH = await look('.mm-tabbar.is-rail .mm-tab', ['h']);
+ /* ---------- 帳票レイアウト（一覧の頭・表の見出し・詳細の頭2段） ---------- */
+ await openNav('reportLayout', '.rly-row.is-head');
+ th.rly = await look('.rly-row.is-head', TH);
+ th.rly.fontSize = (await look('.rly-row.is-head>span', ['fontSize'])).fontSize;
+ thH.rly = await look('.rly-row.is-head', ['h']);
+ const rly = await page.evaluate(() => { const h = document.querySelector('.rly-blocks-head>.mm-panehead');
+  const s = document.querySelector('.rly-detail .mm-dhead small'), t = document.querySelector('.rly-detail .mm-dhead h3');
+  return { head: h ? [...h.children].map(c => c.textContent.trim()).join(' ') : '', paper: !!document.querySelector('.rly-blocks[data-rly-paper]'),
+   two: !!s && !!t && s.getBoundingClientRect().bottom <= t.getBoundingClientRect().top + 1 }; });
+ rec('5) 帳票レイアウトの一覧の頭も1つの形（「塊 N件」・どの紙かは対象の札が言う）', /^塊 \d+件/.test(rly.head) && rly.paper, JSON.stringify(rly));
+ rec('3) 帳票レイアウトの詳細の頭も2段（種類「塊」が上・名前が下）', rly.two, JSON.stringify(rly));
+ /* ---------- 帳票ブロック（頭は主の操作1つ＋ ⋯・見本の帳票は札の行の右の行き先） ---------- */
+ await openNav('reportBlock', '.mm-row.head');
+ const rb = await page.evaluate(() => ({ acts: [...document.querySelectorAll('#masterMaintActs button')].map(b => b.id),
+  go: !!document.querySelector('#masterMaintList .mm-lbar #mmSampleView') }));
+ rec('1) 帳票ブロックの頭は主の操作1つ＋ ⋯（見本の帳票は札の行の右・1押し）', JSON.stringify(rb.acts) === '["masterMaintMore","masterMaintAdd"]' && rb.go, JSON.stringify(rb));
  /* ---------- 勤務形態（押す札にピルを使わない） ---------- */
  await openNav('shiftMaster', '.shift-list-item');
  const pill = await page.evaluate(() => [...document.querySelectorAll('.mm-main button')].filter(b => { const r = b.getBoundingClientRect(), c = getComputedStyle(b);
@@ -115,12 +131,12 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  rec('4) 押す札にピルを使わない（勤務形態の適用設備も角丸8px）', !pill.length, JSON.stringify(pill));
 
  rec('1) 一覧で選んだ項目は1つの見せ方（刃組＝設備停止＝選択肢の値）', same(sel.bk, sel.ssb) && same(sel.oc, sel.ssb), JSON.stringify(sel));
- rec('2) 表の見出しは1つの形（汎用の表＝選択肢の値＝在庫表＝判定表）', same(th.oc, th.mm) && same(th.bk, th.mm) && same(th.rt, th.mm), JSON.stringify(th));
+ rec('2) 表の見出しは1つの形（汎用の表＝選択肢の値＝在庫表＝判定表＝帳票レイアウト）', same(th.oc, th.mm) && same(th.bk, th.mm) && same(th.rt, th.mm) && same(th.rly, th.mm), JSON.stringify(th));
  rec('3) 詳細の題は15pxの1つ（刃組＝設備停止＝選択肢の値）・ゴムリングの名前の欄も同じ', dtitle.bk && dtitle.ssb && dtitle.bk.fontSize === dtitle.ssb.fontSize && dtitle.oc.fontSize === dtitle.ssb.fontSize && ring.nameFs === dtitle.ssb.fontSize, JSON.stringify({ dtitle, ring: ring.nameFs }));
  rec('3) 札（タブ）の高さは1つ（一覧の札の行＝設備の札の行）', tabH.list && tabH.scope && tabH.list.h === tabH.scope.h, JSON.stringify(tabH));
  rec('4) 本文の中の「＋ 追加」は1つの形（選択肢の値＝判定表＝設備停止の時間）', same(addBtn.oc, addBtn.rt) && same(addBtn.smn, addBtn.rt), JSON.stringify(addBtn));
  rec('4) 追加の行の欄も30px（設備停止の時間の分の欄＝ボタンの高さ）', smnIn && addBtn.smn && smnIn.h === addBtn.smn.h, JSON.stringify({ smnIn, btn: addBtn.smn && addBtn.smn.h }));
- rec('2) 表の見出しの高さは1つ（汎用の表＝在庫表＝判定表）', thH.mm && thH.bk && thH.rt && thH.mm.h === thH.bk.h && thH.rt.h === thH.bk.h, JSON.stringify(thH));
+ rec('2) 表の見出しの高さは1つ（汎用の表＝在庫表＝判定表）', thH.mm && thH.bk && thH.rt && thH.mm.h === thH.bk.h && thH.rt.h === thH.bk.h && thH.rly && thH.rly.h === thH.bk.h, JSON.stringify(thH));
  rec('4) 2行の一覧の項目は40px（選択肢の値のまとまり＝設定の段の札）', ocItemH && ocItemH.h === 40 && railH && railH.h === 40, JSON.stringify({ ocItemH, railH }));
  const badVerb = verbs.filter(t => /足す|つくる|作る/.test(t));
  rec('4) 「＋」のボタンは「追加」の1つの動詞（足す・つくるを使わない）', !badVerb.length && verbs.length > 5, JSON.stringify(badVerb.length ? badVerb : verbs.slice(0, 6)));
@@ -132,7 +148,7 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
 
  /* ---------- 7) 確かめる窓（いまはロールに居る） ---------- */
  const cm = await page.evaluate(() => {
-  const p = window.confirmModal({ message: 'テストの窓を消しますか？\nここは本文です。', confirmLabel: '消す', danger: true, facts: [{ text: '戻せません', danger: true }] });
+  const p = window.confirmModal({ message: 'テストの窓を消しますか？\nここは本文です。', confirmLabel: '削除する', danger: true, facts: [{ text: '戻せません', danger: true }] });
   const d = document.querySelector('#appConfirmModal .confirm-modal-dialog'), hd = d.querySelector('header'), c = getComputedStyle(hd), ok = document.getElementById('appConfirmOk');
   const out = { eyebrow: document.getElementById('appConfirmEyebrow').textContent, title: document.getElementById('appConfirmTitle').textContent,
    body: document.querySelector('#appConfirmBody .confirm-modal-message')?.textContent || '', kind: document.getElementById('appConfirmMark').dataset.kind,
@@ -144,7 +160,7 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  rec('7) 題が無ければ文の最初の1文が題・残りが本文', cm.title === 'テストの窓を消しますか？' && cm.body === 'ここは本文です。', JSON.stringify([cm.title, cm.body]));
  rec('7) 危ない窓は赤の「!」の印と、戻せないことの札', cm.kind === 'danger' && cm.mark === '!' && cm.fact === '戻せません', JSON.stringify(cm));
  rec('7) 窓の頭は白・下に線1本（マスタの編集窓と同じ）', cm.headBg === 'rgb(255, 255, 255)' && cm.headLine === '1px', JSON.stringify([cm.headBg, cm.headLine]));
- rec('7) 決めるボタンは動詞（消す）・補助の規格30px・やめると false', cm.ok === '消す' && cm.okH === 30 && cm.result === false, JSON.stringify([cm.ok, cm.okH, cm.result]));
+ rec('7) 決めるボタンは動詞（削除する）・補助の規格30px・キャンセルで false', cm.ok === '削除する' && cm.okH === 30 && cm.result === false, JSON.stringify([cm.ok, cm.okH, cm.result]));
  const al = await page.evaluate(() => {
   const p = window.alertModal('不要ファイルはありませんでした。');
   const d = document.querySelector('#appConfirmModal .confirm-modal-dialog');

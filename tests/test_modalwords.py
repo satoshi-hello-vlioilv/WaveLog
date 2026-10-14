@@ -10,6 +10,9 @@
      前は 45 か所が「OK」だった（何が起きるかを言わない）
   ③ 窓の土台の既定値に英字を戻さない（`base.js`）
   ④ 画面の字（HTML の小見出し）に大文字の英字の札を書かない
+  ⑥ 同じ操作は同じ言葉: 削除の決めるボタンは「削除する」の1つ（前は「消す」14か所・「削除する」21か所に分かれていた）、
+     やめる側は既定の「キャンセル」（前は「やめる」を19か所で渡していた）
+  ⑦ 保存していない変更を捨てるかを聞く窓は`WL.mm.confirmDiscard()`の1つ（前は3か所が別の題・別のボタン・赤と灰で聞いていた）
 """
 import re
 import sys
@@ -75,6 +78,44 @@ for p in FILES + [ROOT / 'templates/index.html']:
         labels.append('%s %s' % (p.name, m.group(2)))
 rec('④ 画面の小見出しに大文字の英字の札を書かない', not labels, ' / '.join(labels[:6]))
 
+# 同じ操作の言い換え（窓の呼び出しの中だけを見る。ほかの字の「消す」は数えない）
+SYNONYMS = [(re.compile(r"confirmLabel\s*:\s*['\"`]消す['\"`]"), '削除の決めるボタンは「削除する」'),
+            (re.compile(r"cancelLabel\s*:\s*['\"`]やめる['\"`]"), 'やめる側は既定の「キャンセル」')]
+
+
+def synonyms(files):
+    out = []
+    for p in files:
+        s = p.read_text(encoding='utf-8')
+        rel = p.relative_to(ROOT) if ROOT in p.parents else p.name
+        for fn in ('confirmModal', 'alertModal', 'promptModal'):
+            for line, arg in calls(s, fn):
+                out += ['%s:%d %s' % (rel, line, why) for rx, why in SYNONYMS if rx.search(arg)]
+    return out
+
+
+syn = synonyms(FILES)
+rec('⑥ 同じ操作は同じ言葉（削除は「削除する」・やめる側は「キャンセル」）', not syn, ' / '.join(syn[:6]))
+
+DISCARD = re.compile(r"confirmLabel\s*:\s*['\"`][^'\"`]*捨て")
+
+
+def discards(files):
+    out = []
+    for p in files:
+        s = p.read_text(encoding='utf-8')
+        rel = p.relative_to(ROOT) if ROOT in p.parents else p.name
+        for line, arg in calls(s, 'confirmModal'):
+            if DISCARD.search(arg):
+                out.append('%s:%d' % (rel, line))
+    return out
+
+
+dis = discards(FILES)
+base_maint = (ROOT / 'static/js/master/master-maint.js').read_text(encoding='utf-8')
+rec('⑦ 捨てるかを聞く窓は confirmDiscard() の1つ（ほかの呼び出しは捨てるボタンを書かない）',
+    len(dis) == 1 and dis[0].startswith('static/js/master/master-maint.js:') and 'function confirmDiscard(' in base_maint, dis)
+
 # ---- ⑤ 網が素通りしないこと（欠陥を食わせて捕まえる） ----
 # 試しのファイルは一時の置き場へ（本物の置き場へ書かない・§9.504）
 with tempfile.TemporaryDirectory() as tmp:
@@ -82,8 +123,14 @@ with tempfile.TemporaryDirectory() as tmp:
     probe.write_text("confirmModal({title:'x',eyebrow:'DELETE ALL'});\nconfirmModal('消しますか？');\n"
                      "confirmModal({message:'y',confirmLabel:'消す'});\nalertModal({eyebrow:'NOTICE',message:'z'});\n", encoding='utf-8')
     e2, n2, c2 = scan([probe])
+    probe.write_text("confirmModal({message:'a',confirmLabel:'消す',cancelLabel:'やめる'});\nconfirmModal({message:'b',confirmLabel:'削除する'});\n", encoding='utf-8')
+    s2 = synonyms([probe])
+    probe.write_text("confirmModal({title:'x',confirmLabel:'捨てて移る'});\n", encoding='utf-8')
+    d2 = discards([probe])
 rec('⑤ 英字の小見出しを入れれば捕まえる（2つ）', len(e2) == 2, e2)
 rec('⑤ 決めるボタンの字が無い確かめる窓を捕まえる（1・2行目の2つ・字のある窓とお知らせは数えない）', n2 == ['probe.js:1', 'probe.js:2'], n2)
+rec('⑤ 言い換えを入れれば捕まえる（1行目の2つ・「削除する」は数えない）', len(s2) == 2 and all(x.startswith('probe.js:1 ') for x in s2), s2)
+rec('⑤ 自前の「捨てる」窓を入れれば捕まえる', d2 == ['probe.js:1'], d2)
 
 ok = all(x for _, x in R)
 print('%d/%d PASS' % (sum(1 for _, x in R if x), len(R)))

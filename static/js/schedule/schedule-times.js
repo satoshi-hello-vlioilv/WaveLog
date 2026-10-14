@@ -133,7 +133,7 @@
   for(;;){
    const shown=confirmModal({eyebrow:v.editing?'EDIT TIMES':'ACTUAL TIMES',
     title:v.editing?'実際の時刻を直す':'実際の時刻を入れる',
-    bodyHtml:bodyHtml(e,v,err),confirmLabel:v.editing?'直す':'登録する',cancelLabel:'やめる',
+    bodyHtml:bodyHtml(e,v,err),confirmLabel:v.editing?'直す':'登録する',
     focus:'#appConfirmOk'});
    wire(v);   // 本文は`confirmModal`が呼ばれた時点で入っている
    if(!await shown)return false;

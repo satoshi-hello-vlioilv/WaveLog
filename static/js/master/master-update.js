@@ -253,7 +253,7 @@
    version===prev?'前に配った版です。消すと、ここで選び直してこの版へ戻すことはできなくなります。':'',
    version===st.local?'この PC はこの版で動いていますが、手元の写しで動いているので、消しても動き続けます。':'',
    '各 PC の手元の版には触りません。同じ版の ZIP をもう一度置けば戻せます。'].filter(Boolean);
-  const ok=await confirmModal({title:`版 ${version} を消しますか？`,message:why.join('\n'),confirmLabel:'消す',danger:true});
+  const ok=await confirmModal({title:`版 ${version} を消しますか？`,message:why.join('\n'),confirmLabel:'削除する',danger:true});
   if(!ok)return;
   try{
    const j=await api('/api/app/update/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version})});

@@ -212,9 +212,7 @@
  /* 保存していない変更を捨てて離れてよいか（変更が無ければ聞かない）。 */
  function leave(dirty,what){
   if(!dirty)return Promise.resolve(true);
-  return confirmModal({title:'保存していない変更を捨てる',eyebrow:what,
-   bodyHtml:'<p class="confirm-modal-message">保存していない変更があります。捨てて切り替えますか？</p>',
-   confirmLabel:'捨てて切り替える',cancelLabel:'やめる'});
+  return WL.mm.confirmDiscard(what);   // 窓はマスタの右の詳細と同じ1つ（§9.604）
  }
  /* 読み込みの器（本文に「読み込んでいます…」・頭の印）。 */
  async function loading(fn){

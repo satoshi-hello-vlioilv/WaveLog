@@ -3494,7 +3494,7 @@
  async function deleteHistory(id) {
   const ok = await confirmModal({ title: '刃組の記録を消します',
                                   message: 'この記録を消すと、台車差分の比べる相手が1つ前へずれます。',
-                                  confirmLabel: '消す', danger: true });
+                                  confirmLabel: '削除する', danger: true });
   if (!ok) return;
   try {
    await api('/api/bladeset/history/delete', {
