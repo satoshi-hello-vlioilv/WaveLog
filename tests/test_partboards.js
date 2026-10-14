@@ -2,16 +2,17 @@
 
    「刃組基準値、スペーサー、フィンガーのマスタはもっと使いやすく再設計してください。」
    利用者の選択「中身に合わせて」: スペーサー＝寸法の在庫表をその場で直す1枚／フィンガー＝ゴムリングと
-   同じ2ペイン（左＝材質・右＝幅ごとの本数）／刃組基準値＝節ごとの設定・既定値を薄字・離れたら保存。
+   同じ2ペイン（左＝材質・右＝幅ごとの本数）／刃組基準値＝節ごとの設定・既定値を薄字。
+   §9.603 で保存はほかのマスタと同じ**足元の1つ**（欄を離れても書かない・足元が「変更 N件」と言う）。
 
    前（実測・VER2.417.0）: 刃組基準値は登録の無い設備で**いま効いている値が0個**（空の表だけ）。
    スペーサー・フィンガーは本数1つを直すのに 編集→欄→保存 の3手（その場で直せる欄 0）。
    固定するのは:
     ① 刃組基準値: 未登録でも、いま効いている値が欄の薄字で全部見える・節の名前に番号が無い
-    ② 刃組基準値: 節の中で入力の左端が1本・打って離れると保存され「変更」の札・「既定へ」で空へ戻る
+    ② 刃組基準値: 節の中で入力の左端が1本・打っても書かず足元が「変更 1件」・保存で「設定」の札・「既定へ」→保存で空へ
     ③ 刃組基準値: 選ぶ欄は「既定（右）」が選ばれている（保存で固定しない）
     ⑥ 刃組基準値（§9.533）: 左＝節・右＝図と欄の2ペイン。欄と図の部品は同じ鍵で光り合い、打った値で図が動く
-    ④ スペーサー: 寸法の大きい順に全部・保有をその場で直すと保存・下限の欄は無い（§9.539）
+    ④ スペーサー: 寸法の大きい順に全部・保有を直し Enter で次の行・足元で保存・下限の欄は無い（§9.539）
     ⑤ フィンガー: 左に材質（見本は図と同じ色）・材質を選んで幅を足すとその材質で登録される
     ⑦ スペーサーの在庫の見通し（§9.540、利用者の選択「クリックでE-11、マウスオーバーでE-14」）:
        札3つ・表の「次に使える」＝保有−稼働中の台車・乗せると図が浮いて表は動かない・押すと全幅で入れ替わる・
@@ -73,9 +74,9 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   rec('⑥ 欄の9割以上が図の部品と同じ鍵で結ばれている', tot('linked') >= (tot('keys') - 1) * 0.9, `${tot('linked')}/${tot('keys')}`);
 
   await pickSec('機械の寸法');
-  const s1 = await page.evaluate(() => ({ state: document.querySelector('.bk-state').textContent,
+  const s1 = await page.evaluate(() => ({ state: document.getElementById('masterMaintState').textContent,
    shaft: document.querySelector('.sb-rows [data-k="shaftDia"]').placeholder }));
-  rec('① 頭が「未登録——すべて既定値」と言う', /未登録/.test(s1.state) && /既定値/.test(s1.state), s1.state);
+  rec('① 頭の状態の札が「すべて既定値」と言う（§9.603）', /すべて既定値/.test(s1.state), s1.state);
   /* 欄に入ると図の同じ鍵が光り、打った値で図が動く（保存はまだ）。図の部品に乗ると欄が光る。 */
   await page.focus('.sb-rows [data-k="arborLen"]');
   const lit = await page.evaluate(() => [...document.querySelectorAll('.sb-fig [data-k].is-on')].map(e => e.dataset.k));
@@ -101,17 +102,26 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
 
   await page.fill('.sb-rows [data-k="shaftDia"]', '210');
   await page.press('.sb-rows [data-k="shaftDia"]', 'Tab');
+  /* §9.603: 欄を離れても書かない。足元が「変更 1件」と言い、変えた欄に印・焦点は Tab で移った先の欄のまま。 */
+  await W.until(page, () => /^変更 1件/.test((document.querySelector('#masterMaintList .bk-foot .pc-dirty') || {}).textContent || ''), null, { ms: 5000, what: '足元の変更 1件' });
+  const s1d = await page.evaluate(() => ({ edited: !!document.querySelector('.sb-rows [data-k="shaftDia"].is-edited'),
+   save: !document.querySelector('#masterMaintList .bk-foot [data-bk-save]').disabled, focus: document.activeElement && document.activeElement.dataset.k }));
+  const notYet = ((await api('/api/bladeset-standard-master?equipment=' + q)).items || []).find(x => x.equipment === EQ);
+  rec('② 打って離れても書かない（足元の「保存」まで・§9.603）', !notYet || notYet.shaftDia == null, JSON.stringify(notYet || null));
+  rec('② 足元が「変更 1件」・変えた欄に印・保存を押せる', s1d.edited && s1d.save, JSON.stringify(s1d));
+  rec('② 描き直しても焦点は Tab で移った先の欄', !!s1d.focus && s1d.focus !== 'shaftDia', String(s1d.focus));
+  await W.bkSave(page);
   const saved = await W.poll(() => api('/api/bladeset-standard-master?equipment=' + q), r => ((r.items || []).find(x => x.equipment === EQ) || {}).shaftDia === 210);
   stdMade = ((saved.items || []).find(x => x.equipment === EQ) || {}).id || null;
-  await W.until(page, () => !!document.querySelector('.sb-row.is-set [data-k="shaftDia"]'), null, { ms: 8000, what: '変更の札' });
-  const s2 = await page.evaluate(() => ({ state: document.querySelector('.bk-state').textContent,
-   tag: !!document.querySelector('.sb-row.is-set [data-undo="shaftDia"]'), focus: document.activeElement && document.activeElement.dataset.k }));
-  rec('② 打って離れると保存される（軸外径 210）', !!stdMade, String(stdMade));
-  rec('② 変えた欄に「変更」の札と「既定へ」・頭は「既定と違う値 1項目」', s2.tag && /既定と違う値 1項目/.test(s2.state), JSON.stringify(s2));
-  rec('② 保存して描き直しても、焦点は Tab で移った先の欄', !!s2.focus && s2.focus !== 'shaftDia', String(s2.focus));
+  await W.until(page, () => !!document.querySelector('.sb-row.is-set [data-k="shaftDia"]'), null, { ms: 8000, what: '設定の札' });
+  const s2 = await page.evaluate(() => ({ state: document.getElementById('masterMaintState').textContent,
+   tag: !!document.querySelector('.sb-row.is-set [data-undo="shaftDia"]') }));
+  rec('② 足元の保存で書かれる（軸外径 210）', !!stdMade, String(stdMade));
+  rec('② 変えた欄に「設定」の札と「既定へ」・頭は「設定 1項目」', s2.tag && /設定 1項目/.test(s2.state), JSON.stringify(s2));
   await page.click('[data-undo="shaftDia"]');
+  await W.bkSave(page);
   const back = await W.poll(() => api('/api/bladeset-standard-master?equipment=' + q), r => ((r.items || []).find(x => x.equipment === EQ) || {}).shaftDia == null);
-  rec('② 「既定へ」で空（既定値）へ戻る', ((back.items || []).find(x => x.equipment === EQ) || {}).shaftDia == null);
+  rec('② 「既定へ」→保存で空（既定値）へ戻る', ((back.items || []).find(x => x.equipment === EQ) || {}).shaftDia == null);
 
   /* ---- ④ スペーサー ---- */
   await openBoard(page, 'bladesetSpacer', '#masterMaintList .bk-stock tr[data-id]');
@@ -120,13 +130,18 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   const t = sp0.slice().sort((a, b) => b.size - a.size)[0];
   const row = `#masterMaintList tr[data-id="${t.id}"]`;
   await page.fill(row + ' [data-f="qty"]', String((t.qty || 0) + 1));
-  await page.press(row + ' [data-f="qty"]', 'Tab');
+  await page.press(row + ' [data-f="qty"]', 'Enter');
+  /* Enter で次の行の同じ欄へ（本数を上から順に直す手を止めない・§9.603）。 */
+  const nextId = await page.evaluate(id => { const tr = document.querySelector(`#masterMaintList tr[data-id="${id}"]`).nextElementSibling; return tr ? tr.dataset.id : ''; }, t.id);
+  await W.until(page, id => { const a = document.activeElement; return !!a && a.dataset.f === 'qty' && a.closest('tr').dataset.id === id; }, nextId, { ms: 5000, what: 'Enter で次の行' });
+  rec('④ 保有を打って Enter で次の行の保有の欄へ', !!nextId, nextId);
+  await W.bkSave(page);
   const sq = await W.poll(() => api('/api/bladeset-spacer-master?equipment=' + q), r => ((r.items || []).find(x => x.id === t.id) || {}).qty === (t.qty || 0) + 1);
-  rec('④ 保有はその場で直すと保存（1手・窓を開かない）', ((sq.items || []).find(x => x.id === t.id) || {}).qty === (t.qty || 0) + 1);
+  rec('④ 保有はその場で直し、足元の保存で書く（窓を開かない）', ((sq.items || []).find(x => x.id === t.id) || {}).qty === (t.qty || 0) + 1);
   /* 下限は持たない（§9.539 利用者の指示「そもそも下限という管理項目が不要」）——欄・列・札・頭の字のどれにも出さない。 */
   const lo = await page.evaluate(() => ({ f: document.querySelectorAll('#masterMaintList [data-f="minQty"]').length,
    th: [...document.querySelectorAll('#masterMaintList .bk-stock thead th')].map(x => x.textContent).join('|'),
-   word: /下限/.test((document.getElementById('masterMaintList').textContent || '') + (document.querySelector('.bk-state') || {}).textContent) }));
+   word: /下限/.test(document.getElementById('masterMaintList').textContent || '') }));
   rec('④ スペーサーの表に下限の欄・列・字が無い（§9.539）', !lo.f && !/下限/.test(lo.th) && !lo.word, JSON.stringify(lo));
 
   /* ---- ⑤ フィンガー ---- */
@@ -142,6 +157,9 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
       fg.mats[0] && fg.mats[0].sw === fg.bake && fg.mats[1] && fg.mats[1].sw === fg.al, JSON.stringify(fg));
   await page.click('.bk-item[data-bk-key="アルミニウム"]');
   await W.until(page, () => /アルミニウム/.test((document.querySelector('.bk-card-t h3') || {}).textContent || ''), null, { ms: 8000, what: 'アルミの詳細' });
+  /* 頭の主の操作「＋ 幅を足す」は表の下の足す行へ焦点を運ぶ（§9.603）。 */
+  await page.click('#fgAdd');
+  rec('⑤ 頭の「＋ 幅を足す」で足す行の幅の欄へ', await page.evaluate(() => !!document.activeElement && document.activeElement.id === 'fgNewD'));
   await page.fill('#fgNewD', '77');
   await page.fill('#fgNewQ', '4');
   await page.click('[data-act="add"]');
@@ -189,10 +207,12 @@ async function outlook(page, rec, sp0, madeHist) {
   const L = document.getElementById('masterMaintList'), cell = s => L.querySelector(`.bk-stock tr[data-id] [data-calc="free"][data-v]`) && [...L.querySelectorAll('.bk-stock tr[data-id]')]
    .find(tr => +tr.querySelector('th').firstChild.textContent === s)?.querySelector('[data-calc="free"]')?.dataset.v;
   return { cards: [...L.querySelectorAll('.bk-sv[data-sv]')].map(e => e.dataset.sv).join('/'), f50: cell(50), fFine: cell(sz),
+   side: (() => { const t = L.querySelector('.bk-stock').getBoundingClientRect(), b = L.querySelector('.bk-svband').getBoundingClientRect(); return b.left >= t.right; })(),
    frac: (L.querySelector('.bk-sv[data-sv="frac"]') || {}).textContent || '', legend: (L.querySelector('.bk-legend') || {}).textContent || '',
    top: Math.round(L.querySelector('.bk-stock tbody tr[data-id]').getBoundingClientRect().top) };
  }, fine.size);
  rec('⑦ 札は3つ（次の刃組で使える → 作れる端数 → 使えるぶんの長さ）', v.cards === 'table/frac/len', v.cards);
+ rec('⑦ 札の列は表の右（§9.603・表の右の空きを使う）', v.side);
  rec('⑦ 表の「次に使える」＝保有−稼働中の台車（50mm・端数を作る寸法）',
      +v.f50 === (s50.qty || 0) - 3 && +v.fFine === 0, JSON.stringify([v.f50, s50.qty, v.fFine]));
  rec('⑦ 凡例が稼働中の台車とその記録を名指しする', /稼働中の台車（A台車・12\/31の記録）/.test(v.legend), v.legend.slice(0, 60));
@@ -216,6 +236,8 @@ async function outlook(page, rec, sp0, madeHist) {
  await page.fill(row, String((fine.qty || 0) + 1));
  await page.press(row, 'Tab');
  await W.until(page, () => !/作れない/.test((document.querySelector('#masterMaintList .bk-sv[data-sv="frac"]') || {}).textContent || ''), null, { ms: 8000, what: '札が「作れない」をやめる' });
- rec('⑦ 端数を作る寸法を1枚足すと、その場で「作れない」が消える（保存もされる）',
+ rec('⑦ 端数を作る寸法を1枚足すと、保存の前にその場で「作れない」が消える', true);
+ await W.bkSave(page);
+ rec('⑦ 足元の保存で書かれる',
      ((await api('/api/bladeset-spacer-master?equipment=' + q)).items || []).some(x => x.id === fine.id && x.qty === (fine.qty || 0) + 1));
 }

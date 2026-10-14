@@ -594,7 +594,8 @@
  }
  /* 対象の札の行（§9.602）: いま触っている対象（共通／設備・紙）を札で並べ、いまの対象を下線で言う。ステップ2の札の行
     （`.mm-lbar`・§9.599）と同じ部品で、頭の右の選ぶ欄にしない——選べる対象が全部見え、いまの対象を探さずに読める。
-    `items`＝`[{v,label,n,tone,title}]`（`n`は札の小札・`tone:'warn'`は橙）。`note`は行の右の短い一言（効く範囲など）。 */
+    `items`＝`[{v,label,n,tone,title}]`（`n`は札の小札・`tone:'warn'`は橙）。`note`は行の右の短い一言（効く範囲など）。
+    `tools`は行の右に置く見せ方の切り替え（HTML・刃の「タイル｜刃厚ごとの一覧」・§9.603）。 */
  function scopeBarHtml(o){
   const badge=it=>it.n!=null&&it.n!==''?`<i class="mm-ltab-b${it.tone?' is-'+esc(it.tone):''}">${esc(it.n)}</i>`:'';
   return `<div class="mm-lbar mm-scopebar"><div class="mm-ltabs" role="tablist" aria-label="${esc(o.label||'対象')}">`
@@ -602,7 +603,7 @@
    +(o.items||[]).map(it=>{const on=String(it.v)===String(o.cur);
      return `<button type="button" role="tab" class="mm-ltab${on?' is-on':''}" aria-selected="${on}" data-mm-scope="${esc(it.v)}"`
       +`${it.title?` title="${esc(it.title)}"`:''}>${esc(it.label)}${badge(it)}</button>`}).join('')
-   +`</div><div class="mm-lbar-r"><span class="mm-lbar-note">${esc(o.note||'')}</span></div></div>`;
+   +`</div><div class="mm-lbar-r">${o.tools||''}<span class="mm-lbar-note">${esc(o.note||'')}</span></div></div>`;
  }
  /* 札を押したら`onPick(値)`。いまの対象をもう一度押しても何もしない（読み直さない）。 */
  function wireScopeBar(root,onPick){

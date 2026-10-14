@@ -249,6 +249,24 @@ async function mmTools(page){
  await until(page,()=>!document.getElementById('masterMaintForm').hidden,null,{ms:5000,what:'一覧の道具が開く'});
 }
 
+/* 刃組の盤（§9.603）: 対象の札の行で設備を選ぶ（人と同じ道・前は頭の選ぶ欄）。もう選ばれていれば押さない。
+   `ready`＝描き終えた合図の選択子（盤ごと）。 */
+async function bkEquip(page,eq,ready,ms=10000){
+ const sel=`#masterMaintList .mm-scopebar [data-mm-scope="${eq}"]`;
+ await until(page,s=>!!document.querySelector(s),sel,{ms,what:'設備の札 '+eq});
+ if(!await page.evaluate(s=>document.querySelector(s).classList.contains('is-on'),sel))await page.click(sel);
+ await until(page,([s,r])=>!!document.querySelector(s+'.is-on')&&(!r||!!document.querySelector(r)),[sel,ready||''],{ms,what:eq+' の盤'});
+}
+/* 刃組の盤の足元の「保存」（§9.603）。押す前に頭の知らせを空にし、知らせ（保存しました／できませんでした）と
+   足元の「変更なし」を待つ——押した物そのものの結果で待つ（`testing.md`）。 */
+async function bkSave(page,ms=15000){
+ await page.evaluate(()=>{const e=document.getElementById('masterMaintSay');if(e)e.textContent=''});
+ await page.click('#masterMaintList .bk-foot [data-bk-save]');
+ await until(page,()=>{const t=(document.getElementById('masterMaintSay')||{}).textContent||'';
+   const f=document.querySelector('#masterMaintList .bk-foot .pc-dirty');
+   return /できませんでした/.test(t)||(/保存しました|登録しました/.test(t)&&!!f&&/^(変更なし|まだ入力)/.test(f.textContent))},null,{ms,what:'足元の保存'});
+}
+
 /* 計測の口は公開するものにだけ被せる（中で呼び合うぶんは二重に数えない）。 */
 const X={SETTLE,settle,paint,textOf,
  leaveFocus:traced('leaveFocus',leaveFocus),nav:traced('nav',nav),
@@ -256,6 +274,6 @@ const X={SETTLE,settle,paint,textOf,
  openSchedule:traced('openSchedule',openSchedule),poll:traced('poll',poll),opSave:traced('opSave',opSave),
  answerPrompt:traced('answerPrompt',answerPrompt),answerConfirm:traced('answerConfirm',answerConfirm),
  changed:traced('changed',changed),listView:traced('listView',listView),openRecordReport:traced('openRecordReport',openRecordReport),
- mmTools:traced('mmTools',mmTools),
+ mmTools:traced('mmTools',mmTools),bkEquip:traced('bkEquip',bkEquip),bkSave:traced('bkSave',bkSave),
  track:(page,o)=>{const t=track(page,o);return {idle:traced('idle',t.idle),pending:t.pending}}};
 module.exports=X;

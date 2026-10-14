@@ -11,7 +11,7 @@
    潤滑リングは色コードが空なので**どの色とも被らない**ことになっていた（同じ紫でも通る）。
    固定するのは7つ:
     ① 一覧: 登録済みの色が外径の順に全部・見本の色はマスタの色（潤滑リングは紫）
-    ② 詳細: 外径・内径は1回だけ（幅ぜんぶで共通）、幅ごとの本数は欄を離れると保存
+    ② 詳細: 外径・内径は1回だけ（幅ぜんぶで共通）、幅ごとの本数は足元の保存で書く（§9.603）・輪の図は欄と結ぶ
     ③ 被り: 同じ外径は断る（保存させない・理由を字で・一覧の見本に印）、近い色は注意（保存できる）
     ④ 新しい色: 色名が**いちばん上の欄で焦点もそこ**・ピッカーの色・外径・幅と本数で登録できる
     ⑤ 直す・幅を足す・色を消す（名前を変えるとその色の行ぜんぶ）
@@ -36,9 +36,7 @@ H.run('test_ringboard: ゴムリングマスタの盤（§9.528）', async ({ pa
   await page.evaluate(() => WL.mm.openMasterMaint());
   await W.until(page, () => !!document.querySelector('[data-master="bladesetRing"]'), null, { ms: 15000, what: 'ゴムリングのタブ' });
   await page.evaluate(() => document.querySelector('[data-master="bladesetRing"]').click());
-  await W.until(page, () => !!document.querySelector('#rbEq'), null, { ms: 10000, what: 'ゴムリングの盤' });
-  await page.selectOption('#rbEq', { label: EQ });
-  await W.until(page, e => document.querySelector('#rbEq')?.value === e && !!document.querySelector('.rb-card'), EQ, { ms: 10000, what: '設備の盤' });
+  await W.bkEquip(page, EQ, '#masterMaintList .rb-card');
 
   /* ---- ① 帯 ---- */
   const strip = await page.evaluate(() => {
@@ -58,17 +56,27 @@ H.run('test_ringboard: ゴムリングマスタの盤（§9.528）', async ({ pa
   /* ---- ② カード ---- */
   const card = await page.evaluate(() => ({
    title: document.querySelector('#masterMaintList .bk-card-h [data-k="color"]')?.value, od: document.querySelector('[data-k="od"]')?.value,
-   rows: document.querySelectorAll('.rb-card .bk-table tbody tr').length, odInputs: document.querySelectorAll('.rb-card [data-k="od"]').length }));
+   rows: document.querySelectorAll('.rb-card .bk-table tbody tr').length, odInputs: document.querySelectorAll('.rb-card input[data-k="od"]').length }));
   rec('② 詳細: 最初の色が開き、外径の欄は1つ（幅ぜんぶで共通）・幅は行で並ぶ',
       card.title === first.color && +card.od === first.od && card.odInputs === 1 && card.rows === first.widths.length, JSON.stringify(card));
   const q = `.rb-card .bk-table tbody tr[data-id="${w0.id}"] .rb-q[data-f="qty"]`;
+  /* 輪の図（§9.603）: 寸法線と名前だけ（数は欄が持つ）。外径の欄に入ると図の外径が光る。 */
+  await page.focus('.rb-card [data-k="od"]');
+  const fig = await page.evaluate(() => { const f = document.querySelector('.rb-card .rb-fig');
+   return { names: [...f.querySelectorAll('.rb-dim text')].map(t => t.textContent).join('/'), nums: /\d/.test([...f.querySelectorAll('text')].map(t => t.textContent).join('')),
+    hot: [...f.querySelectorAll('.is-hot')].map(e => e.dataset.k).join('/') }; });
+  rec('② 輪の図は寸法線と名前だけ（数は左の欄）・外径の欄に入ると図の外径が光る',
+      fig.names === '外径/内径/肉厚' && !fig.nums && /od/.test(fig.hot) && !/bore/.test(fig.hot), JSON.stringify(fig));
   await page.fill(q, String((w0.qty || 0) + 7)); await page.press(q, 'Tab');
   const qtyOf = cs => ((cs.find(g => g.color === first.color) || { widths: [] }).widths.find(w => w.id === w0.id) || {});
+  await W.until(page, () => /^変更 1件/.test((document.querySelector('#masterMaintList .bk-foot .pc-dirty') || {}).textContent || ''), null, { ms: 5000, what: '足元の変更 1件' });
+  rec('② 本数は欄を離れても書かない（足元の「変更 1件」・§9.603）', qtyOf(await colors()).qty === w0.qty);
+  await W.bkSave(page);
   const w0b = qtyOf(await W.poll(colors, cs => qtyOf(cs).qty === (w0.qty || 0) + 7, 8000));
-  rec('② 本数は欄を離れると保存される（保存ボタンを探させない）', w0b.qty === (w0.qty || 0) + 7, JSON.stringify(w0b));
+  rec('② 足元の保存で本数が書かれる', w0b.qty === (w0.qty || 0) + 7, JSON.stringify(w0b));
 
   /* ---- ③④ 新しい色（被りの確認つき） ---- */
-  await page.click('[data-bk-add]');
+  await page.click('#rbAdd');
   await W.until(page, () => !!document.querySelector('.bk-item[data-bk-key="__new"]'), null, { ms: 8000, what: '新しい色の詳細' });
   const head = await page.evaluate(() => {
    const ins = [...document.querySelectorAll('#masterMaintList .bk-detail input, #masterMaintList .bk-detail select')];
@@ -88,42 +96,47 @@ H.run('test_ringboard: ゴムリングマスタの盤（§9.528）', async ({ pa
    el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, [k, v]);
   await setv0('od', '299'); await setv0('hex', (lube && lube.tone) || '#7150c4');
   await W.until(page, () => /「潤滑」と同じ色/.test(document.querySelector('.rb-hard')?.textContent || ''), null, { ms: 8000, what: '潤滑リングと同じ色で断る' });
-  const lh = await page.evaluate(() => ({ dis: document.querySelector('[data-act="create"]').disabled,
+  const lh = await page.evaluate(() => ({ dis: document.querySelector('#masterMaintList .bk-foot [data-bk-save]').disabled,
    mark: [...document.querySelectorAll('.bk-item.is-hard')].map(b => b.dataset.bkKey) }));
-  rec('§9.529 ① 潤滑リングの紫と同じ色は断る（登録ボタンを止め、一覧の潤滑リングに印）', lh.dis && lh.mark.join() === '潤滑', JSON.stringify(lh));
+  rec('§9.529 ① 潤滑リングの紫と同じ色は断る（足元の保存を止め、一覧の潤滑リングに印）', lh.dis && lh.mark.join() === '潤滑', JSON.stringify(lh));
   const setv = (k, v) => page.evaluate(([k, v]) => { const el = document.querySelector(`.rb-card [data-k="${k}"]`);
    el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, [k, v]);
-  await setv('color', '回帰_紫'); await setv('hex', '#7b3fb0'); await setv('od', String(first.od));
+  await setv('color', '回帰_紫'); await setv('hex', '#c2187a'); await setv('od', String(first.od));
   await W.until(page, () => !!document.querySelector('.rb-hard'), null, { ms: 8000, what: '同じ外径で断る' });
   const hard = await page.evaluate(() => ({ t: document.querySelector('.rb-hard').textContent,
-   dis: document.querySelector('[data-act="create"]').disabled,
+   dis: document.querySelector('#masterMaintList .bk-foot [data-bk-save]').disabled,
    mark: [...document.querySelectorAll('.bk-item.is-hard')].map(b => b.dataset.bkKey) }));
-  rec('③ 同じ外径は断る: 理由を字で・登録ボタンを止め・一覧の見本に印',
+  rec('③ 同じ外径は断る: 理由を字で・足元の保存を止め・一覧の見本に印',
       new RegExp(`「${first.color}」と同じ外径`).test(hard.t) && hard.dis && hard.mark.join() === first.color, JSON.stringify(hard));
   await setv('od', '311.5'); await setv('hex', first.hex.replace(/^#(..)/, (m, r) => '#' + ((parseInt(r, 16) + 6) % 256).toString(16).padStart(2, '0')));
   await W.until(page, () => !!document.querySelector('.rb-near') && !document.querySelector('.rb-hard'), null, { ms: 8000, what: '近い色の注意' });
   const near = await page.evaluate(() => ({ t: document.querySelector('.rb-near').textContent,
-   dis: document.querySelector('[data-act="create"]').disabled,
+   dis: document.querySelector('#masterMaintList .bk-foot [data-bk-save]').disabled,
    mark: [...document.querySelectorAll('.bk-item.is-near')].map(b => b.dataset.bkKey) }));
   rec('③ 近い色は注意（どの色に近いかと色差）・登録はできる',
       new RegExp(first.color).test(near.t) && /色差/.test(near.t) && !near.dis && near.mark.includes(first.color), JSON.stringify(near));
-  await setv('hex', '#7b3fb0');
-  await W.until(page, () => !!document.querySelector('.rb-ok'), null, { ms: 8000, what: '被りなし' });
+  /* 被りの無い色（どの色からも色差 52 以上。前の #7b3fb0 は潤滑リングの紫と色差 9.3 で「近い」になり、ここの待ちが
+     成り立っていなかった——待ちが黙って時間切れになっていた）。 */
+  await setv('hex', '#c2187a');
+  rec('③ 被りの無い色にすると「被っていません」と言う',
+      await W.until(page, () => !!document.querySelector('.rb-ok'), null, { ms: 8000, what: '被りなし' }));
   const nw = await page.evaluate(() => document.querySelectorAll('.rb-card [data-nw][data-f="qty"]').length);
   await page.evaluate(() => document.querySelectorAll('.rb-card [data-nw][data-f="qty"]').forEach((el, i) => {
    el.value = String(i + 1); el.dispatchEvent(new Event('input', { bubbles: true })); }));
-  await page.click('[data-act="create"]');
+  await W.bkSave(page);
   await W.until(page, () => document.querySelector('#masterMaintList .bk-card-h [data-k="color"]')?.value === '回帰_紫'
    && !document.querySelector('.bk-item[data-bk-key="__new"]'), null, { ms: 10000, what: '登録して開く' });
   const made = (await colors()).find(g => g.color === '回帰_紫');
   rec('④ 新しい色はピッカーの色・外径・幅と本数で登録される（幅は既存の顔ぶれで最初から並ぶ）',
-      !!made && made.hex === '#7b3fb0' && made.od === 311.5 && made.widths.length === nw && nw > 0
+      !!made && made.hex === '#c2187a' && made.od === 311.5 && made.widths.length === nw && nw > 0
       && made.total === nw * (nw + 1) / 2, JSON.stringify(made));
 
   /* ---- ⑤ 直す・幅を足す・消す ---- */
   await setv('color', '回帰_紺'); await setv('od', '311');
-  await W.until(page, () => !document.querySelector('[data-act="save"]')?.disabled, null, { ms: 8000, what: '保存ボタンが押せる' });
-  await page.click('[data-act="save"]');
+  await W.until(page, () => !document.querySelector('#masterMaintList .bk-foot [data-bk-save]')?.disabled, null, { ms: 8000, what: '保存ボタンが押せる' });
+  rec('⑤ 足元が変えた属性の数を言う（色名・外径＝変更 2件）',
+      await page.evaluate(() => /^変更 2件/.test(document.querySelector('#masterMaintList .bk-foot .pc-dirty').textContent)));
+  await W.bkSave(page);
   await W.until(page, () => !!document.querySelector('.bk-item.is-on[data-bk-key="回帰_紺"]'), null, { ms: 10000, what: '直して開き直す' });
   const renamed = (await colors()).find(g => g.color === '回帰_紺');
   rec('⑤ 名前・外径を直すと、その色の幅ぜんぶが変わる', !!renamed && renamed.widths.length === nw && renamed.od === 311, JSON.stringify(renamed));
@@ -132,7 +145,8 @@ H.run('test_ringboard: ゴムリングマスタの盤（§9.528）', async ({ pa
   await W.until(page, () => /25/.test(document.querySelector('.rb-card .bk-table tbody')?.textContent || ''), null, { ms: 10000, what: '幅が増える' });
   const added = ((await colors()).find(g => g.color === '回帰_紺') || { widths: [] }).widths.find(w => w.width === 25);
   rec('⑤ 幅を足すと、色の外径・内径を引き継いだ1行になる', !!added && added.qty === 3, JSON.stringify(added));
-  await page.click('[data-act="delcolor"]');
+  await page.click('#masterMaintList .rb-card [data-bk-more]');
+  await page.click('#mmActMenu [data-bk-act="delcolor"]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   await page.click('#appConfirmOk');
   await W.until(page, () => !document.querySelector('.bk-item[data-bk-key="回帰_紺"]'), null, { ms: 10000, what: '色が消える' });

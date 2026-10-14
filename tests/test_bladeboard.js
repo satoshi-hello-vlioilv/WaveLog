@@ -9,8 +9,8 @@
    セット名は自由な字）。カテゴリ・使用状態は別タブ「刃セット」でしか切り替えられなかった（刃のタブの札0）。
    固定するのは7つ:
     ① 一覧（§9.536 で径ゲージに）: 刃厚ごとのまとまりに セット×刃厚 が1つずつ（A→Z）、見出しが今すぐ選べる枚数
-    ② 詳細: カテゴリ・使用状態の2択がこの盤にある（押すとすぐ保存）・名称の欄は無い
-    ③ 刃厚の行: 欄を離れるとすぐ保存し、焦点は次の欄のまま。同じ刃厚は足せない（理由を言う）
+    ② 詳細: カテゴリ・使用状態の2択がこの盤にある・名称の欄は無い
+    ③ 刃厚の行: 欄を離れても書かず足元が「変更 N件」（§9.603）・焦点は次の欄のまま・足元の保存で書く。同じ刃厚は足せない
     ④ 新しいセット: 空いている字（A〜Z）から選び、登録済みの刃厚の顔ぶれで行が並ぶ
     ⑤ セット名を変える・セットを消す
     ⑥ 径ゲージ（§9.536、利用者の選択「B-9とB-10を切り替え表示…デフォルトはB-10」）: 既定はタイル・
@@ -38,9 +38,7 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   await page.evaluate(() => WL.mm.openMasterMaint());
   await W.until(page, () => !!document.querySelector('[data-master="bladesetBlade"]'), null, { ms: 15000, what: '刃のタブ' });
   await page.evaluate(() => document.querySelector('[data-master="bladesetBlade"]').click());
-  await W.until(page, () => !!document.querySelector('#bbEq'), null, { ms: 10000, what: '刃の盤' });
-  await page.selectOption('#bbEq', { label: EQ });
-  await W.until(page, e => document.querySelector('#bbEq')?.value === e && !!document.querySelector('.bk-card'), EQ, { ms: 10000, what: '設備の盤' });
+  await W.bkEquip(page, EQ, '#masterMaintList .bk-card');
 
   /* ---- ① 一覧 ---- */
   const list = await page.evaluate(() => ({
@@ -67,11 +65,15 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   await page.fill(dia, String((r0.currentDia || 300) - 0.5));
   await page.press(dia, 'Tab');
   const rowOf = cs => ((cs.find(x => x.group === first.group) || { rows: [] }).rows.find(r => r.id === r0.id) || {});
-  const got = rowOf(await W.poll(sets, cs => rowOf(cs).currentDia === (r0.currentDia || 300) - 0.5, 8000));
-  rec('③ 欄を離れるとすぐ保存される（保存ボタンを探させない）', got.currentDia === (r0.currentDia || 300) - 0.5, JSON.stringify(got));
+  await W.until(page, () => /^変更 1件/.test((document.querySelector('#masterMaintList .bk-foot .pc-dirty') || {}).textContent || ''), null, { ms: 5000, what: '足元の変更 1件' });
+  rec('③ 欄を離れても書かない・足元が「変更 1件（セット A）」（§9.603）',
+      rowOf(await sets()).currentDia === r0.currentDia && await page.evaluate(g => new RegExp(`セット ${g}`).test(document.querySelector('#masterMaintList .bk-foot .pc-dirty').textContent), first.group));
   await W.until(page, q => document.activeElement === document.querySelector(q), qty, { ms: 5000, what: '焦点は次の欄' }).catch(() => {});
-  rec('③ 保存して描き直しても焦点は Tab で移った次の欄（保有枚数）のまま',
+  rec('③ 描き直しても焦点は Tab で移った次の欄（保有枚数）のまま',
       await page.evaluate(q => document.activeElement === document.querySelector(q), qty));
+  await W.bkSave(page);
+  const got = rowOf(await W.poll(sets, cs => rowOf(cs).currentDia === (r0.currentDia || 300) - 0.5, 8000));
+  rec('③ 足元の保存で書かれる', got.currentDia === (r0.currentDia || 300) - 0.5, JSON.stringify(got));
   await page.fill('#bbNewT', String(r0.thickness)); await page.fill('#bbNewQ', '1');
   await page.click('[data-act="addrow"]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
@@ -80,7 +82,7 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   await page.click('#closeAppConfirm');
 
   /* ---- ④ 新しいセット ---- */
-  await page.click('[data-bk-add]');
+  await page.click('#bbAdd');
   await W.until(page, () => !!document.querySelector('.bk-card.is-new'), null, { ms: 8000, what: '新しいセットの詳細' });
   const nw = await page.evaluate(() => ({ opts: [...document.querySelector('[data-nk="group"]').options].map(o => o.value),
    rows: [...document.querySelectorAll('.bk-card.is-new [data-f="thickness"]')].map(i => +i.value) }));
@@ -91,11 +93,13 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   rec('④ 行は登録済みの刃厚の顔ぶれで最初から並ぶ（思い出させない）', nw.rows.join() === ths.join(), JSON.stringify(nw.rows));
   const g = nw.opts[nw.opts.length - 1];
   await page.selectOption('[data-nk="group"]', g);
-  await W.until(page, g => document.querySelector('.bk-card.is-new [data-act="create"]')?.textContent.includes(g), g, { ms: 5000, what: '字を選ぶ' });
-  await page.click(`.bk-card.is-new .bk-opt[data-seg="category"][data-v="専用刃"]`);
+  await W.until(page, g => document.querySelector('.bk-card.is-new [data-nk="group"]')?.value === g, g, { ms: 5000, what: '字を選ぶ' });
+  await page.click(`.bk-card.is-new [data-seg="category"][data-v="専用刃"]`);
   await page.evaluate(() => document.querySelectorAll('.bk-card.is-new [data-f="qty"]').forEach((el, i) => {
    el.value = String(i + 2); el.dispatchEvent(new Event('input', { bubbles: true })); }));
-  await page.click('.bk-card.is-new [data-act="create"]');
+  rec('④ 新しいセットでは足元が「入力あり」で保存を押せる（登録は足元の保存・§9.603）',
+      await page.evaluate(() => /^入力あり/.test(document.querySelector('#masterMaintList .bk-foot .pc-dirty').textContent) && !document.querySelector('#masterMaintList .bk-foot [data-bk-save]').disabled));
+  await W.bkSave(page);
   made.push(g);
   await W.until(page, g => !!document.querySelector(`#masterMaintList [data-bk-key="${g}"].is-on`), g, { ms: 10000, what: '登録して開く' });
   const s4 = (await sets()).find(x => x.group === g);
@@ -110,7 +114,9 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   const s5 = await sets();
   rec('⑤ セット名を変えると刃の行ぜんぶが新しい字へ（前の字は残らない）',
       !s5.some(x => x.group === g) && (s5.find(x => x.group === g2) || { rows: [] }).rows.length === ths.length, s5.map(x => x.group).join());
-  await page.click('[data-act="delset"]');
+  /* 消すのは詳細の頭の ⋯ の先（危ない操作を主の動線に置かない・§9.603）。 */
+  await page.click('#masterMaintList .bb-detail [data-bk-more]');
+  await page.click('#mmActMenu [data-bk-act="delset"]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   await page.click('#appConfirmOk');
   await W.until(page, g => !document.querySelector(`#masterMaintList [data-bk-key="${g}"]`), g2, { ms: 10000, what: 'セットが消える' });
@@ -130,19 +136,21 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   await page.evaluate(() => WL.mm.openMasterMaint());
   await W.until(page, () => !!document.querySelector('[data-master="bladesetBlade"]'), null, { ms: 15000, what: '刃のタブ' });
   await page.evaluate(() => document.querySelector('[data-master="bladesetBlade"]').click());
-  await W.until(page, () => !!document.querySelector('#bbEq'), null, { ms: 10000, what: '刃の盤' });
-  await page.selectOption('#bbEq', { label: EQ });
+  await W.bkEquip(page, EQ, '#masterMaintList .bb-ov');
   const tileSel = `#masterMaintList .bb-card[data-bk-key="${free}"]`;
   await W.until(page, s => !!document.querySelector(s), tileSel, { ms: 10000, what: '足したセットのタイル' });
   await page.click(tileSel);
-  await W.until(page, g => new RegExp('セット ' + g).test(document.querySelector('.bb-detail .bk-card h3')?.textContent || ''), free, { ms: 8000, what: '下に詳細が開く' });
+  await W.until(page, g => new RegExp('セット ' + g).test(document.querySelector('.bb-detail .bk-card h3')?.textContent || ''), free, { ms: 8000, what: '右に詳細が開く' });
   const v6 = await page.evaluate(s => {
    const t = document.querySelector(s);
-   return { view: document.querySelector('#masterMaintForm [data-seg="view"].is-on')?.dataset.v, text: t.textContent.replace(/\s+/g, ''),
-    arc: t.querySelector('.bb-arc')?.getAttribute('class') || '', legend: document.querySelector('.bb-legend')?.textContent || '',
+   const lg = document.querySelector('.bb-legend');
+   return { view: document.querySelector('#masterMaintList .bk-bar [data-seg="view"].is-on')?.dataset.v, text: t.textContent.replace(/\s+/g, ''),
+    arc: t.querySelector('.bb-arc')?.getAttribute('class') || '', legend: lg ? lg.textContent + ' ' + (lg.querySelector('[data-tip]')?.dataset.tip || '') : '',
+    dock: (() => { const a = document.querySelector('.bb-ov').getBoundingClientRect(), b = document.querySelector('.bb-detail').getBoundingClientRect(); return b.left >= a.right - 1; })(),
     card: document.querySelector('.bb-detail .bk-card').textContent.replace(/\s+/g, '') };
   }, tileSel);
-  rec('⑥ 既定の見せ方はタイル（B-10）・凡例が満タンの出どころと使用限界径を言う',
+  rec('⑥ タイルの見せ方でも詳細はタイルの右（§9.603）', v6.dock);
+  rec('⑥ 既定の見せ方はタイル（B-10）・凡例（と ⓘ）が満タンの出どころと使用限界径を言う',
       v6.view === 'タイル' && /使用限界径 Φ305/.test(v6.legend) && /満タン Φ/.test(v6.legend), JSON.stringify([v6.view, v6.legend.slice(0, 60)]));
   rec('⑥ タイルが残り（使用限界径まで）・残りわずか・研磨の予定の超過を言う',
       /残り1\.5mm/.test(v6.text) && /残りわずか/.test(v6.text) && /研磨の予定を5日過ぎ/.test(v6.text) && /is-near/.test(v6.arc), v6.text);
@@ -150,7 +158,7 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
       !/下限/.test(v6.text + v6.card) && !(await page.evaluate(() => document.querySelectorAll('#masterMaintList [data-f="minQty"]').length)), v6.text.slice(0, 80));
   rec('⑥ 詳細カード（L3）は直す欄だけ——残り・研磨の予定・刃厚ごとの枚数を言わない（階層を混ぜない）',
       !/残り\d|研磨の予定|今すぐ選べる/.test(v6.card), v6.card.slice(0, 120));
-  await page.click('#masterMaintForm [data-seg="view"][data-v="刃厚ごとの一覧"]');
+  await page.click('#masterMaintList .bk-bar [data-seg="view"][data-v="刃厚ごとの一覧"]');
   await W.until(page, () => !!document.querySelector('#masterMaintList .bk-pane.bb-tree .bb-row.is-on'), null, { ms: 8000, what: '刃厚ごとの一覧' });
   const v6b = await page.evaluate(g => ({ rows: document.querySelectorAll('#masterMaintList .bb-row').length,
    stk: [...document.querySelectorAll('#masterMaintList .bb-stk-p')].map(b => b.dataset.bkKey),
@@ -184,7 +192,7 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
    return out;
   });
   const vTree = await vertical();
-  await page.click('#masterMaintForm [data-seg="view"][data-v="タイル"]');
+  await page.click('#masterMaintList .bk-bar [data-seg="view"][data-v="タイル"]');
   await W.until(page, () => !!document.querySelector('#masterMaintList .bk-pane:not(.bb-tree)'), null, { ms: 8000, what: 'タイルへ戻す' });
   await page.click('#masterMaintList .bb-tile, #masterMaintList [data-bk-key]').catch(() => {});
   const vTile = await vertical();

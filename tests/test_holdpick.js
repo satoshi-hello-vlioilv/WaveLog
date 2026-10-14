@@ -26,13 +26,11 @@ const EQ = 'テスト設備A';
 const post = (p, body) => fetch(B + p, { method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body) }).then(r => r.json());
 const reset = () => post('/api/bladeset/hold-pick', { equipment: EQ, reset: true, user_id: 'test' });
-/* 列を足す（§9.574・人と同じ道）: 空の表なら道しるべの札、列があれば見出しの「＋ 条件の列」の一覧から。 */
+/* 列を足す（§9.574・人と同じ道）: 見出しの「＋ 条件の列」の一覧から（§9.603 で空の表の札は外した）。 */
 const addCol = async (page, scope, f) => {
  /* 前に足した列のセルの候補が開いていれば閉じる（浮いた候補は下の札を覆う——人も打つか Esc で閉じてから押す）。 */
  if (await page.$('.fx-suggest:not([hidden])')) await page.keyboard.press('Escape');
- const chip = `${scope} .rt-chip[data-addcol="${f}"]`;
- if (await page.$(chip)) await page.click(chip);
- else { await page.click(`${scope} .rt-addc [data-rt="addcol"]`); await page.click(`.rt-colmenu [data-addcol="${f}"]`); }
+ await page.click(`${scope} .rt-addc [data-rt="addcol"]`); await page.click(`.rt-colmenu [data-addcol="${f}"]`);
  await W.until(page, ([s, f]) => !!document.querySelector(`${s} .rt-col[data-f="${f}"]`), [scope, f], { ms: 4000, what: f + 'の列' });
 };
 
@@ -88,8 +86,7 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await W.until(page, () => !!document.querySelector('[data-master="bladesetHold"]'), null, { ms: 15000, what: '保持方式のタブ' });
   await page.evaluate(() => document.querySelector('[data-master="bladesetHold"]').click());
   await W.until(page, () => !!document.querySelector('.rt-table'), null, { ms: 10000, what: '判定表' });
-  await page.selectOption('#hpEq', { label: EQ });
-  await W.until(page, e => document.querySelector('#hpEq')?.value === e && !!document.querySelector('.rt-table'), EQ, { ms: 10000, what: '設備の判定表' });
+  await W.bkEquip(page, EQ, '#masterMaintList .rt-table');
   const shape = () => page.evaluate(() => ({
    state: document.querySelector('#masterMaintList .rt-state')?.textContent || '',
    rows: [...document.querySelectorAll('.rt-table tbody tr.rt-row')].map(tr => [...tr.querySelectorAll('input.rt-c')].map(i => i.value).join(',')
@@ -139,14 +136,14 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   const s1 = await shape();
   rec('④ 試す行に値を入れると当たる行が光り、答えと行番号を言う',
       /≧ 20→フィンガー（ベークライト）★/.test(s1.rows) && /フィンガー（ベークライト）（2行目に当たる）/.test(s1.ans), JSON.stringify(s1));
-  await page.click('[data-rt="save"]');
+  await page.click('#masterMaintList .bk-foot [data-bk-save]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   const refused = await page.evaluate(() => document.getElementById('appConfirmModal').textContent);
   rec('④ 読めないセルがあるうちは保存させない（理由を言う）', /読めないセル/.test(refused), refused.slice(0, 80));
   await page.click('#closeAppConfirm');
   await page.fill(cell('thickness'), ''); await page.press(cell('thickness'), 'Tab');
   await W.until(page, () => !document.querySelector('.rt-c.is-bad'), null, { ms: 4000, what: '直す' });
-  await page.click('[data-rt="save"]');
+  await page.click('#masterMaintList .bk-foot [data-bk-save]');
   await W.until(page, () => /登録済み/.test(document.querySelector('#masterMaintList .rt-state')?.textContent || ''), null, { ms: 10000, what: '保存' });
   const saved = await page.evaluate(async EQ => {
    const r = await api('/api/bladeset/hold-pick?equipment=' + encodeURIComponent(EQ));
@@ -166,8 +163,10 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   /* ---- 「未登録に戻す」 ---- */
   await page.evaluate(() => WL.mm.openMasterMaint());
   await page.evaluate(() => document.querySelector('[data-master="bladesetHold"]').click());
-  await W.until(page, () => !!document.querySelector('[data-rt="reset"]'), null, { ms: 10000, what: '未登録に戻すのボタン' });
-  await page.click('[data-rt="reset"]');
+  /* 未登録に戻すは頭の ⋯ の先（§9.603・表の頭に保存・戻すを置かない）。 */
+  await W.until(page, () => !!document.querySelector('#masterMaintMore'), null, { ms: 10000, what: '頭の ⋯' });
+  await page.click('#masterMaintMore');
+  await page.click('#mmActMenu [data-rt-reset="hold"]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   await page.click('#appConfirmOk');
   await W.until(page, () => /未登録/.test(document.querySelector('#masterMaintList .rt-state')?.textContent || ''), null, { ms: 10000, what: '未登録へ戻る' });
@@ -188,7 +187,7 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   const order = () => page.evaluate(() => ({
    rows: [...document.querySelectorAll('.rt-table tbody .rt-n')].map(i => i.value).filter(Boolean).join(','),
    cols: [...document.querySelectorAll('.rt-table .rt-col b')].map(b => b.textContent).join('/'),
-   dirty: /保存していない/.test(document.querySelector('.rt-state')?.textContent || '') }));
+   dirty: /^変更/.test(document.querySelector('#masterMaintList .bk-foot .pc-dirty')?.textContent || '') }));
   const o0 = await order();
   rec('⑥ 列の並びは保存した並び（板厚/条数）で開く——1行目に無い列も後ろへ回らない', o0.cols === '板厚/条数' && o0.rows === 'R1,R2,R3', JSON.stringify(o0));
   await page.dragAndDrop('.rt-row[data-r="2"] .rt-grip', '.rt-row[data-r="0"] .rt-no', { targetPosition: { x: 4, y: 2 } });
@@ -217,7 +216,7 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await page.keyboard.press('ArrowDown');
   const o3 = await order();
   rec('⑥ 行もキー（↑↓）で動く', o3.rows === 'R2,R1,R3', JSON.stringify(o3));
-  await page.click('[data-rt="save"]');
+  await page.click('#masterMaintList .bk-foot [data-bk-save]');
   await W.until(page, () => /登録済み/.test(document.querySelector('.rt-state')?.textContent || ''), null, { ms: 10000, what: '並べ替えを保存' });
   const sv = await (await fetch(B + '/api/bladeset/hold-pick?equipment=' + encodeURIComponent(EQ))).json();
   const o4 = await order();
@@ -245,7 +244,7 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await W.until(page, () => /is-miss/.test(document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className || ''), null, { ms: 4000, what: '0.7 は外れる' }).catch(() => {});
   rec('⑦ 試す値 0.7 は当たらない（×）', await page.evaluate(() => /is-miss/.test(document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className || '')));
   /* ⑥の R3（板厚 ＜0.5）は1行目（＜0.6 または ＞0.9）に覆われて一度も当たらない——保存の前に確かめられる（§9.535）。 */
-  await page.click('[data-rt="save"]');
+  await page.click('#masterMaintList .bk-foot [data-bk-save]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   const ask7 = await page.evaluate(() => document.getElementById('appConfirmModal').textContent);
   rec('⑦ 上の行に覆われた行（3行目）があると、保存の前に名指しして確かめる（§9.535）', /当たらない決まり/.test(ask7) && /3行目/.test(ask7), ask7.slice(0, 120));
@@ -281,7 +280,7 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
             head: document.querySelector('.rt-h .rt-state.is-warn')?.textContent || '' }; });
   rec('⑧ セルに「当たらない」と字で出て、頭が「当たらない決まり 1行」と言う', p8.tag === '当たらない' && /当たらない決まり 1行/.test(p8.head), JSON.stringify(p8));
   rec('⑧ 盤は数直線で「重なり無し」・保存するとこの行を素通りして答えが使われないことを描く', p8.none && p8.then && p8.skip, JSON.stringify(p8));
-  await page.click('[data-rt="save"]');
+  await page.click('#masterMaintList .bk-foot [data-bk-save]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   const ask8 = await page.evaluate(() => document.getElementById('appConfirmModal').textContent);
   rec('⑧ 保存の前に、当たらない行と使われない答えを言って確かめる', /当たらない決まり/.test(ask8) && /1行目/.test(ask8) && /使われません/.test(ask8), ask8.slice(0, 120));
