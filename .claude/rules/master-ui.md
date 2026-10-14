@@ -1,4 +1,4 @@
-# マスタ管理の画面（65件）
+# マスタ管理の画面（69件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 設定型の6画面は共通設定と同じ骨組み（頭の下に全幅の状態の図→左の段→段の足元）。組むのは`mountSetPage()`の1箇所 | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
+| 設定型の表は`fillSetList()`（短い値の列は`fit`で中身なり）。行に操作のボタンを置かない（行を押す・行のメニュー・窓の ⋯） | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
+| 説明は定義の`hint`（ⓘ）、範囲は`scope`（灰の札「この端末だけ」）。主役の前に説明の帯・件数の帯を置かない | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
+| 設定型の保存は段の足元の1つ（`wireSetSave()`・`[data-set-field]`の変えた数）。離れる前に聞くのは`setDirty` | `test_measstore.js`・`test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 汎用の表のマスタの一覧はどれも札の行（`listBar()`）: タブ「一覧 N件」（絞ったら「n / N件」）・右に探す欄（行のある一覧だけ）と群の開閉。題の横に件数を出さない | `test_mmlist.js`・`test_mmfold.js` | [§9.599](../../docs/decisions/9.599.md) |
 | 探すとその場で絞る（表に出している全部の列の字・`mmFold`）。当たった字に印、群の見出しの件数と要約も絞った行で数え直す | `test_mmlist.js` | [§9.599](../../docs/decisions/9.599.md) |
 | 列の幅は中身なり（見出し〜320px）。器に入るなら px で表の幅に止め（`is-fitw`）、入らないときだけ`optional`の列を畳んで「ほか N列」と書く | `test_mmlist.js`・`test_mmtable.js` | [§9.599](../../docs/decisions/9.599.md) |

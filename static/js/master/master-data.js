@@ -10,7 +10,136 @@
    換算係数は §9.543 で `master-loadfactor.js` へ移した（散布図・積み上げ・係数の図）。
    ============================================================ */
 (function(){
- const {CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,firstVisibleDefKey,fmtDT,hintHtml,loadMaint,maintState,numFieldHtml,numRaw,pageFoldHtml,pageTabsHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav,tipHtml}=WL.mm;
+ const {CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,editorMore,ensureMaintEditor,firstVisibleDefKey,fmtDT,hintHtml,listBar,loadMaint,maintState,numFieldHtml,numRaw,openActMenu,pageFoldHtml,pageTabsHtml,paintFootState,renderMaintNav,requireMaintUser,setHeadActs,setMaintLoading,syncNav,tipHtml}=WL.mm;
+
+ /* ---------- 設定型の画面の型（§9.601・ステップ3） ----------
+    測定データの保存・データ引継ぎ・データ接続・クエリ結合・接続状況・不要ファイル掃除の6画面は、共通設定と同じ骨組みに載せる:
+    頭の行（画面名＋ⓘ＋用途の1行・範囲の札・右に ⋯ と主の操作1つ）→ 頭のすぐ下に全幅の状態の図（どの段を開いても見える）→
+    段が2つ以上なら左の段（共通設定と同じ札が状態を名乗る）→ 段の中身（1行＝名前｜値｜状態、または表）→ 段の下端の足元。
+    表はステップ2の型（札の行＋見出し＋行・行を押すと直す）。**行ごとに危ない操作を並べない**（窓や行のメニューの ⋯ の先）。
+    主役の前に説明の帯を置かない（説明は頭の ⓘ・行の ⓘ）。 */
+ function setPageHtml(o){
+  const sec=s=>`<div class="mm-set-body">${s.body}</div>${s.foot?`<div class="pc-save mm-set-foot">${s.foot}</div>`:''}`;
+  const fig=o.figure?`<div class="mm-set-fig">${o.figure}</div>`:'';
+  if(o.secs.length<2)return `${fig}<div class="mm-set-one">${sec(o.secs[0])}</div>`;
+  return `${fig}<div class="pc-page is-rail mm-set-page">${pageTabsHtml(o.secs.map(s=>({...s,body:sec(s)})),{scroll:true,rail:true})}</div>`;
+ }
+ /* 器へ描いて配線する。描き直し（読み直し・保存のあと）でも**開いていた段のまま**（最初の段へ跳ねない）。 */
+ function mountSetPage(o){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form)return null;
+  const keep=form.dataset.setKey===o.key?(form.dataset.setTab||''):'';
+  form.className='mm-form mm-form-page mm-set';form.hidden=false;form.dataset.setKey=o.key;
+  form.addEventListener('mm-tab',setTabMemo);
+  form.onsubmit=ev=>ev.preventDefault();
+  form.innerHTML=setPageHtml(o);
+  if(list)list.innerHTML='';
+  bindInputHelpers(form);
+  if(o.secs.length>1){
+   bindMaintTabs(form);
+   const i=o.secs.findIndex(s=>s.key===keep);if(i>0)form.__mmShowTab(i);
+   o.secs.forEach(s=>setTabState(form,s.key,s.state,s.tone,s.stateTitle));
+  }
+  WL.popMenu.tips(form);
+  return form;
+ }
+ /* 開いている段を器に控える（読み直しで器が空になっても、描き直したら同じ段を開く）。 */
+ function setTabMemo(ev){const p=ev.detail&&ev.detail.panel;if(p&&p.dataset.tabKey)ev.currentTarget.dataset.setTab=p.dataset.tabKey}
+ /* 左の段の状態の札（共通設定と同じ・正常は中立の灰・要対応は橙・届かないは赤）。 */
+ function setTabState(form,key,state,tone,title){
+  const p=form.querySelector(`.mm-tabpanel[data-tab-key="${key}"]`);if(!p)return;
+  p.dataset.tabState=state||'';p.dataset.tabStateTone=tone||'';p.dataset.tabBadgeTitle=title||'';
+  if(typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
+ }
+ const setPanel=(form,key)=>form&&form.querySelector(`.mm-tabpanel[data-tab-key="${key}"]`);
+ /* 1行＝名前（＋ⓘ）｜値・欄｜状態（共通設定の`pcKit().row`そのもの）。 */
+ const setRow=(label,ctl,o)=>pcKit({}).row((o&&o.key)||'',label,ctl,o);
+ const setRowsHtml=rows=>`<div class="pc-rows">${rows.filter(Boolean).join('')}</div>`;
+ /* 直す場所へ連れて行く字の札（置き場を決めるのは共通設定の1箇所・§9.267）。 */
+ const setGotoHtml=(attr,label)=>`<button type="button" class="mm-set-link" ${attr}>${esc(label)} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>`;
+ /* 量の帯（図）: 部分ごとの長さ＋凡例（名前と数を字で・色だけで言わない）。`right`＝右端の HTML（呼ぶ側が逃がす）。 */
+ function setBarHtml(parts,right,label){
+  return `<div class="mm-set-bar" role="img" aria-label="${esc(label)}"><div class="mm-set-bar-track">${
+    parts.map(p=>p.v>0?`<i class="${p.cls}" style="flex:${p.v}" title="${esc(p.name+(p.text?' '+p.text:''))}"></i>`:'').join('')}</div>`
+   +`<div class="mm-set-legend">${parts.map(p=>`<span class="mm-set-leg"><i class="${p.cls}" aria-hidden="true"></i>${esc(p.name)}${
+    p.text?` <b${p.id?` id="${p.id}"`:''}>${esc(p.text)}</b>`:''}</span>`).join('')}${right?`<small>${right}</small>`:''}</div></div>`;
+ }
+ /* 表（ステップ2の型）: 列は{label,w,num,tip}、行は{cells,cls,attrs,note,title}。2行目（言うことがあるときだけ）は`note`。 */
+ const setEmptyHtml=e=>`<div class="mm-empty is-none"><i class="fa-regular fa-rectangle-list mm-empty-ico" aria-hidden="true"></i>`
+  +`<b>${esc((e||{}).title||'まだ1行もありません')}</b>${(e||{}).text?`<span>${esc(e.text)}</span>`:''}</div>`;
+ function setTableHtml(cols,rows,empty){
+  const tmpl=cols.map(c=>c.w||'minmax(0,1fr)').join(' '),num=i=>cols[i]&&cols[i].num?' class="is-num"':'';
+  return `<div class="mm-row head" style="grid-template-columns:${tmpl}">${cols.map(c=>
+    `<span class="mm-th${c.num?' is-num':''}"${c.tip?` title="${esc(c.tip)}"`:''}>${c.html||`<b>${esc(c.label)}</b>`}</span>`).join('')}</div>`
+   +(rows.length?rows.map(r=>`<div class="mm-row${r.cls?' '+r.cls:''}" style="grid-template-columns:${tmpl}"${r.title?` title="${esc(r.title)}"`:''}${r.attrs||''}>`
+     +r.cells.map((c,i)=>`<span${num(i)}>${c}</span>`).join('')+(r.note?`<span class="mm-row-note">${r.note}</span>`:'')+'</div>').join('')
+    :setEmptyHtml(empty));
+ }
+ /* 札の行（`listBar()`・汎用の一覧と同じ部品）＋表を器へ。`tabs`＝[{key,label,n,tone}]（1枚なら押す物ではない）。
+    `onRow(id,row)`＝行を押す・Enter（押せる行だけが`data-set-row`を名乗る）。 */
+ function fillSetList(el,o){
+  if(!el)return;
+  const badge=t=>t.n!==''&&t.n!=null?`<i class="mm-ltab-b${t.tone?' is-'+esc(t.tone):''}">${esc(t.n)}</i>`:'';
+  const tabsHtml=o.tabs.length<2?`<span class="mm-ltab is-on is-only">${esc(o.tabs[0].label)}${badge(o.tabs[0])}</span>`
+   :o.tabs.map(t=>`<button type="button" role="tab" class="mm-ltab${t.key===o.now?' is-on':''}" aria-selected="${t.key===o.now}" data-set-ltab="${esc(t.key)}">${esc(t.label)}${badge(t)}</button>`).join('');
+  listBar(el,{key:o.key,label:o.label||'',tabsHtml,findOn:false,note:o.note||'',extraHtml:o.extra||''});
+  el.insertAdjacentHTML('beforeend',setTableHtml(o.cols,o.rows,o.empty));
+  fitSetCols(el,o.cols);
+  if(o.onTab)el.querySelectorAll('[data-set-ltab]').forEach(b=>{b.onclick=()=>o.onTab(b.dataset.setLtab)});
+  if(o.onRow)el.querySelectorAll('.mm-row[data-set-row]').forEach(r=>{
+   r.onclick=ev=>{if(!ev.target.closest('input,button,a,label'))o.onRow(r.dataset.setRow,r)};
+   r.onkeydown=ev=>{if(ev.key==='Enter'&&ev.target===r){ev.preventDefault();o.onRow(r.dataset.setRow,r)}};
+  });
+ }
+ /* `fit:true`の列は中身なりの幅（見出しと全行の中身を測った最大・ステップ2の「列の幅は中身なり」と同じ考え・§9.599）。
+    短い値の列が決め打ちの幅で場所を取り、長い道の列が 1536 で切れていた（§9.601）。余りは`fit`でない列が受ける。
+    測れない（段が伏せてある）ときは`w`のまま。字の幅は中身の範囲で測る（折り返さない・切れる字も全部の幅）。 */
+ function fitSetCols(el,cols){
+  if(!cols.some(c=>c.fit))return;
+  const rows=[...el.querySelectorAll('.mm-row')],w=cols.map(()=>0);
+  rows.forEach(r=>cols.forEach((c,i)=>{
+   const cell=c.fit&&r.children[i];if(!cell||cell.classList.contains('mm-row-note'))return;
+   const rg=document.createRange();rg.selectNodeContents(cell);
+   const st=getComputedStyle(cell),pad=(parseFloat(st.paddingLeft)||0)+(parseFloat(st.paddingRight)||0);
+   w[i]=Math.max(w[i],rg.getBoundingClientRect().width+pad);
+  }));
+  if(!cols.every((c,i)=>!c.fit||w[i]>0))return;
+  const tmpl=cols.map((c,i)=>c.fit?`${Math.ceil(w[i])+2}px`:(c.w||'minmax(0,1fr)')).join(' ');
+  rows.forEach(r=>{r.style.gridTemplateColumns=tmpl});
+ }
+ const setRowAttrs=(id,how)=>` data-set-row="${esc(String(id))}" role="button" tabindex="0" title="${esc(how||'押すと直す窓を開きます')}"`;
+ /* 足元（共通設定の`.pc-save`と同じ並び）: 左に状態の字、右にボタン。 */
+ const setFootHtml=(state,btns,id)=>`<span class="mm-form-hint pc-dirty"${id?` id="${id}"`:''} aria-live="polite">${esc(state)}</span><span class="mm-set-fill"></span>${btns}`;
+ const SET_SAVE_BTNS='<button type="button" class="mm-btn-ghost" data-set-cancel>キャンセル</button><button type="button" class="mm-btn-primary" data-set-save>保存</button>';
+ /* 保存の足元: 段の中の`[data-set-field]`を描いたときの値と比べ、変えた数を言う（共通設定と同じ`paintFootState`）。
+    `save(body)`は欄の値（鍵→字）を受ける。保存の道は画面に1つ（欄ごとに保存しない）。 */
+ function wireSetSave(panel,save,saveId){
+  if(!panel)return;
+  const fields=[...panel.querySelectorAll('[data-set-field]')];
+  fields.forEach(f=>{f.dataset.setInit=f.value});
+  const foot=panel.querySelector('.mm-set-foot'),st=foot.querySelector('.pc-dirty');
+  const cancel=foot.querySelector('[data-set-cancel]'),ok=foot.querySelector('[data-set-save]');
+  if(saveId)ok.id=saveId;
+  const paint=()=>{const n=fields.filter(f=>f.value!==f.dataset.setInit).length;paintFootState(st,[cancel,ok],false,!!n,n)};
+  panel.addEventListener('input',paint);panel.addEventListener('change',paint);
+  panel.addEventListener('click',()=>requestAnimationFrame(paint));   // ±（値は欄が持つ）を押したあとに数える
+  cancel.onclick=()=>{fields.forEach(f=>{f.value=f.dataset.setInit});paint()};
+  ok.onclick=()=>save(Object.fromEntries(fields.map(f=>[f.dataset.setField,String(f.value||'').trim()])));
+  paint();
+ }
+ /* 保存していない変更があるか（離れる前に聞く・`registerSpecial(key,{dirty})`・§9.598）。 */
+ const setDirty=()=>[...document.querySelectorAll('#masterMaintForm.mm-set [data-set-field]')]
+  .some(f=>f.dataset.setInit!=null&&f.value!==f.dataset.setInit);
+ /* 置き場の設定（パス設定マスタ）へ**送った鍵だけ**書く（§9.192）。測定データの保存・不要ファイル掃除の足元が使う。 */
+ async function savePathSettings(body,done,after){
+  try{
+   setMaintLoading(true,'保存しています…');
+   await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({...body,user_id:String($('#masterUserId')?.value||'').trim()})});
+   pathConfigState.loaded=false;
+   showToast&&showToast('保存しました',done,5000);
+  }catch(e){showToast&&showToast('保存できませんでした',e.message,7000)}
+  finally{setMaintLoading(false);after()}
+ }
  /* ---------- 測定データの保存(§9.202、利用者の指示) ----------
     「入力したのに完了へ反映されない」「測定バックアップの設定部分が無い」
     「『DBに同期』の使い方が分からない」は、**3つの置き場の関係が
@@ -76,26 +205,24 @@
   return `写し${m.mirrored}本`+(m.direct?` ／ この端末が書く${m.direct}本`:'')+wait;
  }
  function msSize(n){return (n===null||n===undefined)?'—':(n/1048576).toFixed(1)+'MB'}
+ /* 頭の下の図＝①→②→③の流れ（どの段を開いても見える・§9.601）。左から右へ流れ、矢印が「いつ動くか」を字で言う。
+    以前は段「いまの状態」の中に縦に積んでいた（§9.261: 狭い盤で値が切れたため）——図を全幅に出せば1段に十分な幅がある。 */
  function renderMeasStorage(){
-  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  const F=msFacts();
-  form.innerHTML=`
-   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末の設定</span></div>
-   <p class="ms-lead">測定データは<b>3か所</b>に置かれます。上から下へ流れます。
-    <b>打っている最中はまだどこにも入っていません</b>——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。</p>
-   <div class="ms-next"><span class="ms-next-label">次にすること</span><span>${F.next}</span></div>
-   ${pageTabsHtml([
-    {name:'いまの状態',body:msTabNow(F)},
-    {name:'置き場と引っ越し',body:msTabPlace(F)},
-    {name:'閲覧用の複製',body:msTabExport(F)},
-   ])}`;
-  list.innerHTML='';
-  /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
-     キーボード操作（←→）も見出しの一言もそのまま効く。 */
-  bindMaintTabs(form);
-  wireMsActions(form);
+  const F=msFacts(),{exp,loc,unsent}=F,canExport=exp.configured&&!exp.retired;
+  /* 次の一手は頭の主ボタン1つ（未送信があるときだけ・§CLAUDE 2）。たまに使う物は ⋯。 */
+  setHeadActs({primary:unsent?{id:'msSyncNow',label:`未送信 ${unsent}件を今すぐ送る`,plus:false,
+    title:'①のうち②へ送れていないものを、まとめて送ります',onClick:msSyncNow}:null,
+   more:[{label:'状態を読み直す',data:{msAct:'reload'},onClick:msReload},
+    ...(canExport?[{label:'いま複製する',note:'間隔を待たずに②を③へ写します',data:{msAct:'export'},onClick:msExportNow}]:[])]});
+  const form=mountSetPage({key:'measStorage',figure:msFlowHtml(F),secs:[
+   {key:'place',name:'置き場と引っ越し',icon:'fa-folder-tree',sub:'② の置き場',body:msPlaceHtml(F),state:loc.perEquipment?'設備ごと':'OK'},
+   {key:'export',name:'閲覧用の複製',icon:'fa-copy',sub:'③ Box 等へ',body:msExportHtml(F),foot:setFootHtml('変更なし',SET_SAVE_BTNS),
+    state:exp.retired?'使いません':exp.lastError?'失敗':canExport?'複製あり':'未設定',tone:exp.lastError?'bad':''}]});
+  if(!form)return;
+  form.querySelectorAll('[data-ms-goto]').forEach(b=>{b.onclick=()=>msGoto(b.dataset.msGoto)});
   wireMsSplit();
-  wireMsSaveCfg();
+  wireSetSave(setPanel(form,'export'),body=>savePathSettings(body,'複製先を変えた場合は、アプリを再起動すると反映されます',
+   ()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)}),'msSaveCfg');
  }
  /* 測定データの保存の画面に出す事実（§9.522 で`renderMeasStorage()`から切り出した）。①の件数は画面が数える。 */
  function msFacts(){
@@ -105,222 +232,107 @@
   const done=items?items.filter(x=>x.status==='完了').length:null;
   const unsent=items?items.filter(x=>(x.syncState&&x.syncState.status)!=='synced').length:null;
   const v=(measStorageState.cfg&&measStorageState.cfg.values)||{};
-  const interval=Number(exp.intervalSec||600);
-  const mins=Math.max(1,Math.round(interval/60));
-  /* 次にすること。**1つだけ指す**(§2)。 */
-  const next=unsent
-   ?`この端末に<b>まだ②へ送っていないデータが${unsent}件</b>あります。「未送信を今すぐ送る」を押してください。`
-   :(!exp.configured
-     ?'②までは保存できています。他のPCから<b>閲覧だけ</b>させたい場合は、下の「閲覧用の複製先」を設定してください（設定しなくても測定・共有はできます）。'
-     :(exp.pending?'②に新しい変更があります。次の複製で③へ写ります（すぐ写したいときは「いま複製する」）。'
-                  :'すべて送信・複製できています。いまは何もする必要がありません。'));
-  return { exp, loc, draft, done, unsent, v, mins, next };
+  const mins=Math.max(1,Math.round(Number(exp.intervalSec||600)/60));
+  return { exp, loc, draft, done, unsent, v, mins };
  }
- /* **1行1段**にする（§9.261）。以前は3段を横に並べていたが、盤は
-    ビューポートより狭く（1366pxの窓で875px）、矢印2本が240pxを取るので
-    1段あたり204pxしか残らず、**値が「未設定（…」「08/28 15:2…」と
-    切れていた**（実測。CLAUDE 画面基準 11「器は中身の長さから決める」）。
-    縦に積めば値は切れず、流れも上から下で読める。 */
- const msStage=(no,title,sub,rows,note,cls)=>`<div class="ms-stage ${cls||''}">
-    <div class="ms-stage-head"><span class="ms-no">${no}</span><b>${esc(title)}</b><small>${esc(sub)}</small></div>
-    <dl class="ms-kv">${rows.map(([k,val,warn])=>
-      `<dt>${esc(k)}</dt><dd${warn?' class="is-warn"':''}>${val}</dd>`).join('')}</dl>
-    <p class="ms-note">${note}</p></div>`;
- const msArrow=(a,b)=>`<div class="ms-arrow" aria-hidden="true"><i>↓</i><b>${esc(a)}</b><small>${esc(b)}</small></div>`;
- /* 段「いまの状態」: ①→②→③の流れと、すぐ押す操作。 */
- function msTabNow(F){
+ /* 段の1つ（図の箱）: 番号・名前（ⓘ に役目）・何か（小さな字）・いまの数。数えられない欄は「—」（0件と言い切らない・§9.107）。 */
+ const msStage=(no,name,sub,rows,tip,cls)=>`<div class="ms-stage${cls?' '+cls:''}">
+    <div class="ms-stage-head"><span class="ms-no">${no}</span><b>${esc(name)}</b>${tipHtml(tip)}</div><small class="ms-stage-sub">${sub}</small>
+    <dl class="ms-kv">${rows.map(([k,val,warn])=>`<dt>${esc(k)}</dt><dd${warn?' class="is-warn"':''}>${val}</dd>`).join('')}</dl></div>`;
+ /* 矢印の字は1行（「いつ・どう」）。未設定は③の箱が言う（同じ字を2か所に出さない）。 */
+ const msArrow=(a,b)=>`<div class="ms-arrow"><span>${esc(b&&b!=='未設定'&&b!=='—'?`${a}・${b}`:a)}</span><i aria-hidden="true"></i></div>`;
+ const msCount=n=>msNum(n)+(n===null||n===undefined?'':'件');
+ function msFlowHtml(F){
   const { exp, loc, draft, done, unsent, mins } = F;
-  return `   <div class="ms-flow">
-    ${msStage('①','この端末のブラウザ','IndexedDB＋控え',[
-      ['編集中',msNum(draft)+(draft===null?'':'件')],
-      ['完了',msNum(done)+(done===null?'':'件')],
-      ['②へ未送信',msNum(unsent)+(unsent===null?'':'件'),!!unsent],
-     ],'入力した値の実体です。<b>この端末でしか見えません</b>。ブラウザのデータを消すと失われます。',
-      unsent?'is-warn':'')}
+  const off=exp.retired||!exp.configured,per=!!loc.perEquipment;
+  const tip2=per
+   ?`**設備ごとに1ファイル**に分けています——書くのはその設備の担当端末だけなので、同じファイルを2台が変えることがありません。一覧は**全設備ぶん**を読みますが、**開くのは手元の写し**です（自分が書いたぶんだけは実物を読むので、自分の記録はすぐ見えます）。置き場: ${loc.shareDir||'—'}`
+   :`**他のPCから続きを開けるのはここ**です（データ一覧はここも読みます）。${loc.path||''}`;
+  const tip3=exp.retired?exp.retired:exp.configured
+   ?`閲覧モードの端末はここを読みます。書き戻しはしません。${exp.path||''}${exp.lastError?` 前回の複製に失敗しました: ${exp.lastError}`:''}`
+   :'設定すると、②の中身をまるごと Box 等へ写します。**測定・共有には必要ありません**——閲覧専用の端末に見せたいときだけ設定します。';
+  return `<div class="ms-flow">
+    ${msStage('①','この端末のブラウザ','IndexedDB＋控え',[['編集中',msCount(draft)],['完了',msCount(done)],['②へ未送信',msCount(unsent),!!unsent]],
+     '入力した値の実体です。**この端末でしか見えません**。ブラウザのデータを消すと失われます。**打っている最中はまだどこにも入っていません**——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。',
+     unsent?'is-warn':'')}
     ${msArrow('保存のたび','自動')}
-    ${msStage('②',loc.perEquipment?'測定データのDB':'この端末のDB',
-      loc.perEquipment?'共有・設備ごとに1ファイル':'db/records.sqlite3',[
-      ['記録',msNum(loc.count)+(loc.count===null?'':'件')],
-      ['最終書込',msWhen(loc.lastWriteAt)],
-      ['大きさ',msSize(loc.size)],
-     ].concat(loc.perEquipment?[['読む先',(loc.readPaths||[]).length+'ファイル'],
-                                ['読み方',msMirrorText(loc.mirrored)]]:[]),
-     loc.perEquipment
-      ?`<b>設備ごとに1ファイル</b>に分けています——書くのはその設備の担当端末だけなので、同じファイルを2台が変えることがありません。
-        一覧は<b>全設備ぶん</b>を読みますが、<b>開くのは手元の写し</b>です——共有を直接開くと、
-        読んでいるあいだ測定端末の書き込みを待たせます（自分が書いたぶんだけは実物を読むので、
-        自分の記録はすぐ見えます）。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
-      :`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
+    ${msStage('②',per?'測定データのDB':'この端末のDB',per?'共有・設備ごとに1ファイル':`<span title="${esc(loc.path||'')}">db/records.sqlite3</span>`,
+     [['記録',msCount(loc.count)],['最終書込',msWhen(loc.lastWriteAt)],['大きさ',msSize(loc.size)]]
+      .concat(per?[['読む先',(loc.readPaths||[]).length+'ファイル'],['読み方',msMirrorText(loc.mirrored)]]:[]),tip2)}
     ${msArrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
     ${msStage('③','閲覧用の複製','Box等・読むだけ',[
-      ['状態',exp.retired?'<b>使いません</b>':(exp.configured?(exp.exists===false?'まだ作られていません':'複製しています'):'<b>未設定（複製しません）</b>'),exp.retired||!exp.configured],
-      ['最終複製',(!exp.retired&&exp.configured)?msWhen(exp.lastOkAt):'—'],
-      ['未反映の変更',(!exp.retired&&exp.configured)?(exp.pending?'あり':'なし'):'—'],
-     ],exp.retired
-        ?esc(exp.retired)
-        :(exp.configured
-        ?`閲覧モードの端末はここを読みます。書き戻しはしません。<br><code title="${esc(exp.path||'')}">${esc(exp.path||'—')}</code>`
-        :'設定すると、②の中身をまるごとBox等へ写します。<b>測定・共有には必要ありません</b>——閲覧専用の端末に見せたいときだけ設定してください。'),
-      (exp.retired||!exp.configured)?'is-off':'')}
-   </div>
-   ${exp.lastError?`<p class="ms-err">前回の複製に失敗しました: ${esc(exp.lastError)}</p>`:''}
-   <div class="mm-cd-toolbar"><div class="mm-cd-actions">
-    <button type="button" id="msSyncNow" class="${unsent?'mm-btn-primary':'mm-btn-ghost sm'}"${unsent?'':' disabled'}
-      title="${unsent?'①のうち②へ送れていないものを、まとめて送ります':'未送信のデータはありません'}">未送信を今すぐ送る${unsent?`（${unsent}件）`:''}</button>
-    <button type="button" id="msExportNow" class="mm-btn-ghost sm"${exp.configured?'':' disabled'}
-      title="${exp.configured?'間隔を待たずに、いま②を③へ写します':'複製先が未設定です'}">いま複製する</button>
-    <button type="button" id="msReload" class="mm-btn-ghost sm">状態を読み直す</button>
-   </div></div>`;
- }
- /* 段「置き場と引っ越し」。 */
- function msTabPlace(F){
-  const { loc, v } = F;
-  return `   <div class="ms-settings">
-    <h4>② 測定データの置き場</h4>
-    <!-- **置き場を決めるのは共通設定の1箇所**（§9.267、§9.207「入口を2つに
-         しない」）。以前はここにも欄があり、共通設定の「置き場」にも同じ
-         設定が出ていた——同じ設定が2画面にあると、どちらが効くのか分からない。
-         ここは**いまどこか**を言って、直す場所へ連れて行くだけにする。 -->
-    <div class="ms-where${loc.perEquipment?' is-on':''}">
-     <span class="ms-where-label">いまの置き場</span>
-     <code class="ms-where-path">${esc(v.records_share_dir||'（未設定：この端末の db/records.sqlite3 に貯めています）')}</code>
-     <button type="button" class="mm-btn-ghost sm" data-ms-goto="pathConfig">共通設定 &gt; 置き場 で決める</button>
-    </div>
-    <p class="mm-field-hint">決めた置き場の下に<b>設備の名前のフォルダ</b>を作り、その中に <code>records.sqlite3</code> を置きます。
-     書くのはその設備を担当する端末だけなので、<b>同じファイルを2台が変えることがありません</b>。
-     空欄なら今までどおり、この端末の <code>db/records.sqlite3</code> 1本に貯めます。
-     <b>変えたときはアプリの再起動が必要です</b>（接続先は起動時に1回だけ決まります）。
-     設定しても<b>今までの記録は消えません</b>——読むときは旧い置き場も一緒に見ます。</p>
-    <!-- 置き場を決めたあとの引っ越し(§9.258)。**既定は下見**(§9.193)で、
-         押す前に「どの設備へ何件」を出す。元のファイルは消さない。 -->
-    <div class="ms-split" id="msSplitBox">
-     <b class="ms-split-head">今ある測定データを設備ごとに振り分ける</b>
-     <p class="mm-field-hint">この端末の <code>db/records.sqlite3</code> にある記録を、
-      設備ごとのフォルダへ写します。<b>元のファイルは消しません</b>——読むときは旧い置き場も
-      一緒に見るので、記録は1件も消えず、二重にも出ません。</p>
-     <div class="mm-cd-actions">
-      <button type="button" id="msSplitPreview" class="mm-btn-ghost sm"${loc.perEquipment?'':' disabled'}
-       title="${loc.perEquipment?'どの設備へ何件になるかを、書き込む前に見ます':'先に共有の置き場を決めて、アプリを再起動してください'}">どうなるか見る</button>
-      <button type="button" id="msSplitApply" class="mm-btn-primary" disabled
-       title="下見を見てから押せます">振り分ける</button>
-     </div>
-     ${loc.perEquipment?'':'<p class="ms-split-why">共有の置き場が<b>まだ効いていません</b>。上で置き場を決めて保存し、アプリを再起動すると押せるようになります。</p>'}
-     <div class="ms-split-result" id="msSplitResult" hidden></div>
-    </div>
+      ['状態',exp.retired?'使いません':(exp.configured?(exp.lastError?'前回は失敗':(exp.exists===false?'まだ作られていません':'複製しています')):'未設定（複製しません）'),!off&&!!exp.lastError],
+      ['最終複製',off?'—':msWhen(exp.lastOkAt)],['未反映の変更',off?'—':(exp.pending?'あり':'なし')]],tip3,off?'is-off':(exp.lastError?'is-warn':''))}
    </div>`;
  }
- /* 段「閲覧用の複製」。 */
- function msTabExport(F){
-  const { exp, v } = F;
-  return `   <div class="ms-settings">
-    <h4>③ 閲覧用の複製の設定</h4>
-    <!-- **置き場を決めるのは共通設定の1箇所**（§9.267、利用者の指示
-         「バックアップの置き場などを含めた全ての設定を共通設定に」）。
-         §9.202ではここに置くと決めていたが、置き場が画面に散っているのが
-         そもそもの困りごとだったので撤回した。ここに残すのは**間隔**だけ
-         ——あれは置き場ではなく、保存後すぐ効く動きの設定。 -->
-    <div class="ms-where${exp.configured?' is-on':''}">
-     <span class="ms-where-label">いまの複製先</span>
-     <code class="ms-where-path">${esc(v.records_backup_export_path||'（未設定：複製しません）')}</code>
-     <button type="button" class="mm-btn-ghost sm" data-ms-goto="pathConfig">共通設定 &gt; 置き場 で決める</button>
-    </div>
-    <label class="mm-field"><span>複製を見に行く間隔</span>
-     <span class="mm-field-num"><input type="number" id="msExportInterval" min="30" step="30"
-       value="${esc(String(v.records_backup_export_interval_sec||exp.intervalSec||600))}"><em>秒</em></span>
-     <small class="mm-field-hint"><b>変わったときだけ</b>複製するので、短くしても無駄な複製は増えません。
-      こちらは保存後すぐ反映されます（再起動は要りません）。</small></label>
-    <div class="mm-cd-actions"><button type="button" id="msSaveCfg" class="mm-btn-primary">この設定を保存</button></div>
-   </div>
-   <p class="mm-field-hint">測定画面の「DBへ同期」は、<b>いま開いている測定を①②へ即座に書く</b>ボタンです
-    （保存して閉じずに、そこまでの入力を確実に残したいときに使います）。他のPCへ渡したい・PCを入れ替えるときは
-    「データ引継ぎ」タブを使ってください。</p>`;
+ /* 段「置き場と引っ越し」。置き場を決めるのは共通設定の1箇所（§9.267・§9.207「入口を2つにしない」）——ここは**いまどこか**を言って
+    直す場所へ連れて行くだけ。引っ越しは「どうなるか見る → 振り分ける」の2段（§9.193・下見を見るまで振り分ける物を出さない）。 */
+ function msPlaceHtml(F){
+  const { loc, v } = F;
+  return setRowsHtml([
+   setRow('② の置き場',`<code class="ms-where-path" title="${esc(v.records_share_dir||'')}">${esc(v.records_share_dir||'（未設定：この端末の db/records.sqlite3 に貯めています）')}</code>`,
+    {tip:'決めた置き場の下に**設備の名前のフォルダ**を作り、その中に records.sqlite3 を置きます。書くのはその設備を担当する端末だけなので、**同じファイルを2台が変えることがありません**。空欄なら今までどおり、この端末の db/records.sqlite3 1本に貯めます。**変えたときはアプリの再起動が必要です**。設定しても今までの記録は消えません（読むときは旧い置き場も一緒に見ます）。',
+     state:setGotoHtml('data-ms-goto="pathConfig"','共通設定で決める')}),
+   setRow('設備ごとに分ける',loc.perEquipment?'<button type="button" id="msSplitPreview" class="mm-btn-ghost sm">どうなるか見る</button>'
+     :'<span class="mm-set-why">共有の置き場を決めて、アプリを再起動すると使えます</span>',
+    {tip:'この端末の db/records.sqlite3 にある記録を、設備ごとのフォルダへ写します。**元のファイルは消しません**——読むときは旧い置き場も一緒に見るので、記録は1件も消えず、二重にも出ません。どの設備へ何件になるかを、書き込む前に「どうなるか見る」で確かめます。'})])
+   +'<div class="ms-split-result" id="msSplitResult" hidden></div>';
  }
- /* すぐ押す操作（読み直す・未送信を送る・いま複製する）と、置き場を直す場所への行き先。 */
- function wireMsActions(form){
-  $('#msReload').onclick=()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)};
-  $('#msSyncNow').onclick=async()=>{
-   if(typeof WL.records.syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
-   await WL.records.syncPendingRecords({silent:false});
-   measStorageState.loaded=false;loadMeasStorageMaint(true);
-  };
-  $('#msExportNow').onclick=async()=>{
-   try{
-    setMaintLoading(true,'複製しています…');
-    await api('/api/measurement/backup/export-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    showToast&&showToast('複製しました','',3200);
-   }catch(e){showToast&&showToast('複製できませんでした',e.message,7000)}
-   finally{setMaintLoading(false);measStorageState.loaded=false;loadMeasStorageMaint(true)}
-  };
-  /* 置き場を直す場所へ連れて行く（§9.207。ここには欄を置かない）。
-     **段まで連れて行く**——「共通設定を開く」だけだと、置き場の段を
-     自分で探すことになる（§2）。飛び先は `pcPendingSection` が覚え、
-     共通設定が組み上がった時点で開く（描く前に押しても取りこぼさない）。 */
-  form.querySelectorAll('[data-ms-goto]').forEach(btn=>{
-   btn.onclick=()=>{
-    pcPendingSection='place';
-    document.querySelector(`#masterMaintNav [data-master="${btn.dataset.msGoto}"]`)?.click();
-   };
-  });
+ /* 段「閲覧用の複製」。置き場は共通設定、ここは**間隔**だけ（保存後すぐ効く動きの設定）。保存は足元の1つ。 */
+ function msExportHtml(F){
+  const { exp, v } = F;
+  return setRowsHtml([
+   setRow('複製先',`<code class="ms-where-path" title="${esc(v.records_backup_export_path||'')}">${esc(v.records_backup_export_path||'（未設定：複製しません）')}</code>`,
+    {tip:'複製先は共通設定の「置き場」で決めます。設定すると②の中身をまるごと Box 等へ写します。**測定・共有には必要ありません**。',
+     state:setGotoHtml('data-ms-goto="pathConfig"','共通設定で決める')}),
+   setRow('複製の間隔',numFieldHtml({k:'records_backup_export_interval_sec',label:'複製の間隔',unit:'秒',step:30,min:30},
+     String(v.records_backup_export_interval_sec||exp.intervalSec||600),'id="msExportInterval" data-set-field="records_backup_export_interval_sec"'),
+    {tip:'**変わったときだけ**複製するので、短くしても無駄な複製は増えません。保存後すぐ反映されます（再起動は要りません）。'})]);
+ }
+ const msReload=()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)};
+ async function msSyncNow(){
+  if(typeof WL.records.syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
+  await WL.records.syncPendingRecords({silent:false});
+  msReload();
+ }
+ async function msExportNow(){
+  try{
+   setMaintLoading(true,'複製しています…');
+   await api('/api/measurement/backup/export-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+   showToast&&showToast('複製しました','',3200);
+  }catch(e){showToast&&showToast('複製できませんでした',e.message,7000)}
+  finally{setMaintLoading(false);msReload()}
+ }
+ /* 置き場を直す場所へ連れて行く（§9.207）。**段まで連れて行く**——飛び先は`pcPendingSection`が覚え、共通設定が組み上がった時点で開く。 */
+ function msGoto(key){
+  pcPendingSection='place';
+  document.querySelector(`#masterMaintNav [data-master="${key}"]`)?.click();
  }
  function wireMsSplit(){
-  /* 引っ越しは**下見 → 振り分ける**の2段(§9.193)。下見を見るまで
-     「振り分ける」は押せない（押した瞬間に何が起きるか分からない操作にしない）。 */
-  let splitSeen=false;
-  const msSplitRun=async apply=>{
-   const box=$('#msSplitResult');
+  const box=$('#msSplitResult');
+  const run=async apply=>{
    try{
     setMaintLoading(true,apply?'振り分けています…':'調べています…');
-    const r=await api('/api/measurement/records/split',
-     {method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({apply,user_id:String($('#masterUserId')?.value||'').trim()})});
+    const r=await api('/api/measurement/records/split',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({apply,user_id:String($('#masterUserId')?.value||'').trim()})});
     const gs=r.groups||[];
     box.hidden=false;
     box.innerHTML=gs.length
-     ?`<p class="ms-split-total">${apply?'振り分けました':'下見'}：全 ${r.total} 件 → ${gs.length} 設備</p>`
-      +`<ul class="ms-split-list">${gs.map(g=>
-        `<li><b>${esc(g.equipment||'（設備なし）')}</b> ${g.count}件
-          <code title="${esc(g.path||'')}">${esc(g.dirName||'')}</code>
-          ${g.error?`<em class="ms-split-err">${esc(g.error)}</em>`:''}</li>`).join('')}</ul>`
-      +`<p class="mm-field-hint">${esc(r.note||'')}</p>`
+     ?`<p class="ms-split-total">${apply?'振り分けました':'下見'}：全 ${r.total} 件 → ${gs.length} 設備</p><ul class="ms-split-list">${gs.map(g=>
+       `<li><b>${esc(g.equipment||'（設備なし）')}</b> ${g.count}件 <code title="${esc(g.path||'')}">${esc(g.dirName||'')}</code>${
+        g.error?`<em class="ms-split-err">${esc(g.error)}</em>`:''}</li>`).join('')}</ul><p class="mm-field-hint">${esc(r.note||'')}</p>`
+       +(apply?'':'<button type="button" id="msSplitApply" class="mm-btn-primary">この内容で振り分ける</button>')
      :`<p class="ms-split-total">振り分ける記録がありません（${esc(r.note||'')}）</p>`;
-    if(apply){
-     splitSeen=false;$('#msSplitApply').disabled=true;
-     showToast&&showToast('振り分けました',`${r.moved}件を設備ごとのフォルダへ写しました`,6000);
-     measStorageState.loaded=false;loadMeasStorageMaint(true);
-    }else{
-     splitSeen=gs.length>0;$('#msSplitApply').disabled=!splitSeen;
-    }
-   }catch(e){
-    showToast&&showToast(apply?'振り分けられませんでした':'調べられませんでした',e.message,7000);
-   }finally{setMaintLoading(false)}
+    const go=$('#msSplitApply');
+    if(go)go.onclick=async()=>{
+     if(!await confirmModal({message:'今ある測定データを、設備ごとのフォルダへ写します。\n\n元のファイルは消しません（記録は1件も消えず、二重にも出ません）。\nよろしいですか？'}))return;
+     run(true);
+    };
+    if(apply){showToast&&showToast('振り分けました',`${r.moved}件を設備ごとのフォルダへ写しました`,6000);msReload()}
+   }catch(e){showToast&&showToast(apply?'振り分けられませんでした':'調べられませんでした',e.message,7000)}
+   finally{setMaintLoading(false)}
   };
-  if($('#msSplitPreview'))$('#msSplitPreview').onclick=()=>msSplitRun(false);
-  if($('#msSplitApply'))$('#msSplitApply').onclick=async()=>{
-   if(!splitSeen)return;
-   if(!await confirmModal({message:'今ある測定データを、設備ごとのフォルダへ写します。\n\n'
-              +'元のファイルは消しません（記録は1件も消えず、二重にも出ません）。\n'
-              +'よろしいですか？'}))return;
-   await msSplitRun(true);
-  };
- }
- /* 閲覧用の複製の間隔を保存する（置き場は共通設定の1箇所・ここは間隔だけ）。 */
- function wireMsSaveCfg(){
-  $('#msSaveCfg').onclick=async()=>{
-   /* **送るのはこの2つだけ**。パス設定の保存は「送られてきた項目だけ」を
-      書くので、他の設定を巻き添えにしない(§9.192)。 */
-   /* **置き場はここでは送らない**（§9.267）——`records_share_dir`も
-      `records_backup_export_path`も決めるのは共通設定の1箇所で、
-      送ると2画面から同じ設定を書くことになる。ここは間隔だけ。 */
-   const body={records_backup_export_interval_sec:String($('#msExportInterval').value||'').trim(),
-               user_id:String($('#masterUserId')?.value||'').trim()};
-   try{
-    setMaintLoading(true,'保存しています…');
-    await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    pathConfigState.loaded=false;
-    showToast&&showToast('保存しました','複製先を変えた場合は、アプリを再起動すると反映されます',6000);
-   }catch(e){showToast&&showToast('保存できませんでした',e.message,7000)}
-   finally{setMaintLoading(false);measStorageState.loaded=false;loadMeasStorageMaint(true)}
-  };
+  if($('#msSplitPreview'))$('#msSplitPreview').onclick=()=>run(false);
  }
  /* ---------- データ引継ぎ（PC引継ぎ等でrecords.sqlite3からIndexedDBへ取り込む） ----------
     通常はIndexedDB→records.sqlite3の一方通行だが、PC更新等でIndexedDBが
@@ -329,139 +341,98 @@
     それ以外(旧形式等)は安全側に倒して「非対応」として選択不可にする。
     既存IDと衝突する場合は上書きになるため、選択状態を可視化した上で
     確認ダイアログを挟んでから実行する。 ---------- */
- let importBackupState={items:[],loaded:false,localIds:new Set()};
+ let importBackupState={items:[],loaded:false,localIds:new Set(),sel:new Set()};
  async function loadImportBackupMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  if(!force&&importBackupState.loaded){renderImportBackupForm();renderImportBackupList();return}
+  if(!force&&importBackupState.loaded){renderImportBackup();return}
   form.innerHTML='';list.innerHTML='<div class="mm-empty">records.sqlite3を読み込んでいます…</div>';
   try{
    const [backupResult,localItems]=await Promise.all([api('/api/measurement/backup/list'),WL.records.reliableAll().catch(()=>[])]);
    importBackupState.items=(backupResult&&backupResult.items)||[];
    importBackupState.localIds=new Set(localItems.map(x=>x.id));
+   importBackupState.sel=new Set();   // 読み直したら選び直す（消えた・取り込んだ行を選んだままにしない）
    importBackupState.loaded=true;
-   renderImportBackupForm();renderImportBackupList();
+   renderImportBackup();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
- function renderImportBackupForm(){
-  const form=$('#masterMaintForm');if(!form)return;
-  const items=importBackupState.items,supported=items.filter(x=>x.codec==='json-full-v32');
-  // 端末内(IndexedDB)に対応が無い行 = データ一覧に出ないのに実績突合には効く残骸候補(§9.52)
-  const orphans=items.filter(x=>!importBackupState.localIds.has(x.id));
-  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip editing">PC引継ぎ専用</span></div>
-   <div class="mm-import-warning">
-    <b>注意: この操作はこの端末のIndexedDB（編集中/完了データ）を書き換えます。</b>
-    <span>records.sqlite3（Web測定バックアップ）の内容を、この端末のローカルデータへ取り込みます。同じIDの既存データは上書きされ、元に戻せません。PC更新・端末交換時の引継ぎなど、特別な場合以外は実行しないでください。</span>
-   </div>
-   <div class="mm-imp-state">
-    <div class="mm-imp-state-col">
-     <span class="mm-imp-state-label">いまの状態</span>
-     <ul class="mm-imp-state-list">
-      <li>バックアップ(records.sqlite3): <b>${esc(String(items.length))}</b>件</li>
-      <li>うちこの端末にも有る: <b>${esc(String(items.length-orphans.length))}</b>件</li>
-      <li>うちこの端末に<b>無い</b>: <b class="${orphans.length?'is-warn':''}">${esc(String(orphans.length))}</b>件</li>
-      <li>取込できる形式: <b>${esc(String(supported.length))}</b>件${supported.length<items.length?`（非対応 ${esc(String(items.length-supported.length))}件）`:''}</li>
-     </ul>
-    </div>
-    <div class="mm-imp-arrow" aria-hidden="true">→</div>
-    <div class="mm-imp-state-col">
-     <span class="mm-imp-state-label">選択中の操作で起きること</span>
-     <div id="mmImpPreview" class="mm-imp-preview">まだ何も選ばれていません。下の一覧で対象を選ぶと、ここに変化の予定が出ます。</div>
-    </div>
-   </div>
-   <div class="mm-cd-toolbar">
-    <div class="mm-cd-actions">
-     <button type="button" id="mmImpReload" class="mm-btn-ghost sm">再読込</button>
-     <button type="button" id="mmImpSelectAll" class="mm-btn-ghost sm">取込可能をすべて選択</button>
-     <button type="button" id="mmImpSelectOrphan" class="mm-btn-ghost sm"${orphans.length?'':' disabled'}>この端末に無いものを選択</button>
-     <button type="button" id="mmImpSelectNone" class="mm-btn-ghost sm">選択解除</button>
-     <button type="button" id="mmImpRun" class="mm-btn-primary">選択した項目をこの端末へ取り込む</button>
-     <span class="mm-cd-sep" aria-hidden="true"></span>
-     <button type="button" id="mmImpDelete" class="mm-btn-danger">選択した項目をバックアップから削除</button>
-    </div>
-   </div>
-   ${orphans.length?`<div class="mm-import-warning is-orphan">
-     <b>この端末のデータ一覧に無いバックアップが ${esc(String(orphans.length))}件あります。</b>
-     <span>作業スケジュールの「作業中」「完了」はこのバックアップを見て表示するため、端末から削除済みのデータが残っていると、データ一覧には何も無いのにスケジュールにだけ作業中が並びます。心当たりの無い行は「この端末に無いものを選択」→「選択した項目をバックアップから削除」で消せます。<b>他のPCで測定したデータをこのPCで参照している場合は、それも「無し」になります。消す前に内容をご確認ください。</b></span>
-    </div>`:''}`;
-  form.onsubmit=ev=>ev.preventDefault();
-  const reload=$('#mmImpReload'),selAll=$('#mmImpSelectAll'),selNone=$('#mmImpSelectNone'),run=$('#mmImpRun');
-  if(reload)reload.onclick=()=>loadImportBackupMaint(true);
-  if(selAll)selAll.onclick=()=>document.querySelectorAll('#masterMaintList [data-imp-id]:not(:disabled)').forEach(b=>b.checked=true);
-  if(selNone)selNone.onclick=()=>document.querySelectorAll('#masterMaintList [data-imp-id]').forEach(b=>b.checked=false);
-  if(run)run.onclick=()=>runImportBackup();
-  const selOrphan=$('#mmImpSelectOrphan'),del=$('#mmImpDelete');
-  if(selOrphan)selOrphan.onclick=()=>{
-   document.querySelectorAll('#masterMaintList [data-imp-id]').forEach(b=>{b.checked=b.dataset.impOrphan==='1'});
-   updateImportPreview();
-  };
-  if(del)del.onclick=()=>deleteBackupSelection();
-  [selAll,selNone].forEach(b=>{if(b){const prev=b.onclick;b.onclick=()=>{prev&&prev();updateImportPreview()}}});
-  updateImportPreview();
+ /* データ引継ぎ（§9.68 → §9.601）: 頭の下に「取り込むと何が起きるか」の帯（上書き／新しく追加／取り込めない形式）→ 表（札で絞る・
+    行を押すか左の印で選ぶ）→ 足元に選んだ件数と結果・「選んだ N件を取り込む」1つ。**バックアップから消すは頭の ⋯ の先**
+    （以前は取り込むの隣に赤い大きな「削除」——逆の結果になる取り消せない操作を主の動線に並べていた・§CLAUDE 5）。
+    注意の帯（赤）は ⓘ へ、件数の箱は帯と札へ。 */
+ const impView={tab:'all'};
+ const impOk=it=>it.codec==='json-full-v32';
+ function renderImportBackup(){
+  const ib=importBackupState,items=ib.items,ok=items.filter(impOk);
+  setHeadActs({more:[{label:'読み直す',data:{impAct:'reload'},onClick:()=>loadImportBackupMaint(true)},
+   {label:'選んだ記録をバックアップから消す…',danger:true,note:'予定の実績表示からも消えます（この端末のデータは残ります）',data:{impAct:'delete'},onClick:()=>deleteBackupSelection()}]});
+  /* 帯の凡例は名前だけ（件数は表の札が言う・同じ数を2か所に出さない）。札の無い「取り込めない形式」だけ数を添える。0件なら帯を出さない。 */
+  const ng=items.length-ok.length;
+  const fig=items.length?setBarHtml([{cls:'is-old',name:'この端末にも有る（取り込むと上書き）',v:ok.filter(x=>ib.localIds.has(x.id)).length},
+    {cls:'is-ok',name:'この端末に無い（新しく追加）',v:ok.filter(x=>!ib.localIds.has(x.id)).length},
+    {cls:'is-rest',name:'取り込めない形式',v:ng,text:ng?`${ng}件`:''}],'','バックアップを取り込むと何が起きるか'):'';
+  const form=mountSetPage({key:'importBackup',figure:fig,secs:[{key:'list',name:'バックアップ',body:'<div class="mm-list mm-set-list" id="mmImpList"></div>',
+   foot:setFootHtml('','<button type="button" id="mmImpRun" class="mm-btn-primary">選んだ記録を取り込む</button>','mmImpPreview')}]});
+  if(!form)return;
+  impFillList();
+  $('#mmImpRun').onclick=()=>runImportBackup();
  }
- /* 選択した内容で「何がどう変わるか」を実行前に言葉で示す(§9.68)。
-    取り込みも削除も元に戻せないので、押す前に結果を読めることが重要。 */
+ function impFillList(){
+  const ib=importBackupState,items=ib.items,miss=items.filter(x=>!ib.localIds.has(x.id)),has=items.length-miss.length;
+  const shown=impView.tab==='miss'?miss:impView.tab==='has'?items.filter(x=>ib.localIds.has(x.id)):items;
+  const list=$('#mmImpList');
+  fillSetList(list,{key:'importBackup:'+impView.tab,label:'バックアップ',now:impView.tab,onTab:k=>{impView.tab=k;impFillList()},
+   tabs:[{key:'all',label:'すべて',n:`${items.length}件`},{key:'miss',label:'この端末に無い',n:`${miss.length}件`,tone:miss.length?'warn':''},
+    {key:'has',label:'この端末にも有る',n:`${has}件`}],
+   /* 端末に無い記録は、データ一覧に出ないのに予定の実績突合には効く残骸の候補（§9.52）。なぜかは ⓘ。 */
+   note:miss.length?`この端末に無い ${miss.length}件は、予定にだけ「作業中」を出す元になります（消すのは ⋯ から）`:'',
+   cols:[{label:'',w:'36px',html:'<input type="checkbox" id="mmImpAll" aria-label="見えている行をすべて選ぶ" title="見えている行（取り込める形式）をすべて選ぶ／外す">'},
+    {label:'ロット番号',w:'minmax(120px,1fr)'},{label:'検査番号',w:'minmax(100px,1fr)'},{label:'状態',w:'96px'},{label:'設備',w:'minmax(100px,.8fr)'},
+    {label:'更新日時',w:'150px'},{label:'取り込むと',w:'minmax(170px,1.2fr)'}],
+   rows:shown.map(it=>{
+    const ok=impOk(it),on=ib.localIds.has(it.id),dash='<em class="mm-blank">—</em>';
+    return {cls:'mm-imp-row'+(on?'':' is-orphan')+(ok?'':' is-off'),title:ok?'押すと選ぶ／外す':`この形式（${it.codec||'不明'}）は取り込めません`,
+     cells:[`<input type="checkbox" data-imp-id="${esc(it.id)}" data-imp-orphan="${on?0:1}"${ib.sel.has(it.id)?' checked':''}${ok?'':' disabled'} aria-label="${esc(it.lotNo||it.id)}を選ぶ">`,
+      esc(it.lotNo)||dash,esc(it.inspectionNo)||dash,esc(it.status)||dash,esc(it.equipment)||dash,`<span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`,
+      ok?(on?'<span class="mm-set-tag is-warn mm-imp-badge overwrite">上書きされる</span>':'<span class="mm-set-tag mm-imp-badge new">新しく追加</span>')
+       :'<span class="mm-set-tag-off mm-imp-badge unsupported">取り込めない形式</span>']};
+   }),
+   empty:{title:'取り込めるバックアップはありません',
+    text:items.length?'この札に当たる記録はありません。':'records.sqlite3 にバックアップがまだありません。ほかの PC で「DBへ同期」すると、ここに並びます。'}});
+  /* 選ぶ的は行いっぱい（§9.363）。選んだ記録は札を替えても残る（`ib.sel`）。 */
+  const boxes=()=>[...list.querySelectorAll('[data-imp-id]:not(:disabled)')];
+  const pick=b=>{if(b.checked)ib.sel.add(b.dataset.impId);else ib.sel.delete(b.dataset.impId)};
+  const all=$('#mmImpAll');
+  const paintAll=()=>{if(all){const bs=boxes();all.checked=bs.length>0&&bs.every(b=>b.checked);all.disabled=!bs.length}};
+  list.querySelectorAll('[data-imp-id]').forEach(b=>b.addEventListener('change',()=>{pick(b);paintAll();updateImportPreview()}));
+  if(all)all.onchange=()=>{boxes().forEach(b=>{b.checked=all.checked;pick(b)});updateImportPreview()};
+  list.querySelectorAll('.mm-imp-row').forEach(r=>r.addEventListener('click',ev=>{
+   if(ev.target.closest('input'))return;
+   const b=r.querySelector('[data-imp-id]');if(!b||b.disabled)return;
+   b.checked=!b.checked;b.dispatchEvent(new Event('change',{bubbles:true}));
+  }));
+  paintAll();updateImportPreview();
+ }
+ /* 選んだ内容で「何がどう変わるか」を押す前に字で言う（§9.68）。取り込みも削除も元に戻せないので、押す前に結果を読めることが要る。 */
  function updateImportPreview(){
-  const box=$('#mmImpPreview');if(!box)return;
-  const checked=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')];
-  if(!checked.length){
-   box.className='mm-imp-preview';
-   box.textContent='まだ何も選ばれていません。下の一覧で対象を選ぶと、ここに変化の予定が出ます。';
-   return;
-  }
-  const orphan=checked.filter(b=>b.dataset.impOrphan==='1').length;
-  const overwrite=checked.length-orphan;
-  box.className='mm-imp-preview is-active';
-  box.innerHTML=`<div class="mm-imp-preview-row"><b>${esc(String(checked.length))}件</b>を選択中</div>
-   <div class="mm-imp-preview-plan"><span class="mm-imp-plan-title">「この端末へ取り込む」を押すと</span>
-    <ul><li>この端末へ<b>新しく追加</b>: ${esc(String(orphan))}件</li>
-     <li>既存データを<b>上書き</b>（元に戻せません）: ${esc(String(overwrite))}件</li></ul></div>
-   <div class="mm-imp-preview-plan"><span class="mm-imp-plan-title">「バックアップから削除」を押すと</span>
-    <ul><li>バックアップから<b>消える</b>: ${esc(String(checked.length))}件</li>
-     <li>作業スケジュールの実績表示から消える: ${esc(String(checked.length))}件</li>
-     <li>この端末のデータ一覧は<b>変わらない</b>（端末内データは残ります）</li></ul></div>`;
+  const ib=importBackupState,box=$('#mmImpPreview'),run=$('#mmImpRun');if(!box||!run)return;
+  const ids=impSelected(),over=ids.filter(id=>ib.localIds.has(id)).length,add=ids.length-over;
+  run.disabled=!ids.length;run.textContent=ids.length?`選んだ ${ids.length}件を取り込む`:'選んだ記録を取り込む';
+  run.title=ids.length?'取り込む前に、何が上書きされるかを確かめの窓で言います':'行を選ぶと押せます';
+  box.classList.toggle('is-active',!!ids.length);
+  box.textContent=ids.length?`${ids.length}件を選択中 — 取り込むと 新しく追加 ${add}件・上書き ${over}件${over?'（元に戻せません）':''}`
+   :'選んでいません（行を押すか、左の印で選びます）';
  }
- function renderImportBackupList(){
-  const list=$('#masterMaintList');if(!list)return;
-  const items=importBackupState.items;
-  if(!items.length){list.innerHTML='<div class="mm-empty">records.sqlite3に取込可能なバックアップがありません。</div>';return}
-  const tmpl='40px minmax(90px,1fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(70px,.7fr) minmax(90px,.8fr) minmax(90px,.9fr) minmax(230px,1.4fr)';
-  const head=`<div class="mm-row head" style="grid-template-columns:${tmpl}"><span></span><span>ロット番号</span><span>検査番号</span><span>状態</span><span>設備</span><span>更新日時</span><span>形式</span><span>いまの状態 → 取り込むと</span></div>`;
-  const rows=items.map(it=>{
-   const supported=it.codec==='json-full-v32';
-   const conflict=importBackupState.localIds.has(it.id);
-   // 端末内(IndexedDB)に対応するデータが無い行。データ一覧には出ないのに
-   // 作業スケジュールの実績突合には効いてしまう「残骸」の候補(§9.52)。
-   const orphan=!conflict;
-   // 「今どうなっていて、取り込むとどうなるか」を1つの列で示す(§9.68)。
-   // 以前は「取込先(新規/上書き)」と「端末内(有り/無し)」が別々の列で、
-   // 2列を突き合わせないと変化が読み取れなかった。
-   const targetLabel=supported
-    ?(conflict?'<span class="mm-imp-flow"><span class="mm-imp-badge has">端末内に有り</span><i>→</i><span class="mm-imp-badge overwrite">上書きされる</span></span>'
-              :'<span class="mm-imp-flow"><span class="mm-imp-badge orphan">端末内に無し</span><i>→</i><span class="mm-imp-badge new">新しく追加</span></span>')
-    :'<span class="mm-imp-badge unsupported">非対応（取り込めません）</span>';
-   return `<div class="mm-row${orphan?' is-orphan':''}" style="grid-template-columns:${tmpl}">`+
-    `<span><input type="checkbox" data-imp-id="${esc(it.id)}" data-imp-orphan="${orphan?1:0}"${supported?'':' disabled'}></span>`+
-    `<span title="${esc(it.lotNo)}">${esc(it.lotNo)||'<em class="mm-blank">—</em>'}</span>`+
-    `<span>${esc(it.inspectionNo)||'<em class="mm-blank">—</em>'}</span>`+
-    `<span>${esc(it.status)||'<em class="mm-blank">—</em>'}</span>`+
-    `<span title="${esc(it.equipment)}">${esc(it.equipment)||'<em class="mm-blank">—</em>'}</span>`+
-    `<span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`+
-    `<span>${esc(it.codec)||'<em class="mm-blank">—</em>'}</span>`+
-    `<span>${targetLabel}</span></div>`;
-  }).join('');
-  list.innerHTML=head+rows;
-  list.querySelectorAll('[data-imp-id]').forEach(b=>b.addEventListener('change',updateImportPreview));
-  updateImportPreview();
- }
+ const impSelected=()=>[...importBackupState.sel].filter(id=>importBackupState.items.some(x=>x.id===id));
 /* バックアップ(records.sqlite3)から選択行を削除する(§9.52)。
+
     端末内データの削除はreliableDelete()がバックアップも消すようになったが、
     それ以前に消したもの・他端末で消したものは残骸として残っている。
     実績突合はこのテーブルを見るため、残骸があるとスケジュールにだけ
     「作業中」が出続ける。ここから明示的に消せるようにする。 */
  async function deleteBackupSelection(){
-  const ids=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')].map(b=>b.dataset.impId);
-  if(!ids.length){showToast('選択されていません','削除する行を選んでください。',4000);return}
-  const orphan=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')].filter(b=>b.dataset.impOrphan==='1').length;
+  const ids=impSelected();
+  if(!ids.length){showToast('選択されていません','消す記録を表で選んでから、もう一度押してください。',4000);return}
+  const orphan=ids.filter(id=>!importBackupState.localIds.has(id)).length;
   const msg=`バックアップから ${ids.length}件を削除します。`
    +(orphan<ids.length?`\n\nうち ${ids.length-orphan}件はこの端末のデータ一覧にも存在します。削除するとスケジュールの実績表示から消えますが、端末内のデータは残ります。`:'')
    +'\n\nこの操作は元に戻せません。よろしいですか?';
@@ -480,7 +451,7 @@
  }
  async function runImportBackup(){
   const uid=requireMaintUser();if(uid===null)return;
-  const checked=[...document.querySelectorAll('#masterMaintList [data-imp-id]:checked')].map(b=>b.dataset.impId);
+  const checked=impSelected();
   if(!checked.length){showToast&&showToast('取込対象が選択されていません','取込可能な項目にチェックを付けてください。',4000);return}
   const targets=importBackupState.items.filter(it=>checked.includes(it.id));
   const overwriteCount=targets.filter(it=>importBackupState.localIds.has(it.id)).length;
@@ -543,10 +514,9 @@
    hint:'上の2つに関わらず、ここに入れた場所を最優先で読みます。空にすると上の設定へ戻ります。'},
  ];
  const DS_MODE_SHORT={share:'共有フォルダ',rne:'RNEから作る',direct:'直接指定'};
- const DS_ROLE_CLASS={'仕掛':'is-work','品質':'is-quality','スケジュール':'is-schedule'};
  async function loadDataSourceMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  if(!force&&dsState.loaded){renderDataSourceForm();renderDataSourceList();return}
+  if(!force&&dsState.loaded){renderDataSource();return}
   form.innerHTML='';list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const r=await api('/api/data-source-master');
@@ -560,41 +530,50 @@
       片方だけ直したときに食い違う。 */
    dsState.purposeHolders=r.purposeHolders||{};
    dsState.loaded=true;
-   renderDataSourceForm();renderDataSourceList();
+   renderDataSource();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
- /* 上段は**要約と入口だけ**。面積は「頻度×重要度」で配る——ここで毎日見るのは
-    「何件あって、再起動待ちがあるか」で、1件ずつの中身は下のカードが持つ。 */
- function renderDataSourceForm(){
-  const form=$('#masterMaintForm');if(!form)return;
-  const on=dsState.items.filter(x=>x.active);
-  const work=on.filter(x=>x.purpose==='仕掛').length,quality=on.filter(x=>x.purpose==='品質').length;
-  const sched=on.filter(x=>x.purpose==='スケジュール').length;
-  const pending=on.filter(dsPending).length;
-  const rne=on.filter(x=>x.readMode==='rne').length;
-  form.className='mm-form';
-  form.innerHTML=`
-   <div class="ds-summary">
-    <div class="ds-summary-facts">
-     <span class="ds-sum"><b>${on.length}</b> 件が有効</span>
-     <span class="ds-sum${work?'':' is-warn'}">仕掛 <b>${work}</b></span>
-     <span class="ds-sum">品質 <b>${quality}</b></span>
-     <span class="ds-sum">スケジュール <b>${sched}</b></span>
-     <span class="ds-sum">RNEで作る <b>${rne}</b></span>
-     ${pending?`<span class="ds-sum is-pending"><b>${pending}</b> 件が再起動待ち</span>`:''}
-    </div>
-    <div class="ds-summary-act">
-     <button type="button" class="mm-btn-ghost" id="dsCommonBtn" title="共有パス・RNE資材の置き場・間隔の設定へ移ります">共通設定…</button>
-     <button type="button" class="mm-btn-primary" id="dsAddBtn">＋ データソースを追加</button>
-    </div>
-   </div>
-   <p class="mm-def-hint">${work?'':'<b>役割「仕掛」のデータソースがありません。</b>測定・作業スケジュールへの投入はできません。 '
-     }役割は<b>「読むかどうか」ではなく「何として使うか」</b>です（仕掛・品質・スケジュールは各1件、それ以外は「その他」として一覧に出るだけ）。 <b>名称と読み込み先</b>の変更はサーバー再起動後に反映されます（それまでは今までの名前・場所のままです）。</p>`;
-  form.onsubmit=ev=>ev.preventDefault();
-  const add=$('#dsAddBtn');if(add)add.onclick=()=>openDataSourceEditor(null);
-  /* 共通設定へは**そのタブを押したのと同じ道**で移る（入口を2本作らない）。 */
-  const common=$('#dsCommonBtn');
-  if(common)common.onclick=()=>document.querySelector('#masterMaintNav [data-master="pathConfig"]')?.click();
+ /* データ接続（§9.168 → §9.601）: ステップ2の表の型。行を押すと直す窓、無効にするは窓の ⋯ の先（行ごとのボタンにしない）。
+    「何として使うか」は役割の札、「この設定で何ができるか」は使える所の札（使える所は地のある札・使えない所は薄い字）。
+    **どの行でも使えない種類は列に並べず、見出しの ⓘ が名前を言う**（3行とも同じ薄い字が並ぶと読む量だけ増え、道の列が 1536 で切れた）。
+    以前は表の前に件数の帯と説明の段落があった——件数は表の札、説明は ⓘ、再起動待ちと仕掛なしは札の行の右の札。 */
+ function renderDataSource(){
+  setHeadActs({primary:{id:'dsAddBtn',label:'データソースを追加',onClick:()=>openDataSourceEditor(null)},
+   more:[{label:'共通設定の置き場へ',note:'共有パス・RNE資材の置き場・間隔',data:{dsAct:'common'},onClick:()=>document.querySelector('#masterMaintNav [data-master="pathConfig"]')?.click()}]});
+  const form=mountSetPage({key:'dataSource',secs:[{key:'list',name:'',body:'<div class="mm-list mm-set-list" id="dsList"></div>'}]});
+  if(!form)return;
+  const items=dsState.items,on=items.filter(x=>x.active),pending=on.filter(dsPending).length,work=on.some(x=>x.purpose==='仕掛');
+  const canOf=(x,k)=>{const f=(x.capability||{}).features||{};return !!(f[k]&&f[k].ok)};
+  const shown=CAPABILITY_ORDER.filter(k=>items.some(x=>canOf(x,k))),none=CAPABILITY_ORDER.filter(k=>!shown.includes(k));
+  const capTip='この設定でできること（地のある札＝使える・薄い字＝使えない）'
+   +(none.length?`。どの行でも使えないもの: ${none.map(k=>CAPABILITY_LABEL[k]).join('・')}（使えるデータソースを登録すると列に出ます）`:'');
+  fillSetList($('#dsList'),{key:'dataSource',label:'データ接続',tabs:[{key:'list',label:'一覧',n:`${items.length}件`}],
+   extra:(work?'':'<span class="mm-set-tag is-warn" title="測定・作業スケジュールへの投入ができません。役割「仕掛」のデータソースを登録してください">仕掛なし</span>')
+    +(pending?`<span class="mm-set-tag is-warn" title="名称・読み込み先・一覧に出すかは、サーバーを再起動すると効きます">再起動待ち ${pending}</span>`:''),
+   cols:[{label:'役割',w:'96px',fit:true,tip:'このデータを何として使うか。仕掛・品質・スケジュールは各1件です'},{label:'名称',w:'minmax(200px,1.3fr)'},
+    {label:'一覧に出す',w:'96px',fit:true,tip:'左メニュー「元データ」に出すかどうか'},{label:'読み方',w:'100px',fit:true},{label:'いま読んでいる',w:'minmax(200px,2fr)'},
+    {label:'使える所',w:'minmax(200px,1fr)',fit:true,html:'<b>使える所</b>'+tipHtml(capTip)}],
+   rows:items.map(x=>dsRow(x,shown)),empty:{title:'データソースがまだありません',text:'右上の「＋ データソースを追加」から登録します。'},
+   onRow:id=>{const x=items.find(i=>String(i.id)===id);if(x)openDataSourceEditor(x)}});
+ }
+ /* 1行＝1データソース。2行目は**打つ手があるときだけ**（再起動後の読み込み先・名称・読めない理由）。 */
+ function dsRow(x,shown){
+  const cap=x.capability||{},f=cap.features||{},kinds=dsPendingKinds(x),role=x.purpose||'その他',listed=x.listed!==false;
+  const notes=[];
+  if(String(x.plannedPath||'')!==String(x.activePath||''))notes.push(`再起動後は ${esc(x.plannedPath||'—')} を読みます`);
+  if(x.activeLabel!=null&&String(x.label||'')!==String(x.activeLabel||''))notes.push(`再起動すると名称が「${esc(x.label||'')}」になります（いまは ${esc(x.activeLabel||'—')}）`);
+  if(cap.error)notes.push(esc(cap.error));
+  const caps=shown.map(k=>{const ok=f[k]&&f[k].ok,t=`${CAPABILITY_LABEL[k]}: ${(f[k]&&f[k].note)||(ok?'使えます':'使えません')}`;
+   return ok?`<span class="mm-set-tag" title="${esc(t)}">${esc(CAPABILITY_SHORT[k])}</span>`:`<span class="mm-set-tag-off" title="${esc(t)}">${esc(CAPABILITY_SHORT[k])}</span>`}).join('');
+  return {cls:'ds-item'+(x.active?'':' is-off')+(kinds.length?' is-pending':''),attrs:setRowAttrs(x.id,'押すと直す窓を開きます（無効にするは窓の ⋯）'),
+   note:notes.join(' ／ '),
+   cells:[`<span class="mm-set-tag${role==='仕掛'?' is-teal':''} ds-role">${esc(role)}</span>`,
+    `<b class="ds-name" title="${esc(x.label||'')}">${esc(x.label||x.key)}</b> <code class="mm-set-key">${esc(x.key)}</code>`
+     +(x.active?'':' <span class="mm-set-tag-off">無効</span>')+(kinds.length?` <span class="mm-set-tag is-warn" title="${esc(kinds.join('・'))}が再起動待ちです">再起動待ち</span>`:''),
+    `<span class="ds-listed" title="${listed?'左メニュー「元データ」に出ます':'左メニューには出しません（結合の相手としては読めます）'}">${listed?'出す':'出さない'}</span>`,
+    esc(DS_MODE_SHORT[x.readMode]||'—'),
+    `<code class="mm-set-path" title="${esc(x.activePath||'')}">${esc(x.activePath||'（この端末ではまだ読んでいません）')}</code>`,
+    `<span class="mm-set-tags">${caps||'<span class="mm-set-tag-off">—</span>'}</span>`]};
  }
  /* 保存値と、いま効いている場所が違う＝再起動待ち。**まだ読んでいない
     データソース**（登録したばかり）も待ちに含める（§9.163）。 */
@@ -613,74 +592,6 @@
      消えない」**ので、名称と同じ扱いで再起動待ちに数える。 */
   if(x.activeListed!=null&&(x.listed!==false)!==(x.activeListed!==false))out.push('一覧に出すかどうか');
   return out;
- }
- /* 一覧は**行**で組む（§9.193、利用者の指摘「もう少し高密度で、必要な情報を
-    バランスよく」）。カード1枚1枚に見出しと定義リストを持たせていたため、
-    5件でも縦に長く、しかも**項目の左端がカードごとにずれていて**列として
-    追えなかった（CLAUDE.md §9「情報欄は縦にそろえる」）。1行＝1データソース、
-    列は固定幅でそろえ、**言うことがあるときだけ**2行目を出す。 */
- const DS_LIST_COLS=[
-  {k:'role',label:'役割',hint:'このデータを何として使うか。仕掛・品質・スケジュールは各1件です。'},
-  {k:'name',label:'名称 / キー'},
-  {k:'listed',label:'一覧',hint:'左メニュー「元データ」に出すかどうか。結合の相手としてだけ読むデータは「出さない」にできます。'},
-  {k:'mode',label:'読み方'},
-  {k:'path',label:'いま読んでいる'},
-  {k:'caps',label:'できること'},
-  {k:'act',label:''},
- ];
- function renderDataSourceList(){
-  const list=$('#masterMaintList');if(!list)return;
-  if(!dsState.items.length){
-   list.innerHTML='<div class="mm-empty">データソースがまだありません。「＋ データソースを追加」から登録してください。</div>';
-   return;
-  }
-  const head=DS_LIST_COLS.map(c=>`<span class="ds-h ds-c-${c.k}"${c.hint?` title="${esc(c.hint)}"`:''}>${esc(c.label)}</span>`).join('');
-  list.innerHTML=`<div class="ds-rows"><div class="ds-row ds-row-head">${head}</div>`
-    +dsState.items.map(dsRowHtml).join('')+`</div>`;
-  list.querySelectorAll('[data-ds-edit]').forEach(b=>b.onclick=()=>{
-   const x=dsState.items.find(i=>String(i.id)===b.dataset.dsEdit);if(x)openDataSourceEditor(x);
-  });
-  list.querySelectorAll('[data-ds-del]').forEach(b=>b.onclick=()=>dsDelete(b.dataset.dsDel));
- }
- function dsRowHtml(x){
-  const cap=x.capability||{},f=cap.features||{};
-  /* できることは**できるものだけ**を出す（§4「できないことは書く」は
-     編集画面の役目。一覧では×印が並ぶほうがノイズになる）。理由は title。 */
-  const caps=CAPABILITY_ORDER.filter(k=>f[k]&&f[k].ok).map(k=>
-    `<i class="ds-cap is-ok" title="${esc(CAPABILITY_LABEL[k]+': '+(f[k].note||''))}">${esc(CAPABILITY_SHORT[k])}</i>`).join('');
-  const kinds=dsPendingKinds(x);
-  const pending=kinds.length>0;
-  const role=x.purpose||'その他';
-  const sameLabel=x.activeLabel==null||String(x.label||'')===String(x.activeLabel||'');
-  const same=String(x.plannedPath||'')===String(x.activePath||'');
-  const listed=x.listed!==false;
-  /* 2行目は**打つ手があるときだけ**。同じ場所・同じ名前なら黙っている
-     （§9.129 同じものを2箇所に出さない）。 */
-  const notes=[];
-  if(!same)notes.push(`再起動後は <b>${esc(x.plannedPath||'—')}</b> を読みます`);
-  if(!sameLabel)notes.push(`再起動すると名称が「<b>${esc(x.label||'')}</b>」になります（いまは ${esc(x.activeLabel||'—')}）`);
-  if(cap.error)notes.push(esc(cap.error));
-  return `<div class="ds-row${x.active?'':' is-off'}${pending?' is-pending':''}">
-   <span class="ds-c-role"><span class="ds-role ${DS_ROLE_CLASS[role]||''}">${esc(role)}</span></span>
-   <span class="ds-c-name">
-    <b class="ds-name" title="${esc(x.label||'')}">${esc(x.label||x.key)}</b>
-    <code class="ds-key" title="一覧を指す識別子です">${esc(x.key)}</code>
-    ${x.active?'':'<span class="ds-flag is-off">無効</span>'}
-    ${pending?`<span class="ds-flag is-pending" title="${esc(kinds.join('・'))}が再起動待ちです">再起動待ち</span>`:''}
-   </span>
-   <span class="ds-c-listed"><span class="ds-listed${listed?'':' is-off'}" title="${
-     listed?'左メニュー「元データ」に出ます。':'左メニューには出しません（結合の相手としては読めます）。'
-   }">${listed?'出す':'出さない'}</span></span>
-   <span class="ds-c-mode">${esc(DS_MODE_SHORT[x.readMode]||'—')}</span>
-   <span class="ds-c-path" title="${esc(x.activePath||'')}">${
-     esc(x.activePath||'（この端末ではまだ読んでいません）')}</span>
-   <span class="ds-c-caps">${caps||'<i class="ds-cap">—</i>'}</span>
-   <span class="ds-c-act">
-    <button type="button" class="mm-btn-ghost sm" data-ds-edit="${esc(String(x.id))}">編集</button>
-    ${x.active?`<button type="button" class="mm-btn-ghost sm" data-ds-del="${esc(String(x.id))}">無効にする</button>`:''}
-   </span>
-   ${notes.length?`<span class="ds-c-note">${notes.join(' ／ ')}</span>`:''}
-  </div>`;
  }
  /* ==================================================================
     クエリ結合(§9.193) — 読んだデータ同士を突合キーでつなぐ
@@ -797,24 +708,13 @@
           finish:'保存すると、次に作業スケジュールを開いたとき（と書込役の裏の見回り）から効きます。'}};
  function qjIsFinish(){return qjEdit().purpose===QJ_PURPOSE_FINISH}
  function qjWord(k){return (QJ_WORDS[k]||{})[qjIsFinish()?'finish':'list']||''}
- const QJ_LIST_COLS=[
-  {k:'state',label:'状態'},
-  {k:'purpose',label:'用途'},
-  {k:'name',label:'結合名'},
-  {k:'left',label:'足す先（この一覧に）'},
-  {k:'right',label:'相手（ここから持ってくる）'},
-  {k:'keys',label:'突合キー'},
-  {k:'kind',label:'結合の仕方'},
-  {k:'cols',label:'足す列'},
-  {k:'act',label:''},
- ];
  function qjSourceLabel(key){
   const x=(qjState.sources||[]).find(s=>s.key===key);
   return x?(x.label||x.key):(key||'—');
  }
  async function loadQueryJoinMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  if(!force&&qjState.loaded){renderQueryJoinForm();renderQueryJoinList();return}
+  if(!force&&qjState.loaded){renderQueryJoin();return}
   form.innerHTML='';list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const r=await api('/api/query-join-master');
@@ -825,77 +725,64 @@
    qjState.finishWhens=r.finishWhens||[];
    qjState.builtinEnabled=r.builtinEnabled!==false;
    qjState.loaded=true;
-   renderQueryJoinForm();renderQueryJoinList();
+   renderQueryJoin();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
- function renderQueryJoinForm(){
-  const form=$('#masterMaintForm');if(!form)return;
-  const on=qjState.items.filter(x=>x.active).length;
-  const off=qjState.items.length-on;
+ /* クエリ結合（§9.193 → §9.601）: ステップ2の表の型。つなぎ方は「足す先 ← 相手」の図（線の上に突合キー・矢印は相手の列が入る向き）。
+    行を押すと直す窓、削除は窓の ⋯ の先。既定の結合（保存されていない・自動で効く）は押すと「複製して編集／解除する」のメニュー。
+    以前は表の前に件数の帯と説明の段落、行ごとに「編集」「削除」「解除する」が並んでいた。 */
+ function renderQueryJoin(){
   const few=(qjState.sources||[]).length<2;
-  form.className='mm-form';
-  form.innerHTML=`
-   <div class="ds-summary">
-    <div class="ds-summary-facts">
-     <span class="ds-sum"><b>${on}</b> 件が有効</span>
-     ${off?`<span class="ds-sum">停止中 <b>${off}</b></span>`:''}
-     <span class="ds-sum">つなげるデータ <b>${(qjState.sources||[]).length}</b> 件</span>
-    </div>
-    <div class="ds-summary-act">
-     <button type="button" class="mm-btn-ghost" id="qjSourceBtn" title="データ接続の登録へ移ります">データ接続…</button>
-     <button type="button" class="mm-btn-primary" id="qjAddBtn"${few?' disabled':''}>＋ 結合を追加</button>
-    </div>
-   </div>
-   <p class="mm-def-hint">${few
-     ?'<b>つなげるデータが足りません。</b>結合には登録済みのデータ接続が2件以上要ります。'
-     :'一覧を開いたときに、<b>相手のデータから列を足して</b>表示します。足した列は並べ替え・絞り込みの対象にはなりませんが、'
-      +'列の設定（幅・表示名・書式・読み替え）はふつうの列と同じように効き、<b>スケジュール表の内容欄でも選べます</b>。'}</p>`;
-  form.onsubmit=ev=>ev.preventDefault();
-  const add=$('#qjAddBtn');if(add)add.onclick=()=>openQueryJoinEditor(null);
-  const src=$('#qjSourceBtn');
-  if(src)src.onclick=()=>document.querySelector('#masterMaintNav [data-master="dataSource"]')?.click();
+  setHeadActs({primary:few?null:{id:'qjAddBtn',label:'結合を追加',onClick:()=>openQueryJoinEditor(null)},
+   more:[{label:'データ接続へ',note:'つなげるデータを登録する画面',data:{qjAct:'source'},onClick:()=>document.querySelector('#masterMaintNav [data-master="dataSource"]')?.click()}]});
+  const form=mountSetPage({key:'queryJoin',secs:[{key:'list',name:'',body:'<div class="mm-list mm-set-list" id="qjList"></div>'}]});
+  if(!form)return;
+  const b=qjState.builtin,rows=(b?[qjBuiltinRow(b)]:[]).concat(qjState.items.map(qjRow));
+  fillSetList($('#qjList'),{key:'queryJoin',label:'クエリ結合',tabs:[{key:'list',label:'一覧',n:`${rows.length}件`}],
+   note:few?'つなげるデータが足りません（結合にはデータ接続が2件以上要ります）':'',
+   cols:[{label:'用途',w:'110px'},{label:'結合名',w:'minmax(160px,1fr)'},{label:'つなぎ方（足す先 ← 相手・線の上は突合キー）',w:'minmax(360px,3fr)'},
+    {label:'結合の仕方',w:'110px'},{label:'足す列',w:'minmax(150px,1fr)'}],
+   rows,empty:{title:'結合はまだありません',text:'右上の「＋ 結合を追加」から登録します。'},
+   onRow:(id,row)=>{
+    if(id==='builtin')return qjBuiltinMenu(row);
+    const x=qjState.items.find(i=>String(i.id)===id);if(x)openQueryJoinEditor(x);
+   }});
  }
- function renderQueryJoinList(){
-  const list=$('#masterMaintList');if(!list)return;
-  const head=QJ_LIST_COLS.map(c=>`<span class="ds-h qj-c-${c.k}">${esc(c.label)}</span>`).join('');
-  const rows=qjState.items.map(qjRowHtml).join('');
-  /* 既定の品質データ結合は**保存されていない**が、効いているものは画面に
-     出す(§9.129「出どころを画面に出す」)。出さないと「登録していないのに
-     列が増える」ことになり、どこの設定か探すはめになる。 */
-  /* 既定の品質データ結合は**解除できる**(§9.194、利用者の指示)。解除しても
-     内容は見えたままにする——「どうつないでいるのか」を見て真似できることが
-     値打ちなので、解除＝見えなくする、にはしない。 */
-  const bOn=qjState.builtinEnabled!==false;
-  const bKind=qjKind((qjState.builtin||{}).kind||qjState.kindDefault);
-  const b=qjState.builtin?`<div class="ds-row qj-row is-builtin${bOn?'':' is-off'}">
-    <span class="qj-c-state"><span class="ds-listed${bOn?'':' is-off'}">${bOn?'既定':'解除中'}</span></span>
-    <span class="qj-c-purpose"><span class="ds-role">列を足す</span></span>
-    <span class="qj-c-name"><b class="ds-name">${esc(qjState.builtin.name)}</b></span>
-    <span class="qj-c-left">${esc(qjSourceLabel(qjState.builtin.left))}</span>
-    <span class="qj-c-right">${esc(qjSourceLabel(qjState.builtin.right))}</span>
-    <span class="qj-c-keys">${esc((qjState.builtin.keys||[]).map(k=>k.left).join('・'))}</span>
-    <span class="qj-c-kind">${esc(bKind?bKind.label:'左外部結合')}</span>
-    <span class="qj-c-cols">相手の全列</span>
-    <span class="qj-c-act">
-     <button type="button" class="mm-btn-ghost sm" id="qjBuiltinCopy">複製して編集</button>
-     <button type="button" class="mm-btn-ghost sm" id="qjBuiltinToggle">${bOn?'解除する':'既定に戻す'}</button>
-    </span>
-    <span class="ds-c-note">${bOn
-      ?'役割「仕掛」と「品質」が揃っているので自動で効いています。同じ相手への結合を登録すると、そちらが優先されます。「複製して編集」で、この設定を下敷きにした結合を作れます。'
-      :'解除中です。品質データの列は一覧に出ません（<b>エラーにはなりません</b>——足していた列が無くなるだけで、その列を見ていた設定は静かに落ちます）。品質データは相手として選べるので、自分で結合を登録すれば出せます。'}</span>
-   </div>`:'';
-  if(!rows&&!b){
-   list.innerHTML='<div class="mm-empty">結合はまだ登録されていません。「＋ 結合を追加」から登録してください。</div>';
-   return;
-  }
-  list.innerHTML=`<div class="ds-rows">
-    <div class="ds-row qj-row ds-row-head">${head}</div>${b}${rows}</div>`;
-  list.querySelectorAll('[data-qj-edit]').forEach(btn=>btn.onclick=()=>{
-   const x=qjState.items.find(i=>String(i.id)===btn.dataset.qjEdit);if(x)openQueryJoinEditor(x);
-  });
-  list.querySelectorAll('[data-qj-del]').forEach(btn=>btn.onclick=()=>qjDelete(btn.dataset.qjDel));
-  const tg=$('#qjBuiltinToggle');if(tg)tg.onclick=()=>qjToggleBuiltin(!bOn);
-  const cp=$('#qjBuiltinCopy');if(cp)cp.onclick=()=>openQueryJoinEditor(qjBuiltinDraft(),{copy:true});
+ /* つなぎ方の図: 足す先の札 ← 細い灰の線（上に突合キー）← 相手の札。 */
+ const qjJoinHtml=(left,right,keys)=>`<span class="mm-set-join"><span class="mm-set-tag">${esc(left)}</span>`
+  +`<span class="mm-set-join-k" title="突合キー: ${esc(keys||'—')}"><em>${esc(keys||'—')}</em><i aria-hidden="true"></i></span><span class="mm-set-tag">${esc(right)}</span></span>`;
+ /* 用途の札は`qj-use`（窓の用途の札`.qj-purpose`は縁と地を持つ選ぶ札——同じ名を名乗ると一覧の札にだけ縁が付いた・§9.601）。 */
+ function qjRow(x){
+  const keys=(x.keys||[]).map(k=>k.left===k.right?k.left:`${k.left}＝${k.right}`).join('・');
+  const kind=qjKind(x.kind||qjState.kindDefault),pp=qjPurpose(x.purpose)||{},isFin=pp.key===QJ_PURPOSE_FINISH;
+  const missing=[];
+  if(!(qjState.sources||[]).some(s=>s.key===x.left))missing.push('足す先');
+  if(!(qjState.sources||[]).some(s=>s.key===x.right))missing.push('相手');
+  return {cls:'qj-item'+(x.active?'':' is-off')+(missing.length?' is-pending':''),attrs:setRowAttrs(x.id,'押すと直す窓を開きます（削除は窓の ⋯）'),
+   note:missing.length?`${esc(missing.join('と'))}のデータ接続が見つかりません（無効にした・キーを変えた・再起動していない、のいずれかです）。この結合は当たりません。`:'',
+   cells:[`<span class="mm-set-tag${isFin?' is-teal':''} qj-use" title="${esc(pp.summary||'')}">${esc(pp.short||pp.label||'列を足す')}</span>`
+     +(isFin?'':`<small class="mm-set-sub">${x.useInSchedule===false?'一覧だけ':'予定でも使う'}</small>`),
+    `<b class="qj-name" title="${esc(x.name)}">${esc(x.name)}</b>${x.prefix?` <code class="mm-set-key" title="足す列の名前に付ける文字">${esc(x.prefix)}…</code>`:''}`
+     +(x.active?'':' <span class="mm-set-tag-off">停止中</span>'),
+    qjJoinHtml(qjSourceLabel(x.left)+(x.leftTable?` / ${x.leftTable}`:''),qjSourceLabel(x.right)+(x.rightTable?` / ${x.rightTable}`:''),keys),
+    `<span title="${esc(isFin?(pp.summary||''):(kind?kind.summary:''))}">${esc(isFin?'当たれば完了':(kind?kind.label:'左外部結合'))}</span>`,
+    esc((x.columns||[]).length?`${x.columns.length}列を選択`:'相手の全列')+(isFin&&x.finishColumn?`<small class="mm-set-sub">完了時刻: ${esc(x.finishColumn)}</small>`:'')]};
+ }
+ /* 既定の品質データ結合（§9.194）。保存されていないが効いているものは画面に出す（出どころを言う）。解除しても内容は見えたまま。 */
+ function qjBuiltinRow(b){
+  const on=qjState.builtinEnabled!==false,kind=qjKind(b.kind||qjState.kindDefault);
+  return {cls:'qj-item is-builtin'+(on?'':' is-off'),attrs:setRowAttrs('builtin','押すと「複製して編集」「既定を解除する」を選べます'),
+   note:on?'':'解除中です。品質データの列は一覧に出ません（エラーにはならず、その列を見ていた設定は静かに落ちます）。品質データは相手として選べるので、自分で結合を登録すれば出せます。',
+   cells:['<span class="mm-set-tag qj-use">列を足す</span>',
+    `<b class="qj-name">${esc(b.name)}</b> ${on?'<span class="mm-set-tag-off" title="役割「仕掛」と「品質」が揃っているので自動で効いています。同じ相手への結合を登録すると、そちらが優先されます">既定</span>':'<span class="mm-set-tag is-warn">解除中</span>'}`,
+    qjJoinHtml(qjSourceLabel(b.left),qjSourceLabel(b.right),(b.keys||[]).map(k=>k.left).join('・')),
+    esc(kind?kind.label:'左外部結合'),'相手の全列']};
+ }
+ function qjBuiltinMenu(row){
+  const on=qjState.builtinEnabled!==false;
+  openActMenu(row,[{label:'複製して編集…',note:'この設定を下敷きにした結合を新しく作ります',data:{qjAct:'copy'},onClick:()=>openQueryJoinEditor(qjBuiltinDraft(),{copy:true})},
+   on?{label:'既定を解除する…',danger:true,note:'品質データの列が一覧に出なくなります（確かめてから）',data:{qjAct:'toggle'},onClick:()=>qjToggleBuiltin(false)}
+     :{label:'既定に戻す',data:{qjAct:'toggle'},onClick:()=>qjToggleBuiltin(true)}],'既定の結合');
  }
  /* 既定の結合を下敷きにした「新規の1件」。**IDを持たせない**——上書きでは
     なく複製なので、保存すると普通の登録として1行増える。 */
@@ -920,38 +807,6 @@
    showToast&&showToast(on?'既定に戻しました':'既定を解除しました',(r&&r.message)||'一覧を開き直すと反映されます',4500);
   }catch(e){showToast&&showToast('切り替えられませんでした',e.message,6000)}
   finally{setMaintLoading(false)}
- }
- function qjRowHtml(x){
-  const keys=(x.keys||[]).map(k=>k.left===k.right?k.left:`${k.left}＝${k.right}`).join('・');
-  const kind=qjKind(x.kind||qjState.kindDefault);
-  const cols=(x.columns||[]).length?`${x.columns.length}列を選択`:'相手の全列';
-  const missing=[];
-  if(!(qjState.sources||[]).some(s=>s.key===x.left))missing.push('足す先');
-  if(!(qjState.sources||[]).some(s=>s.key===x.right))missing.push('相手');
-  const pp=qjPurpose(x.purpose)||{};
-  const isFin=pp.key===QJ_PURPOSE_FINISH;
-  return `<div class="ds-row qj-row${x.active?'':' is-off'}${missing.length?' is-pending':''}">
-   <span class="qj-c-state"><span class="ds-listed${x.active?'':' is-off'}">${x.active?'有効':'停止中'}</span></span>
-   <span class="qj-c-purpose" title="${esc(pp.summary||'')}"><span class="ds-role${isFin?' is-finish':''}">${
-     esc(pp.short||pp.label||'列を足す')}</span>${
-     isFin?'':`<i class="qj-sub">${x.useInSchedule===false?'一覧だけ':'予定でも使う'}</i>`}</span>
-   <span class="qj-c-name"><b class="ds-name" title="${esc(x.name)}">${esc(x.name)}</b>
-    ${x.prefix?`<code class="ds-key" title="足す列の名前に付ける文字">${esc(x.prefix)}…</code>`:''}</span>
-   <span class="qj-c-left" title="${esc(x.left+(x.leftTable?' / '+x.leftTable:''))}">${
-     esc(qjSourceLabel(x.left))}${x.leftTable?`<i class="qj-sub">${esc(x.leftTable)}</i>`:''}</span>
-   <span class="qj-c-right" title="${esc(x.right+(x.rightTable?' / '+x.rightTable:''))}">${
-     esc(qjSourceLabel(x.right))}${x.rightTable?`<i class="qj-sub">${esc(x.rightTable)}</i>`:''}</span>
-   <span class="qj-c-keys" title="${esc(keys)}">${esc(keys||'—')}</span>
-   <span class="qj-c-kind" title="${esc(isFin?(pp.summary||''):(kind?kind.summary:''))}">${
-     esc(isFin?'当たれば完了':(kind?kind.label:'左外部結合'))}</span>
-   <span class="qj-c-cols">${esc(cols)}${
-     isFin&&x.finishColumn?`<i class="qj-sub">完了時刻: ${esc(x.finishColumn)}</i>`:''}</span>
-   <span class="qj-c-act">
-    <button type="button" class="mm-btn-ghost sm" data-qj-edit="${esc(String(x.id))}">編集</button>
-    <button type="button" class="mm-btn-ghost sm" data-qj-del="${esc(String(x.id))}">削除</button>
-   </span>
-   ${missing.length?`<span class="ds-c-note">${esc(missing.join('と'))}のデータ接続が見つかりません（無効にした・キーを変えた・再起動していない、のいずれかです）。この結合は当たりません。</span>`:''}
-  </div>`;
  }
  async function qjDelete(id){
   const x=qjState.items.find(i=>String(i.id)===String(id));if(!x)return;
@@ -1022,6 +877,9 @@
   $('#maintEditorSave').textContent=(item&&item.id)?'更新を保存':'追加登録';
   $('#maintEditorSave').onclick=()=>saveQueryJoinEditor();
   renderQueryJoinEditor();
+  /* 削除は窓の ⋯ の先（§9.601・行ごとのボタンにしない）。保存済みの結合だけ。 */
+  editorMore(item&&item.id?[{label:'この結合を削除する…',danger:true,note:'この結合で足していた列は一覧から消えます（確かめてから）',
+   data:{qjAct:'delete'},onClick:()=>{closeMaintEditor();qjDelete(item.id)}}]:null);
   modal.hidden=false;
   qjRefreshColumns();
  }
@@ -1734,6 +1592,9 @@
    el.addEventListener('input',()=>dsProbeSoon());
   });
   dsSyncMode();dsRenderProbe();
+  /* 無効にするは窓の ⋯ の先（§9.601・行ごとのボタンにしない）。有効な行だけ。 */
+  editorMore(item&&item.active?[{label:'このデータソースを無効にする…',danger:true,note:'一覧から消えるのはサーバー再起動後です（確かめてから）',
+   data:{dsAct:'disable'},onClick:()=>{closeMaintEditor();dsDelete(item.id)}}]:null);
   modal.hidden=false;
   requestAnimationFrame(()=>{const first=form.querySelector('[data-field="label"]');if(first)first.focus()});
   dsProbeSoon(0);
@@ -3638,140 +3499,99 @@
    renderCleanup();
   }catch(e){list.innerHTML=`<div class="mm-empty error">調べられませんでした: ${esc(e.message)}</div>`}
  }
+ /* 不要ファイル掃除（§9.249 → §9.601）: 頭の下に「何がどれだけ片付けられるか」の帯（種別ごとの色・残すもの）→ 左の段
+    「片付ける」（表＋足元の「選んだものを掃除する」）／「定期掃除」（欄＋足元の保存）／「置き場」（どこを見ているか）。
+    以前は本文の頭に説明の段落・量の箱・「次にすること」の帯が並び、22.4MB が4か所に出ていた（同じ数を2か所に出さない・§CLAUDE 8）。
+    いま空の種別は表の札「いま空」に畳む（溜まっていないのがふつうの状態なので、そこへ画面を割かない・§CLAUDE 1）。 */
+ const clView={tab:'hot'};   // 片付ける段の表の札（片付けられる／いま空）
  function renderCleanup(){
-  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  const d=cleanupState.data||{};
-  const cats=d.categories||[],tot=d.total||{},pol=d.policy||{},st=d.state||{},places=d.places||{};
-  const v=(cleanupState.cfg&&cleanupState.cfg.values)||{};
-  const pick=clPicked(),sel=clPickedStats();
-  /* 次にすること。**1つだけ指す**（§2）。 */
-  const next=sel.n
-   ? `いま <b>${clSize(sel.bytes)}（${sel.n}件）</b>を片付けられます。`
-     +`何が消えるかは下のカードに出ています——確かめて「選んだものを掃除する」を押してください。`
-   : (tot.removable
-      ? `片付けられるものは <b>${clSize(tot.removableBytes)}（${tot.removable}件）</b>ありますが、`
-        +`<b>種別を1つも選んでいません</b>。下のカードの左端で選んでください。`
-      : 'いまは何もする必要がありません。<b>片付けられるファイルはありません</b>（定期掃除が効いています）。');
-  form.innerHTML=`
-   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末のファイル</span></div>
-   <p class="cl-lead">アプリが動くうちに増える<b>作り直せるファイル</b>だけを片付けます。
-    <b>測定データ・マスタ・共有スケジュールには一切触れません</b>——ここから消せるのは、
-    消しても次に使うときに作り直されるものだけです。</p>
-   <div class="cl-top">
-    <div class="cl-gauge">
-     <div class="cl-gauge-main"><b>${clSize(tot.removableBytes||0)}</b><span>片付けられます</span></div>
-     <div class="cl-gauge-sub">${tot.removable||0}件 ／ 全体 ${clSize(tot.bytes||0)}・${tot.files||0}件</div>
-     <div class="cl-bar" role="img" aria-label="全体のうち片付けられる割合">
-      <i style="width:${tot.bytes?Math.max(2,Math.round((tot.removableBytes/tot.bytes)*100)):0}%"></i></div>
-    </div>
-    <div class="cl-next"><span class="cl-next-label">次にすること</span><span>${next}</span></div>
-   </div>`;
-  /* **面積は頻度×重要度**（§CLAUDE 1）。片付けられる種別だけをカードで
-     大きく出し、**いま空の種別は1行の札に畳む**——溜まっていないのが
-     ふつうの状態なので、そこへ画面の大半を割くと、肝心の「消せるもの」が
-     埋もれる。**畳んでも消さない**（何を見ているのかが分からなくなる・
-     §CLAUDE 12）。並びはサーバーの順のままにする（開くたびに場所が
-     変わると探すことになる）。 */
-  const card=c=>{
-   const on=pick.has(c.key);
-   const none=!c.removable;
-   return `<div class="cl-card${on?' is-on':''}${none?' is-empty':''}" data-cl-card="${esc(c.key)}">
-    <label class="cl-card-head">
-     <input type="checkbox" data-cl-pick="${esc(c.key)}"${on?' checked':''}${none?' disabled':''}>
-     <span class="cl-ico" aria-hidden="true">${esc(c.icon||'')}</span>
-     <b>${esc(c.label)}</b>
-     <span class="cl-badge${none?' is-none':''}">${none?'なし':`${clSize(c.removableBytes)}・${c.removable}件`}</span>
-    </label>
-    <p class="cl-note">${esc(c.note)}</p>
-    <dl class="cl-kv">
-     <dt>消し方</dt><dd>${hintHtml(c.why)}</dd>
-     <dt>いちばん古い</dt><dd>${clWhen(c.oldest)}</dd>
-     <dt>自動掃除</dt><dd>${c.auto?'対象<small>（定期掃除でも消えます）</small>':'<b>対象外</b><small>（押したときだけ消えます）</small>'}</dd>
-    </dl>
-    ${c.examples&&c.examples.length?`<div class="cl-ex"><b>消えるもの</b><ul>${
-      c.examples.map(x=>`<li><code title="${esc(x.name)}">${esc(x.name)}</code><em>${clSize(x.size)}</em><i>${clWhen(x.mtime)}</i></li>`).join('')
-     }${c.removable>c.examples.length?`<li class="cl-more">ほか${c.removable-c.examples.length}件</li>`:''}</ul></div>`:''}
-    ${c.keptExamples&&c.keptExamples.length?`<div class="cl-keep"><b>残すもの（${c.kept}件）</b><ul>${
-      c.keptExamples.map(x=>`<li><code title="${esc(x.name)}">${esc(x.name)}</code><i>${esc(x.why)}</i></li>`).join('')}</ul></div>`
-     :(c.kept?`<div class="cl-keep"><b>残すもの</b><span>${c.kept}件</span></div>`:'')}
-   </div>`;
-  };
+  const d=cleanupState.data||{},tot=d.total||{},pol=d.policy||{},st=d.state||{};
+  const hot=(d.categories||[]).filter(c=>c.removable>0);
+  setHeadActs({more:[{label:'調べ直す',note:'溜まっているファイルを数え直します',data:{clAct:'reload'},
+   onClick:()=>{cleanupState.loaded=false;loadCleanupMaint(true)}}]});
+  const form=mountSetPage({key:'cleanup',figure:clBarHtml(hot,tot),secs:[
+   {key:'run',name:'片付ける',icon:'fa-broom',sub:'選んで掃除',body:'<div class="mm-list mm-set-list" id="clList"></div>',
+    foot:setFootHtml('','<button type="button" id="clRun" class="mm-btn-primary">選んだものを掃除する</button>'),
+    state:tot.removable?clSize(tot.removableBytes):'なし'},
+   {key:'auto',name:'定期掃除',icon:'fa-clock',sub:'決めた間隔で',body:clAutoHtml(pol),foot:setFootHtml('変更なし',SET_SAVE_BTNS),
+    state:pol.auto?`入・${clEvery(pol.intervalSec).replace(/ごと$/,'')}`:'切'},
+   {key:'place',name:'置き場',icon:'fa-folder-open',sub:'どこを見ているか',body:clPlaceHtml(d),
+    state:st.lastError?'前回は失敗':'OK',tone:st.lastError?'bad':''}]});
+  if(!form)return;
+  clFillList();
+  $('#clRun').onclick=()=>cleanupRun();
+  const iv=$('#clInterval'),every=$('#clEvery');
+  if(iv&&every)iv.addEventListener('input',()=>{every.textContent=clEvery(numRaw(iv.value))});
+  wireSetSave(setPanel(form,'auto'),body=>savePathSettings(body,'次の掃除から新しい決まりで片付けます',
+   ()=>{cleanupState.loaded=false;loadCleanupMaint(true)}),'clSaveCfg');
+ }
+ /* 頭の下の帯: 片付けられる種別ごとの量（色は表の小さな帯と同じ）と残すもの。数は表の行が言う（凡例は名前だけ）。 */
+ function clBarHtml(hot,tot){
+  const parts=hot.map((c,i)=>({cls:'is-c'+(i%5),name:c.label,v:c.removableBytes,text:''}));
+  parts.push({cls:'is-rest',name:'残すもの（作り直せない・新しい世代）',v:Math.max(0,(tot.bytes||0)-(tot.removableBytes||0))});
+  return setBarHtml(parts,esc(`全体 ${clSize(tot.bytes||0)}・${tot.files||0}件`),'全体のうち片付けられる量（種別ごと）');
+ }
+ /* 片付ける段の表。**チェックは`click`で受ける**（§9.90）——ここは足元の字とボタンだけを塗り直す（表は描き直さない）。 */
+ function clFillList(){
+  const d=cleanupState.data||{},cats=d.categories||[],pick=clPicked();
   const hot=cats.filter(c=>c.removable>0),cold=cats.filter(c=>!c.removable);
-  list.innerHTML=`
-   ${hot.length?`<div class="cl-grid">${hot.map(card).join('')}</div>`
-    :'<p class="cl-none">片付けられるファイルは<b>1件もありません</b>。溜まってきたらここへ出ます。</p>'}
-   ${cold.length?`<div class="cl-cold"><b>いま空の種別（${cold.length}）</b>${cold.map(c=>
-     `<span class="cl-cold-chip" title="${esc(c.label)}｜${esc(c.note)}">`
-     +`<i aria-hidden="true">${esc(c.icon||'')}</i>${esc(c.label)}`
-     +`${c.kept?`<em>${c.kept}件は残します</em>`:''}</span>`).join('')}</div>`:''}
-   <div class="cl-foot">
-    <div class="cl-foot-sum">選んでいるのは <b>${sel.cats.length}種別</b>
-     ${sel.n?`／ <b>${clSize(sel.bytes)}（${sel.n}件）</b>が消えます`:'／ <b>消えるものはありません</b>'}</div>
-    <div class="cl-foot-act">
-     <button type="button" id="clReload" class="mm-btn-ghost sm">調べ直す</button>
-     <button type="button" id="clRun" class="mm-btn-primary"${sel.n?'':' disabled'}
-       title="${sel.n?'選んだ種別のファイルを消します（消す前に確認します）':'選んだ種別に消せるファイルがありません'}">選んだものを掃除する${sel.n?`（${clSize(sel.bytes)}）`:''}</button>
-    </div>
-   </div>
-   <div class="cl-auto">
-    <h4>定期掃除 — ${pol.auto?`<span class="cl-on">入</span> ${esc(clEvery(pol.intervalSec))}`:'<span class="cl-off">切</span>'}</h4>
-    <p class="cl-auto-lead">アプリが動いているあいだ、<b>自動掃除の対象</b>の種別だけを決めた間隔で片付けます。
-     <b>バイトコードと古い作業フォルダは自動では消しません</b>（消すと次の起動が一度だけ遅くなる／中身を確かめてから消したいため）。</p>
-    <div class="cl-auto-fields">
-     <label class="mm-field mm-w-md"><span>定期掃除</span>
-      <select id="clAuto">
-       <option value="on"${pol.auto?' selected':''}>入（決めた間隔で片付ける）</option>
-       <option value="off"${pol.auto?'':' selected'}>切（押したときだけ片付ける）</option></select>
-      <small class="mm-field-hint">切にしても、この画面から手で掃除できます。</small></label>
-     <label class="mm-field mm-w-sm"><span>掃除の間隔</span>
-      <span class="mm-field-num"><input type="number" id="clInterval" min="300" step="300"
-        value="${esc(String(v.cleanup_interval_sec||pol.intervalSec||21600))}"><em>秒</em></span>
-      <small class="mm-field-hint">300秒（5分）以上。既定は21600秒＝6時間です。</small></label>
-     <label class="mm-field mm-w-xs"><span>残す世代</span>
-      <span class="mm-field-num"><input type="number" id="clGens" min="1" max="50" step="1"
-        value="${esc(String(v.cleanup_keep_generations||pol.keepGenerations||3))}"><em>世代</em></span>
-      <small class="mm-field-hint">ログ・バックアップで<b>新しいほうから残す本数</b>です。</small></label>
-     <label class="mm-field mm-w-xs"><span>残す日数</span>
-      <span class="mm-field-num"><input type="number" id="clDays" min="1" max="3650" step="1"
-        value="${esc(String(v.cleanup_keep_days||pol.keepDays||14))}"><em>日</em></span>
-      <small class="mm-field-hint">この日数以内のものは、世代の数に関わらず残します。</small></label>
-    </div>
-    <div class="mm-cd-actions"><button type="button" id="clSaveCfg" class="mm-btn-primary">この設定を保存</button>
-     <span class="mm-form-hint">保存後すぐ反映されます（再起動は要りません）。</span></div>
-    <dl class="cl-kv cl-places">
-     <dt>最後の掃除</dt><dd>${st.lastRunAt?`${clWhen(st.lastRunAt)}・${st.lastRemoved||0}件 ${clSize(st.lastFreed||0)}`:'まだ走っていません'}</dd>
-     ${st.lastError?`<dt>前回の言い分</dt><dd class="is-warn">${esc(st.lastError)}</dd>`:''}
-     <dt>写しの置き場</dt><dd><code title="${esc(places.cache||'')}">${esc(places.cache||'—')}</code></dd>
-     <dt>ログの置き場</dt><dd><code title="${esc(places.logs||'')}">${esc(places.logs||'—')}</code></dd>
-     <dt>控えの置き場</dt><dd><code title="${esc(places.backup||'')}">${esc(places.backup||'—')}</code></dd>
-    </dl>
-   </div>`;
-  /* **チェックは`click`で受ける**（§9.90。`change`は`click`の後に飛ぶため、
-     行ごと作り直す作りでは反映されない）。ここは器だけを描き直す。 */
-  list.querySelectorAll('[data-cl-pick]').forEach(b=>b.onclick=()=>{
-   const k=b.dataset.clPick;
-   if(b.checked)pick.add(k);else pick.delete(k);
-   renderCleanup();
+  const max=Math.max(1,...hot.map(c=>c.removableBytes)),now=clView.tab==='cold'?'cold':'hot';
+  const ex=c=>{const ns=(c.examples||[]).map(x=>x.name),more=Math.max(0,c.removable-Math.min(2,ns.length));
+   return `${esc(ns.slice(0,2).join('・')||'—')}${more?` <small class="mm-set-more">ほか${more}件</small>`:''}`};
+  /* 2行目は消し方（短い一言）、何のファイルかは ⓘ（行を3行に膨らませない）。 */
+  const name=c=>`<b>${esc(c.label)}</b>${tipHtml(c.note)}<small class="mm-set-sub">${esc(String(c.why||'').replace(/\*\*/g,''))}</small>`;
+  const o=now==='hot'?{
+   cols:[{label:'',w:'32px'},{label:'種別',w:'minmax(280px,2fr)'},{label:'量',w:'minmax(170px,1fr)',num:true},
+    {label:'いちばん古い',w:'120px'},{label:'自動掃除',w:'88px',tip:'定期掃除でも消えるか（対象外は押したときだけ消えます）'},{label:'消えるもの（例）',w:'minmax(160px,1.2fr)'}],
+   rows:hot.map((c,i)=>({title:(c.examples||[]).map(x=>x.name).join('\n'),cells:[
+    `<input type="checkbox" data-cl-pick="${esc(c.key)}"${pick.has(c.key)?' checked':''} aria-label="${esc(c.label)}を選ぶ">`,name(c),
+    `<span class="mm-set-mini"><i class="is-c${i%5}" style="width:${Math.max(2,Math.round(c.removableBytes/max*100))}%"></i></span>${clSize(c.removableBytes)}・${c.removable}件`
+     +(c.kept?`<small class="mm-set-sub">残す ${c.kept}件</small>`:''),
+    clWhen(c.oldest),c.auto?'対象':'対象外',ex(c)]})),
+   empty:{title:'片付けられるファイルはありません',text:'溜まってきたら、ここに種別ごとに出ます。'}}
+   :{cols:[{label:'種別',w:'minmax(280px,2fr)'},{label:'自動掃除',w:'88px'},{label:'残すもの',w:'minmax(160px,1fr)'}],
+    rows:cold.map(c=>({cells:[name(c),c.auto?'対象':'対象外',c.kept?`${c.kept}件は残します`:'—']})),
+    empty:{title:'いま空の種別はありません'}};
+  fillSetList($('#clList'),{key:'cleanup:'+now,label:'片付ける種別',now,onTab:k=>{clView.tab=k;clFillList()},
+   tabs:[{key:'hot',label:'片付けられる',n:`${hot.length}種`},{key:'cold',label:'いま空',n:`${cold.length}種`}],...o});
+  $('#clList').querySelectorAll('[data-cl-pick]').forEach(b=>b.onclick=()=>{
+   if(b.checked)pick.add(b.dataset.clPick);else pick.delete(b.dataset.clPick);
+   paintClRun();
   });
-  $('#clReload').onclick=()=>{cleanupState.loaded=false;loadCleanupMaint(true)};
-  const run=$('#clRun');
-  if(run)run.onclick=()=>cleanupRun();
-  $('#clSaveCfg').onclick=async()=>{
-   /* **送るのはこの4つだけ。** パス設定の保存は「送られてきた項目だけ」を
-      書くので、他の設定を巻き添えにしない（§9.192）。 */
-   const body={cleanup_auto_enabled:String($('#clAuto').value||'on'),
-               cleanup_interval_sec:String($('#clInterval').value||'').trim(),
-               cleanup_keep_generations:String($('#clGens').value||'').trim(),
-               cleanup_keep_days:String($('#clDays').value||'').trim(),
-               user_id:String($('#masterUserId')?.value||'').trim()};
-   try{
-    setMaintLoading(true,'保存しています…');
-    await api('/api/path-config-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    pathConfigState.loaded=false;
-    showToast&&showToast('保存しました','次の掃除から新しい決まりで片付けます',4000);
-   }catch(e){showToast&&showToast('保存できませんでした',e.message,7000)}
-   finally{setMaintLoading(false);cleanupState.loaded=false;loadCleanupMaint(true)}
-  };
+  paintClRun();
+ }
+ /* 足元: 何種別を選んでいるか・掃除するボタン（消える量を字で）。選んでいないときは押せない理由を左の字が言う。 */
+ function paintClRun(){
+  const sel=clPickedStats(),b=$('#clRun');if(!b)return;
+  const st=b.closest('.mm-set-foot').querySelector('.pc-dirty');
+  b.disabled=!sel.n;b.title=sel.n?'選んだ種別のファイルを消します（消す前に何が消えるかを確かめます）':'種別を選ぶと押せます';
+  b.textContent=`選んだものを掃除する${sel.n?`（${clSize(sel.bytes)}）`:''}`;
+  st.textContent=sel.n?`選んでいるのは ${sel.cats.length}種別（消すのは押したあとの確かめの先）`:'種別を選ぶと掃除できます（表の左端の印）';
+ }
+ /* 段「定期掃除」。**送るのはこの4つだけ**（パス設定は送った鍵だけ書く・§9.192）。保存は足元の1つ。 */
+ function clAutoHtml(pol){
+  const v=(cleanupState.cfg&&cleanupState.cfg.values)||{};
+  const on=pol.auto,iv=String(v.cleanup_interval_sec||pol.intervalSec||21600);
+  const num=(k,label,unit,step,min,max,val,id)=>numFieldHtml({k,label,unit,step,min,max},val,`id="${id}" data-set-field="${k}"`);
+  return setRowsHtml([
+   setRow('定期掃除',`<select id="clAuto" data-set-field="cleanup_auto_enabled"><option value="on"${on?' selected':''}>入（決めた間隔で片付ける）</option>`
+     +`<option value="off"${on?'':' selected'}>切（押したときだけ片付ける）</option></select>`,
+    {tip:'アプリが動いているあいだ、**自動掃除の対象**の種別だけを決めた間隔で片付けます。**バイトコードと古い作業フォルダは自動では消しません**（消すと次の起動が一度だけ遅くなる／中身を確かめてから消したいため）。切にしても「片付ける」から手で掃除できます。'}),
+   setRow('掃除の間隔',num('cleanup_interval_sec','掃除の間隔','秒',300,300,null,iv,'clInterval'),
+    {tip:'300秒（5分）以上。既定は21600秒＝6時間です。保存後すぐ反映されます（再起動は要りません）。',state:`<span class="mm-set-why" id="clEvery">${esc(clEvery(iv))}</span>`}),
+   setRow('残す世代',num('cleanup_keep_generations','残す世代','世代',1,1,50,String(v.cleanup_keep_generations||pol.keepGenerations||3),'clGens'),
+    {tip:'ログ・バックアップで**新しいほうから残す本数**です。'}),
+   setRow('残す日数',num('cleanup_keep_days','残す日数','日',1,1,3650,String(v.cleanup_keep_days||pol.keepDays||14),'clDays'),
+    {tip:'この日数以内のものは、世代の数に関わらず残します。'})]);
+ }
+ /* 段「置き場」（読むだけの値・枠を付けない）。 */
+ function clPlaceHtml(d){
+  const st=d.state||{},places=d.places||{};
+  const path=p=>`<code class="mm-set-path" title="${esc(p||'')}">${esc(p||'—')}</code>`;
+  return setRowsHtml([
+   setRow('最後の掃除',esc(st.lastRunAt?`${clWhen(st.lastRunAt)}・${st.lastRemoved||0}件 ${clSize(st.lastFreed||0)}`:'まだ走っていません')),
+   st.lastError?setRow('前回の言い分',`<span class="mm-set-warn">${esc(st.lastError)}</span>`):'',
+   setRow('写しの置き場',path(places.cache)),setRow('ログの置き場',path(places.logs)),setRow('控えの置き場',path(places.backup))]);
  }
  /* 消す。**確認はまとめて1回**（§9.170）。何が消えるかは種別ごとの件数と
     容量で出す——「本当によろしいですか？」だけでは読まずに押す癖が付く。 */
@@ -4076,134 +3896,105 @@
   else showToast('コピーできませんでした','「CSVで保存」を使ってください。',5200);
  }
 
+ /* 接続状況（§9.272・§9.513 → §9.601）: 頭の下に「これまでに接続した端末の版」の帯（最新版／最新でない版／対象外を台数つきで）→
+    左の段「いま接続中」（表・10秒ごとに読み直す）／「接続の履歴」（端末ごと／利用者ごと・新しい版を配る相手を決める）。
+    **切断・記録を消すは行ごとのボタンにしない**——行を押した先のメニュー（危ない操作は主の動線に置かない・§CLAUDE 5）。
+    押せない行は押す形にせず、理由を行の`title`が言う。表のコピー・CSVは頭の ⋯。 */
  function renderPresence(){
-  const list=$('#masterMaintList');if(!list)return;
   const d=presenceState.data;
+  setHeadActs({more:[{label:'表をコピー',note:'いま見えている履歴の表を、表計算ソフトやメールへ貼れる形で',data:{pzAct:'copy'},onClick:()=>pzExport('tsv')},
+   {label:'CSVで保存',note:'いま見えている履歴の表をファイルへ',data:{pzAct:'csv'},onClick:()=>pzExport('csv')}]});
   if(!d){
-   list.innerHTML=`<div class="mm-empty error">接続状況を読めませんでした: ${esc(presenceState.err||'原因不明')}</div>`;
+   mountSetPage({key:'presence',secs:[{key:'live',name:'',body:`<div class="mm-empty error" id="pzList">接続状況を読めませんでした: ${esc(presenceState.err||'原因不明')}</div>`}]});
    return;
   }
-  const can=d.can||{},me=d.me||{},items=d.items||[];
-  const f=d.fleet||{terminals:[],users:[],counts:{},latestVersion:'',myVersion:'',recordingSince:''};
-  const c=f.counts||{};
-  /* いまの自分の区分と、できることを**必ず文字で**出す（§3）。 */
-  const roleNote=can.canDisconnect
-   ?(can.canDisconnectDeveloper?'すべての端末を切断できます'
-     :'開発者以外の端末を切断できます')
-   :'切断はできません（見るだけです）';
-  /* 置き場が共有でなければ、**見えていないことをそう言う**——「1件だけ」を
-     「他に誰も居ない」と読まれないため。 */
-  const scope=d.shared
-   ?`共有の置き場を見ています（${esc(d.source==='master'?'マスタの隣':'作業予定の隣')}）`
-   :'<b>この端末しか出ません</b>。マスタか作業予定を共有に置くと、他のPCも並びます';
-  const mine=d.revoked;
-  const banner=mine?`<div class="mm-warn-note" id="pzRevoked"><b>この端末は接続を解除されています。</b>
+  const f=d.fleet||{terminals:[],users:[],counts:{},latestVersion:'',myVersion:'',recordingSince:''},items=d.items||[];
+  const cut=items.filter(x=>x.revoked).length,old=(f.counts||{}).outdated||0;
+  const form=mountSetPage({key:'presence',figure:pzFigureHtml(d,f),secs:[
+   {key:'live',name:'いま接続中',icon:'fa-plug',sub:'10秒ごとに読み直す',state:cut?`切断中 ${cut}`:'OK',tone:cut?'warn':'',
+    body:`${pzRevokedHtml(d.revoked)}<div class="mm-list mm-set-list" id="pzList"></div>`},
+   /* 札は字だけ（台数は帯の凡例とタブが言う・同じ数を2か所に出さない）。 */
+   {key:'hist',name:'接続の履歴',icon:'fa-clock-rotate-left',sub:'配る相手を決める',state:old?'要更新':'OK',tone:old?'warn':'',
+    stateTitle:old?'最新でない版の端末があります（帯の凡例が台数を言います）':'',body:'<div class="mm-list mm-set-list" id="pzTerms"></div>'}]});
+  if(!form)return;
+  pzFillLive(d,f);pzFillHist(d,f);
+ }
+ /* 頭の下の帯: これまでに接続した端末の版（数えない区分は「対象外」・§9.516）。右に運用中の最新版。この端末の区分は帯の下の1行。 */
+ function pzFigureHtml(d,f){
+  const ts=f.terminals||[],c=f.counts||{},me=d.me||{},can=d.can||{};
+  /* 最新でない端末の数はサーバーの答え（`fleet_summary()`の`counts.outdated`・§9.513）。画面で数え直さない。 */
+  const nOut=ts.filter(t=>t.counted===false).length,nOld=c.outdated||0,nOk=Math.max(0,ts.length-nOut-nOld);
+  const excluded=(f.excludedRoles||[]).join('・');
+  const same=f.myVersion&&f.myVersion===f.latestVersion;
+  const note=!f.latestVersion&&excluded?`（${excluded}の端末を除くと記録なし）`
+   :`${excluded?`${excluded}の端末を除く・`:''}${same?'この端末もこの版です':`この端末は VER${f.myVersion||'?'}`}`;
+  const roleNote=can.canDisconnect?(can.canDisconnectDeveloper?'すべての端末を切断できます':'開発者以外の端末を切断できます'):'切断はできません（見るだけです）';
+  /* この端末の区分・できること・見ている置き場は ⓘ（区分は「いま接続中」の表の「この端末」の行が字で言う・押せない行は理由を title で）。
+     帯の下に1行で常に並べると読む量が増えるだけだった（入れた後の採点・§9.601）。
+     ただし置き場が共有でなければ、**見えていないことを字で言う**——「1件だけ」を「他に誰も居ない」と読まれないため。 */
+  const where=d.shared?`共有の置き場を見ています（${d.source==='master'?'マスタの隣':'作業予定の隣'}）`:'この端末しか出ません（マスタか作業予定を共有に置くと、他の PC も並びます）';
+  const me1=`この端末は${me.role||''}（${roleNote}）・${where}${d.dir?`。置き場: ${d.dir}`:''}`;
+  const right=`運用中の最新版 <b id="pzLatest">${esc(f.latestVersion?'VER'+f.latestVersion:'—')}</b> <small id="pzLatestNote">${esc(note)}</small>`
+   +`<span class="pz-me-tip">${tipHtml(me1)}</span>`;
+  return setBarHtml([{cls:'is-ok',name:'最新版',v:nOk,text:`${nOk}台`},
+    {cls:'is-old',name:'最新でない版',v:nOld,text:`${nOld}台`+(c.outdatedOnline?`（うち接続中 ${c.outdatedOnline}台）`:''),id:'pzOldCount'},
+    {cls:'is-rest',name:`対象外（${excluded||'開発者'}）`,v:nOut,text:`${nOut}台`}],right,'これまでに接続した端末の版')
+   +(d.shared?'':`<p class="pz-me mm-set-warn" title="${esc(d.dir||'')}">${esc(where)}</p>`);
+ }
+ /* この端末が切断されているとき（状態の知らせ・説明の帯ではない）。 */
+ function pzRevokedHtml(mine){
+  return mine?`<div class="mm-warn-note" id="pzRevoked"><b>この端末は接続を解除されています。</b>
     ${esc(mine.by||'不明')}／${esc(mine.byPc||'不明')} により解除されました${mine.reason?`（理由: ${esc(mine.reason)}）`:''}。
     <b>書き込みだけが止まっています</b>——開いている画面と入力中の内容はそのままです。
     あと約${Math.max(1,Math.ceil((mine.remainingSec||0)/60))}分で自動的に戻ります。</div>`:'';
-
-  /* ---- 要約（§CLAUDE 2「次にすることを1つ指す」）: 最新版と、配る相手の数 ---- */
-  const same=f.myVersion&&f.myVersion===f.latestVersion;
-  /* 最新版の出どころ（§9.516・画面基準6）——どの区分を除いて数えたかはサーバーが言う。 */
-  const excluded=(f.excludedRoles||[]).join('・');
-  const summary=`<div class="pz-sum" id="pzSummary">
-    <div class="pz-sum-cell"><span>運用中の最新版</span><b id="pzLatest">${esc(f.latestVersion?'VER'+f.latestVersion:'—')}</b>
-     <small id="pzLatestNote">${!f.latestVersion&&excluded?`${esc(excluded)}の端末を除くと、まだ接続の記録がありません`
-      :`${excluded?`${esc(excluded)}の端末を除く・`:''}${same?'この端末もこの版です':`この端末は VER${esc(f.myVersion||'?')}`}`}</small></div>
-    <div class="pz-sum-cell"><span>接続中</span><b>${items.length}<i>台</i></b><small>10秒ごとに読み直します</small></div>
-    <div class="pz-sum-cell${c.outdated?' is-old':''}"><span>最新でない端末</span><b id="pzOldCount">${c.outdated||0}<i>台</i></b>
-     <small>${c.outdated?`うち接続中 ${c.outdatedOnline||0}台 — 新しい版を配る相手です`:'すべての端末が最新版です'}</small></div>
-    <div class="pz-sum-cell"><span>これまでに接続</span><b>${c.terminals||0}<i>台</i>・${c.users||0}<i>人</i></b>
-     <small>${d.historyReadable===false?'記録を読めませんでした':`VER${esc(f.recordingSince||'')}から記録しています`}</small></div>
-   </div>
-   <p class="pz-me">この端末は <b>${esc(me.role||'')}</b> です — ${esc(roleNote)}（${esc(me.login||'ログインID不明')}／${esc(me.pc||'PC名不明')}）。
-    ${scope}<small title="${esc(d.dir||'')}">${esc(d.dir||'')}</small></p>`;
-
-  const rows=items.map(x=>{
-   const state=x.isMe?'<span class="pz-badge is-me">この端末</span>'
-    :x.revoked?'<span class="pz-badge is-cut">切断中</span>'
-    :'<span class="pz-badge is-on">接続中</span>';
-   let action='';
-   if(x.isMe)action='<span class="pz-why">自分自身は切断できません</span>';
-   else if(x.revoked)action=can.canDisconnect
-    ?`<button type="button" class="mm-btn-ghost sm" data-pz-allow="${esc(x.key)}">切断を取り消す</button>`
-    :`<span class="pz-why">あと約${Math.max(1,Math.ceil((x.revoked.remainingSec||0)/60))}分</span>`;
-   else if(x.canDisconnect)
-    action=`<button type="button" class="mm-btn-ghost sm danger" data-pz-cut="${esc(x.key)}">切断する</button>`;
-   else action=`<span class="pz-why">${can.canDisconnect?`「${esc(x.role)}」は切断できません`:'切断の権限がありません'}</span>`;
-   return `<div class="pz-row${x.isMe?' is-me':''}${x.outdated?' is-old':''}">
-     <span class="pz-c-state">${state}</span>
-     <span class="pz-c-login">${esc(x.login||'（不明）')}</span>
-     <span class="pz-c-pc">${esc(x.pc||'（不明）')}</span>
-     <span class="pz-c-ver">${pzVerHtml(x,f)}</span>
-     <span class="pz-c-since" title="${esc(x.since||'')}">${esc(pzAt(x.since))}</span>
-     <span class="pz-c-dur">${esc(pzDur(x.durationSec))}</span>
-     <span class="pz-c-role">${esc(x.role||'')}</span>
-     <span class="pz-c-mode">${esc(pzModeLabel(x.mode))}</span>
-     <span class="pz-c-view">${esc(pzViewLabel(x.view))}</span>
-     <span class="pz-c-seen">${esc(pzAgo(x.idleSec))}</span>
-     <span class="pz-c-act">${action}</span>
-   </div>`;
-  }).join('');
-
-  const empty=!items.length
-   ?`<div class="mm-empty">${d.readable?'接続している端末がありません（この端末の在席は次のハートビートで出ます）。'
-      :'在席の置き場を読めませんでした。共有フォルダへの接続を確認してください。'}</div>`:'';
-
-  /* ---- これまでに接続した端末（版の配布の判断に） ---- */
-  const {head,rows:hrows}=pzRows(f);
-  const byUsers=pzView.by==='users';
-  const histBody=hrows.map(({x,cells})=>{
-   const forget=!byUsers&&can.canForget&&!x.online
-    ?`<button type="button" class="mm-btn-ghost sm" data-pz-forget="${esc(x.key)}" title="使わなくなった端末の記録を消します（最新でない端末の数から外れます）">記録を消す</button>`:'';
-   const tds=cells.map((v,i)=>i===0?`<td>${pzStateHtml(x,f)}</td>`
-    :`<td${(!byUsers&&i===4&&x.online)?' class="is-online"':''}${(i>=4)?' class="pz-num"':''} title="${esc(String(v))}">${esc(String(v))}</td>`).join('');
-   return `<tr class="${x.outdated?'is-old':''}">${tds}${byUsers?'':`<td class="pz-act">${forget}</td>`}</tr>`;
-  }).join('');
-  const hist=`<section class="pz-sec" id="pzHistory">
-    <header class="pz-sec-head"><h4>これまでに接続した${byUsers?'利用者':'端末'}</h4>
-     <small>新しい版を配る相手を決めるための一覧です。最新でない版が上に来ます。</small></header>
-    <div class="pz-tools">
-     <div class="pz-seg" role="radiogroup" aria-label="まとめ方">
-      <button type="button" role="radio" data-pz-by="terminals" class="${byUsers?'':'is-on'}" aria-checked="${!byUsers}">端末ごと</button>
-      <button type="button" role="radio" data-pz-by="users" class="${byUsers?'is-on':''}" aria-checked="${byUsers}">利用者ごと</button></div>
-     <label class="pz-check"><input type="checkbox" id="pzOnlyOld"${pzView.onlyOld?' checked':''}>最新でない版だけ</label>
-     <span class="pz-count-note">${hrows.length}${byUsers?'人':'台'}</span>
-     <span class="pz-tools-end">
-      <button type="button" class="mm-btn-ghost sm" id="pzCopy" title="いま見えている表を、表計算ソフトやメールへ貼れる形でコピーします">表をコピー</button>
-      <button type="button" class="mm-btn-ghost sm" id="pzCsv" title="いま見えている表をCSVファイルで保存します">CSVで保存</button>
-     </span>
-    </div>
-    ${hrows.length?`<div class="pz-htable-wrap"><table class="pz-htable" id="pzTerms"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}${byUsers?'':'<th></th>'}</tr></thead>
-     <tbody>${histBody}</tbody></table></div>`
-     :`<div class="mm-empty">${pzView.onlyOld?'最新でない版の端末はありません。':'まだ記録がありません（この版から記録を始めます）。'}</div>`}
-   </section>`;
-
-  list.innerHTML=`${banner}${summary}
-   <section class="pz-sec">
-    <header class="pz-sec-head"><h4>いま接続している端末</h4><small>接続時間は、この接続を始めてからの長さです。</small></header>
-   <div class="pz-table" id="pzList">
-    <div class="pz-row pz-headrow">
-     <span class="pz-c-state">状態</span><span class="pz-c-login">ログインID</span>
-     <span class="pz-c-pc">PC名</span><span class="pz-c-ver">版</span>
-     <span class="pz-c-since">接続した時刻</span><span class="pz-c-dur">接続時間</span>
-     <span class="pz-c-role">権限区分</span>
-     <span class="pz-c-mode">モード</span><span class="pz-c-view">開いている画面</span>
-     <span class="pz-c-seen">最後の応答</span><span class="pz-c-act">操作</span>
-    </div>
-    ${rows}
-   </div>${empty}</section>
-   ${hist}
-   ${presenceState.err?`<div class="mm-empty error">読み直しに失敗しました: ${esc(presenceState.err)}</div>`:''}`;
-
-  list.querySelectorAll('[data-pz-cut]').forEach(b=>b.addEventListener('click',()=>pzCut(b.dataset.pzCut)));
-  list.querySelectorAll('[data-pz-allow]').forEach(b=>b.addEventListener('click',()=>pzAllow(b.dataset.pzAllow)));
-  list.querySelectorAll('[data-pz-forget]').forEach(b=>b.addEventListener('click',()=>pzForget(b.dataset.pzForget)));
-  list.querySelectorAll('[data-pz-by]').forEach(b=>b.addEventListener('click',()=>{pzView.by=b.dataset.pzBy;renderPresence()}));
-  const only=list.querySelector('#pzOnlyOld');
-  if(only)only.addEventListener('change',()=>{pzView.onlyOld=only.checked;renderPresence()});
-  list.querySelector('#pzCopy')?.addEventListener('click',()=>pzExport('tsv'));
-  list.querySelector('#pzCsv')?.addEventListener('click',()=>pzExport('csv'));
+ }
+ /* いま接続中の表。行を押すとその端末の操作（切断する／切断を取り消す）。押せない行は理由を`title`で言う。 */
+ function pzFillLive(d,f){
+  const can=d.can||{},items=d.items||[];
+  const st=x=>x.isMe?'<span class="mm-set-tag is-teal pz-badge is-me">この端末</span>'
+   :x.revoked?'<span class="mm-set-tag is-warn pz-badge is-cut">切断中</span>':'<span class="mm-set-tag pz-badge is-on">接続中</span>';
+  const why=x=>x.isMe?'自分自身は切断できません':x.revoked?(can.canDisconnect?'':`あと約${Math.max(1,Math.ceil((x.revoked.remainingSec||0)/60))}分で戻ります`)
+   :x.canDisconnect?'':(can.canDisconnect?`「${x.role}」は切断できません`:'切断の権限がありません');
+  fillSetList($('#pzList'),{key:'presence:live',label:'いま接続中',tabs:[{key:'live',label:'いま接続している',n:`${items.length}台`}],
+   note:presenceState.err?`読み直しに失敗しました: ${presenceState.err}`:'',
+   /* 10列が 1536×864（フルHD・125%）の右の器（約1100px）に入る幅（§9.601 で測った・はみ出すと最後の応答が切れる）。 */
+   cols:[{label:'状態',w:'88px'},{label:'ログインID',w:'minmax(70px,1fr)'},{label:'PC名',w:'minmax(70px,1fr)'},{label:'版',w:'minmax(140px,1.3fr)'},
+    {label:'接続した時刻',w:'100px'},{label:'接続時間',w:'72px',num:true,tip:'この接続を始めてからの長さ'},{label:'権限区分',w:'88px'},
+    {label:'モード',w:'80px'},{label:'開いている画面',w:'minmax(80px,1fr)'},{label:'最後の応答',w:'80px',num:true}],
+   rows:items.map(x=>({cls:'pz-row'+(x.isMe?' is-me':'')+(x.outdated?' is-old':''),
+    attrs:why(x)?` title="${esc(why(x))}"`:setRowAttrs(x.key,x.revoked?'押すと切断を取り消せます':'押すとこの端末を切断できます（確かめてから）'),
+    cells:[st(x),`<span class="pz-c-login">${esc(x.login||'（不明）')}</span>`,`<span class="pz-c-pc">${esc(x.pc||'（不明）')}</span>`,
+     `<span class="pz-c-ver">${pzVerHtml(x,f)}</span>`,`<span class="pz-c-since" title="${esc(x.since||'')}">${esc(pzAt(x.since))}</span>`,
+     `<span class="pz-c-dur">${esc(pzDur(x.durationSec))}</span>`,esc(x.role||''),esc(pzModeLabel(x.mode)),esc(pzViewLabel(x.view)),
+     `<span class="pz-c-seen">${esc(pzAgo(x.idleSec))}</span>`]})),
+   empty:{title:d.readable?'接続している端末がありません':'在席の置き場を読めませんでした',
+    text:d.readable?'この端末の在席は次のハートビートで出ます。':'共有フォルダへの接続を確認してください。'},
+   onRow:(key,row)=>{
+    const x=items.find(i=>i.key===key);if(!x)return;
+    openActMenu(row,x.revoked?[{label:'切断を取り消す',data:{pzAct:'allow'},onClick:()=>pzAllow(key)}]
+     :[{label:`${x.login||'（不明）'}／${x.pc||'（不明）'} を切断する…`,danger:true,title:'理由を書く窓が出ます',data:{pzAct:'cut'},onClick:()=>pzCut(key)}],'この端末の操作');
+   }});
+ }
+ /* 接続の履歴（版の配布の判断に）。端末ごと／利用者ごとは札、「最新でない版だけ」は札の行の右。記録を消すは行を押した先。 */
+ function pzFillHist(d,f){
+  const can=d.can||{},byUsers=pzView.by==='users',{head,rows}=pzRows(f);
+  const nT=(f.terminals||[]).filter(t=>!pzView.onlyOld||t.outdated).length,nU=(f.users||[]).filter(u=>!pzView.onlyOld||u.outdated).length;
+  const el=$('#pzTerms');
+  fillSetList(el,{key:'presence:hist',label:'接続の履歴',now:pzView.by,
+   tabs:[{key:'terminals',label:'端末ごと',n:`${nT}台`},{key:'users',label:'利用者ごと',n:`${nU}人`}],
+   onTab:k=>{pzView.by=k;pzFillHist(d,f)},
+   extra:`<label class="mm-set-check"><input type="checkbox" id="pzOnlyOld"${pzView.onlyOld?' checked':''}>最新でない版だけ</label>`,
+   cols:head.map((h,i)=>({label:h,w:i===0?'96px':'minmax(90px,1fr)',num:/累計/.test(h)})),
+   rows:rows.map(({x,cells})=>{
+    const forget=!byUsers&&can.canForget&&!x.online;
+    return {cls:x.outdated?'is-old':'',attrs:forget?setRowAttrs(x.key,'押すとこの端末の記録を消せます（確かめてから）'):'',
+     cells:cells.map((v,i)=>i===0?pzStateHtml(x,f):`<span${!byUsers&&i===4&&x.online?' class="is-online"':''} title="${esc(String(v))}">${esc(String(v))}</span>`)};
+   }),
+   empty:{title:pzView.onlyOld?'最新でない版の端末はありません':'まだ記録がありません',text:pzView.onlyOld?'':'この版から記録を始めます。'},
+   onRow:(key,row)=>openActMenu(row,[{label:'この端末の記録を消す…',danger:true,note:'使わなくなった端末を「最新でない端末」の数から外します',
+    data:{pzAct:'forget'},onClick:()=>pzForget(key)}],'この端末の記録')});
+  const only=el.querySelector('#pzOnlyOld');
+  if(only)only.addEventListener('change',()=>{pzView.onlyOld=only.checked;pzFillHist(d,f)});
  }
 
  async function pzForget(key){
@@ -5123,13 +4914,13 @@
 
 
  /* 盤の登録簿へ名乗る（§9.324 R3）。 */
- WL.mm.registerSpecial('meas-storage',{load:loadMeasStorageMaint});
+ WL.mm.registerSpecial('meas-storage',{load:loadMeasStorageMaint,dirty:setDirty});   // 足元で保存していない変更は離れる前に聞く（§9.598）
  WL.mm.registerSpecial('import-backup',{load:loadImportBackupMaint});
- WL.mm.registerSpecial('data-source',{load:loadDataSourceMaint,onEditorClose:()=>{dsState.editing=null;renderDataSourceList()}});
- WL.mm.registerSpecial('query-join',{load:loadQueryJoinMaint,onEditorClose:()=>{qjState.editing=null;renderQueryJoinList()}});
+ WL.mm.registerSpecial('data-source',{load:loadDataSourceMaint,onEditorClose:()=>{dsState.editing=null;renderDataSource()}});
+ WL.mm.registerSpecial('query-join',{load:loadQueryJoinMaint,onEditorClose:()=>{qjState.editing=null;renderQueryJoin()}});
  WL.mm.registerSpecial('path-config',{load:loadPathConfigMaint});
  WL.mm.registerSpecial('shift-pattern',{load:loadShiftPatternMaint,dirty:shiftDirty});   // 保存していない変更は離れる前に聞く（§9.598）
- WL.mm.registerSpecial('cleanup',{load:loadCleanupMaint});
+ WL.mm.registerSpecial('cleanup',{load:loadCleanupMaint,dirty:setDirty});
  WL.mm.registerSpecial('raw-table',{load:loadRawTableMaint});
  WL.mm.registerSpecial('presence',{load:loadPresenceMaint});
  /* 統合した設備停止マスタ（§9.397）。名乗りは `stop-master` の1つ——

@@ -1,4 +1,4 @@
-# 画面の土台（54件）
+# 画面の土台（56件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 頭の副の操作は`setHeadActs({more})`の ⋯ のメニュー（主の操作は1つ・`plus:false`で「＋」を外す） | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
+| 専用の画面の窓の ⋯ は`WL.mm.editorMore()`が名乗る（閉じたら持ち越さない）。窓の中のメニューの Esc はメニューだけ閉じる | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 「戻る」の前に画面が聞ける（`registerView({beforeLeave})`・断られたら留まる）。保存していない変更を黙って捨てない | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 全幅と戻るは画面が名乗る（`registerView({focus,back})`）。答えは`enterView()`。戻る先は入る直前の左メニューの行き先で、字にその名前 | `test_mmshell.js` | [§9.593](../../docs/decisions/9.593.md) |
 | 式を文のように組み立てる部品は`WL.formulaBuilder`の1箇所（節＝列・見方・値・比べ方を「かつ／または」で）。式の字へ変えるだけ、見方の語彙は呼ぶ側（`hows`） | `test_stoprulemaster.js` | [§9.590](../../docs/decisions/9.590.md) |

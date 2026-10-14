@@ -108,8 +108,6 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .mm-tag-box.is-disabled{opacity:var(--op-disabled);background:var(--bg);cursor:not-allowed;pointer-events:none}
 /* 保存値と実際に効いている値が食い違う行(=再起動待ち) */
 .mm-row.is-pending-restart{background:var(--warn-bg)}
-.mm-imp-state-list b.is-warn{color:var(--warn-fg)}
-.mm-imp-preview.is-active{border-style:solid;border-color:var(--teal);background:var(--surface-2);color:var(--ink-2)}
 .db-card.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
 .db-card.is-warn .db-card-label{color:var(--warn-fg)}
 .db-status-table tbody tr.is-running{background:var(--surface-2)}
@@ -150,7 +148,6 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 /* データ引継ぎ: 端末内に対応の無いバックアップ行(§9.52)。データ一覧には
    出ないのに作業スケジュールの実績には効くため、色で気付けるようにする。 */
 .mm-row.is-orphan{background:var(--warn-bg)}
-.mm-import-warning.is-orphan{border-color:var(--warn-border);background:var(--warn-bg)}
 /* 該当条。色覚差でも読めるよう、赤の枠線・明度上げ・条番号の反転バッジの
    3つで示す(色だけに意味を持たせない)。 */
 .defect-lane.is-hit{outline:2px solid var(--danger);outline-offset:-2px;filter:saturate(1.25) brightness(1.12)}

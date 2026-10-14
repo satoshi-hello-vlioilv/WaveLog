@@ -222,40 +222,41 @@ run('test_setpage: §9.68 パス設定を設定ページ形式へ / データ引
   rec(`${k}回目に描いた共通設定でも、保存の帯が変えた数を追う（押す前に何が変わるかを言う）`,
       /変更 1件/.test(w.打った後)&&/変更なし/.test(w.戻した後),JSON.stringify(w));
  }
- // ---------- データ引継ぎ ----------
+ // ---------- データ引継ぎ（§9.68 → §9.601） ----------
+ /* 「いまどうなっていて、取り込むと何が起きるか」は頭の下の帯（上書き／新しく追加／取り込めない形式）と表の札（件数）、
+    選んだときの結果は足元の一言が言う。逆の結果になる「バックアップから消す」は取り込むの隣に置かず、頭の ⋯ の先。 */
  await tab('データ引継ぎ');
+ await W.until(page,()=>document.querySelectorAll('#mmImpList .mm-row.mm-imp-row').length>0,null,{ms:15000,what:'取り込める記録の行'});
  const d0=await page.evaluate(()=>({
-  cols:document.querySelectorAll('.mm-imp-state-col').length,
-  now:(document.querySelector('.mm-imp-state-list')||{}).innerText||'',
-  preview:(document.querySelector('#mmImpPreview')||{}).innerText||'',
+  bar:document.querySelectorAll('.mm-set-fig .mm-set-bar .mm-set-leg').length,
+  tabs:[...document.querySelectorAll('#mmImpList .mm-ltab')].map(t=>t.textContent.replace(/\s+/g,'')),
+  preview:(document.querySelector('#mmImpPreview')||{}).textContent||'',
   active:document.querySelector('#mmImpPreview')?.classList.contains('is-active'),
-  flow:document.querySelectorAll('.mm-imp-flow').length,
-  head:[...document.querySelectorAll('#masterMaintList .mm-row.head span')].map(s=>s.textContent).join('/'),
+  rows:document.querySelectorAll('#mmImpList .mm-row.mm-imp-row').length,
+  flow:document.querySelectorAll('#mmImpList .mm-imp-badge').length,
+  head:[...document.querySelectorAll('#mmImpList .mm-row.head .mm-th')].map(s=>s.textContent).join('/'),
+  run:(document.querySelector('#mmImpRun')||{}).disabled,
+  delOnPage:!!document.querySelector('#mmImpDelete'),
  }));
- rec('「いまの状態」が件数で示される',/バックアップ/.test(d0.now)&&/この端末に/.test(d0.now),
-   d0.now.replace(/\s+/g,' ').slice(0,90));
- rec('未選択のときは変化の予定を出さない',!d0.active,d0.preview.slice(0,50));
- rec('行ごとに「いまの状態 → 取り込むと」が出る',d0.flow>0&&/いまの状態/.test(d0.head),
-   `${d0.flow}行 / 見出し=${d0.head}`);
- // 選ぶと変化の予定が出る
- await page.evaluate(()=>{const c=document.querySelector('#masterMaintList [data-imp-id]:not(:disabled)');
-   if(c){c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}))}});
+ rec('「いまの状態」が帯と札の件数で示される',d0.bar===3&&d0.tabs.some(t=>/^すべて\d+件$/.test(t))&&d0.tabs.some(t=>/^この端末に無い\d+件$/.test(t)),JSON.stringify(d0.tabs));
+ rec('未選択のときは変化の予定を出さず、取り込むは押せない理由を字で言う',!d0.active&&d0.run===true&&/選んでいません/.test(d0.preview),d0.preview.slice(0,50));
+ rec('行ごとに「取り込むと」どうなるかが出る',d0.rows>0&&d0.flow===d0.rows&&/取り込むと/.test(d0.head),`${d0.flow}行 / 見出し=${d0.head}`);
+ rec('バックアップから消すは取り込むの隣に置かない',!d0.delOnPage);
+ // 選ぶと変化の予定が出る（行を押して選ぶ・的は行いっぱい）
+ await page.evaluate(()=>{const r=[...document.querySelectorAll('#mmImpList .mm-row.mm-imp-row')].find(x=>!x.querySelector('[data-imp-id]:disabled'));if(r)r.querySelector('span:nth-child(2)').click()});
  await W.until(page,()=>!!document.querySelector('#mmImpPreview')?.classList.contains('is-active'),null,{ms:5000,what:'変化の予定が出る'});
  const d1=await page.evaluate(()=>({
-  active:document.querySelector('#mmImpPreview').classList.contains('is-active'),
-  txt:document.querySelector('#mmImpPreview').innerText.replace(/\s+/g,' ')}));
- rec('選ぶと「実行すると何が起きるか」が出る',
-   d1.active&&/取り込む/.test(d1.txt)&&/削除/.test(d1.txt),d1.txt.slice(0,110));
- rec('取り込みと削除の結果が別々に示される',
-   /新しく追加/.test(d1.txt)&&/上書き/.test(d1.txt)&&/バックアップから/.test(d1.txt));
- // 逆の結果になるボタンが見分けられる
- const btn=await page.evaluate(()=>{
-  const imp=document.querySelector('#mmImpRun'),del=document.querySelector('#mmImpDelete');
-  return {impCls:imp.className,delCls:del.className,
-    sep:!!document.querySelector('.mm-cd-sep'),
-    sameColor:getComputedStyle(imp).backgroundColor===getComputedStyle(del).backgroundColor};
- });
- rec('取り込みと削除が色で見分けられる',!btn.sameColor&&btn.sep,JSON.stringify(btn));
+  txt:document.querySelector('#mmImpPreview').textContent.replace(/\s+/g,' '),
+  run:document.querySelector('#mmImpRun').disabled,runText:document.querySelector('#mmImpRun').textContent}));
+ rec('選ぶと「取り込むと何が起きるか」が出る',/取り込むと/.test(d1.txt)&&/新しく追加/.test(d1.txt)&&/上書き/.test(d1.txt),d1.txt.slice(0,110));
+ rec('選ぶと取り込むが押せ、件数を名乗る',!d1.run&&/選んだ 1件を取り込む/.test(d1.runText),d1.runText);
+ // 消すは頭の ⋯ の中の危ない操作
+ await page.click('#masterMaintMore');
+ await page.waitForSelector('#mmActMenu [data-imp-act="delete"]',{state:'visible',timeout:5000});
+ const del=await page.evaluate(()=>({danger:document.querySelector('#mmActMenu [data-imp-act="delete"]').classList.contains('is-danger'),
+  text:document.querySelector('#mmActMenu [data-imp-act="delete"]').textContent}));
+ await page.keyboard.press('Escape');
+ rec('バックアップから消すは ⋯ の中で、危ない操作の形',del.danger&&/バックアップから消す/.test(del.text),JSON.stringify(del));
  // 取り込みは確認モーダルで内容を示す(更新者IDが必要なので先に入れる)
  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-user');
  await page.evaluate(()=>document.querySelector('#mmImpRun').click());

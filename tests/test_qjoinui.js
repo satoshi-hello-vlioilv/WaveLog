@@ -43,11 +43,12 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
      トーストが出るだけで**何も起きない**ので、先に入れておく。 */
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-qjoin');
   await page.click('#masterMaintNav [data-master="dataSource"]');
-  await page.waitForSelector('#masterMaintList .ds-rows .ds-row:not(.ds-row-head)',{timeout:20000});
+  /* 一覧はステップ2の表の型（§9.601・`#dsList`）。 */
+  await page.waitForSelector('#dsList .mm-row.ds-item',{timeout:20000});
   await raf2(page);
   const dsRows=await page.evaluate(()=>{
-   const head=document.querySelector('#masterMaintList .ds-row-head');
-   const rows=[...document.querySelectorAll('#masterMaintList .ds-row:not(.ds-row-head)')];
+   const head=document.querySelector('#dsList .mm-row.head');
+   const rows=[...document.querySelectorAll('#dsList .mm-row.ds-item')];
    const cs=el=>getComputedStyle(el).gridTemplateColumns;
    return {count:rows.length,headCols:cs(head),
            all:[...new Set([cs(head),...rows.map(cs)])],
@@ -61,7 +62,7 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
       dsRows.listed.every(t=>t==='出す'||t==='出さない'),JSON.stringify(dsRows.listed));
   /* 高密度＝1行が2行ぶんの高さに膨らんでいないこと。行の高さは文字サイズから
      決まるので、絶対値ではなく**見出し行との比**で見る（表示サイズに追随する）。 */
-  const headH=await page.$eval('#masterMaintList .ds-row-head',n=>Math.round(n.getBoundingClientRect().height));
+  const headH=await page.$eval('#dsList .mm-row.head',n=>Math.round(n.getBoundingClientRect().height));
   rec('1行が見出し行の2倍を超えない（高密度）',
       dsRows.heights.every(h=>h<=headH*2.4),`見出し${headH}px 行${JSON.stringify(dsRows.heights)}`);
 
@@ -269,9 +270,9 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   rec('窓の中身が切れない（下の節までたどり着ける）',
       !fit.missing&&fit.reachable&&fit.probe&&fit.overflowY!=='hidden',JSON.stringify(fit));
   await page.click('#maintEditorSave');
-  await page.waitForFunction(n=>[...document.querySelectorAll('#masterMaintList .qj-c-name')]
+  await page.waitForFunction(n=>[...document.querySelectorAll('#qjList .qj-name')]
     .some(el=>el.textContent.includes(n)),NAME,{timeout:20000});
-  const listed=await page.$$eval('#masterMaintList .qj-row:not(.ds-row-head) .qj-c-name',
+  const listed=await page.$$eval('#qjList .mm-row.qj-item .qj-name',
     ns=>ns.map(n=>n.textContent.trim()));
   rec('登録した結合が一覧に並ぶ',listed.some(t=>t.includes(NAME)),JSON.stringify(listed));
   const saved=(await call('GET','/api/query-join-master')).body;
@@ -377,13 +378,19 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   await page.waitForSelector('#masterMaintNav [data-master="queryJoin"]',{timeout:20000});
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-qjoin');
   await page.click('#masterMaintNav [data-master="queryJoin"]');
-  await page.waitForSelector('#qjBuiltinToggle',{timeout:20000});
+  /* 既定の行は押すとメニュー（複製して編集／既定を解除する・§9.601——行ごとのボタンにしない）。 */
+  const builtinAct=async act=>{
+   await page.click('#qjList .mm-row.is-builtin');
+   await page.waitForSelector(`#mmActMenu [data-qj-act="${act}"]`,{state:'visible',timeout:5000});
+   await page.click(`#mmActMenu [data-qj-act="${act}"]`);
+  };
+  await page.waitForSelector('#qjList .mm-row.is-builtin',{timeout:20000});
   builtinTouched=true;
   /* 確認は素の`confirm()`ではなくなった（§9.342）。 */
-  await page.click('#qjBuiltinToggle');
+  await builtinAct('toggle');
   await require('./lib/wait.js').answerConfirm(page);
-  await page.waitForFunction(()=>{const n=document.querySelector('.qj-row.is-builtin .ds-listed');
-    return n&&n.textContent.trim()==='解除中'},{timeout:20000});
+  await page.waitForFunction(()=>{const n=document.querySelector('#qjList .mm-row.is-builtin');
+    return n&&/解除中/.test(n.textContent)},{timeout:20000});
   const offState=(await call('GET','/api/query-join-master')).body;
   rec('既定の品質データ結合を画面から解除できる',offState.builtinEnabled===false,
       String(offState.builtinEnabled));
@@ -394,9 +401,9 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   rec('解除中でも一覧はエラーなく開ける（列が出ないだけ）',
       offTable.status===200&&(offTable.body.rows||[]).length>0&&offTable.body.joinQuality===null,
       `${offTable.status} ${(offTable.body.rows||[]).length}行`);
-  await page.click('#qjBuiltinToggle');
-  await page.waitForFunction(()=>{const n=document.querySelector('.qj-row.is-builtin .ds-listed');
-    return n&&n.textContent.trim()==='既定'},{timeout:20000});
+  await builtinAct('toggle');
+  await page.waitForFunction(()=>{const n=document.querySelector('#qjList .mm-row.is-builtin');
+    return n&&/既定/.test(n.textContent)&&!/解除中/.test(n.textContent)},{timeout:20000});
   const onState=(await call('GET','/api/query-join-master')).body;
   rec('既定に戻せる',onState.builtinEnabled===true,String(onState.builtinEnabled));
   builtinTouched=false;
@@ -482,27 +489,36 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   await page.click('#maintEditorCancel');
   await page.waitForFunction(()=>document.querySelector('#maintEditorModal')?.hidden,{timeout:20000});
   /* 一覧に用途の列と、既定の完了突合の行が出ている。 */
-  await page.waitForSelector('#masterMaintList .qj-row',{timeout:20000});
+  await page.waitForSelector('#qjList .mm-row.qj-item',{timeout:20000});
   const listPurpose=await page.evaluate(()=>({
-   head:[...document.querySelectorAll('#masterMaintList .ds-row-head .ds-h')].map(x=>x.textContent.trim()),
-   tags:[...document.querySelectorAll('#masterMaintList .qj-c-purpose .ds-role')].map(x=>x.textContent.trim()),
+   head:[...document.querySelectorAll('#qjList .mm-row.head .mm-th')].map(x=>x.textContent.trim()),
+   tags:[...document.querySelectorAll('#qjList .qj-use')].map(x=>x.textContent.trim()),
   }));
   rec('一覧に「用途」の列がある',listPurpose.head.includes('用途'),JSON.stringify(listPurpose.head));
   /* §9.367: 旧い突合キーは一度きりの移行で**普通の1行**になっている。
-     「複製してからしか直せない」行を残さないこと——完了突合の行にも
-     ふつうに「編集」「削除」が出る（利用者の指摘）。 */
+     「複製してからしか直せない」行を残さないこと——完了突合の行もふつうに押すと直す窓が開き、
+     削除は窓の ⋯ にある（§9.601: 行ごとの「編集」「削除」はやめた・利用者の指摘の趣旨は同じ）。 */
   const finRow=await page.evaluate(()=>{
-   const row=[...document.querySelectorAll('#masterMaintList .qj-row')]
-     .find(r=>(r.querySelector('.qj-c-purpose')||{}).textContent?.includes('完了突合'));
+   const row=[...document.querySelectorAll('#qjList .mm-row.qj-item')]
+     .find(r=>(r.querySelector('.qj-use')||{}).textContent?.includes('完了突合'));
    if(!row)return null;
-   return {edit:!!row.querySelector('[data-qj-edit]'),del:!!row.querySelector('[data-qj-del]'),
-           builtin:row.classList.contains('is-builtin'),
-           name:(row.querySelector('.ds-name')||{}).textContent||''};
+   return {id:row.dataset.setRow||'',builtin:row.classList.contains('is-builtin'),rowBtns:row.querySelectorAll('button').length,
+           name:(row.querySelector('.qj-name')||{}).textContent||''};
   });
+  if(finRow&&finRow.id){
+   await page.click(`#qjList .mm-row[data-set-row="${finRow.id}"]`);
+   await page.waitForSelector('#maintEditorModal:not([hidden]) #maintEditorMore:not([hidden])',{timeout:20000});
+   await page.click('#maintEditorMore');
+   await page.waitForSelector('#mmActMenu [data-qj-act="delete"]',{state:'visible',timeout:5000});
+   finRow.edit=true;finRow.del=await page.evaluate(()=>document.querySelector('#mmActMenu [data-qj-act="delete"]').classList.contains('is-danger'));
+   await page.keyboard.press('Escape');
+   await page.click('#maintEditorCancel');
+   await page.waitForFunction(()=>document.querySelector('#maintEditorModal')?.hidden,{timeout:20000});
+  }
   rec('完了突合の行が一覧に出る（登録していないのに完了になる、を探させない）',
       !!finRow&&listPurpose.tags.includes('完了突合'),JSON.stringify(listPurpose.tags));
-  rec('完了突合の行は普通に編集・削除できる（複製しないと直せない行を残さない）',
-      !!finRow&&finRow.edit&&finRow.del&&!finRow.builtin,JSON.stringify(finRow));
+  rec('完了突合の行は普通に直せ、削除は窓の ⋯（複製しないと直せない行を残さない・行ごとのボタンは置かない）',
+      !!finRow&&finRow.edit&&finRow.del&&!finRow.builtin&&finRow.rowBtns===0,JSON.stringify(finRow));
 
   /* ---- 結合に失敗したとき・0行のとき（利用者の報告「VER2.348.0において、仕掛一覧が
      出なくなってしまいました」「オーダー情報と結合できませんと出たとしても、仕掛一覧の

@@ -665,13 +665,14 @@ run('test_rbcells: 帳票ブロックを「セル」で組む（§9.274、利用
      待つと、読み込み中の一言でも通ってしまい、まだ描けていない画面を
      測ることになる（実際にそれで落ちた）。 */
   await page.waitForSelector('#pzList',{timeout:20000});
+  /* 中身の器は専用の画面の表（§9.601 から設定型の画面は`#masterMaintForm`の中に組む・`#pzList`がその表）。 */
   const before=await page.evaluate(()=>({
-   len:document.getElementById('masterMaintList').textContent.replace(/\s+/g,'').length,
+   len:(document.getElementById('pzList')||{textContent:''}).textContent.replace(/\s+/g,'').length,
    pz:!!document.getElementById('pzList')}));
   await setHint('off');
   await idle();
   const after=await page.evaluate(()=>({
-   len:document.getElementById('masterMaintList').textContent.replace(/\s+/g,'').length,
+   len:(document.getElementById('pzList')||{textContent:''}).textContent.replace(/\s+/g,'').length,
    pz:!!document.getElementById('pzList')}));
   rec('⑦ 説明の量を切り替えても専用の画面の中身が消えない',
       before.pz&&after.pz&&after.len>10,JSON.stringify({before,after}));

@@ -8,10 +8,10 @@
 
    ここで固定すること:
     1. 置き場は3段（①この端末のブラウザ →②この端末のDB →③閲覧用の複製）で、
-       **流れの順に左から右**へ並ぶ
+       **流れの順に左から右**へ並ぶ（頭の下の全幅の図・どの段を開いても見える・§9.601）
     2. いま何件どこにあるかが数字で出る（数えられなければ「—」。0件と
        言い切らない）
-    3. **次にすることを1つだけ**指す
+    3. **次にすることを1つだけ**指す（未送信があるときだけ頭の主ボタン・§9.601）
     4. 間隔はここで設定でき、**置き場（複製先）は共通設定の1箇所**が持つ
        （§9.267。二重に置かない）
     5. サーバーが状態を答える（/api/measurement/storage）／複製先が
@@ -77,14 +77,11 @@ run('test_measstore: 測定データの保存（§9.202）', async ({page,rec,B,
   });
   rec('置き場は3段',flow.n===3&&flow.arrows===2,JSON.stringify({n:flow.n,arrows:flow.arrows}));
   rec('①②③の順に並ぶ',flow.no.join('')==='①②③',flow.no.join(''));
-  /* **上から下へ流れる**（§9.261）。以前は横3列だったが、盤が狭いと
-     1段204pxまで痩せて値が「未設定（…」と切れていた（実測1366px窓）。
-     1行1段なら切れない。 */
-  rec('上から下へ流れる',flow.tops[0]<flow.tops[1]&&flow.tops[1]<flow.tops[2],
-      JSON.stringify(flow.tops));
-  rec('段は全幅で左端がそろう（狭い盤でも値が切れない）',
-      new Set(flow.lefts).size===1&&flow.widths.every(w=>w>400),
-      JSON.stringify({lefts:flow.lefts,widths:flow.widths}));
+  /* **左から右へ流れる**（§9.601）。§9.261 で縦に積んだのは、段の中の狭い盤で1段204pxまで痩せて値が
+     「未設定（…」と切れていたため——図を頭の下の全幅に出したので、横に並べても1段に十分な幅がある。 */
+  rec('左から右へ流れる（同じ高さに並ぶ）',flow.lefts[0]<flow.lefts[1]&&flow.lefts[1]<flow.lefts[2]
+      &&Math.max(...flow.tops)-Math.min(...flow.tops)<=4,JSON.stringify({lefts:flow.lefts,tops:flow.tops}));
+  rec('段は値が切れない幅を持つ（1段 300px 以上）',flow.widths.every(w=>w>=300),JSON.stringify(flow.widths));
   rec('矢印に「いつ動くか」を字で書く',
       /保存のたび/.test(flow.arrowText[0]||'')&&/分ごと|未設定/.test(flow.arrowText[1]||''),
       JSON.stringify(flow.arrowText));
@@ -106,12 +103,16 @@ run('test_measstore: 測定データの保存（§9.202）', async ({page,rec,B,
   rec('数えられない欄は「—」で、0件と言い切らない',
       kv.flat().every(([,v])=>v!==''&&v!=='null'&&v!=='undefined'),JSON.stringify(kv.flat()).slice(0,180));
 
-  /* ---- 3) 次にすることは1つだけ ---- */
+  /* ---- 3) 次にすることは1つだけ（§9.601）: 未送信があるときだけ頭の主ボタン。無ければ頭に塗りのボタンを置かない ---- */
   const next=await page.evaluate(()=>{
-   const els=[...document.querySelectorAll('.ms-next')];
-   return {n:els.length,text:els.map(x=>x.textContent.replace(/\s+/g,' ').trim()).join(' | ')};
+   const unsent=((document.querySelectorAll('.ms-flow .ms-stage')[0]||document).querySelectorAll('.ms-kv dd')[2]||{}).textContent||'';
+   const prim=[...document.querySelectorAll('#masterMaintActs .mm-btn-primary')];
+   return {unsent,n:prim.length,id:prim.map(b=>b.id).join(','),text:prim.map(b=>b.textContent.trim()).join('|'),
+     band:document.querySelectorAll('#masterMaintForm .ms-next,#masterMaintForm .ms-lead').length};
   });
-  rec('次にすることを1つだけ指す',next.n===1&&next.text.length>10,next.text.slice(0,120));
+  const hasUnsent=/^[1-9]/.test(next.unsent);
+  rec('次の一手は頭の主ボタン1つ（未送信があるときだけ・説明の帯は置かない）',
+      next.band===0&&(hasUnsent?next.n===1&&next.id==='msSyncNow':next.n===0),JSON.stringify(next));
 
   /* ---- 4) 設定はここにあり、共通設定には無い ---- */
   /* 画面は**段（タブ）**になった（§9.261）。設定は「閲覧用の複製」の段。
@@ -133,16 +134,20 @@ run('test_measstore: 測定データの保存（§9.202）', async ({page,rec,B,
    goto:!!document.querySelector('[data-ms-goto]'),
    interval:!!document.querySelector('#msExportInterval'),
    save:!!document.querySelector('#msSaveCfg'),
-   syncBtn:!!document.querySelector('#msSyncNow'),
-   exportBtn:!!document.querySelector('#msExportNow'),
   }));
   rec('間隔はここで設定できる（保存後すぐ効く動きの設定）',
     cfg.interval&&cfg.save,JSON.stringify(cfg));
   rec('複製先はここに欄を置かず、いまどこかを書いて直す場所へ連れて行く',
     !cfg.path&&cfg.goto&&cfg.where.length>0,JSON.stringify(cfg));
-  rec('「未送信を今すぐ送る」「いま複製する」がここにある',cfg.syncBtn&&cfg.exportBtn,JSON.stringify(cfg));
-  /* 「DBに同期」が何をするのかを画面に書いてある。 */
-  const explains=await page.evaluate(()=>document.querySelector('#masterMaintForm').textContent);
+  /* たまに使う操作は頭の ⋯（§9.601）: 読み直すはいつも、いま複製するは複製先があるときだけ（押しても断られる物を並べない）。 */
+  await page.click('#masterMaintMore');
+  await W.until(page,()=>!!document.querySelector('#mmActMenu:not([hidden]) [data-ms-act]'),null,{ms:5000,what:'⋯ のメニュー'});
+  const more=await page.evaluate(()=>[...document.querySelectorAll('#mmActMenu [data-ms-act]')].map(b=>b.dataset.msAct));
+  await page.keyboard.press('Escape');
+  rec('⋯ に「状態を読み直す」、複製先があるときだけ「いま複製する」',
+      more.includes('reload')&&more.includes('export')===!!st.export.configured,JSON.stringify({more,configured:st.export.configured}));
+  /* 「DBに同期」が何をするのかを画面に書いてある（頭の ⓘ・§9.601 で本文の説明を畳んだ）。 */
+  const explains=await page.evaluate(()=>((document.querySelector('#masterMaintInfo [data-tip]')||{}).dataset||{}).tip||'');
   rec('「DBへ同期」が何をするボタンかを書く',/DBへ同期/.test(explains),
       (explains.match(/.{0,30}DBへ同期.{0,40}/)||[''])[0]);
   rec('打っている最中はどこにも入らないことを書く',/保存して一覧へ|保存を押すまで|まだどこにも/.test(explains),'');
