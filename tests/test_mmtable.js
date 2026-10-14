@@ -121,7 +121,8 @@ run('test_mmtable: マスタ管理の一覧（呼び名の収まり・群の畳�
    const after=await page.evaluate(()=>({
      w:Math.round(document.querySelector('.mm-th[data-col="name"]').getBoundingClientRect().width),
      mark:document.querySelector('.mm-viewmark')?.textContent||''}));
-   rec('引くと列が実際に狭くなる',after.w<grip.w-60,`${grip.w} → ${after.w}`);
+   /* §9.599 で列は中身なりの幅になった（設備名は約80px）。120px 引いたら「60px 以上狭まる」か「下限の40px まで縮む」。 */
+   rec('引くと列が実際に狭くなる',after.w<grip.w-60||(after.w<grip.w-20&&after.w<=42),`${grip.w} → ${after.w}`);
    rec('列幅を触ったことを文字で出す',/幅/.test(after.mark),after.mark);
    /* **覚えていること**——別のタブへ行って戻っても残る。 */
    /* 別のタブへ行って戻る。**設備停止の分類は§9.397で「設備停止マスタ」へ
@@ -136,7 +137,7 @@ run('test_mmtable: マスタ管理の一覧（呼び名の収まり・群の畳�
    await page.click('#mmViewReset');
    await paint();
    const reset=await page.evaluate(()=>Math.round(document.querySelector('.mm-th[data-col="name"]').getBoundingClientRect().width));
-   rec('戻すと既定の幅へ帰る',reset>after.w+40,`${after.w} → ${reset}`);
+   rec('戻すと既定の幅へ帰る',Math.abs(reset-grip.w)<=2,`${after.w} → ${reset}（引く前 ${grip.w}）`);
   }
 
   /* ---- 4) 移行済みの表を消せる（§9.250 ③） ---- */

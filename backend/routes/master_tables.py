@@ -60,6 +60,17 @@ COVERED_BY = {
  '勤務体系マスタ': 'shiftMaster',
  '勤務区分マスタ': 'shiftMaster',
  '勤務体系設備マスタ': 'shiftMaster',
+ # §9.599 刃組の盤（§9.529〜）と設備停止の挿入条件（§9.590）が持つ表。載せ忘れていたので「内部データ」にも
+ # 同じ呼び名（ゴムリング・刃…）で並び、左の一覧に同じ名前が7組あった。刃セットは刃の盤が作る・名前を変える。
+ 'ゴムリングマスタ': 'bladesetRing',
+ 'スペーサーマスタ': 'bladesetSpacer',
+ 'フィンガーマスタ': 'bladesetFinger',
+ '刃マスタ': 'bladesetBlade',
+ '刃セットマスタ': 'bladesetBlade',
+ '刃選択マスタ': 'bladesetPick',
+ '刃組基準値マスタ': 'bladesetStandard',
+ '保持方式マスタ': 'bladesetHold',
+ '設備停止挿入条件マスタ': 'stopReason',
 }
 
 # 専用タブは無いが、**別の画面から書いている**表。どこで書いているかを
@@ -78,6 +89,9 @@ EDITED_FROM = {
  'フィルタプリセットマスタ': '一覧の「登録フィルタ」',
  'フィルタ個人設定マスタ': '登録フィルタの「いつも適用」',
  '選択履歴マスタ': '（自動で増えます。操業データの選択肢を選ぶたびに1つ数えます）',
+ # §9.599 刃組ガイダンスが書く2つ（§9.378・§9.382）。
+ '条設計マスタ': '刃組ガイダンスの「条の設計」',
+ '刃組履歴マスタ': '刃組ガイダンスの「確定保存」',
 }
 
 # 移行が済んでいて、**アプリがもう読まない**表(§9.221 ③・§9.111)。
@@ -110,8 +124,25 @@ NOTES = {
  '稼働カレンダーマスタ': '設備ごとの稼働日・非稼働日',
  '設備停止サブカテゴリマスタ': '設備停止をもう1段細かく分ける内訳（例: 刃組待ち → 刃出し）',
  '設備停止時間マスタ': '設備停止を予定へ入れるときに選ばせる分の一覧（全設備共通）',
- # §9.424 台車は設備の持ち物。**刃組ガイダンスを使う設備にだけ**行がある。
- '台車マスタ': '刃組を組み替える台車（設備ごと。初期セットで A台車・B台車 が入ります）',
+ # §9.424 台車は設備の持ち物。**刃組ガイダンスを使う設備にだけ**行がある。専用の画面は無く、ここで直す（§9.599
+ # ——直した結果がどこに出るかを言う。「行をそのまま直す画面です」はどの表にも言えて、何も言っていなかった）。
+ '台車マスタ': '刃組ガイダンスで選ぶ台車（設備ごと）。ここで足す・直すと、刃組ガイダンスの台車の札が変わります',
+ '条設計マスタ': '条の設計を測定より前に決めておく控え（1設備＋1親ロットで1行）',
+ '刃組履歴マスタ': '刃組を終えた記録（台車ごとの差分を出すための控え）',
+}
+
+# 内部データの列の見せ方（§9.599）。**画面は表の名前を書かない**（§9.163）ので、どの列を1列にまとめ、
+# どの値をどの字で出すかもここが持つ。一覧の見え方だけで、編集の欄（列そのもの）は変えない。
+#  ・when: 区分（曜日／日付）で読む列が変わる2列を、1列「いつ」にまとめる（片方は必ず空だった）。区分が weekKind なら
+#    曜日の列を、それ以外は日付の列を読む。
+#  ・words: 値 → [字, 調子]。調子は on＝札（目に留める）／none＝薄い字（ふつうの状態）。
+#  ・weekdays: 曜日の数の読み方（DB は 日=0〜土=6・schedule_calc と同じ）。
+COLUMN_VIEWS = {
+ '稼働カレンダーマスタ': {
+  'when': {'label': 'いつ', 'kind': '区分', 'weekKind': '曜日', 'week': '曜日', 'date': '日付',
+           'weekWord': '毎週', 'dateWord': '日付', 'weekdays': '日月火水木金土'},
+  'words': {'稼働': {'1': ['稼働', 'on'], '0': ['休み', 'none']}},
+ },
 }
 
 # 左の一覧に出す短い呼び名。**1行に収まる長さにする**(§9.218 ③)——
@@ -175,13 +206,14 @@ def _schema(c, table):
 def _known(table):
  """その表を画面がどう扱うか。**知らない表も落とさない**——マスタを足した
  のに一覧へ出ないと、足した本人にしか場所が分からなくなる。"""
+ base = {'note': NOTES.get(table, ''), 'views': COLUMN_VIEWS.get(table, {})}
  if table in COVERED_BY:
-  return {'kind': 'covered', 'tab': COVERED_BY[table], 'where': '', 'note': NOTES.get(table, '')}
+  return {**base, 'kind': 'covered', 'tab': COVERED_BY[table], 'where': ''}
  if table in RETIRED:
-  return {'kind': 'retired', 'tab': '', 'where': RETIRED[table], 'note': NOTES.get(table, '')}
+  return {**base, 'kind': 'retired', 'tab': '', 'where': RETIRED[table]}
  if table in EDITED_FROM:
-  return {'kind': 'elsewhere', 'tab': '', 'where': EDITED_FROM[table], 'note': NOTES.get(table, '')}
- return {'kind': 'here', 'tab': '', 'where': '', 'note': NOTES.get(table, '')}
+  return {**base, 'kind': 'elsewhere', 'tab': '', 'where': EDITED_FROM[table]}
+ return {**base, 'kind': 'here', 'tab': '', 'where': ''}
 
 
 @bp.get('/api/master-table/catalog')

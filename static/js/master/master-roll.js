@@ -47,7 +47,17 @@
    const w=b.cLo===b.cHi?0:x(b.cHi)-x(b.cLo);
    return `<span class="mm-rl" aria-hidden="true"><i class="mm-rl-b is-${tone}${w?'':' is-pt'}" style="left:${x(b.cLo).toFixed(2)}%${w?`;width:${w.toFixed(2)}%`:''}"></i></span>`;
   }});
- WL.mm.registerCell('rollConfuse',{prep,
+ /* 設備の見出しの要約（§9.599）: 径の範囲（0 と空は数えない＝未設定）と、1周が重なる組（＝）の数。
+   数えるのは**その群に出ている行だけ**（探して絞っていれば絞った行）——件数と同じ数え方にする。 */
+WL.mm.registerGroupSum('rollRange',(items,ctxAll)=>{
+ const ctx=ctxAll&&ctxAll.rollConfuse,set=new Set(items);
+ const ds=items.flatMap(it=>[Number(it.diaMax),Number(it.diaMin)]).filter(x=>Number.isFinite(x)&&x>0);
+ let eq=0;items.forEach(it=>{rowOf(it,ctx).partners.forEach(p=>{if(p.kind==='direct'&&set.has(p.roll))eq++})});
+ const pairs=Math.round(eq/2);
+ return (ds.length?`径 ${f1(Math.min(...ds))}〜${f1(Math.max(...ds))} mm`:'')
+  +(pairs?`<i class="mm-val-tag is-warn" title="1周が重なり、異常位置判定で見分けられない組">見分けにくい組 ${pairs}</i>`:'');
+});
+WL.mm.registerCell('rollConfuse',{prep,
   text:(it,ctx)=>rowOf(it,ctx).partners.map(partnerText).join('、'),
   html:(it,ctx)=>rowOf(it,ctx).partners.map(p=>
    `<i class="mm-rc${p.kind==='direct'?' is-eq':''}">${esc(partnerText(p))}</i>`).join('')});

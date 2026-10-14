@@ -213,14 +213,18 @@
            {k:'enabledText',label:'有効',type:'select',options:['有効','無効'],fieldGroup:'④ 管理',
             hint:'「無効」にすると判定の候補から外れます。**行は消えません。**'}],
    /* 幅（grow）は中身の長さから（§9.537 で計算の列を足したときに配り直した）。 */
+   /* 幅は中身から測る（§9.599・`fitMaintColumns`）。単位は見出し（`unit`）、径MIN の 0 は未設定（径MAXだけで見る）。
+      器に入らないときだけ`optional`の列を右から畳む（面長・本数・材質・基準番号は判定に効かない）。 */
    cols:[{k:'name',label:'ロール名',grow:2.2},{k:'entryPos',label:'入出位置',grow:.8},
-         {k:'contactFace',label:'接触面',grow:.7},{k:'diaMax',label:'径MAX',grow:.7},
-         {k:'diaMin',label:'径MIN',grow:.7},
+         {k:'contactFace',label:'接触面',grow:.7},{k:'diaMax',label:'径MAX',unit:'mm',grow:.7},
+         {k:'diaMin',label:'径MIN',unit:'mm',format:'zeroBlank',grow:.7},
          /* 計算の列（§9.537、利用者の選択 C-4）。値は`master-roll.js`が登録表（`WL.mm.registerCell`）で答える。 */
-         {k:'lap',label:'1周の長さ',cell:'rollLap',grow:1.5},{k:'lapBar',label:'1周',cell:'rollLapBar',grow:1.6},
+         {k:'lap',label:'1周の長さ',unit:'mm',cell:'rollLap',grow:1.5},{k:'lapBar',label:'1周',cell:'rollLapBar',grow:1.6},
          {k:'confuse',label:'見分けにくい相手',cell:'rollConfuse',grow:3.6},
-         {k:'faceLen',label:'面長',grow:.7},{k:'count',label:'本数',grow:.6},{k:'material',label:'材質',grow:.8},
-         {k:'refNo',label:'基準番号',grow:.9}],
+         {k:'faceLen',label:'面長',unit:'mm',optional:true,grow:.7},{k:'count',label:'本数',optional:true,grow:.6},
+         {k:'material',label:'材質',optional:true,grow:.8},{k:'refNo',label:'基準番号',optional:true,grow:.9}],
+   /* 設備の見出しに径の範囲と見分けにくい組の数（§9.599・`master-roll.js`の登録表）。 */
+   groupSum:'rollRange',
    hint:'設備ごとのロールの諸元です。**1つのロールは1つの設備に属します**——同じ呼び名でも設備が違えば別のロールとして、それぞれ登録してください。**1本を見分けるのは「設備名＋ロール名＋接触面＋ロール径MAX＋ロール径MIN＋備考」の6つ**です（その欄には「キー」と付けてあります）。6つとも同じロールは2つ置けませんが、**どれか1つでも違えば別のロールとして並べられます**。**Excelの取り込みも同じ6つで突き合わせます**——だから**径や備考をExcelで書き直すと、その行は「直す」ではなく「増える」**ことに注意してください（直すつもりのときは取り込み方を「入れ替える」にするか、この画面で直します。下見の「追加 / 上書き」の件数で押す前に分かります）。**測定画面の「異常位置判定」→「② 長手方向（ロールを特定）」**で、欠陥のピッチ（繰り返しの間隔）から該当しそうなロールを探すのに使います。判定に効くのは**ロール径MAX**（周長＝π×径）で、**ロール径MIN**も入っていれば摩耗の範囲として幅を持たせて判定します。一覧は設備ごとにまとまって出ます。表の**1周の長さ**（π×径MIN〜MAX）と**見分けにくい相手**は表が計算して出します——測定画面の異常位置判定と同じ計算（許容±2%）で、**＝** は1周が重なる（見分けられない）、**×2／÷2** は2回に1回だけ数えた・1周に2箇所あるときに重なるロールです。'},
   /* ---------- 刃組の部材と基準値（§9.377、利用者の指示） ----------
      「刃組については必要なデータが元コイル幅、ロット毎の切断幅、板厚などです。
@@ -543,13 +547,18 @@
             fieldGroup:'④ 出す・並び',
             hint:'空欄＝**自分で作った塊**です。',
             more:'値が入っているものはアプリがもともと持っている塊で、名前・幅・高さ・並び・出す/出さない・対象設備を変えられます。この印は付け替えられません。'}],
-   cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},
-         {k:'name',label:'ブロック名',grow:2},{k:'kindText',label:'種別',grow:1},
-         {k:'repeatText',label:'繰り返し',grow:1},
-         {k:'fullText',label:'行・列',grow:1},
-         {k:'builtin',label:'既定',grow:1},
-         {k:'enabledText',label:'有効',grow:1},{k:'content',label:'内容',grow:4},
-         {k:'span',label:'幅',grow:1},{k:'rows',label:'高さ',grow:1},{k:'order',label:'表示順',grow:1}],
+   /* §9.599: 「既定」の列はやめ、ブロック名の後ろの札（`tag`）にした——列にすると同じ名前が2列に並んでいた。全部の塊が
+      既定なら札は出さず、「全行で同じ」の1行が「種類 すべて既定」と言う。内容は「N項目＋名前の札」、幅は紙の12マスの帯、
+      高さの空・0 は「中身なり」（編集の欄と同じ言葉）。`fold`の列（対象設備・繰り返し・行・列・有効）は、全行で同じ値なら
+      表の上の「全行で同じ」の1行へ畳む（盤の答え・§9.599）。 */
+   cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget',optional:true,fold:true},
+         {k:'name',label:'ブロック名',grow:2,tag:{k:'builtin',word:'既定',label:'種類',all:'すべて既定（アプリが持つ塊）',title:'アプリがもともと持っている塊'}},
+         {k:'kindText',label:'種別',grow:1},
+         {k:'repeatText',label:'繰り返し',grow:1,optional:true,fold:true},
+         {k:'fullText',label:'行・列',grow:1,optional:true,fold:true},
+         {k:'enabledText',label:'有効',grow:1,fold:true},{k:'content',label:'内容',format:'itemList',grow:4},
+         {k:'span',label:'幅',format:'paperSpan',align:'figure',grow:1},{k:'rows',label:'高さ',format:'rowsAuto',grow:1},
+         {k:'order',label:'表示順',grow:1,optional:true}],
    hint:'帳票の紙に載せる塊の一覧です。**アプリがもともと持っている塊もここに載っています**（「既定」に値が入っている行）。既定の塊は**名前・幅・高さ・並び・出す/出さない・対象設備**を変えられ、`基本情報`／`コース情報`／`測定条件`／`作業班構成`／`作業時間`／`登録状態`の6つは**中身**も変えられます。測定表・条の図・異常位置判定のように組み立て方そのものが仕事になっている塊は中身を変えられません。既定の塊は**消せません**——紙へ出したくないときは「紙に出す」を「出さない」にします。作った塊は帳票画面の「配置を組み換え」の「出していない塊」から紙へ落としてください。'},
   /* 設備は**表を主役にしてモーダルで直す**（§9.250 ⑦、利用者の指示
      「設備マスタは文字が多くUIの幅も無駄に長いのでもっとコンパクトにする
@@ -881,7 +890,10 @@
   // 旧「マスタ一覧」(サイドバーのMASTERナビ→汎用グリッド)をここへ統合した
   // (ARCHITECTURE.md「マスタ管理の画面形態」)。上のタブが扱わないテーブル(スケジュール列表示マスタ
   // 等)も含め、master.sqlite3の中身をそのまま確認するための読み取り専用タブ。
-  {group:'system',key:'rawTable',label:'テーブル生データ',special:'raw-table',readOnly:true},
+  {group:'system',key:'rawTable',label:'テーブル生データ',special:'raw-table',readOnly:true,
+   /* §9.599: 説明の帯（主役の前の3段の箱）をやめ、用途の1行と ⓘ に。読むだけは題の横の札が言う。 */
+   lead:'マスタDBの表をそのまま読む画面です。',readOnlyWhy:'表をそのまま見せるだけで、ここからは書き換えません（直すのは「ふだんは〜で直します」の画面）',
+   hint:'マスタDB（master.sqlite3）の表をそのまま表示します。**専用の画面を持たない表も「内部データ」から直せます**——ここはどの表でも中身を確かめられる最後の手段です。先頭200件まで表示します。'},
  ];
  /* 既定のタブは**実在するキー**にすること（§9.221 ③でオペレータのタブを
     撤去した）。`currentDef()`は見つからなければ先頭へ落とすので中身は出るが、

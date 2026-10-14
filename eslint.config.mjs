@@ -82,7 +82,7 @@ const BROWSER = Object.fromEntries([
   'AbortController', 'MutationObserver', 'ResizeObserver', 'IntersectionObserver',
   'getComputedStyle', 'matchMedia', 'CSS', 'TextEncoder', 'TextDecoder', 'XMLHttpRequest',
   'WebSocket', 'innerWidth', 'innerHeight', 'print', 'open', 'close', 'top', 'self', 'parent',
-  'frames', 'scrollTo', 'scrollBy', 'alert', 'confirm', 'prompt',
+  'frames', 'scrollTo', 'scrollBy', 'alert', 'confirm', 'prompt', 'NodeFilter',
 ].map((k) => [k, 'readonly']));
 
 export default [

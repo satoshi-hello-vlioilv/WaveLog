@@ -101,7 +101,8 @@ run('test_mmfold: マスタ一覧の「束ねた見出しの開閉」(§9.241 �
   rec('設備ごとの見出しが出ていて、どれも開いている',
       s0.群.length>=2&&s0.群.every(g=>g.開)&&s0.行>=5,JSON.stringify(s0.群));
   rec('見出しが押せる（role=button）',s0.群.every(g=>g.押せる),JSON.stringify(s0.群.map(g=>g.押せる)));
-  rec('開閉の帯が出ている',!!s0.帯&&/開\s*\d/.test(s0.帯.文),JSON.stringify(s0.帯));
+  /* §9.599 で「N設備 開 n / 畳 m」の字はやめた（畳んだかは見出しの ▸ と「畳んでいます」が言う）。帯は2つのボタン。 */
+  rec('開閉の帯が出ている',!!s0.帯&&/すべて開く/.test(s0.帯.文)&&/すべて畳む/.test(s0.帯.文),JSON.stringify(s0.帯));
   const rowsA=s0.行文.split('|').filter(t=>t.includes(TAG+'A')).length;
 
   /* ---- 1) 押した群だけ畳む ---- */
