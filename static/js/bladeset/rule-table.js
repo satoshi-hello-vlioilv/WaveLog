@@ -426,12 +426,12 @@
    const el=this.o.host().querySelector(`.rt-c[data-r="${ri}"][data-f="${CSS.escape(f)}"]`);if(el)el.focus();
   }
   /* 空の表（列なし）の道しるべ。①はよく使うデータ（仕掛の列以外）を札で並べ、押せば列と最初の決まりができる。 */
-  /* 空の表（列なし）の道しるべは1行（§9.603）: 何が無いかと、次にすること（見出しの「＋ 条件の列」）。何の値かは列を足す面が
+  /* 空の表（列なし）の道しるべは1行（§9.603）: 何が無いかと、次にすること（見出しの「＋ 条件の列を追加」）。何の値かは列を足す面が
      説明つきで並べる——前は同じ顔ぶれを札（`.rt-chip`）でも並べ、2つの表で札が4行になっていた（同じ物を2か所に出さない）。 */
   emptyHtml(){
-   /* 行いっぱい＝番号・列・「＋ 条件の列」・答え・備考・操作。 */
+   /* 行いっぱい＝番号・列・「＋ 条件の列を追加」・答え・備考・操作。 */
    return `<tr class="rt-empty"><td colspan="${this.cols.length+4+this.ansCols().length}"><p class="rt-empty-l">`
-    +'決まりの行はまだありません。見出しの<b>＋ 条件の列</b>で何の値で分けるかを選ぶと、1行目ができます</p></td></tr>';
+    +'決まりの行はまだありません。見出しの<b>＋ 条件の列を追加</b>で何の値で分けるかを選ぶと、1行目ができます</p></td></tr>';
   }
   colHeadHtml(f,ci){
    return `<th class="rt-col" data-f="${esc(f)}" data-g="${esc(this.groupOf(f)||'')}" title="${esc(this.colDesc(f))}"${widthStyle(widthOf(this.o.key,f))}>`
@@ -449,11 +449,11 @@
    const hit=this.probeHit();
    const more=this.addable().length;
    const head=`<tr><th class="rt-no">#</th>${this.cols.map((f,ci)=>this.colHeadHtml(f,ci)).join('')}
-    <th class="rt-addc">${more?'<button type="button" class="rt-ghost" data-rt="addcol" title="条件にするデータ（列）を足す——説明を読んで選ぶ・名前で探す">＋ 条件の列</button>':''}</th>
+    <th class="rt-addc">${more?'<button type="button" class="mm-btn-ghost" data-rt="addcol" title="条件にするデータ（列）を追加——説明を読んで選ぶ・名前で探す">＋ 条件の列を追加</button>':''}</th>
     ${this.ansCols().map((a,i)=>`<th class="rt-out" data-ak="${esc(a.key)}"${a.title?` title="${esc(a.title)}"`:''}>${i?'':'→ '}${esc(a.head)}</th>`).join('')}<th class="rt-note">備考</th><th class="rt-ops"></th></tr>`;
    /* 決まりを足す行は**決まりの並びの最後**（既定の行の上・§9.574）。列が無いうちは道しるべを出す。 */
    const rows=this.rows.map((r,i)=>this.rowHtml(r,i,hit));
-   const add=this.cols.length?`<tr class="rt-addr"><th class="rt-no"></th><td colspan="${this.cols.length+1}"><button type="button" class="rt-ghost" data-rt="addrow" title="決まりの行を足す（既定の行の上に入ります）">＋ 決まりを足す</button></td><td colspan="${this.ansCols().length+2}"></td></tr>`:this.emptyHtml();
+   const add=this.cols.length?`<tr class="rt-addr"><th class="rt-no"></th><td colspan="${this.cols.length+1}"><button type="button" class="mm-btn-ghost" data-rt="addrow" title="決まりの行を追加（既定の行の上に入ります）">＋ 決まりを追加</button></td><td colspan="${this.ansCols().length+2}"></td></tr>`:this.emptyHtml();
    const body=rows.slice(0,-1).join('')+add+rows.slice(-1).join('');
    const ri=this.read>=0&&this.read<this.rows.length?this.read:(hit?hit.index:0);
    return `<div class="rt-wrap"><table class="rt-table"><thead>${head}${this.cols.length?this.probeRowHtml(hit):''}</thead><tbody>${body}</tbody></table></div>
@@ -529,7 +529,7 @@
   suggestFor(inp){
    const f=inp.dataset.f,kind=this.kindOf(f),fd=this.fieldOf(f);
    const typed=inp.value;
-   /* 「かつ／または」の後ろは**続きの条件**として候補を出す（前の条件は残し、末尾に足す）。 */
+   /* 「かつ／または」の後ろは**続きの条件**として候補を出す（前の条件は残し、末尾に追加）。 */
    const cont=typed.match(/^(.*(?:かつ|または|＆|&|｜|\|))\s*([^]*)$/);
    const head=cont?cont[1].replace(/\s*$/,' '):'',last=(cont?cont[2]:typed).trim();
    const p=parseCell(last,kind),c=p.conds&&p.conds[0];

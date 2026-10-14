@@ -1,4 +1,4 @@
-# 画面の土台（58件）
+# 画面の土台（60件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 窓の小見出しはいる画面の名前（`WL.base.whereName()`）・題は中身（無ければ文の最初の1文）・決めるボタンは動詞（`confirmLabel`） | `test_modalwords.py`・`test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
+| 窓の頭は白・下に線1本（`.settings-dialog`も編集窓と同じ）。種類の印は`kind`、事実の札は`facts`（文に無い事実だけ） | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 盤の画面は帯を持たない。対象は`scopeBarHtml()`の札の行・結果は`headSay()`・状態は`setHeadState()`（どれも`WL.mm`） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 1つだけ選ぶ2〜4択は`.mm-seg`の1つ（1枚の枠を割った形・選んだ札は青緑の塗り。紺の切り替えを作らない） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 頭の副の操作は`setHeadActs({more})`の ⋯ のメニュー（主の操作は1つ・`plus:false`で「＋」を外す） | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |

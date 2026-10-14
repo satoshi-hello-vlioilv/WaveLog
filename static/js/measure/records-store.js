@@ -774,7 +774,7 @@ async function runAutoSave(){
 window.WL=window.WL||{};
 window.WL.autoSave={schedule:scheduleAutoSave,cancel:cancelAutoSave,now:runAutoSave,
   idleMs:()=>AUTO_SAVE_IDLE_MS};
-$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){cancelAutoSave();WL.base.measureDirty=false;await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true;WL.refreshScheduleIfOpen?.()}};
+$('#discard').onclick=async()=>{if(await confirmModal({message:'端末内の測定データを削除しますか？',confirmLabel:'削除する',danger:true})){cancelAutoSave();WL.base.measureDirty=false;await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true;WL.refreshScheduleIfOpen?.()}};
 /* NGの記録は**③の確認カードから呼ぶ**（§9.242 ⑥）。操作レールのボタンは
    外したので、ここで配線する相手はもう居ない。**素の`window.*`を増やさず**
    名前空間で公開する（呼び出し側で、どのファイルの機能かが読める）。 */
@@ -791,7 +791,7 @@ async function closeMeasureModal(){
     聞くのは、押した人に要らない判断をさせること（§5は確認を増やせという
     意味ではない）。書けなかったときだけ、破棄かどうかを聞く。 */
  if(WL.base.measureDirty){cancelAutoSave();try{await runAutoSave()}catch(e){WL.quiet.note('自動保存に失敗（このあと破棄してよいかを聞く）',e)}}
- if(WL.base.measureDirty&&!(await confirmModal('DBへ保存できていない変更があります。破棄して閉じますか？')))return;
+ if(WL.base.measureDirty&&!(await confirmModal({message:'DBへ保存できていない変更があります。破棄して閉じますか？',confirmLabel:'破棄して閉じる',danger:true})))return;
  cancelAutoSave();
  $('#measureModal').hidden=true;
  WL.refreshScheduleIfOpen?.();
@@ -1033,7 +1033,7 @@ document.querySelectorAll('.status-filter-btn').forEach(b=>b.onclick=()=>{
    場合は先に警告を出し、ユーザーが承認して初めて状態を「編集中」へ
    戻して保存し、以降の編集を受け付けるようにする(ロック解除の一手間)。 */
 async function unlockCompletedForEdit(x){
- if(!(await confirmModal(`このデータ(${x.basic?.lotNo||x.id})はすでに完了しています。\n再編集すると「編集中」の状態に戻り、内容を変更できるようになります。\nよろしいですか？`)))return false;
+ if(!(await confirmModal({message:`このデータ(${x.basic?.lotNo||x.id})はすでに完了しています。\n再編集すると「編集中」の状態に戻り、内容を変更できるようになります。\nよろしいですか？`,confirmLabel:'再編集する'})))return false;
  x.status='編集中';x.updatedAt=new Date().toISOString();
  await reliablePut(x);
  return true;
@@ -1086,7 +1086,7 @@ function recordHasAnyInput(x){
    (confirmModal)でロット情報を示した上でしっかり警告する。 */
 function confirmDeleteRecord(x){
  const summary=`<div class="delete-confirm-summary"><div class="delete-confirm-row"><span>ロット番号</span><b>${esc(x.basic?.lotNo||x.id)}</b></div><div class="delete-confirm-row"><span>状態</span><b>${esc(x.status||'編集中')}</b></div><div class="delete-confirm-row"><span>検査番号</span><b>${esc(x.basic?.inspectionNo||'-')}</b></div><div class="delete-confirm-row"><span>更新日時</span><b>${esc(x.updatedAt?new Date(x.updatedAt).toLocaleString('ja-JP'):'-')}</b></div></div><p class="delete-confirm-warning">入力済みの測定データも含め、この端末内のデータを完全に削除します。この操作は取り消せません。</p>`;
- return confirmModal({eyebrow:'DELETE CONFIRMATION',title:'端末内データを削除しますか？',bodyHtml:summary,confirmLabel:'削除する',danger:true});
+ return confirmModal({title:'端末内データを削除しますか？',bodyHtml:summary,confirmLabel:'削除する',danger:true});
 }
 /* ---------- 「⋯」の中の削除(§9.221 ⑤、利用者の指示) ----------
    「『帳票』と『削除』が近く、かなり危ないです。削除ボタンは完了品からは

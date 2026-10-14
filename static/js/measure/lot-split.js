@@ -507,7 +507,7 @@
     const parent=await findParentLotFor(row);
     if(!parent)return row;
     const childLotNo=pick(row,'lotNo'),parentLotNo=pick(parent,'lotNo');
-    const useParent=await confirmModal(`このロット(${childLotNo})は分割後の子ロットです。\n親ロット(${parentLotNo})のデータを開きますか？\n\n「キャンセル」を選ぶと、このまま子ロットのデータで開きます(データが不完全な場合があります)。`);
+    const useParent=await confirmModal({message:`このロット(${childLotNo})は分割後の子ロットです。\n親ロット(${parentLotNo})のデータを開きますか？\n子ロットのデータだけでは不完全な場合があります。`,confirmLabel:'親ロットで開く',cancelLabel:'このまま子ロットで開く'});
     if(!useParent)return row;
     if(typeof showToast==='function')showToast('親ロットのデータを開きます',`${childLotNo} → ${parentLotNo}`,4200);
     return parent;
@@ -2184,7 +2184,7 @@
     if(!diffs.length){if(typeof showToast==='function')showToast('現在のデータと同じ内容です','差し替えは行いませんでした');return false}
     const blockers=splitUpdateBlockers(diffs);
     if(blockers.length){await alertModal(blockerMessage(blockers,verb));return false}
-    if(confirmText&&!(await confirmModal(confirmText)))return false;
+    if(confirmText&&!(await confirmModal({message:confirmText,confirmLabel:`${verb}する`})))return false;
     const history=Array.isArray(st.splitSourcesHistory)?st.splitSourcesHistory:[];
     history.push({at:st.splitSourcesSavedAt||null,sources:st.splitSourcesCache||[],note:'差し替え前'});
     st.splitSourcesHistory=history.slice(-SPLIT_HISTORY_LIMIT);
@@ -2746,7 +2746,7 @@
     if(row&&WL.dataSource.isWork(S.db)){
       const missingInfo=await findMissingChildLots(row);
       if(missingInfo&&missingInfo.missing.length){
-        const proceed=await confirmModal(`このロットは分割データがありますが、次の子ロットが仕掛データに見つかりません:\n${missingInfo.missing.join('、')}\n\n子ロットが仕掛から外れている場合、既に作業済みである可能性が高く、このまま測定を始めると目標幅・公差の一部が欠けたまま判定されます。\n\nこのまま測定を開始しますか？`);
+        const proceed=await confirmModal({message:`このロットは分割データがありますが、次の子ロットが仕掛データに見つかりません:\n${missingInfo.missing.join('、')}\n\n子ロットが仕掛から外れている場合、既に作業済みである可能性が高く、このまま測定を始めると目標幅・公差の一部が欠けたまま判定されます。\n\nこのまま測定を開始しますか？`,confirmLabel:'測定を始める'});
         if(!proceed)return false;
       }
     }

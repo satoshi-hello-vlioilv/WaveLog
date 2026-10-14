@@ -54,7 +54,7 @@
   const admin=Array.isArray(a.adminMasters)&&a.adminMasters.indexOf(def.key)>=0;
   return admin?a.canEditAdminMaster!==false:a.canEditFieldMaster!==false;
  }
- /* **元の定義は書き換えない**（写しに印を足す）——書き換えると、段が上がった
+ /* **元の定義は書き換えない**（写しに印を追加）——書き換えると、段が上がった
     ときに`readOnly`が残ったままになる（`MASTER_DEFS`はモジュールの寿命で
     生き続ける）。読み取り専用が元から立っている定義（テーブル生データ）は
     そのまま。 */
@@ -973,7 +973,7 @@
     絵（`icon`＝Font Awesome の名前）は任意。数は段が`data-tab-badge`で名乗る（`paint`が描く）。
     `opt.scroll`を渡すと**札は動かさず中身だけを送る**（段を切り替える場所を探させない）。 */
  /* `opt.rail`（§9.598 1h）＝札を**左の一覧**に縦に並べる: 絵・名前・副題（`sub`＝何の段か・決まった字）・状態の札
-    （段が`data-tab-state`で名乗る＝OK・要対応 N・停止中…）。いまの一言は札の`title`へ（副題と2行で言わない）。 */
+    （段が`data-tab-state`で名乗る＝正常・要対応 N・停止中…）。いまの一言は札の`title`へ（副題と2行で言わない）。 */
  function pageTabsHtml(items,opt){
   const o=opt||{};
   const tabs=items.map((x,i)=>
@@ -1034,7 +1034,7 @@
    if(rail){if(tabs[i])tabs[i].title=mmTabSummaryText(p)}
    else if(el)el.textContent=mmTabSummaryText(p);
    /* 要対応の数（§9.583）。**数だけで言わない**——札の`title`に何の数かを書く（色だけで伝えない・§CLAUDE 3）。
-      左の一覧では**状態の札**（`data-tab-state`＝OK・要対応 N・停止中…・字で言う）。 */
+      左の一覧では**状態の札**（`data-tab-state`＝正常・要対応 N・停止中…・字で言う）。 */
    const b=bar.querySelector(`[data-mmtab-badge="${i}"]`);
    if(b){
     const n=rail?(p.dataset.tabState||''):(p.dataset.tabBadge||'');
@@ -1636,8 +1636,7 @@
    </div>
    <p class="confirm-modal-message mm-bulk-tip">元へ戻すには、消す前に「書き出す」でExcelへ残してください
     （そのファイルを「取り込む」で戻せます）。</p>`;
-  const p=confirmModal({title:`${def.label}をまとめて削除します`,eyebrow:'DELETE ALL',
-                        bodyHtml:body,confirmLabel:'削除する',danger:true});
+  const p=confirmModal({title:`${def.label}をまとめて削除します`,bodyHtml:body,confirmLabel:'削除する',danger:true});
   /* 確認モーダルは**画面で1枚を使い回す**（`ensureConfirmModal`）ので、
      ここで足した見張りと`disabled`は**必ず自分で外す**——外さないと、
      次にどこかが確認を出したときに前の流れの見張りが一緒に動く。 */
@@ -1775,8 +1774,7 @@
    <ul class="cl-confirm">${list}</ul>
    <p class="confirm-modal-message">同時に 追加${r.add||0}件・上書き${r.update||0}件 を行います。
     元へ戻すには、いまのマスタを先に「書き出す」でExcelへ残してください。</p>`;
-  return await confirmModal({title:'ロールを入れ替えます',eyebrow:'REPLACE',
-                             bodyHtml:body,confirmLabel:'入れ替える',danger:true});
+  return await confirmModal({title:'ロールを入れ替えます',bodyHtml:body,confirmLabel:'入れ替える',danger:true});
  }
  /* **下見と適用は同じ1本を通る**（§9.240 の`RollIndex`と同じ理由）——
     取り込み方・ファイル・利用者が同じなら、見せた内容と起きることが必ず
@@ -1917,7 +1915,7 @@
   modal=document.createElement('div');modal.className='record-modal mm-editor-modal';modal.id='maintEditorModal';modal.hidden=true;
   modal.innerHTML=`<div class="mm-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="maintEditorTitle">
     <header class="mm-editor-head">
-     <div><small id="maintEditorEyebrow">MASTER</small><h2 id="maintEditorTitle">編集</h2></div>
+     <div><small id="maintEditorEyebrow">マスタ</small><h2 id="maintEditorTitle">編集</h2></div>
      <button type="button" id="maintEditorMore" class="mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false"
       aria-label="この行の操作" title="この行の操作（削除など）" hidden><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
      <button type="button" id="maintEditorClose" class="mm-close mm-btn-ghost mm-hd-more" aria-label="閉じる" title="閉じる"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
@@ -2891,7 +2889,7 @@
   /* **言い回しはdefが決める**（§9.249 ②）。有効フラグを持つマスタの削除は
      「無効化」だが、生の表は**本当に行が消える**——同じ文言で言うと嘘になる。 */
   const word=def.deleteWord||'無効化（削除）';
-  if(!await confirmModal(`${def.label}「${nm}」を${word}しますか？`))return;
+  if(!await confirmModal({message:`${def.label}「${nm}」を${word}しますか？`,confirmLabel:word.replace(/（[^）]*）/g,'')+'する',danger:true}))return;
   try{
    setMaintLoading(true,`${def.label}を${def.deleteWord||'無効化'}しています…`);
    await api(def.endpoint+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,user_id:uid})});
@@ -3182,8 +3180,9 @@
   bindMaintHeadTools(def,list);
   if(!items.length){
    /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、押せるのに何も起きない・§CLAUDE 4）。
-      表の幅で止める印も外す（測っていないので、前のマスタの幅のまま見出しが縮んでいた）。 */
-   renderMaintFoldTools(def,[]);list.classList.remove('is-fitw');mmAlignToTable(list,list.querySelector('.mm-row.head'),false);
+      列の幅は**見出しだけで測る**（§9.604。前は測らずに等分へ縮め、空のロールで「径MAX mm」が「径…」と切れていた）。 */
+   renderMaintFoldTools(def,[]);
+   fitMaintColumns(def,list);
    list.insertAdjacentHTML('beforeend',mmEmptyHtml(def,q));
    const clr=list.querySelector('[data-mm-clearq]');
    if(clr)clr.onclick=()=>{mmQuerySet(def,'');const i=list.querySelector('.mm-find input');if(i)i.value='';renderMaintList()};
@@ -3384,7 +3383,7 @@
  function mmEmptyHtml(def,q){
   if(q)return `<div class="mm-empty is-q"><b>「${esc(mmQuery.get(def.key)||'')}」に当たる行はありません</b>`
    +`<button type="button" class="mm-btn-ghost sm" data-mm-clearq>探す欄を空にする</button></div>`;
-  const add=def.readOnly?'':defUsesEditorModal(def)?`右上の「＋ ${def.label}を追加」から${def.usualWhere?'も作れます':'1行目を作ります'}。`:'上の欄から足せます。';
+  const add=def.readOnly?'':defUsesEditorModal(def)?`右上の「＋ ${def.label}を追加」から${def.usualWhere?'も作れます':'1行目を作ります'}。`:'上の欄から追加できます。';
   return `<div class="mm-empty is-none"><i class="fa-regular fa-rectangle-list mm-empty-ico" aria-hidden="true"></i>`
    +`<b>まだ1行もありません</b><span>${def.usualWhere?'ふだんの画面で設定すると、ここに行が増えます。<br>':''}${esc(add)}</span></div>`;
  }

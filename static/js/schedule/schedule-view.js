@@ -552,7 +552,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* **危ない操作は確認する**（§CLAUDE 5）。誰から引き取るのか・なぜ
       引き取れるのかを書く（§6。理由の分からない入れ替わりを作らない）。 */
    const ok=await confirmModal({title:'書込役をこのPCが引き取りますか？',
-     eyebrow:'OWNER',confirmLabel:'引き取る',cancelLabel:'やめる',danger:true,
+     confirmLabel:'引き取る',cancelLabel:'やめる',danger:true,
      bodyHtml:`<p class="confirm-modal-message">${esc(p.label||'')}</p>`
       +`<ul class="confirm-modal-list"><li>${esc(p.note||'')}</li>`
       +`<li>引き取ると、このPCが共有スケジュールへ書く役になります（他のPCは`
@@ -3833,7 +3833,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     <thead><tr><th>ロット番号</th><th>項目</th><th>いまの予定</th><th>元データ</th></tr></thead>
     <tbody>${rows.join('')}</tbody></table></div>`;
   const ok=await confirmModal({title:TITLE[m],
-    eyebrow:'SOURCE',bodyHtml,
+    bodyHtml,
     confirmLabel:readOnly?'閉じる':'取り込む',cancelLabel:'あとで',hideCancel:readOnly});
   if(ok&&!readOnly)applySourceSync(diffs);
  }
@@ -8320,7 +8320,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* **読み取り専用のときは消さない**（§9.211 ②）。右クリックメニュー・
      🗑ボタン・選択バーの3経路から来るので、入口ではなくここで1回だけ断る。 */
   if(sessionBlocked()){showToast&&showToast('削除できません',sessionHolderMessage(),4000);return}
-  if(!await confirmModal({message:'この予定を削除します。よろしいですか？',danger:true}))return;
+  if(!await confirmModal({confirmLabel:'削除する',message:'この予定を削除します。よろしいですか？',danger:true}))return;
   const idx=scState.entries.findIndex(e=>e.id===id);
   if(idx===-1)return;
   const [removed]=scState.entries.splice(idx,1);
@@ -8370,7 +8370,6 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const lot=e.lotNo||contentValueOf(e.detail,'lotNo')||recordId;
   const stateLabel=e.state==='着手'?'作業中':'完了';
   const ok=await confirmModal({
-   eyebrow:'DELETE MEASUREMENT RECORD',
    title:'この実績を削除します',
    danger:true,confirmLabel:'削除する',
    bodyHtml:`<p class="confirm-modal-message">ロット <b>${esc(lot)}</b> の実績（${esc(stateLabel)}）を削除します。</p>
@@ -8674,7 +8673,6 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const lots=targets.map(pickedLotOf);
   const shown=lots.slice(0,12),rest=lots.length-shown.length;
   const ok=await confirmModal({
-   eyebrow:'REMOVE FROM SCHEDULE',
    title:`${targets.length}件の予定をまとめて外します`,
    danger:true,confirmLabel:`${targets.length}件を外す`,
    bodyHtml:`<p class="confirm-modal-message">${esc(scState.equipment)} の予定から <b>${targets.length}件</b> を外します。</p>
@@ -9762,8 +9760,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* 目盛りに無い分は**打って入れる**。窓は`promptModal`の1枚（§9.342）。 */
  async function askStopOtherMinutes(){
   const p=scState.stopPick;if(!p)return;
-  const v=await promptModal({
-   eyebrow:'STOP',title:'時間を打って入れる',
+  const v=await promptModal({confirmLabel:'入れる',
+   title:'時間を打って入れる',
    message:`${p.label} に入れる分を打ってください（目盛りに無い分も入れられます）。`,
    label:'所要分',value:p.minutes==null?'':String(p.minutes),
    placeholder:'例: 35'});
@@ -10150,7 +10148,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     ?`${WL.duration.text(Number(est.minutes))}（${esc(estimateSourceLabel(est.source))}）`
     :'決まっていません';
   const ok=await confirmModal({
-   eyebrow:'STOP',title:'設備停止の内容を変える',
+   title:'設備停止の内容を変える',
    bodyHtml:`<div class="sc-stop-edit">
      <label class="sc-stop-edit-row"><span>名称</span>
       <input type="text" id="scStopEditName" maxlength="60" list="scStopEditNames"
@@ -10281,7 +10279,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    ?`「${esc(whereRow.lotNo||whereRow.title||'この予定')}」の前へ入ります。`
    :'いちばん後ろへ入ります（行の間をクリックして位置を決められます）。';
   const ok=await confirmModal({
-   eyebrow:'COMMENT',title:'申し送りを入れる',
+   title:'申し送りを入れる',
    bodyHtml:`<p class="confirm-modal-message">予定の列にコメントを1行挟みます。<b>時間は取りません</b>（後ろの予定の時刻は動きません）。</p>
     <label class="sc-comment-field"><span>内容</span>
      <textarea id="scCommentText" rows="3" maxlength="200" placeholder="例）このロットから新しい刃に交換すること"></textarea></label>
@@ -10543,7 +10541,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      <span><b>${esc(label)}</b><small>${esc(sub)}</small></span></label>`;
   }).join('');
   const asked=confirmModal({
-   eyebrow:'FRAME',title:entry?'枠の日付・直を変える':'空の日付・直の枠を入れる',
+   title:entry?'枠の日付・直を変える':'空の日付・直の枠を入れる',
    bodyHtml:`<div class="sc-frame-edit">
      ${whereHtml}
      <label class="sc-frame-row"><span>日付</span>

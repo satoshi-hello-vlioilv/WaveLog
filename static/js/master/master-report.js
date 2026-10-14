@@ -1702,7 +1702,7 @@
   };
   if(seed)seed.onclick=async()=>{
    const d=fbSeedOf();if(!d)return;
-   if(state.rows.length&&!await confirmModal('いま並べているマスを捨てて、既定の中身に戻します。よろしいですか。'))return;
+   if(state.rows.length&&!await confirmModal({message:'いま並べているマスを捨てて、既定の中身に戻します。よろしいですか。',confirmLabel:'既定に戻す'}))return;
    state.rows=fbParse(d.content||'');
    /* **列数も一緒に入れる**——並びだけ写すと、既定は6列なのに欄が2列の
       ままで、写した瞬間に別の絵になる（§9.280と同じ食い違い）。 */

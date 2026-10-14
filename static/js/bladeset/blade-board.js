@@ -55,7 +55,7 @@
  }
  /* ---------- 頭 ---------- */
  function renderHead(){
-  K().head({primary:bb.loaded&&freeNames().length?{id:'bbAdd',label:'セットを足す',title:'空いているセット名で新しいセットを開きます',
+  K().head({primary:bb.loaded&&freeNames().length?{id:'bbAdd',label:'セットを追加',title:'空いているセット名で新しいセットを開きます',
    onClick:async()=>{if(await leaveOk()){select(NEW);reveal()}}}:null});
  }
  /* 見せ方の切り替え（対象の札の行の右・`.mm-seg`）。 */
@@ -70,7 +70,7 @@
   renderHead();
   if(!bb.loaded)return;
   const groups=WL.bladeSet.bladeStock(bb.sets,bb.wear,todayStr(),{grind:bb.uses[1],special:bb.categories[1]});
-  const empty='まだセットがありません。頭の「＋ セットを足す」から登録してください。';
+  const empty='まだセットがありません。頭の「＋ セットを追加」から登録してください。';
   const rows=bb.sets.reduce((t,x)=>t+x.rows.length,0);
   const html=bb.view==='tree'
    ?K().pane({label:'刃セット',cls:'bb-tree',listHtml:groups.length?legend()+groups.map(treeGroup).join(''):'',empty,detail:detailHtml()})
@@ -150,14 +150,14 @@
  function detailHtml(){
   if(bb.sel===NEW)return newHtml();
   const x=setOf(bb.sel);
-  if(!x)return `<div class="mm-empty">${bb.sets.length?'セットを選ぶと、刃厚ごとの径・枚数がここに出ます。':'頭の「＋ セットを足す」から最初のセットを登録してください。'}</div>`;
+  if(!x)return `<div class="mm-empty">${bb.sets.length?'セットを選ぶと、刃厚ごとの径・枚数がここに出ます。':'頭の「＋ セットを追加」から最初のセットを登録してください。'}</div>`;
   const rename=`<label class="bk-mini"><s>セット名</s><select data-rename>${[x.group].concat(freeNames()).map(n=>
    `<option value="${esc(n)}"${n===x.group?' selected':''}>${esc(n||'（なし）')}</option>`).join('')}</select></label>`;
   const seg=k=>K().seg({label:k==='category'?'カテゴリ':'使用状態',key:k,list:k==='category'?bb.categories:bb.uses,cur:setVal(x,k),busy:bb.busy,
    edited:Object.prototype.hasOwnProperty.call(bb.edits||{},`set:${x.group}:${k}`)});
   const shownX=Object.assign({},x,{category:setVal(x,'category'),use:setVal(x,'use')});
   return `<article class="bk-card">
-   <header class="bk-card-h">${tile(x.group,shownX)}<div class="bk-card-t"><h3>セット ${esc(x.group||'（なし）')}</h3>
+   <header class="bk-card-h">${tile(x.group,shownX)}<div class="bk-card-t"><small class="bk-card-eb">刃セット</small><h3>セット ${esc(x.group||'（なし）')}</h3>
     <small>${sayHtml(shownX,x.stored)}</small></div>${rename}${K().moreBtn(`このセットを消す（刃 ${x.rows.length}行）`)}</header>
    <div class="bk-fields">
     <div class="bk-field"><s>カテゴリ</s>${seg('category')}</div>
@@ -183,13 +183,13 @@
   return `<table class="bk-table"><thead><tr><th>刃厚</th>${COLS.map(c=>`<th>${c[1]}</th>`).join('')}<th></th><th></th></tr></thead>
    <tbody>${body}</tbody><tfoot><tr><th><input type="number" id="bbNewT" min="0" step="0.5" placeholder="刃厚"></th>
    <td><input type="number" id="bbNewD" min="0" step="0.1" placeholder="現状径"></td><td><input type="number" id="bbNewQ" min="0" step="1" placeholder="枚数"></td>
-   <td colspan="3"><button type="button" class="mm-btn-ghost sm" data-act="addrow">＋ 刃厚を足す</button></td><td colspan="2"></td></tr>
+   <td colspan="3"><button type="button" class="mm-btn-ghost sm" data-act="addrow">＋ 刃厚を追加</button></td><td colspan="2"></td></tr>
    <tr class="bk-sum"><th>合計</th><td></td><td><b>${sum}枚</b></td><td colspan="5"></td></tr></tfoot></table>`;
  }
  function newHtml(){
   const d=bb.draft;
   return `<article class="bk-card is-new">
-   <header class="bk-card-h">${tile(d.group,null)}<div class="bk-card-t"><h3>新しいセット</h3><small>セット名を選び、刃厚ごとの径と枚数を入れて、足元の「保存」で登録します</small></div></header>
+   <header class="bk-card-h">${tile(d.group,null)}<div class="bk-card-t"><small class="bk-card-eb">刃セット</small><h3>新しいセット</h3><small>セット名を選び、刃厚ごとの径と枚数を入れて、足元の「保存」で登録します</small></div></header>
    <div class="bk-fields">
     <label class="bk-field"><s>セット名</s><select data-nk="group">${freeNames().map(n=>`<option${n===d.group?' selected':''}>${esc(n)}</option>`).join('')}</select></label>
     <div class="bk-field"><s>カテゴリ</s>${K().seg({label:'カテゴリ',key:'category',list:bb.categories,cur:d.category})}</div>
@@ -200,7 +200,7 @@
      <td><input type="number" data-nr="${i}" data-f="currentDia" min="0" step="0.1" value="${esc(r.currentDia)}" placeholder="径"><u>mm</u></td>
      <td><input type="number" data-nr="${i}" data-f="qty" min="0" step="1" value="${esc(r.qty)}" placeholder="0"><u>枚</u></td>
      <td><button type="button" class="bk-x" data-act="dropnew" data-i="${i}" aria-label="この刃厚を外す">×</button></td></tr>`).join('')}</tbody>
-   <tfoot><tr><td colspan="4"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 刃厚の行を足す</button></td></tr></tfoot></table>
+   <tfoot><tr><td colspan="4"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 刃厚の行を追加</button></td></tr></tfoot></table>
    </article>`;
  }
 
@@ -257,7 +257,7 @@
  }
  async function addRow(){
   const t=document.getElementById('bbNewT').value,dia=document.getElementById('bbNewD').value,q=document.getElementById('bbNewQ').value;
-  if(String(t).trim()==='')return void alertModal('足す刃厚（mm）を入れてください。');
+  if(String(t).trim()==='')return void alertModal('追加する刃厚（mm）を入れてください。');
   if(await run(async uid=>{await K().post('/api/bladeset-blade-master',{equipment:bb.equipment,group:bb.sel,thickness:t,
     currentDia:dia===''?undefined:dia,qty:q===''?0:q,user_id:uid})},'刃厚を足せませんでした'))await load(true);
  }

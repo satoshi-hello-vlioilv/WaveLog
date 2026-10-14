@@ -4279,8 +4279,8 @@ ${rpEdVisRow(k)}`;
   const others=rpEquipmentChoices().filter(c=>c.eq!==rpEditEqNow());
   if(!others.length){showToast&&showToast('他の設備がありません','',3500);return}
   const names=others.map(c=>c.label).join('、');
-  if(!(await confirmModal(`いまの配置を次の設備へも当てますか？\n\n${names}\n\n`
-    +'それぞれの今の配置は置き換わります（元へは戻せません）。')))return;
+  if(!(await confirmModal({message:`いまの配置を次の設備へも当てますか？\n\n${names}\n\n`
+    +'それぞれの今の配置は置き換わります。',confirmLabel:'当てる',danger:true,facts:[{text:'戻せません',danger:true}]})))return;
   let ok=0,ng=0;
   for(const c of others){
    try{await WL.columnLayout.save(RP_LAYOUT_PREFIX+(c.eq||'共通'),src);ok++}

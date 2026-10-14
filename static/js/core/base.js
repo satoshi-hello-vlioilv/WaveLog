@@ -615,24 +615,52 @@ WL.template=cloneTemplate;
    opts.bodyHtml: 任意のHTML本文(ロット情報の要約表示等)。指定時はmessageより優先。
    opts.danger: trueで確定ボタンを危険色にする。文字列を渡した場合はmessage扱い。
    opts.hideCancel: 「やめる」を出さない(お知らせ。`alertModal`が使う)。
-   opts.focus: 開いたときに焦点を置く要素のセレクタ(既定は「やめる」)。 */
+   opts.focus: 開いたときに焦点を置く要素のセレクタ(既定は「やめる」)。
+   opts.facts: 文の前に出す事実の札（消えるもの・戻せないこと）。字か {text, danger}。**文に無い事実だけ**（文の写しにしない）。
+   opts.kind: 窓の種類（`notice`＝お知らせ・`input`＝1行入力。既定は危ない操作なら`danger`、ほかは`confirm`）。
+
+   窓の言葉（§9.604）: 小見出しは**いる画面の名前**（`whereName()`・英字の決まり文句を出さない）、題は何が起きるか
+   （渡されなければ文の最初の1文）、決めるボタンは**何をするかの動詞**（`confirmLabel`・「OK」にしない）。 */
+/* 窓の小見出しに出す「いま居る画面」。マスタ管理の中では選んでいるマスタ、ほかはヘッダーの画面名（`#fileName`）。 */
+function whereName(){
+ if(document.body.classList.contains('mm-mode')){
+  const a=document.querySelector('#masterMaintNav [data-master].active');if(a)return a.textContent.trim();
+ }
+ const t=document.querySelector('#fileName');return t?t.textContent.trim():'';
+}
+/* 窓の種類ごとの印と、画面の名前が分からないときの小見出し。 */
+const CM_KINDS={danger:{mark:'!',word:'確認'},confirm:{mark:'?',word:'確認'},notice:{mark:'i',word:'お知らせ'},input:{mark:'✎',word:'入力'}};
+/* 題が渡されなければ、文の最初の1文を題にする（40字まで）。題に上げた文は本文から外す。 */
+const CM_TITLE_MAX=40;
+function cmTitleSplit(msg){
+ const t=String(msg||'').trim(),m=t.match(/^[^\n。？！?!]*[。？！?!]?/),head=m?m[0].trim():'';
+ if(!head||head.length>CM_TITLE_MAX)return {title:'',rest:t};
+ return {title:head.replace(/。$/,''),rest:t.slice(m[0].length).trim()};
+}
 function ensureConfirmModal(){
  let modal=$('#appConfirmModal');if(modal)return modal;
  modal=document.createElement('div');modal.className='record-modal';modal.id='appConfirmModal';modal.hidden=true;
- modal.innerHTML=`<div class="settings-dialog confirm-modal-dialog" role="dialog" aria-modal="true"><header><div><small id="appConfirmEyebrow">CONFIRMATION</small><h2 id="appConfirmTitle">確認</h2></div><button id="closeAppConfirm" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><div id="appConfirmBody"></div><div class="settings-actions"><button id="appConfirmCancel" type="button">キャンセル</button><button id="appConfirmOk" type="button">OK</button></div></div></div>`;
+ modal.innerHTML=`<div class="settings-dialog confirm-modal-dialog" role="dialog" aria-modal="true"><header><div><i class="cm-mark" id="appConfirmMark" aria-hidden="true"></i><small id="appConfirmEyebrow"></small><h2 id="appConfirmTitle">確認</h2></div><button id="closeAppConfirm" type="button" aria-label="閉じる">×</button></header><div class="settings-body"><div id="appConfirmBody"></div><div class="settings-actions"><button id="appConfirmCancel" type="button">キャンセル</button><button id="appConfirmOk" type="button">続ける</button></div></div></div>`;
  document.body.append(modal);
  return modal;
 }
-/** @param {string|{message?: string, title?: string, eyebrow?: string, bodyHtml?: string, confirmLabel?: string, cancelLabel?: string, danger?: boolean, hideCancel?: boolean, focus?: string}} opts 字だけなら本文 @returns {Promise<boolean>} */
+/** @param {string|{message?: string, title?: string, eyebrow?: string, bodyHtml?: string, confirmLabel?: string, cancelLabel?: string, danger?: boolean, hideCancel?: boolean, focus?: string, facts?: Array<string|{text: string, danger?: boolean}>, kind?: string}} opts 字だけなら本文 @returns {Promise<boolean>} */
 function confirmModal(opts){
  const o=typeof opts==='string'?{message:opts}:(opts||{});
  return new Promise(resolve=>{
   const modal=ensureConfirmModal();
-  $('#appConfirmEyebrow').textContent=o.eyebrow||'CONFIRMATION';
-  $('#appConfirmTitle').textContent=o.title||'確認';
-  $('#appConfirmBody').innerHTML=o.bodyHtml!==undefined?o.bodyHtml:`<p class="confirm-modal-message">${esc(o.message||'')}</p>`;
+  const kind=CM_KINDS[o.kind]?o.kind:(o.danger?'danger':'confirm'),K=CM_KINDS[kind];
+  $('#appConfirmEyebrow').textContent=o.eyebrow||whereName()||K.word;
+  const mark=$('#appConfirmMark');mark.textContent=K.mark;mark.dataset.kind=kind;
+  const split=o.title||o.bodyHtml!==undefined?{title:o.title||'',rest:o.message||''}:cmTitleSplit(o.message);
+  $('#appConfirmTitle').textContent=split.title||K.word;
+  const facts=(o.facts||[]).map(f=>typeof f==='string'?{text:f}:f).filter(f=>f&&f.text);
+  const body=(facts.length?`<p class="cm-facts">${facts.map(f=>`<span class="cm-fact${f.danger?' is-danger':''}">${esc(f.text)}</span>`).join('')}</p>`:'')
+   +(o.bodyHtml!==undefined?o.bodyHtml:(split.rest?`<p class="confirm-modal-message">${esc(split.rest)}</p>`:''));
+  $('#appConfirmBody').innerHTML=body;
+  modal.querySelector('.confirm-modal-dialog').classList.toggle('is-titleonly',!body);
   const cancel=$('#appConfirmCancel'),ok=$('#appConfirmOk'),close=$('#closeAppConfirm');
-  cancel.textContent=o.cancelLabel||'キャンセル';ok.textContent=o.confirmLabel||'OK';ok.className=o.danger?'danger':'';
+  cancel.textContent=o.cancelLabel||'キャンセル';ok.textContent=o.confirmLabel||'続ける';ok.className=o.danger?'danger':'';
   /* お知らせは「やめる」を出さない。**毎回入れ直す**——前の呼び出しで
      伏せたままにすると、次の確認から選択肢が片方消える。 */
   cancel.hidden=!!o.hideCancel;
@@ -665,7 +693,8 @@ function confirmModal(opts){
 /** @param {string|{message?: string, title?: string, eyebrow?: string, bodyHtml?: string, confirmLabel?: string, danger?: boolean}} opts 字だけなら本文 */
 function alertModal(opts){
  const o=typeof opts==='string'?{message:opts}:(opts||{});
- return confirmModal({...o,eyebrow:o.eyebrow||'NOTICE',title:o.title||'お知らせ',
+ /* 題は中身（文の最初の1文・§9.604）。「お知らせ」は文が長くて題にできないときだけ。 */
+ return confirmModal({...o,kind:'notice',
    confirmLabel:o.confirmLabel||'閉じる',hideCancel:true}).then(()=>undefined);
 }
 /* 1行だけ書かせる窓。返すのは前後の空白を落とした文字列で、
@@ -679,8 +708,8 @@ function alertModal(opts){
 function promptModal(opts){
  const o=typeof opts==='string'?{label:opts}:(opts||{});
  return confirmModal({
-   eyebrow:o.eyebrow||'INPUT',title:o.title||'入力',danger:o.danger,
-   confirmLabel:o.confirmLabel||'決定',cancelLabel:o.cancelLabel||'やめる',
+   eyebrow:o.eyebrow,title:o.title||'入力',danger:o.danger,kind:'input',
+   confirmLabel:o.confirmLabel||'決定',cancelLabel:o.cancelLabel||'キャンセル',
    bodyHtml:(o.message?`<p class="confirm-modal-message">${esc(o.message)}</p>`:'')
      +`<label class="confirm-modal-field"><span>${esc(o.label||'名前')}</span>`
      +`<input type="text" id="appPromptInput" value="${esc(o.value||'')}"`
@@ -2492,8 +2521,7 @@ WL.closeGuard=(()=>{
   if(!rs.length){say('close');return}
   asking=true;say('asking');
   try{
-   const ok=await confirmModal({title:'WaveLog を閉じますか？',eyebrow:'CLOSE',
-     confirmLabel:'閉じる',cancelLabel:'やめる',danger:true,
+   const ok=await confirmModal({title:'WaveLog を閉じますか？',confirmLabel:'閉じる',cancelLabel:'やめる',danger:true,
      bodyHtml:'<ul class="confirm-modal-list">'+rs.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>'});
    say(ok?'close':'stay');
   }finally{asking=false}
@@ -3208,7 +3236,7 @@ Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalD
    ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
    ============================================================ */
 window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
-WL.base={normalizedLot,durationMs,onTyped,holdRepeat,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+WL.base={normalizedLot,whereName,durationMs,onTyped,holdRepeat,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
  LENGTH_SLOTS,
  /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
     `measureDirty` は外からも倒す（`records-store` が保存し終えて false に

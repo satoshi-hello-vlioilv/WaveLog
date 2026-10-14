@@ -579,8 +579,11 @@ body.sc-mode #headerContextSource{display:none}
   .bs-tg.is-on::before,
   .op-span-pick button.is-on{background:var(--teal);border-color:var(--teal)}
 
-  /* 一覧から1つ選んだ行（8族）: **淡い地＋左の帯**（§9.598・LotScope と同じ選び方）。濃い塗りで選ばない——
-     塗りの面は押す物（主ボタン）に見え、字を白へ反転させる規則も要る。表の行（`.mm-row.editing`）と同じ形。 */
+  /* 一覧から1つ選んだ行（10族）: **淡い地＋左の帯**（§9.598・LotScope と同じ選び方）。濃い塗りで選ばない——
+     塗りの面は押す物（主ボタン）に見え、字を白へ反転させる規則も要る。表の行（`.mm-row.editing`）と同じ形。
+     刃組の一覧（`.bk-item`）とタイル（`.bb-card`）も同じ束へ（§9.604。前は灰青の地＋黒の字で、並べると別のアプリに見えた）。 */
+  .bk-item.is-on,
+  .bb-card.is-on,
   .ssb-stop.is-on,
   .oc-group.is-on,
   .oc-row.is-on,

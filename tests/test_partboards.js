@@ -162,9 +162,12 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
       fg.mats[0] && fg.mats[0].sw === fg.bake && fg.mats[1] && fg.mats[1].sw === fg.al, JSON.stringify(fg));
   await page.click('.bk-item[data-bk-key="アルミニウム"]');
   await W.until(page, () => /アルミニウム/.test((document.querySelector('.bk-card-t h3') || {}).textContent || ''), null, { ms: 8000, what: 'アルミの詳細' });
-  /* 頭の主の操作「＋ 幅を足す」は表の下の足す行へ焦点を運ぶ（§9.603）。 */
-  await page.click('#fgAdd');
-  rec('⑤ 頭の「＋ 幅を足す」で足す行の幅の欄へ', await page.evaluate(() => !!document.activeElement && document.activeElement.id === 'fgNewD'));
+  /* 頭に主の操作は無い（§9.604: 左の一覧は材質＝決まった顔ぶれで、頭から追加できる物が無い。幅は表の下の「＋ 幅を追加」の1つ）。 */
+  rec('⑤ フィンガーの頭に主の操作が無い（同じ入口を2つ置かない）', await page.evaluate(() => !document.querySelector('#fgAdd') && !document.querySelector('#masterMaintActs .mm-hd-primary')));
+  rec('⑤ 一覧の頭は「材質 N件」・札の行の右に同じ数を出さない（§9.604）', await page.evaluate(() => {
+   const h = document.querySelector('.bk-list>.mm-panehead');
+   return !!h && /^材質/.test(h.textContent.trim()) && /件$/.test(h.textContent.trim()) && !/材質 \d/.test((document.querySelector('.mm-scopebar') || {}).textContent || '');
+  }));
   await page.fill('#fgNewD', '77');
   await page.fill('#fgNewQ', '4');
   await page.click('[data-act="add"]');

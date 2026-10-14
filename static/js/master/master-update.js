@@ -79,7 +79,7 @@
   if(bad){panel.dataset.tabBadge='!';panel.dataset.tabTone='bad';panel.dataset.tabBadgeTitle='要対応 更新の置き場に届きません'}
   else{delete panel.dataset.tabBadge;delete panel.dataset.tabTone;delete panel.dataset.tabBadgeTitle}
   /* 左の一覧の状態の札（§9.598 1h）。配る版が未定なのは「決めること」（橙）、次の起動でそろうのは「更新待ち」。正常は中立。 */
-  panel.dataset.tabState=!st?'読めません':!st.reachable?'届きません':!rel?'未定':(st.pending?'更新待ち':'OK');
+  panel.dataset.tabState=!st?'読めません':!st.reachable?'届きません':!rel?'未定':(st.pending?'更新待ち':'正常');
   panel.dataset.tabStateTone=bad?'bad':(!rel||st.pending)?'warn':'';
   if(form&&typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
  }
@@ -233,7 +233,7 @@
  }
  async function release(version,st){
   const cur=st.release&&st.release.version;
-  const ok=await confirmModal({title:`版 ${version} を配りますか？`,
+  const ok=await confirmModal({confirmLabel:'配る',title:`版 ${version} を配りますか？`,
    message:`全PCが次の起動で ${version} にそろいます${cur?`（いま配っている版は ${cur}）`:''}。\n`
      +'起動中のPCは、閉じて開き直したときにそろいます。前の版へ戻すときも、ここで選び直すだけです。'});
   if(!ok)return;

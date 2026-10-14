@@ -193,7 +193,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
 
  async function switchAccessMode(nextMode){
   if(nextMode===accessMode.mode)return;
-  if(accessMode.mode==='edit'&&!await confirmModal(`${MODE_LABELS[nextMode]||nextMode}へ切り替えますか？新しい測定の開始・登録内容の編集ができなくなります。`))return;
+  if(accessMode.mode==='edit'&&!await confirmModal({message:`${MODE_LABELS[nextMode]||nextMode}へ切り替えますか？新しい測定の開始・登録内容の編集ができなくなります。`,confirmLabel:'切り替える'}))return;
   try{
    const r=await api('/api/access-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:nextMode})});
    accessMode.mode=r.mode;

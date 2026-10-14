@@ -230,7 +230,7 @@ function bindSortControls(bar){
  async function deleteSortPreset(id){
   const p=sortPresets.find(id);
   if(!p)return;
-  if(!await confirmModal({message:`並び順「${p.name}」を削除します。よろしいですか？`,danger:true}))return;
+  if(!await confirmModal({confirmLabel:'削除する',message:`並び順「${p.name}」を削除します。よろしいですか？`,danger:true}))return;
   try{
    await api('/api/sort-presets/delete',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({id:p.id}))});

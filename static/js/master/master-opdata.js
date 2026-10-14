@@ -857,7 +857,7 @@
   WL.mm.openActMenu(b,items,`「${group}」の操作`);
  }
  async function opAskRename(place,now){
-  const next=await promptModal({title:'群の名前を変える',label:'群の名前',value:now});
+  const next=await promptModal({confirmLabel:'名前を変える',title:'群の名前を変える',label:'群の名前',value:now});
   if(next===null)return;
   const name=String(next).trim();
   if(!name||name===now)return;
@@ -1140,7 +1140,7 @@
        name:nm,type:'文字',place,span:4,dummy:true,user_id:uid})});
    await loadOpItemMaint(true);
    if(window.WL&&WL.opData)WL.opData.forget();
-   opSay(`空きのカードを「${group}」へ足しました。掴んで動かし、幅を決めると、そのぶんが測定画面で空きます。`);
+   opSay(`空きのカードを「${group}」へ追加しました。掴んで動かし、幅を決めると、そのぶんが測定画面で空きます。`);
   }catch(e){opSay('追加できませんでした: '+e.message,true)}
  }
  /* ---------- 盤の右クリックメニュー（§9.228 ⑤、利用者の指示） ----------
@@ -1233,7 +1233,7 @@
   const del=m.querySelector('[data-opm-del]');
   if(del)del.onclick=()=>act(async uid=>{
    /* **取り消せないので確認する**（§5）。空きは中身が無いので聞かない。 */
-   if(!pad&&!await confirmModal({message:`「${x.name}」を削除します。取り消せません。\n`
+   if(!pad&&!await confirmModal({confirmLabel:'削除する',facts:[{text:'戻せません',danger:true}],message:`「${x.name}」を削除します。\n`
      +'（記録済みの値は残りますが、これ以降は画面から入れられなくなります）',danger:true}))return;
    await api('/api/operation-item-master/delete',{method:'POST',
      headers:{'Content-Type':'application/json'},
@@ -1301,7 +1301,7 @@
     if(!g){g={name:a.group,items:[]};groups.push(g)}
     g.items.push(a);
    });
-   m.innerHTML='<div class="op-menu-head">自動で入る値・計算値を足す</div>'
+   m.innerHTML='<div class="op-menu-head">自動で入る値・計算値を追加</div>'
     +'<div class="op-menu-note">人が打たない値です。足すと1枚のカードになり、'
     +'置き場・幅・単位・見せ方はふつうの項目と同じように決められます。</div>'
     +groups.map(g=>`<div class="op-menu-group">${esc(g.name)}</div>`
@@ -1349,7 +1349,7 @@
    opState.picked=r.id;
    await loadOpItemMaint(true);
    if(window.WL&&WL.opData)WL.opData.forget();
-   opSay(`「${nm}」を足しました。値は測定画面が入れます（${a.note}）`);
+   opSay(`「${nm}」を追加しました。値は測定画面が入れます（${a.note}）`);
    openOpModal(r.id);
   }catch(e){opSay('追加できませんでした: '+e.message,true)}
  }
@@ -1509,8 +1509,6 @@
     <header class="op-modal-head">
      <div class="op-modal-id"><small>操業データ項目</small><h2 id="opModalTitle">項目</h2>
       <span class="op-modal-role" id="opModalRole"></span></div>
-     <span class="op-modal-state" id="opModalState" aria-live="polite"></span>
-     <div class="op-modal-top" id="opModalActions"></div>
      <button id="opModalClose" type="button" aria-label="閉じる">×</button></header>
     <div class="op-modal-body">
      <div class="op-modal-preview" id="opModalPreview"></div>
@@ -1519,6 +1517,10 @@
      <p class="op-prev-note" id="opPrevNote" hidden></p>
      <div class="op-modal-form" id="opModalForm"></div>
     </div>
+    <!-- 決める物は右下の足元（§9.604）。画面の足元（pc-save）と同じ部品: 変えたか・記録者・知らせ／キャンセル・保存。 -->
+    <footer class="pc-save op-modal-foot"><span class="mm-form-hint pc-dirty" id="opModalDirty"></span>
+     <span class="op-modal-state" id="opModalState" aria-live="polite"></span><span class="mm-set-fill"></span>
+     <span class="op-modal-acts" id="opModalActions"></span></footer>
    </div>`;
   document.body.append(m);
   $('#opModalClose').onclick=closeOpModal;
@@ -1540,6 +1542,12 @@
   opClosePrevInfo();
   opState.pop='';opSyncPops();
   m.hidden=true;opState.picked=null;opState.dirty='';renderOpItem();   // §9.361
+  WL.mm.paintFootState(null,[],false,false);   // 頭の「＋ 項目を追加」を塗りへ戻す（窓の足元が保存を塗っていた）
+ }
+ /* 窓の足元（§9.604）: 変えたか・記録者の字は画面の足元と同じ`paintFootState()`。変更が無いうちはキャンセルも保存も押せない。 */
+ function paintOpFoot(){
+  const x=opItemById(opState.picked);
+  WL.mm.paintFootState($('#opModalDirty'),[$('#opdSave'),$('#opdCancel')],false,!!x&&String(opState.dirty)===String(x.id));
  }
  function openOpModal(id){
   /* **別の項目を開いたら浮き出しは畳む**（§9.299。段は廃止したので
@@ -1870,7 +1878,7 @@
  function opChoiceValuesHtml(x){
   const vals=(opState.choices||[]).filter(c=>c.name===x.choice);
   if(!x.choice)return `<p class="op-form-empty">選択肢のまとまりを選ぶか、名前を打って新しく作ります。</p>`;
-  if(!vals.length)return `<p class="op-form-empty">「${esc(x.choice)}」にはまだ値がありません。下で足せます。</p>`;
+  if(!vals.length)return `<p class="op-form-empty">「${esc(x.choice)}」にはまだ値がありません。下で追加できます。</p>`;
   return `<div class="op-choice-rows">`+vals.map(c=>
     `<div class="op-choice-row" data-op-cid="${esc(c.id)}">`
     +`<b>${esc(c.value)}</b>`
@@ -2392,12 +2400,15 @@
   $('#opModalRole').innerHTML=roleLabel
     ?`<b class="op-role-chip" title="この項目が担っている役割です（構成の必須はここで満たされます）">役割 ${esc(roleLabel)}</b>`
     :'';
-  /* **保存は右上の端**（§9.223 ②、利用者の指示）。危ない操作（削除）は
-     同じ場所へ置かない——「完了」の隣に「削除」を置かない（§CLAUDE 5）。
-     削除は②のタブの中の帯へ移してある。 */
-  $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`;
+  /* **決める物は右下の足元**（§9.604。前は右上＝§9.223 ②。確かめる窓・画面の足元と同じ場所へそろえた）。危ない操作（削除）は
+     同じ場所へ置かない——「完了」の隣に「削除」を置かない（§CLAUDE 5）。削除は細部の畳みの中。 */
+  $('#opModalActions').innerHTML=`<button type="button" id="opdCancel" class="mm-btn-ghost">キャンセル</button><button type="button" id="opdSave" class="mm-btn-primary">保存</button>`;
   bindOpModal(x);
   bindOpTry(x);
+  /* 欄を打った・選んだ時点で「変更あり」（§9.604。札を押した変更は`touch`が`opState.dirty`を立てて描き直す）。 */
+  const form2=$('#opModalForm');
+  form2.oninput=form2.onchange=()=>{if(String(opState.dirty)!==String(x.id)){opState.dirty=x.id;paintOpFoot()}};
+  paintOpFoot();
   WL.popMenu.tips($('#opModalForm'));   // ⓘ の説明（§9.587）
   opBindHot();   // §9.541 F-2 試しに打つ（数の型だけ・欄が無ければ何もしない）
  }
@@ -2760,7 +2771,7 @@
        +`<span class="op-choice-add">
           <input type="text" id="opdNewChoiceValue" placeholder="値を足す（例: 茶）">
           <input type="text" id="opdNewChoiceNote" placeholder="説明（省略できます）">
-          <button type="button" id="opdAddChoiceValue" class="ghost">値を足す</button>
+          <button type="button" id="opdAddChoiceValue" class="ghost">値を追加</button>
          </span>`
        +`<i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
           :'このまとまりを使っている項目はまだありません'}</i>`,
@@ -3131,6 +3142,9 @@
  function wireOpModalActions(x){
   const save=$('#opdSave');
   if(save)save.onclick=()=>opSaveItem();
+  /* キャンセル＝保存していない変更を捨てて、マスタの値で描き直す（窓は閉じない）。 */
+  const cancel=$('#opdCancel');
+  if(cancel)cancel.onclick=async()=>{opState.dirty='';opModalSay('');await loadOpItemMaint(true);renderOpModal();opModalSay('変更を戻しました')};
   const del=$('#opdDelete');
   if(del)del.onclick=()=>opDeleteItem();
   /* 組み込みの欄の「外す」（§9.229 ③）。**入口は増やさない**（§9.207）
@@ -3455,7 +3469,7 @@
  async function opDeleteItem(){
   const x=opItemById(opState.picked);if(!x||x.builtin)return;
   const uid=requireMaintUser();if(uid===null)return;
-  if(!(await confirmModal(`「${x.name}」を削除しますか？\n記録済みの値は測定データの中に残りますが、入力欄は出なくなります。`)))return;
+  if(!(await confirmModal({message:`「${x.name}」を削除しますか？\n記録済みの値は測定データの中に残りますが、入力欄は出なくなります。`,confirmLabel:'削除する',danger:true})))return;
   try{
    await api('/api/operation-item-master/delete',{method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:x.id,user_id:uid})});
@@ -3487,7 +3501,7 @@
       「足したのに出てこない」と読まれる。 */
    x.choice=name;
    await loadOpItemMaint(true);
-   opModalSay(`「${name}」に「${val}」を足しました`);
+   opModalSay(`「${name}」に「${val}」を追加しました`);
    if(window.WL&&WL.opData)WL.opData.forget();
    renderOpModal();
   }catch(e){opModalSay('足せませんでした: '+e.message,true)}
@@ -3507,7 +3521,7 @@
  async function opDeleteChoiceValue(id){
   const row=(opState.choices||[]).find(c=>String(c.id)===String(id));if(!row)return;
   const uid=requireMaintUser();if(uid===null)return;
-  if(!(await confirmModal(`「${row.name}」から「${row.value}」を消しますか？\nこのまとまりを使っている項目すべてから消えます。`)))return;
+  if(!(await confirmModal({message:`「${row.name}」から「${row.value}」を消しますか？\nこのまとまりを使っている項目すべてから消えます。`,confirmLabel:'消す',danger:true})))return;
   try{
    await api('/api/operation-choice-master/delete',{method:'POST',
      headers:{'Content-Type':'application/json'},
@@ -3640,9 +3654,9 @@
   if(clState.newParent&&parents.indexOf(clState.newParent)<0)
    boxes.push(clBoxHtml(clState.newParent,[],true));
   /* **新しい親の受け皿**は、まとまりを選んでいる（掴んでいる）ときだけ出す（§9.602。いつも出すと空の破線の箱が主役の木に並ぶ）。
-     押す道は頭の「＋ 親子をつくる」とこの箱のボタン、掴む道はこの箱そのもの。 */
+     押す道は頭の「＋ 親子を追加」とこの箱のボタン、掴む道はこの箱そのもの。 */
   const p=clState.pick;
-  if(!p)return boxes.join('')||'<p class="cl-empty">親子はまだありません。頭の「＋ 親子をつくる」で親にするまとまりを選びます。</p>';
+  if(!p)return boxes.join('')||'<p class="cl-empty">親子はまだありません。頭の「＋ 親子を追加」で親にするまとまりを選びます。</p>';
   const why=clBlock(p,'parent');
   const btn=why?`<span class="cl-hint is-bad">${esc(p)}は親にできません — ${esc(why)}</span>`
         :`<button type="button" class="cl-add" id="clNewParent">＋ ${esc(p)}を親にする</button>`;
@@ -3657,23 +3671,23 @@
   list.classList.add('is-fill');
   list.parentElement&&list.parentElement.classList.add('is-fill');
   const n=(clState.items||[]).length;
-  /* 帯（`.op-bar`）は持たない（§9.602）: 説明は ⓘ、「親子をつくる」は頭の主の操作（親にするまとまりを選ぶ）。 */
+  /* 帯（`.op-bar`）は持たない（§9.602）: 説明は ⓘ、「親子を追加」は頭の主の操作（親にするまとまりを選ぶ）。 */
   form.innerHTML='';form.hidden=true;
   const cands=(clState.groups||[]).filter(g=>!g.isChild);
-  WL.mm.setHeadActs({primary:{id:'clCreate',label:'親子をつくる',title:'親にするまとまりを選びます（次に子にするまとまりを左で選ぶ）',
-   menu:cands.length?cands.map(g=>({label:g.name,note:g.isParent?'もう親です（子を足す）':`値 ${g.count}件`,data:{clParent:g.name},
+  WL.mm.setHeadActs({primary:{id:'clCreate',label:'親子を追加',title:'親にするまとまりを選びます（次に子にするまとまりを左で選ぶ）',
+   menu:cands.length?cands.map(g=>({label:g.name,note:g.isParent?'もう親です（子を追加）':`値 ${g.count}件`,data:{clParent:g.name},
      onClick:()=>clStartParent(g.name)})):[{label:'親にできるまとまりがありません',note:'「選択肢の値」でまとまりを作ってください',onClick:()=>{}}]}});
   list.innerHTML=`<div class="cl-edit">${clPoolHtml()}`
    +`<section class="cl-tree"><h4 class="cl-pane-head">いまの親子<small>${n?`${n}本`:'0本'}</small></h4>`
    +`<div class="cl-tree-body">${clTreeHtml()}</div></section></div>`;
   bindChoiceLink();
  }
- /* 頭の「＋ 親子をつくる」で選んだ親。もう親ならその木を指し、まだなら新しい親の木を出す。どちらも次は左で子を選ぶ。 */
+ /* 頭の「＋ 親子を追加」で選んだ親。もう親ならその木を指し、まだなら新しい親の木を出す。どちらも次は左で子を選ぶ。 */
  function clStartParent(name){
   if(clGroup(name)&&clGroup(name).isParent){
    const box=document.querySelector(`#masterMaintList [data-cl-parent="${CSS.escape(name)}"]`);
    if(box){box.scrollIntoView({block:'nearest'});box.classList.add('is-over');setTimeout(()=>box.classList.remove('is-over'),1200)}
-   clSay(`${name}の木へ子を足します。子にするまとまりを左で選んで「子にする」を押してください。`);
+   clSay(`${name}の木へ子を追加します。子にするまとまりを左で選んで「子にする」を押してください。`);
    return;
   }
   clMakeParent(name);
@@ -3712,7 +3726,7 @@
   if(clState.busy)return;
   const row=(clState.items||[]).find(x=>String(x.id)===String(id));
   if(!row)return;
-  if(!await confirmModal({message:`${row.parent} → ${row.child} の親子を外しますか？\n`
+  if(!await confirmModal({confirmLabel:'外す',message:`${row.parent} → ${row.child} の親子を外しますか？\n`
     +'値に入れた「親の値」は残すので、また結べば続きから使えます。',danger:true}))return;
   clState.busy=true;clSay('外しています…');
   try{
@@ -3911,7 +3925,7 @@
      その下に「使っている項目 → このまとまり → 値 N つ」の流れ（どこから引かれ、何を出すかを図で）。 */
   const shown=used.slice(0,3);
   return `<div class="oc-values">
-    <div class="mm-dhead oc-values-head"><div><div class="mm-dhead-line"><small>まとまり</small><h3>${esc(name)}</h3></div></div>
+    <div class="mm-dhead oc-values-head"><div><small>まとまり</small><h3>${esc(name)}</h3></div>
      <button type="button" id="ocGroupMore" class="mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false" aria-label="このまとまりの操作" title="名前を変える・まとまりごと削除"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button></div>
     <div class="oc-flow" title="${esc(used.length?'このまとまりを選択肢に使っている項目: '+used.join('、'):'まだどの項目からも使われていません')}">
      <span class="oc-flow-k">使っている項目</span>
@@ -3927,7 +3941,7 @@
      </div>
      <div class="oc-table-scroll">
       ${rows.map(r=>ocValueRowHtml(r)).join('')}
-      <button type="button" id="ocAddValue" class="oc-addrow">＋ 値を追加</button>
+      <button type="button" id="ocAddValue" class="mm-btn-ghost oc-addrow">＋ 値を追加</button>
      </div>
     </div>
    </div>`;
@@ -4057,7 +4071,7 @@
   }catch(e){ocSay('並びを保存できませんでした: '+(e.message||String(e)),true)}
  }
  async function ocCreateGroup(){
-  const name=await promptModal({title:'まとまりを追加',label:'まとまり名',
+  const name=await promptModal({confirmLabel:'追加する',title:'まとまりを追加',label:'まとまり名',
     hint:'操業データ項目の「選択肢」からこの名前で参照します（例: リング色）。'});
   if(!name)return;
   const uid=requireMaintUser();if(uid===null)return;
@@ -4525,7 +4539,7 @@
   }
  }
  async function rlRenameGroup(from){
-  const to=await promptModal({title:'見出しの名前を変える',label:'カードの中の見出しの名前',
+  const to=await promptModal({confirmLabel:'名前を変える',title:'見出しの名前を変える',label:'カードの中の見出しの名前',
    value:from,hint:'測定画面の入力欄の群は変わりません。'});
   if(to===null)return;
   const n=String(to).trim();if(!n||n===from)return;

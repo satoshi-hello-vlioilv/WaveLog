@@ -507,8 +507,8 @@
    :'いまの見え方をそのまま写して、この一覧だけ自分専用の設定にします（他の人の見え方は変わりません）';
   btn.onclick=async()=>{
    const to=!mine;
-   if(mine&&!await confirmModal('この一覧の列を、みんなと同じ設定に戻します。\n\n'
-                     +'自分だけの設定は消さないので、あとで戻せます。よろしいですか？'))return;
+   if(mine&&!await confirmModal({message:'この一覧の列を、みんなと同じ設定に戻します。\n\n'
+                     +'自分だけの設定は消さないので、あとで戻せます。よろしいですか？',confirmLabel:'みんなと同じに戻す'}))return;
    btn.disabled=true;
    try{
     const r=await WL.columnLayout.setScope(target,to);
@@ -1109,7 +1109,7 @@ ${detailValueHtml(virt,f)}`;
    });
    const del=box.querySelector('#lcFormulaDel');
    if(del)del.onclick=async()=>{
-    if(await confirmModal(`列「${labelOf(picked)}」を削除しますか？\n式で作った列なので、元のデータには影響しません。`))
+    if(await confirmModal({message:`列「${labelOf(picked)}」を削除しますか？\n式で作った列なので、元のデータには影響しません。`,confirmLabel:'削除する',danger:true}))
      deleteFormulaColumn(picked);
    };
   }
@@ -1483,7 +1483,7 @@ ${detailValueHtml(virt,f)}`;
   const sel=document.getElementById('lcPresetSel');
   const p=presets.find(x=>String(x.id)===String(sel&&sel.value));
   if(!p)return;
-  if(!(await confirmModal(`「${p.name}」を削除しますか？\nこの一覧の保存済み設定から消えます（今の表示は変わりません）。`)))return;
+  if(!(await confirmModal({message:`「${p.name}」を削除しますか？\nこの一覧の保存済み設定から消えます（今の表示は変わりません）。`,confirmLabel:'削除する',danger:true})))return;
   try{
    const r=await api('/api/column-preset-master/delete',{method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -1650,10 +1650,10 @@ ${detailValueHtml(virt,f)}`;
    closeIo();
    return;
   }
-  if(!(await confirmModal(`ファイルにある ${items.length}件の列設定をマスタへ書き込みますか？\n`
-    +`対象ごとに今の設定を置き換えます（元へは戻せません）。\n\n`
+  if(!(await confirmModal({message:`ファイルにある ${items.length}件の列設定をマスタへ書き込みますか？\n`
+    +`対象ごとに今の設定を置き換えます。\n\n`
     +items.slice(0,8).map(x=>'・'+ioTargetLabel(x.target)).join('\n')
-    +(items.length>8?`\n…ほか${items.length-8}件`:''))))return;
+    +(items.length>8?`\n…ほか${items.length-8}件`:''),confirmLabel:'書き込む',danger:true,facts:[{text:'戻せません',danger:true}]})))return;
   let ok=0,ng=0;
   for(const x of items){
    try{

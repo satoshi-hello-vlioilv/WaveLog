@@ -67,7 +67,7 @@
 .shift-eq-tag{
  display:inline-flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h-sm);
  padding:0 var(--ctl-pad-x-sm);max-width:var(--w-md);
- border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:var(--ink-2);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink-2);
  font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
  cursor:pointer;user-select:none;
 }
