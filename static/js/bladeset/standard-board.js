@@ -41,10 +41,11 @@
  const isSet=f=>f.k!=='note'&&shown(f)!=='';
  const changedCount=()=>fields().filter(f=>stored(f)!=null&&f.k!=='note').length;
 
- /* 頭（§9.603）: 状態の札は「いま効いている登録」（保存した値）。副の操作は ⋯（確かめる・既定へ戻す）。 */
+ /* 頭（§9.603）: 状態の札は欄の札・左の節と同じ数（保存の前の値も含む——保存していないことは足元が言う。札だけ保存した値で
+    数えると、同じ画面に「すべて既定値」と「設定 1」が並んだ）。副の操作は ⋯（確かめる・既定へ戻す）。 */
  function renderHead(){
-  const n=changedCount();
-  K().head({state:!sb.loaded?null:{text:sb.row&&n?`設定 ${n}項目・ほかは既定値`:'すべて既定値',tone:sb.row&&n?'ok':''},
+  const n=fields().filter(isSet).length;
+  K().head({state:!sb.loaded?null:{text:n?`設定 ${n}項目・ほかは既定値`:'すべて既定値',tone:n?'ok':''},
    more:[{label:'刃組ガイダンスの図で確かめる',note:'見本の作業（50mm×22条・元板巾1130・板厚1.2）で開きます',onClick:openGuide}]
     .concat(sb.row?[{label:'すべて既定へ戻す…',note:`${sb.equipment} の登録を消します`,danger:true,onClick:resetAll}]:[])});
  }

@@ -47,6 +47,12 @@
   :isSpecial(x)?'「刃選択」の刃のカテゴリの表で専用刃に当たったときだけ選ばれます。'
   :'ふつうはこのカテゴリ（通常刃）から選ばれます。刃厚は「刃選択」の刃厚の表が決めます。');
 
+ /* 詳細の頭の一言は最初の1文だけ（続きと「未登録」の断りは ⓘ・§9.603）。2〜3行の段落にすると主役の欄が下がった。 */
+ function sayHtml(x,stored){
+  const t=sayOf(x),i=t.indexOf('。'),first=i>=0?t.slice(0,i+1):t;
+  const rest=(i>=0?t.slice(i+1):'')+(stored?'':'カテゴリ・使用状態は未登録——刃の前の「状態」から起こした値です。');
+  return esc(first)+(rest?WL.mm.tipHtml(rest):'');
+ }
  /* ---------- 頭 ---------- */
  function renderHead(){
   K().head({primary:bb.loaded&&freeNames().length?{id:'bbAdd',label:'セットを足す',title:'空いているセット名で新しいセットを開きます',
@@ -152,7 +158,7 @@
   const shownX=Object.assign({},x,{category:setVal(x,'category'),use:setVal(x,'use')});
   return `<article class="bk-card">
    <header class="bk-card-h">${tile(x.group,shownX)}<div class="bk-card-t"><h3>セット ${esc(x.group||'（なし）')}</h3>
-    <small>${esc(sayOf(shownX))}${x.stored?'':'（カテゴリ・使用状態は未登録——刃の前の「状態」から起こした値）'}</small></div>${rename}${K().moreBtn(`このセットを消す（刃 ${x.rows.length}行）`)}</header>
+    <small>${sayHtml(shownX,x.stored)}</small></div>${rename}${K().moreBtn(`このセットを消す（刃 ${x.rows.length}行）`)}</header>
    <div class="bk-fields">
     <div class="bk-field"><s>カテゴリ</s>${seg('category')}</div>
     <div class="bk-field"><s>使用状態</s>${seg('use')}</div>

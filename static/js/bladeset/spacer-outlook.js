@@ -25,8 +25,11 @@
   +`<i class="is-car" style="width:${pc(r.onCar,max)}%"></i><i class="is-shelf" style="width:${pc(r.shelf,max)}%"></i></span>`;
  const recWord=r=>r?`${esc(r.carriage)}${r.at?`・${esc(String(r.at).slice(5,10).replace('-','/'))}の記録`:''}`:'';
  /* 凡例。記録が無いときは「みなし」を字で言う（出どころ・§CLAUDE 6）。 */
- function legend(o){
-  if(!o.busy)return '<p class="bk-legend">刃組の記録がまだ無いので、保有を<b>ぜんぶ次の刃組で使える</b>とみなしています（台車に載っている数は記録から数えます）。</p>';
+ /* `short`＝札の列の下（1行・続きは ⓘ・§9.603）。浮く図・開いた図では全文。 */
+ const NO_REC='刃組の記録がまだ無いので、保有をぜんぶ次の刃組で使えるとみなしています（台車に載っている数は記録から数えます）。';
+ function legend(o,short){
+  if(!o.busy)return short?`<p class="bk-legend">刃組の記録なし——保有をぜんぶ使えるとみなす${WL.mm.tipHtml(NO_REC)}</p>`
+   :'<p class="bk-legend">刃組の記録がまだ無いので、保有を<b>ぜんぶ次の刃組で使える</b>とみなしています（台車に載っている数は記録から数えます）。</p>';
   return `<p class="bk-legend"><span class="bk-key is-busy"></span>稼働中の台車（${recWord(o.busy)}）に載っている＝外せない`
    +`<span class="bk-key is-car"></span>組み替える台車（${o.onCar?recWord(o.onCar):esc(o.carriage)+'・記録なし'}）に載っている＝そのまま使える`
    +`<span class="bk-key is-shelf"></span>棚にある</p>`;

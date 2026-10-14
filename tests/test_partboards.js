@@ -109,6 +109,9 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   const notYet = ((await api('/api/bladeset-standard-master?equipment=' + q)).items || []).find(x => x.equipment === EQ);
   rec('② 打って離れても書かない（足元の「保存」まで・§9.603）', !notYet || notYet.shaftDia == null, JSON.stringify(notYet || null));
   rec('② 足元が「変更 1件」・変えた欄に印・保存を押せる', s1d.edited && s1d.save, JSON.stringify(s1d));
+  rec('② 保存の前でも頭の札・左の節・欄の札が同じ数を言う（設定 1項目・設定 1・設定）',
+      await page.evaluate(() => /設定 1項目/.test(document.getElementById('masterMaintState').textContent)
+        && /設定 1/.test(document.querySelector('#masterMaintList .bk-item.is-on').textContent) && !!document.querySelector('.sb-row.is-set [data-k="shaftDia"]')));
   rec('② 描き直しても焦点は Tab で移った先の欄', !!s1d.focus && s1d.focus !== 'shaftDia', String(s1d.focus));
   await W.bkSave(page);
   const saved = await W.poll(() => api('/api/bladeset-standard-master?equipment=' + q), r => ((r.items || []).find(x => x.equipment === EQ) || {}).shaftDia === 210);
@@ -135,6 +138,8 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   const nextId = await page.evaluate(id => { const tr = document.querySelector(`#masterMaintList tr[data-id="${id}"]`).nextElementSibling; return tr ? tr.dataset.id : ''; }, t.id);
   await W.until(page, id => { const a = document.activeElement; return !!a && a.dataset.f === 'qty' && a.closest('tr').dataset.id === id; }, nextId, { ms: 5000, what: 'Enter で次の行' });
   rec('④ 保有を打って Enter で次の行の保有の欄へ', !!nextId, nextId);
+  const footSay = await page.evaluate(() => document.querySelector('#masterMaintList .bk-foot .pc-dirty').textContent);
+  rec('④ 足元はどの行を変えたかを言う（変更 1件（100mm）・数を2回言わない）', new RegExp(`^変更 1件（${t.size}mm）`).test(footSay), footSay);
   await W.bkSave(page);
   const sq = await W.poll(() => api('/api/bladeset-spacer-master?equipment=' + q), r => ((r.items || []).find(x => x.id === t.id) || {}).qty === (t.qty || 0) + 1);
   rec('④ 保有はその場で直し、足元の保存で書く（窓を開かない）', ((sq.items || []).find(x => x.id === t.id) || {}).qty === (t.qty || 0) + 1);

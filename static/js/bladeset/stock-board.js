@@ -97,8 +97,12 @@
    for(const id of ids)await K().post(path+'/update',Object.assign({id:+id,user_id:uid},byRow[id]));
   },{done:`${what}の ${ids.length}行を保存しました`,reload});
  }
- /* 変更のある行の数（足元の「変更 N件」は欄の数・行が分かるように何行かを添える）。 */
- const rowsEdited=st=>{const n=new Set(Object.keys(st.edits||{}).map(k=>k.split(':')[1])).size;return n?`${n}行`:''};
+ /* 変更のある行の名前（足元の「変更 N件（50mm・20mm）」）。数を2回言わない——どの行かを言う。3行を超えたら「ほか N行」。 */
+ function rowsEdited(st,dim){
+  const ids=[...new Set(Object.keys(st.edits||{}).map(k=>+k.split(':')[1]))];
+  const names=ids.map(id=>{const x=st.rows.find(r=>r.id===id);return x?`${fmt(x[dim])}mm`:''}).filter(Boolean);
+  return names.length>3?`${names.slice(0,3).join('・')}・ほか${names.length-3}行`:names.join('・');
+ }
 
  /* =================== スペーサー（1枚の在庫表） =================== */
  /* `ctx`＝刃組ガイダンスと同じ材料（台車の記録・基準値）、`view`＝いま開いている札（§9.540）、`cell`＝選んだ端数（null＝いちばん作りにくい端数）。 */
@@ -126,8 +130,8 @@
   const main=view==='table'?table():O.viewHtml(view,o,sp.cell);
   const body=K().frame(sp,{key:'spacer',label:'スペーサー',onEquipment:()=>spLoad(true),
    note:`寸法 ${sp.rows.length}種・合計 ${total(shown)}枚`,
-   save:()=>saveStock(sp,'/api/bladeset-spacer-master',()=>spLoad(true),'スペーサー'),cancel:()=>{sp.edits={};spPaint()},what:()=>rowsEdited(sp),
-   body:o?`<div class="bk-spgrid"><div class="bk-spmain">${main}</div><aside class="bk-spside">${O.bandHtml(o,view)}${O.legend(o)}</aside></div>`:table()});
+   save:()=>saveStock(sp,'/api/bladeset-spacer-master',()=>spLoad(true),'スペーサー'),cancel:()=>{sp.edits={};spPaint()},what:()=>rowsEdited(sp,'size'),
+   body:o?`<div class="bk-spgrid"><div class="bk-spmain">${main}</div><aside class="bk-spside">${O.bandHtml(o,view)}${O.legend(o,true)}</aside></div>`:table()});
   if(!body)return;
   if(o)O.wire(body,o,{onView:v=>{sp.view=v;spPaint()},onCell:u=>{sp.cell=u;spPaint()}});
   if(view==='table')wireStock(body,sp,{path:'/api/bladeset-spacer-master',dim:'size',dimLabel:'寸法',unit:'枚',newId:'spNew',what:'スペーサー',
@@ -170,7 +174,7 @@
   const rs=matRows(fg.sel),all=withEdits(fg,fg.rows);
   const body=K().frame(fg,{key:'finger',label:'フィンガー',onEquipment:()=>fgLoad(true),
    note:`材質 ${fg.materials.filter(m=>matRows(m).length).length}・幅 ${fg.rows.length}種・合計 ${total(all)}本`,
-   save:()=>saveStock(fg,'/api/bladeset-finger-master',()=>fgLoad(true),'フィンガー'),cancel:()=>{fg.edits={};fgPaint()},what:()=>rowsEdited(fg),
+   save:()=>saveStock(fg,'/api/bladeset-finger-master',()=>fgLoad(true),'フィンガー'),cancel:()=>{fg.edits={};fgPaint()},what:()=>rowsEdited(fg,'width'),
    body:K().pane({label:'フィンガーの材質',items,detail:`<article class="bk-card">
    <header class="bk-card-h">${fgSw(fg.sel)}<div class="bk-card-t"><h3>${esc(fg.sel)}</h3>
     <small>${fg.sel===fg.materials[0]?'既定の材質（保持方式の表で材質を決めていないときはこれ）':'保持方式の表でこの材質に決まったときに使います'}</small></div></header>

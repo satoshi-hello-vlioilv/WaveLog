@@ -48,7 +48,8 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
    if (!it) return null;
    if (!it.classList.contains('is-on')) return { pick: true };
    const on = k => document.querySelector(`.bk-card [data-seg="${k}"].is-on`)?.textContent || '';
-   return { cat: on('category'), use: on('use'), say: document.querySelector('.bk-card-t small')?.textContent || '',
+   const sm = document.querySelector('.bk-card-t small');   // §9.603: 一言は最初の1文・続きと「未登録」は ⓘ
+   return { cat: on('category'), use: on('use'), say: sm ? sm.textContent + ' ' + (sm.querySelector('[data-tip]')?.dataset.tip || '') : '',
             tags: [...it.querySelectorAll('.bk-tag')].map(t => t.textContent).join('/') };
   }, g);
   await page.click(`#masterMaintList [data-bk-key="${g0}"]`);
