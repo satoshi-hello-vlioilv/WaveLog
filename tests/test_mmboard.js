@@ -173,10 +173,42 @@ H.run('test_mmboard: 盤のマスタを1つの型へ（§9.602）', async ({ pag
   await W.until(page, () => { const m = document.getElementById('maintEditorModal'); return !!m && !m.hidden && m.classList.contains('is-docked'); }, null, { ms: 8000, what: '右の詳細' });
   const on = await page.evaluate(([t]) => { const r = document.querySelector('.oc-row.is-on'); return r ? getComputedStyle(r).backgroundColor : ''; }, [tint]);
   rec('4) 選択肢の値: 押した行は淡い地（右の詳細で直している行）', on === tint, JSON.stringify({ on, tint }));
+  /* 入れたあとの採点（§9.602 の 6.）: 2択は分割の切り替え・出る設備は一覧の字と同じ状態・欄の下の説明は1行まで。 */
+  const det = await page.evaluate(() => {
+   const f = document.getElementById('maintEditorForm');
+   const inner = f.querySelector('[data-tagfield="equipment"] .mm-tagfield-inner');
+   const lines = [...f.querySelectorAll('.mm-field-hint')].filter(h => h.getClientRects().length).map(h => {
+    const cs = getComputedStyle(h); const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.6;
+    return Math.round(h.getBoundingClientRect().height / line);
+   });
+   return { seg: f.querySelectorAll('[data-seg="enabledText"]').length, sel: f.querySelectorAll('select[data-field="enabledText"]').length,
+    scopeAll: !!f.querySelector('[data-equipment-scope="equipment"][data-v="all"].is-on'), innerHidden: !!inner && inner.hidden, lines };
+  });
+  rec('6c) 選択肢の値: 詳細の「出す」は分割の切り替え（2択をプルダウンにしない）', det.seg === 2 && det.sel === 0, JSON.stringify(det));
+  rec('6c) 選択肢の値: 出る設備は一覧と同じ状態（空欄の行は「すべての設備」・設備の欄は絞るときだけ）', det.scopeAll && det.innerHidden, JSON.stringify(det));
+  rec('6c) 選択肢の値: 欄の下の説明は1行まで（続きは見出しの ⓘ）', det.lines.length > 0 && det.lines.every(n => n <= 1), JSON.stringify(det.lines));
+  await page.click('[data-equipment-scope="equipment"][data-v="pick"]');
+  const pickOpen = await page.evaluate(() => !document.querySelector('[data-tagfield="equipment"] .mm-tagfield-inner').hidden);
+  await page.click('[data-equipment-scope="equipment"][data-v="all"]');
+  const scopeBack = await page.evaluate(() => ({ hidden: document.querySelector('[data-tagfield="equipment"] .mm-tagfield-inner').hidden,
+   foot: (document.getElementById('maintEditorHint') || {}).textContent || '' }));
+  rec('6c) 選択肢の値: 「設備で絞る」で設備の欄が開き、「すべての設備」に戻すと変更なしのまま', pickOpen && scopeBack.hidden && /変更なし/.test(scopeBack.foot), JSON.stringify({ pickOpen, scopeBack }));
+  await page.click('#maintEditorForm [data-seg="enabledText"][data-seg-v="出さない"]');
+  const segDirty = await page.evaluate(() => (document.getElementById('maintEditorHint') || {}).textContent || '');
+  rec('6c) 選択肢の値: 切り替えを押すと足元が「変更あり」', /変更あり/.test(segDirty), segDirty);
+  await page.click('#maintEditorCancel');
+  await W.until(page, () => /変更なし/.test((document.getElementById('maintEditorHint') || {}).textContent || ''), null, { ms: 5000, what: 'キャンセルで変更なしへ戻る' });
   await page.click('#maintEditorClose');
   await W.until(page, () => document.getElementById('maintEditorModal').hidden, null, { ms: 5000, what: '詳細を閉じる' });
   const g = await page.evaluate(() => { const r = document.querySelector('.oc-group.is-on'); return r ? getComputedStyle(r).backgroundColor : ''; });
   rec('4) 選択肢の値: 選んだまとまりは淡い地（濃い塗りで選ばない）', g === tint, JSON.stringify({ g, tint }));
+  /* 表は中身なりの幅で止める（器が広くても「—」だけの列が空きを抱えない）。頭・流れの図も同じ右端。 */
+  const ocw = await page.evaluate(() => {
+   const v = document.querySelector('.oc-values'), t = document.querySelector('.oc-table'), h = document.querySelector('.oc-values-head');
+   return { pane: Math.round(v.getBoundingClientRect().width), table: Math.round(t.getBoundingClientRect().width),
+    headR: Math.round(h.getBoundingClientRect().right), tableR: Math.round(t.getBoundingClientRect().right) };
+  });
+  rec('6c) 選択肢の値: 表は中身なりの幅で止まり、頭も同じ右端', ocw.table < ocw.pane && Math.abs(ocw.headR - ocw.tableR) <= 1, JSON.stringify(ocw));
 
   /* ---------- 6d) 選択肢の親子 ---------- */
   await openNav('choiceLink');
@@ -203,6 +235,17 @@ H.run('test_mmboard: 盤のマスタを1つの型へ（§9.602）', async ({ pag
   rec('6e) 帳票レイアウト: 右の詳細の縮図は出す塊の数だけ・選んだ塊が光る', ry.mini === ry.shown && ry.miniSel <= 1 && !!ry.sel, JSON.stringify(ry));
   rec('6e) 帳票レイアウト: 表の行に押す物を置かない（直すのは右の詳細）', ry.rowBtns === 0, String(ry.rowBtns));
   rec('4) 帳票レイアウト: 紙の割りの切り替えは青緑の塗り（紺にしない）', ry.seg === teal, JSON.stringify({ seg: ry.seg, teal }));
+  /* 入れたあとの採点（§9.602 の 6.）: 「出す 16」は表の頭の1か所・紙の割りの行は表の右端で止まる・高さの欄は値を1回だけ言う。 */
+  const ry2 = await page.evaluate(() => {
+   const head = document.querySelector('.rly-blocks-head'), tbl = document.querySelector('.rly-table');
+   const twice = [...document.querySelectorAll('.rly-dform select option')].map(o => o.textContent)
+     .filter(t => { const m = t.match(/\d+\/\d+/g) || []; return new Set(m).size < m.length; });
+   return { mini: (document.querySelector('.rly-mini-k') || {}).textContent || '',
+    headR: Math.round(head.getBoundingClientRect().right), tableR: Math.round(tbl.getBoundingClientRect().right), twice };
+  });
+  rec('6e) 帳票レイアウト: 出す数は表の頭の1か所（縮図の頭で言い直さない）', !/出す/.test(ry2.mini), ry2.mini);
+  rec('6e) 帳票レイアウト: 紙の割りの行は表の右端で止まる', Math.abs(ry2.headR - ry2.tableR) <= 1, JSON.stringify(ry2));
+  rec('6e) 帳票レイアウト: 詳細の選択肢は同じ値を2回言わない', ry2.twice.length === 0, JSON.stringify(ry2.twice));
   /* 詳細で変えたら表の行と縮図がその場で動く（保存の前に紙での見え方が分かる）→ キャンセルで戻る。 */
   const live = await page.evaluate(() => {
    const before = document.querySelectorAll('.rly-mini-blk').length;

@@ -164,6 +164,8 @@
 .mm-seg>button:last-child{border-right:0}
 .mm-seg>button:hover:not(.is-on){background:var(--teal-tint);color:var(--teal-ink)}
 .mm-seg>button small{font-size:var(--fs-sm);font-weight:var(--fw-body)}
+/* 欄の中の切り替え（`seg`・「すべての設備｜設備で絞る」）は中身の幅（欄は縦の flex なので伸ばさない）。 */
+.mm-field>.mm-seg{align-self:flex-start}
 /* 盤の型（§9.602）: 状態の札は頭の札（`.mm-mode-chip`）と同じ形で、色は意味の2つだけ（そろった＝青緑・足りない＝橙）。
    知らせの字は主の操作の左（結果を字で返す1か所）。対象の札の行は一覧の札の行（`.mm-lbar`）と同じ部品。 */
 .mm-hd-state{border:0;background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-ui)}
@@ -2277,7 +2279,10 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* **使い道は文字で言う**（§9.216 ④）。色だけだと「使われていない」ことに
    気づけず、消してよいかを判断できない。 */
 .oc-group-use{font-size:var(--fs-sm);color:var(--muted)}
-.oc-values{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0}
+.oc-values{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;
+  /* 表は中身なりの幅で止める（§9.602・ステップ2の型）。列の上限の合計＝表の幅で、頭と流れの図も同じ右端で止める。 */
+  --oc-w:calc(1.4em + var(--w-md) + var(--w-lg) + var(--w-sm) + var(--w-lg) + var(--w-xs) + var(--w-sm) + 6 * var(--gap-inline) + 2 * var(--space-1))}
+.oc-values>.oc-values-head,.oc-values>.oc-flow,.oc-values>.oc-table{width:100%;max-width:var(--oc-w)}
 .oc-values-head{flex:none}
 .oc-values-head small{display:inline;margin-right:var(--space-2)}
 .oc-legacy{flex:none;margin:0;font-size:var(--fs-sm);color:var(--teal-dark);font-weight:var(--fw-ui);line-height:1.6}
@@ -2312,13 +2317,16 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .oc-row{display:grid;align-items:center;gap:var(--gap-inline);
   /* §9.248 ⑤で「使用」の1列を足した。**入れ物は中身の長さから**（§CLAUDE 11）
      ——回数は数桁なので`--w-xs`で足り、伸ばすと値と説明の列が痩せる。 */
-  grid-template-columns:1.4em minmax(var(--w-sm),1.1fr) minmax(var(--w-sm),1.6fr)
-    minmax(var(--w-xs),0.9fr) minmax(var(--w-sm),1.4fr) var(--w-xs) var(--w-sm);
+  /* 伸びしろは上限つき（`minmax(下限,上限)`）——器が広くても列は上限で止まり、「—」だけの列が空きを抱えない（§9.602）。 */
+  grid-template-columns:1.4em minmax(var(--w-sm),var(--w-md)) minmax(var(--w-sm),var(--w-lg))
+    minmax(var(--w-xs),var(--w-sm)) minmax(var(--w-sm),var(--w-lg)) var(--w-xs) var(--w-sm);
   padding:2px var(--space-1);border-radius:var(--radius-xs)}
 /* 使用回数。**数字なので右づめ**（桁がそろって多寡が読める）。0回は「—」で
    薄く出す（0と書くと「0という値」に見え、まだ使われていないことが伝わらない）。 */
 .oc-used{text-align:right;font-variant-numeric:tabular-nums;font-weight:var(--fw-ui);
-  color:var(--ink-2);font-size:var(--fs-sm)}
+  color:var(--ink-2);font-size:var(--fs-sm);
+  /* 右寄せの回数と左寄せの「出す」が並ぶので、あいだを1段広げる（「— 出す」と1語に読めていた・§9.602）。 */
+  padding-right:var(--space-4)}
 .oc-used.is-blank{color:var(--muted);font-weight:var(--fw-body)}
 /* **見出しにも本文と同じ文字サイズを置く**（§9.193）。列幅を`em`で書いて
    いるので、器の文字サイズを変えると**同じ`--w-md`が別の幅に解ける**
@@ -3532,6 +3540,9 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .rly-edit{display:grid;grid-template-columns:minmax(0,1fr) var(--mm-pane-w,360px);
   gap:var(--space-4);flex:1;min-height:0;align-items:stretch}
 .rly-blocks{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0}
+/* 表があるときは器を表の幅に止める（§9.602・入れたあとの採点）——頭の行（紙の割り）が表より右まで伸び、主役と上の行の
+   右端がずれていた。表の幅は中身なり（`width:max-content`）なので、器の`min-content`＝表の幅。頭の行はその中で右へ寄せる。 */
+.rly-blocks:has(>.rly-table){width:min-content;max-width:100%}
 .rly-blocks-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
 .rly-blocks-head>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
 /* 紙の割り（列×段）。**いまの値を札で言う**（§CLAUDE 3）——分割の切り替え（`.mm-seg`）。 */
@@ -3575,7 +3586,6 @@ html[data-hint="off"] .mm-def-hint{display:none}
   padding-left:var(--space-4);border-left:1px solid var(--line)}
 .rly-mini{display:flex;flex-direction:column;gap:var(--space-1);padding-bottom:var(--space-3);border-bottom:1px solid var(--line)}
 .rly-mini-k{display:flex;justify-content:space-between;gap:var(--space-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
-.rly-mini-k small{color:var(--muted);font-weight:var(--fw-body)}
 .rly-mini-paper{display:grid;grid-template-columns:repeat(var(--rly-g,24),minmax(0,1fr));grid-auto-rows:18px;gap:2px;align-content:start;
   min-height:120px;padding:var(--space-2);border:1px solid var(--line-strong);border-radius:var(--radius-xs);background:var(--surface)}
 .rly-mini-blk{display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden;border-radius:var(--radius-xs);

@@ -1106,7 +1106,7 @@
       （実測: 使える機能3枚で3段、入力内容9枚で9段・高さ560px）。
       器を728pxまで広げれば3列で収まる。 */
    'choice-card':'full','span-grid':'md','rows-pick':'md','tag-set':'full',
-   'check-set':'full'};
+   'check-set':'full','seg':'md'};
  function mmFieldSize(f){
   if(f.size)return f.size;
   const t=String(f.type||'text');
@@ -1206,9 +1206,17 @@
     // 補足文はマスタごとに意味が違う(権限の対象か/停止内容の対象か)ので
     // def側からf.tagHintで渡す。未指定はアクセス権限マスタの従来文言。
     const tagHint=f.tagHint!==undefined?f.tagHint:'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
-    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1">${fieldLabelHtml(f)}
-     <div class="mm-tagfield-inner">
-      <label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>
+    /* **空欄もすべての設備**を意味する欄（定義の`blankAll`・選択肢の値の「出る設備」）は、チェックの1つでなく
+       「すべての設備｜設備で絞る」の切り替え（§9.602）——空欄の行で「すべての設備」のチェックが外れて見え、
+       一覧の字（すべての設備）と食い違っていた。絞るを押したときだけ設備の欄を出す。 */
+    const scopeAll=!!f.blankAll&&(isAll||!selected.size);
+    const scope=f.blankAll?`<div class="mm-seg mm-tag-scope" role="group" aria-label="${esc(f.label)}">`
+      +[['all','すべての設備'],['pick','設備で絞る']].map(([v,t])=>{const on=(v==='all')===scopeAll;
+        return `<button type="button" class="${on?'is-on':''}" data-equipment-scope="${f.k}" data-v="${v}" aria-pressed="${on?'true':'false'}">${t}</button>`}).join('')
+      +`</div><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''} hidden>`:'';
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1">${fieldLabelHtml(f)}${scope}
+     <div class="mm-tagfield-inner"${scopeAll?' hidden':''}>
+      ${f.blankAll?'':`<label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>`}
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
@@ -1237,6 +1245,18 @@
        マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
     return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`
       +fieldHintHtml(f)+`</label>`;
+   },
+   /* 1つだけ選ぶ2〜4択（§9.602）: 1枚の枠を割った切り替え（`.mm-seg`・盤の画面の「出す｜出さない」と同じ部品）。
+      開かずに全部の選択肢が見え、押した札が値になる。値は隠した欄が持つ（`mmSetHidden()`・札の配線は`bindSegFields()`）。
+      いまの値が選択肢に無ければ札を1つ足す（黙って先頭へ落とさない・§9.204）。 */
+   'seg':(f,val)=>{
+    const base=selectOptionsOf(f).map(String);
+    const opts=val&&!base.includes(val)?[...base,val]:base;
+    const cur=opts.includes(val)?val:String(opts[0]??'');
+    const btns=opts.map(o=>`<button type="button" class="${o===cur?'is-on':''}" data-seg="${esc(f.k)}" data-seg-v="${esc(o)}"`
+      +` aria-pressed="${o===cur?'true':'false'}">${esc(o||f.blank||'（指定なし）')}</button>`).join('');
+    return `<div class="mm-field">${fieldLabelHtml(f)}<div class="mm-seg" role="group" aria-label="${esc(f.label)}">${btns}</div>`
+      +`<input type="hidden" data-field="${f.k}" value="${esc(cur)}">${fieldHintHtml(f)}</div>`;
    },
    /* 別マスタ連動の選択欄(§5.3.1)。選ぶだけで済むのが基本で、無い値は
       「＋ 新しく追加」から入力する。保存時に相手のマスタへも登録される。 */
@@ -2216,6 +2236,20 @@
   el.value=String(value);
   el.dispatchEvent(new Event('change',{bubbles:true}));
  }
+ /* 分割の切り替えの欄（`seg`・§9.602）。押した札だけ塗り、値は隠した欄へ（変更の知らせも`mmSetHidden()`が出す）。 */
+ function bindSegFields(form){
+  form.querySelectorAll('[data-seg]').forEach(b=>{
+   if(b.dataset.segWired)return;
+   b.dataset.segWired='1';
+   b.onclick=()=>{
+    const k=b.dataset.seg;
+    form.querySelectorAll(`[data-seg="${CSS.escape(k)}"]`).forEach(x=>{
+     const on=x===b;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+    });
+    mmSetHidden(form,k,b.dataset.segV);
+   };
+  });
+ }
  function bindChoiceCards(form){
   form.querySelectorAll('[data-card]').forEach(b=>{
    if(b.dataset.cardWired)return;
@@ -2349,7 +2383,7 @@
   });
  }
  function bindInputHelpers(form){
-  bindChoiceCards(form);bindCheckSets(form);bindSteppers(form);
+  bindChoiceCards(form);bindSegFields(form);bindCheckSets(form);bindSteppers(form);
   bindNumberFields(form);
   bindDateFields(form);
   bindComboFields(form);
@@ -2668,7 +2702,8 @@
    /* 「すべての設備」を選んでいるあいだは個別選択を触らせない。両方が
       効いているように見えると、どちらが保存されるのか分からなくなる。 */
    const all=field.querySelector(`[data-equipment-all="${fk}"]`);
-   if(all){
+   const scopes=field.querySelectorAll(`[data-equipment-scope="${fk}"]`);
+   if(all&&!scopes.length){
     const syncAll=()=>{
      box.classList.toggle('is-disabled',all.checked);
      search.disabled=all.checked;
@@ -2676,6 +2711,21 @@
     };
     all.addEventListener('change',syncAll);
     syncAll();
+   }
+   /* 「すべての設備｜設備で絞る」（`blankAll`の欄・§9.602）。すべてに戻すと選んだ設備を外し、開いたときの「すべて」の
+      書き方（空欄／`*`）へ戻す——開いて触っただけで保存する値が変わらない。 */
+   if(scopes.length){
+    const inner=field.querySelector('.mm-tagfield-inner');
+    const allAtOpen=!!(all&&all.checked);
+    const setScope=pick=>{
+     scopes.forEach(b=>{const on=(b.dataset.v==='pick')===pick;b.classList.toggle('is-on',on);b.setAttribute('aria-pressed',on?'true':'false')});
+     if(inner)inner.hidden=!pick;
+     if(pick){if(all)all.checked=false}
+     else{selectedNames().forEach(n=>setChecked(n,false));renderTags();suggest.hidden=true;if(all)all.checked=allAtOpen}
+     if(all)all.dispatchEvent(new Event('change',{bubbles:true}));
+     if(pick)search.focus();
+    };
+    scopes.forEach(b=>{b.onclick=()=>setScope(b.dataset.v==='pick')});
    }
    renderTags();
   });

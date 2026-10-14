@@ -1820,10 +1820,12 @@
  }
  const rlyRowsWord=(info,n)=>n?`${n}/${info.pageRows}段`:'中身なり';
  /* 選ぶ欄の選択肢。**いまの値が選択肢に無いときは、その値を1つ足す**——足さないと欄が先頭の選択肢に落ち、
-    行（20/48段）と詳細（中身なり）が食い違う（紙で組み換えた値・紙の割りを変えたあとの値で起きる）。 */
- function rlyChoices(list,cur,unit){
-  const cs=(list||[]).slice();
-  if(cur&&!cs.some(c=>c.v===cur))cs.push({v:cur,label:`${cur}/${unit}・いまの値`});
+    行（20/48段）と詳細（中身なり）が食い違う（紙で組み換えた値・紙の割りを変えたあとの値で起きる）。
+    欄の字（`text`）はここで決める: 選択肢は「名前（数/割り）」、足したいまの値は**行と同じ字に「（いまの値）」**だけ——
+    前は「20/48・いまの値（20/48）」と同じ値を2回言っていた（§9.602・入れたあとの採点）。`word`は行と同じ字の作り方。 */
+ function rlyChoices(list,cur,unit,word){
+  const cs=(list||[]).map(c=>({...c,text:`${c.label}（${c.v}/${unit}）`}));
+  if(cur&&!cs.some(c=>c.v===cur))cs.push({v:cur,text:`${word(cur)}（いまの値）`});
   return cs.sort((a,b)=>a.v-b.v);
  }
  const rlySpanWord=(info,v)=>{const c=(info.spans||[]).find(x=>x.v===v);return c?c.label:`${v}/${info.grid}`};
@@ -1918,7 +1920,7 @@
   const d=rlyDraftOf(b);
   const bs=info.blocks||[],on=bs.map((x,i)=>({x,i})).filter(o=>o.x.key===b.key?d.shown:o.x.shown);
   const autoPos=bs.every(x=>!(x.col&&x.row));
-  const mini=`<div class="rly-mini"><div class="rly-mini-k">紙の上の並び（${info.grid}列）<small>出す ${on.length}／${bs.length}</small></div>
+  const mini=`<div class="rly-mini"><div class="rly-mini-k">紙の上の並び（${info.grid}列）</div>
     <div class="rly-mini-paper" style="--rly-g:${info.grid}">${on.map(o=>{
       const sp=o.x.key===b.key?d.span:o.x.span;
       return `<span class="rly-mini-blk${o.x.key===b.key?' is-on':''}" style="grid-column:span ${Math.max(1,Math.min(info.grid,sp))}" title="${o.i+1}. ${esc(o.x.label)}">${o.i+1}</span>`}).join('')}</div>
@@ -1931,11 +1933,11 @@
     <div class="rly-dform">
      <div class="rly-dline"><span>紙に出す</span><span class="mm-seg" role="group" aria-label="紙に出す">
       <button type="button" data-rly-d-shown="1" class="${d.shown?'is-on':''}"${ro}>出す</button><button type="button" data-rly-d-shown="0" class="${d.shown?'':'is-on'}"${ro}>出さない</button></span></div>
-     <label class="rly-dline"><span>幅</span><select data-rly-d-span${ro} title="紙の横${info.grid}マスのうち何マスを使うかです">${rlyChoices(info.spans,d.span,info.grid).map(c=>
-       `<option value="${c.v}"${c.v===d.span?' selected':''}>${esc(c.label)}（${c.v}/${info.grid}）</option>`).join('')}</select></label>
+     <label class="rly-dline"><span>幅</span><select data-rly-d-span${ro} title="紙の横${info.grid}マスのうち何マスを使うかです">${rlyChoices(info.spans,d.span,info.grid,v=>`${v}/${info.grid}`).map(c=>
+       `<option value="${c.v}"${c.v===d.span?' selected':''}>${esc(c.text)}</option>`).join('')}</select></label>
      <label class="rly-dline"><span>高さ</span><select data-rly-d-rows${ro} title="紙の縦${info.pageRows}段のうち何段を使うかです。「中身なり」は描いてから測って合わせます">
-      <option value="0"${d.rows?'':' selected'}>中身なり</option>${rlyChoices(info.rowChoices,d.rows,info.pageRows).map(c=>
-       `<option value="${c.v}"${c.v===d.rows?' selected':''}>${esc(c.label)}（${c.v}/${info.pageRows}）</option>`).join('')}</select></label>
+      <option value="0"${d.rows?'':' selected'}>中身なり</option>${rlyChoices(info.rowChoices,d.rows,info.pageRows,v=>rlyRowsWord(info,v)).map(c=>
+       `<option value="${c.v}"${c.v===d.rows?' selected':''}>${esc(c.text)}</option>`).join('')}</select></label>
      <div class="rly-dline"><span>置き場所</span><span class="rly-ro">${esc(pos)}</span></div>
     </div>
     <div class="pc-save rly-foot"><span class="mm-form-hint pc-dirty"></span>

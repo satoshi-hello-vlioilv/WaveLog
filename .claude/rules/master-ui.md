@@ -1,4 +1,4 @@
-# マスタ管理の画面（76件）
+# マスタ管理の画面（77件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -14,6 +14,7 @@
 | 群の道具（幅・名前・畳む）は群の ⋯ の1つ。畳むかは帯が名乗る（`data-op-fold-on`・並びの保存が読む）。必須の数は頭の状態の札 | `test_mmboard.js`・`test_opui.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 記録した値の配置の保存は足元（離れる前・候補の設備を変える前に聞く）。候補を絞る設備は候補の頭（「対象」と言わない） | `test_reclayout.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 選択肢の値は行を押すと右の詳細（定義の`dock:true`・`editorDocks()`）。まとまりの頭の ⋯ と「使っている項目→まとまり→値」の流れの図 | `test_opchoice.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 汎用の欄の2〜4択は型`seg`（`.mm-seg`）。空欄もすべての設備の欄は定義の`blankAll`（「すべての設備｜設備で絞る」） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 選択肢の親子は親→矢印→子の木。親は頭の「＋ 親子をつくる ▾」で選び、新しい親の箱はまとまりを選んでいるときだけ | `test_choicelinkui.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 帳票レイアウトの紙は対象の札、塊は行を押して右の詳細（紙の上の並びの縮図＋欄＋足元の保存）。いまの値が選択肢に無ければ足す（`rlyChoices()`） | `test_rlmaster.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 設備停止の時間は1本の目盛り（点＝選べる時間・帯＝スライダーの範囲・消すのは字に乗せると出る ×） | `test_stopsubui.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
