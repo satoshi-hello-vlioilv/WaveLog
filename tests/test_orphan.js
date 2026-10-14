@@ -116,22 +116,30 @@ run('test_orphan: 孤児になった記録の始末',async({page,rec,W,idle,pain
   if(t)t.click();
  });
  await idle(400,15000);
+ /* §9.601: 表は札で絞る（「この端末に無い」は橙の数）・食い違いの説明は札の行の右の一言・消すは頭の ⋯ の先（行ごと・取り込むの隣に置かない）。 */
+ await page.waitForSelector('#mmImpList .mm-row.mm-imp-row',{timeout:15000});
  const view=await page.evaluate(()=>({
-  orphanRows:document.querySelectorAll('#masterMaintList .mm-row.is-orphan').length,
-  badge:document.querySelectorAll('#masterMaintList .mm-imp-badge.orphan').length,
-  selBtn:!!document.querySelector('#mmImpSelectOrphan'),
-  delBtn:!!document.querySelector('#mmImpDelete'),
-  warn:!!document.querySelector('.mm-import-warning.is-orphan'),
+  orphanRows:document.querySelectorAll('#mmImpList .mm-row.is-orphan').length,
+  missTab:(document.querySelector('#mmImpList [data-set-ltab="miss"] .mm-ltab-b.is-warn')||{}).textContent||'',
+  note:(document.querySelector('#mmImpList .mm-lbar-note')||{}).textContent||'',
+  delInRow:document.querySelectorAll('#mmImpList .mm-row button').length,
  }));
- rec('端末内に無いバックアップを一覧で色分けして示す',view.orphanRows>0&&view.badge>0,JSON.stringify(view));
- rec('まとめて選ぶボタンと削除ボタンがある',view.selBtn&&view.delBtn,JSON.stringify(view));
- rec('食い違いの説明を画面に出す',view.warn);
-
- // 選んで削除できる
- await page.evaluate(()=>{
-  document.querySelector('#masterMaintList [data-imp-id="orphan-view"]').checked=true;
- });
- await page.click('#mmImpDelete');
+ rec('端末内に無いバックアップを一覧で色分けし、札が橙の数で言う',view.orphanRows>0&&/^[1-9]/.test(view.missTab),JSON.stringify(view));
+ rec('食い違いの説明を画面に出す（予定にだけ作業中が出る元）',/作業中/.test(view.note),view.note);
+ rec('行ごとに消すボタンを置かない',view.delInRow===0,JSON.stringify(view));
+ // 札で絞って、見えている行をまとめて選べる
+ await page.click('#mmImpList [data-set-ltab="miss"]');
+ await W.until(page,()=>!!document.querySelector('#mmImpList [data-set-ltab="miss"].is-on'),null,{ms:5000,what:'札「この端末に無い」'});
+ const missOnly=await page.evaluate(()=>[...document.querySelectorAll('#mmImpList .mm-row.mm-imp-row')].every(r=>r.classList.contains('is-orphan')));
+ rec('札「この端末に無い」で端末に無い行だけに絞れる',missOnly);
+ // 選んで、頭の ⋯ から消せる
+ await page.click('#mmImpList [data-imp-id="orphan-view"]');
+ await W.until(page,()=>/1件を選択中/.test((document.querySelector('#mmImpPreview')||{}).textContent||''),null,{ms:5000,what:'選んだ件数'});
+ await page.click('#masterMaintMore');
+ await page.waitForSelector('#mmActMenu [data-imp-act="delete"]',{state:'visible',timeout:5000});
+ const isDanger=await page.evaluate(()=>document.querySelector('#mmActMenu [data-imp-act="delete"]').classList.contains('is-danger'));
+ rec('消すは ⋯ の中の危ない操作の形',isDanger);
+ await page.click('#mmActMenu [data-imp-act="delete"]');
  // 削除はアプリ内の確認モーダル(confirmModal)を通る。OKを押す。
  await page.waitForSelector('#appConfirmOk',{state:'visible',timeout:5000});
  await page.click('#appConfirmOk');

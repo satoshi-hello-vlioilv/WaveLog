@@ -74,17 +74,17 @@ run('test_dsrestart: 名称の変更が再起動待ちであることを画面�
   await page.click('#navRestartPending');
   /* **押した結果そのもの**（データ接続の行）を待つ（§9.522）。器（#masterMaintList）は押す前の描画で
      もう在り、一覧の取得が遅い回だけ行が0のまま読んで落ちていた（2026-10-13 に通しで1回・単独では緑）。 */
-  await page.waitForSelector('.ds-row:not(.ds-row-head)',{timeout:15000});
+  await page.waitForSelector('#dsList .mm-row.ds-item',{timeout:15000});
   const opened=await page.evaluate(()=>{
    const on=document.querySelector('#masterMaintNav .is-active,#masterMaintNav [aria-current="true"]');
    return {mode:document.body.classList.contains('mm-mode'),
            tab:on?on.textContent.trim():'',
-           // データ接続の一覧は**行**で組む(§9.193)。カード形式ではない。
-           cards:document.querySelectorAll('.ds-row:not(.ds-row-head)').length};
+           // データ接続の一覧は**行**で組む(§9.193)。§9.601 からステップ2の表の型（`#dsList`）。
+           cards:document.querySelectorAll('#dsList .mm-row.ds-item').length};
   });
   rec('押すとデータ接続の設定が開く',opened.mode&&opened.cards>0,JSON.stringify(opened));
   const card=await page.evaluate(()=>{
-   const c=[...document.querySelectorAll('.ds-row:not(.ds-row-head)')].find(x=>x.classList.contains('is-pending'));
+   const c=[...document.querySelectorAll('#dsList .mm-row.ds-item')].find(x=>x.classList.contains('is-pending'));
    return c?c.innerText.replace(/\s+/g,' '):'';
   });
   rec('行にも「再起動待ち」と、何が待ちなのかが出る',

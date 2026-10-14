@@ -70,6 +70,11 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
   route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fake)});
  });
 
+ /* 接続の履歴は左の段の2枚目（§9.601）。段を開いてから「最新でない版だけ」などを押す。 */
+ const openHist=async()=>{
+  await page.click('#masterMaintForm .mm-tab[data-tab-key="hist"]');
+  await page.waitForSelector('#pzOnlyOld',{state:'visible',timeout:5000});
+ };
  const openPresence=async()=>{
   await page.evaluate(()=>{const t=[...document.querySelectorAll('#masterMaintNav [data-master]')]
     .find(x=>x.textContent.includes('接続状況'));if(t)t.click()});
@@ -87,7 +92,8 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  await openPresence();
  const realRows=await page.evaluate(()=>document.querySelectorAll('#pzList .pz-row:not(.pz-headrow)').length);
  rec('本物の答えでも一覧が組み上がる（自分の端末が出る）',realRows>=1,String(realRows));
- const meText=await page.evaluate(()=>document.querySelector('.pz-me')?.textContent||'');
+ /* §9.601: 区分・できること・見ている置き場は帯の右の ⓘ（共有の置き場のとき。共有でなければ字で出す＝下の節）。 */
+ const meText=await page.evaluate(()=>document.querySelector('.pz-me-tip [data-tip]')?.dataset.tip||'');
  rec('⑤ いまの自分の区分を文字で出す',/一般ユーザー|メンテナンス者|開発者/.test(meText),meText.slice(0,50));
  rec('⑤ できることも文字で出す',/切断/.test(meText),meText.slice(0,80));
 
@@ -97,16 +103,17 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  let v=await page.evaluate(()=>{
   const rows=[...document.querySelectorAll('#pzList .pz-row:not(.pz-headrow)')];
   return {n:rows.length,
-   btns:document.querySelectorAll('#pzList [data-pz-cut]').length,
-   whys:document.querySelectorAll('#pzList .pz-why').length,
-   whyText:[...document.querySelectorAll('#pzList .pz-why')].map(x=>x.textContent.trim()),
+   /* §9.601: 切断は行を押した先のメニュー。押せる行だけが`data-set-row`を名乗り、押せない行は理由を`title`で言う。 */
+   btns:document.querySelectorAll('#pzList [data-set-row]').length,
+   whys:rows.filter(r=>!r.dataset.setRow&&r.title).length,
+   whyText:rows.filter(r=>!r.dataset.setRow).map(r=>r.title),
    cells:rows.map(r=>[...r.querySelectorAll('span')].map(s=>s.textContent.trim()))};
  });
  rec('② 端末が行として並ぶ',v.n===4,String(v.n));
  rec('② ログインID・PC名・画面が出る',
    v.cells.some(c=>c.includes('u1')&&c.includes('PC-A')&&c.includes('作業スケジュール')),
    JSON.stringify(v.cells[1]||[]));
- rec('③ 切断できないときはボタンを出さない',v.btns===0,String(v.btns));
+ rec('③ 切断できないときは行を押す形にしない',v.btns===0,String(v.btns));
  rec('④ 押せない行には理由が文字で出る',v.whys>=3&&v.whyText.some(t=>/権限/.test(t)),
    JSON.stringify(v.whyText).slice(0,110));
 
@@ -114,21 +121,32 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  fake=FAKE('メンテナンス者',true);
  await openPresence();await idle();
  v=await page.evaluate(()=>({
-  cut:[...document.querySelectorAll('#pzList [data-pz-cut]')].map(x=>x.dataset.pzCut),
-  allow:[...document.querySelectorAll('#pzList [data-pz-allow]')].map(x=>x.dataset.pzAllow),
+  cut:[...document.querySelectorAll('#pzList [data-set-row]')].filter(r=>!r.querySelector('.pz-badge.is-cut')).map(r=>r.dataset.setRow),
+  allow:[...document.querySelectorAll('#pzList [data-set-row]')].filter(r=>r.querySelector('.pz-badge.is-cut')).map(r=>r.dataset.setRow),
   cutBadge:!!document.querySelector('#pzList .pz-badge.is-cut'),
   devWhy:[...document.querySelectorAll('#pzList .pz-row')]
-    .find(r=>r.textContent.includes('PC-B'))?.querySelector('.pz-why')?.textContent||'',
+    .find(r=>r.textContent.includes('PC-B'))?.title||'',
  }));
  /* **サーバーの答えだけで決まること。** 画面が区分を見て決めていたら、
     開発者(PC-B)にもボタンが出るか、一般(PC-A)に出ないかのどちらかになる。 */
- rec('③ 切断できる行にだけボタンが出る',v.cut.length===1&&v.cut[0]==='PC-A@u1',
+ rec('③ 切断できる行だけが押せる',v.cut.length===1&&v.cut[0]==='PC-A@u1',
    JSON.stringify(v.cut));
- rec('③ 開発者の行にはボタンを出さない',!v.cut.includes('PC-B@u2'),JSON.stringify(v.cut));
- rec('④ 出さない理由をその場に書く',/切断できません/.test(v.devWhy),v.devWhy.slice(0,50));
+ rec('③ 開発者の行は押せない',!v.cut.includes('PC-B@u2'),JSON.stringify(v.cut));
+ rec('④ 押せない理由を行が言う',/切断できません/.test(v.devWhy),v.devWhy.slice(0,50));
  rec('⑥ 切断中の端末は「切断中」と出る',v.cutBadge);
- rec('⑥ 取り消しが同じ場所にある',v.allow.length===1&&v.allow[0]==='PC-C@u3',
+ rec('⑥ 取り消しも同じ行から（押すと取り消しのメニュー）',v.allow.length===1&&v.allow[0]==='PC-C@u3',
    JSON.stringify(v.allow));
+ /* 押した先のメニュー: 切断は危ない操作の形・取り消しはふつうの形。 */
+ const menuOf=async key=>{
+  await page.click(`#pzList [data-set-row="${key}"]`);
+  await page.waitForSelector('#mmActMenu:not([hidden]) [data-pz-act]',{timeout:5000});
+  const m=await page.evaluate(()=>[...document.querySelectorAll('#mmActMenu [data-pz-act]')].map(b=>({act:b.dataset.pzAct,danger:b.classList.contains('is-danger')})));
+  await page.keyboard.press('Escape');
+  return m;
+ };
+ const mCut=await menuOf('PC-A@u1'),mAllow=await menuOf('PC-C@u3');
+ rec('③ 行を押すと「切断する…」（危ない操作の形）',mCut.length===1&&mCut[0].act==='cut'&&mCut[0].danger,JSON.stringify(mCut));
+ rec('⑥ 切断中の行を押すと「切断を取り消す」',mAllow.length===1&&mAllow[0].act==='allow'&&!mAllow[0].danger,JSON.stringify(mAllow));
 
  // ---- ⑥ 自分が切断されているときは帯を出す -----------------------------
  fake=Object.assign(FAKE('一般ユーザー',false),
@@ -147,7 +165,8 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  // ---- 共有でないときは「この端末しか出ません」と書く --------------------
  fake=Object.assign(FAKE('開発者',true),{shared:false,source:'local'});
  await openPresence();await idle();
- const scope=await page.evaluate(()=>document.querySelector('.pz-me')?.textContent||'');
+ /* 共有でないことは ⓘ に畳まず、帯の下に字で出す（見えていないことは状態として言う・§9.601）。 */
+ const scope=await page.evaluate(()=>{const e=document.querySelector('.pz-me');return e&&e.getBoundingClientRect().height>0?e.textContent:''});
  rec('共有でなければ、そう書く（1件を「他に誰も居ない」と読ませない）',
    /この端末しか出ません/.test(scope),scope.slice(0,60));
 
@@ -159,12 +178,13 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
   const cell=c=>(me&&me.querySelector(c)||{}).textContent||'';
   return {latest:document.getElementById('pzLatest')?.textContent||'',
    old:document.getElementById('pzOldCount')?.textContent||'',
-   oldCell:document.querySelector('.pz-sum-cell.is-old')?.textContent.replace(/\s+/g,' ')||'',
+   oldCell:document.getElementById('pzOldCount')?.textContent.replace(/\s+/g,' ')||'',
    ver:cell('.pz-c-ver'),since:cell('.pz-c-since'),dur:cell('.pz-c-dur'),
    aVer:([...document.querySelectorAll('#pzList .pz-row')].find(r=>r.textContent.includes('PC-A'))?.querySelector('.pz-c-ver')||{}).textContent||'',
-   head:[...document.querySelectorAll('#pzTerms th')].map(x=>x.textContent),
-   rows:[...document.querySelectorAll('#pzTerms tbody tr')].map(r=>r.textContent.replace(/\s+/g,' ')),
-   forget:[...document.querySelectorAll('[data-pz-forget]')].map(b=>b.dataset.pzForget),
+   head:[...document.querySelectorAll('#pzTerms .mm-row.head .mm-th')].map(x=>x.textContent),
+   rows:[...document.querySelectorAll('#pzTerms .mm-row:not(.head)')].map(r=>r.textContent.replace(/\s+/g,' ')),
+   /* 記録を消すは行を押した先（§9.601）。押せる行＝消せる行。 */
+   forget:[...document.querySelectorAll('#pzTerms [data-set-row]')].map(b=>b.dataset.setRow),
    /* 時間の書き方は端末の「表示」に従う（§9.341）ので、期待も同じ口から作る */
    want62:WL.duration.text(62),want90:WL.duration.text(90)};
  });
@@ -181,25 +201,28 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
    &&fl.rows.some(r=>/4回/.test(r)&&r.includes(fl.want90)),JSON.stringify(fl.rows).slice(0,140));
  rec('⑦ 記録を消せるのは接続していない端末だけ（権限のある人に）',
    JSON.stringify(fl.forget)==='["PC-OLD@u1"]',JSON.stringify(fl.forget));
+ await openHist();
  await page.click('#pzOnlyOld');
- const onlyOld=await page.evaluate(()=>document.querySelectorAll('#pzTerms tbody tr').length);
+ const onlyOld=await page.evaluate(()=>document.querySelectorAll('#pzTerms .mm-row:not(.head)').length);
  rec('⑦ 「最新でない版だけ」で絞れる',onlyOld===2,String(onlyOld));
- await page.click('[data-pz-by="users"]');
- const users=await page.evaluate(()=>({head:[...document.querySelectorAll('#pzTerms th')].map(x=>x.textContent),
-   rows:[...document.querySelectorAll('#pzTerms tbody tr')].map(r=>r.textContent.replace(/\s+/g,' '))}));
+ await page.click('#pzTerms [data-set-ltab="users"]');
+ const users=await page.evaluate(()=>({head:[...document.querySelectorAll('#pzTerms .mm-row.head .mm-th')].map(x=>x.textContent),
+   rows:[...document.querySelectorAll('#pzTerms .mm-row:not(.head)')].map(r=>r.textContent.replace(/\s+/g,' '))}));
  rec('⑦ 利用者ごとの合計に切り替えられる（使った端末・累計接続回数）',
    users.head.includes('使った端末')&&users.rows.length===1&&/u1/.test(users.rows[0])&&/2台/.test(users.rows[0]),
    JSON.stringify(users.rows));
  const copied=await page.evaluate(async()=>{
   const box={got:''};
   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:t=>{box.got=t;return Promise.resolve()}}});
-  document.getElementById('pzCopy').click();
+  /* 写すのは頭の ⋯（§9.601）。 */
+  document.getElementById('masterMaintMore').click();
+  document.querySelector('#mmActMenu [data-pz-act="copy"]').click();
   for(let i=0;i<20&&!box.got;i++)await new Promise(r=>setTimeout(r,50));
   return box.got;
  });
  rec('⑦ 表をコピーすると、見えている表のまま（見出し＋絞った行・タブ区切り）',
    copied.split('\n').length===2&&/^版の状態\tログインID\t使った端末/.test(copied),copied.slice(0,80));
- await page.click('[data-pz-by="terminals"]');
+ await page.click('#pzTerms [data-set-ltab="terminals"]');
  await page.click('#pzOnlyOld');
 
  // ---- ⑨ 最新版の判定から開発者を除く（§9.516） ---------------------------
@@ -214,7 +237,7 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  await openPresence();await idle();
  const dv=await page.evaluate(()=>{
   const row=[...document.querySelectorAll('#pzList .pz-row')].find(r=>r.textContent.includes('PC-DEV'));
-  const tr=[...document.querySelectorAll('#pzTerms tbody tr')].find(r=>r.textContent.includes('PC-DEV'));
+  const tr=[...document.querySelectorAll('#pzTerms .mm-row:not(.head)')].find(r=>r.textContent.includes('PC-DEV'));
   const st=tr&&tr.querySelector('.pz-vst');
   return {note:document.getElementById('pzLatestNote')?.textContent||'',
    rowVer:(row&&row.querySelector('.pz-c-ver')||{}).textContent||'',
@@ -224,15 +247,16 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  rec('⑨ 開発者の端末は「要更新」でも「最新」でもなく「対象外」と言う（接続中の表も記録の表も）',
    /対象外/.test(dv.rowVer)&&!/要更新|最新/.test(dv.rowVer)&&dv.trState==='対象外'&&!dv.trOld,JSON.stringify(dv));
  rec('⑨ なぜ対象外かは title が言う',/開発者/.test(dv.trWhy)&&/数えません/.test(dv.trWhy),dv.trWhy);
+ await openHist();
  await page.click('#pzOnlyOld');
- const devInOld=await page.evaluate(()=>[...document.querySelectorAll('#pzTerms tbody tr')].some(r=>r.textContent.includes('PC-DEV')));
+ const devInOld=await page.evaluate(()=>[...document.querySelectorAll('#pzTerms .mm-row:not(.head)')].some(r=>r.textContent.includes('PC-DEV')));
  rec('⑨ 「最新でない版だけ」に開発者の端末は入らない（配る相手ではない）',!devInOld);
  await page.click('#pzOnlyOld');
  fake.fleet.latestVersion='';
  await openPresence();await idle();
  const emptyNote=await page.evaluate(()=>document.getElementById('pzLatestNote')?.textContent||'');
  rec('⑨ 開発者を除くと数える端末が無いときは、そう言う（「—」だけにしない）',
-   /開発者の端末を除くと、まだ接続の記録がありません/.test(emptyNote),emptyNote);
+   /開発者の端末を除くと記録なし/.test(emptyNote),emptyNote);
 
  // ---- ⑧ 古い版の端末への知らせ（§9.515） ------------------------------
  // 本物の応答: ハートビートに版の知らせが載る（区分を問わない道）

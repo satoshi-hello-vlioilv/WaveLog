@@ -561,10 +561,15 @@
    form.hidden=!open;
    $('#masterMaintTools').onclick=ev=>{const on=form.hidden;form.hidden=!on;toolsOpenKey=on?key:'';ev.currentTarget.setAttribute('aria-expanded',String(on))};
   }
+  /* `more`＝副の操作のメニュー（専用の画面・§9.601）。読み直す・写す・消す…を頭の ⋯ の1つに畳む（危ない操作も ⋯ の先）。 */
+  if(Array.isArray(o.more)&&o.more.length){
+   box.insertAdjacentHTML('beforeend',`<button type="button" class="mm-btn-ghost mm-hd-more" id="masterMaintMore" aria-haspopup="menu" aria-expanded="false" aria-label="ほかの操作" title="${esc(o.more.map(x=>x.label).join('・'))}"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`);
+   $('#masterMaintMore').onclick=ev=>openActMenu(ev.currentTarget,o.more,'ほかの操作');
+  }
   if(o.primary){
    const p=o.primary,menu=Array.isArray(p.menu)&&p.menu.length;
    box.insertAdjacentHTML('beforeend',`<button type="button" id="${esc(p.id)}" class="mm-btn-primary mm-hd-primary${o.quiet?' is-quiet':''}"`
-    +`${menu?' aria-haspopup="menu" aria-expanded="false"':''}${p.title?` title="${esc(p.title)}"`:''}>＋ ${esc(p.label)}${menu?'<i class="mm-hd-caret" aria-hidden="true">▾</i>':''}</button>`);
+    +`${menu?' aria-haspopup="menu" aria-expanded="false"':''}${p.title?` title="${esc(p.title)}"`:''}>${p.plus===false?'':'＋ '}${esc(p.label)}${menu?'<i class="mm-hd-caret" aria-hidden="true">▾</i>':''}</button>`);
    const b=$('#'+p.id);
    /* ▾ を持つ主の操作は押すと「どう作るか」を選ぶ（空から・テンプレートから）。選ぶまで何も作らない。 */
    b.onclick=menu?()=>openActMenu(b,p.menu,p.label):p.onClick;
@@ -1881,7 +1886,8 @@
   $('#maintEditorClose').onclick=()=>afterLeave(closeMaintEditor);
   $('#maintEditorCancel').onclick=()=>{if(paneDocked())revertPane();else closeMaintEditor()};
   $('#maintEditorSave').onclick=()=>submitMaint('#maintEditorForm');
-  $('#maintEditorMore').onclick=ev=>openRowMenu(ev.currentTarget,maintState.editing);
+  /* ⋯ の中身: 専用の画面の窓は自分で名乗る（`editorMore()`・§9.601）、汎用の表は行の操作。 */
+  $('#maintEditorMore').onclick=ev=>{const m=modal.__moreItems;if(m)openActMenu(ev.currentTarget,m,'この行の操作');else openRowMenu(ev.currentTarget,maintState.editing)};
   const ef=$('#maintEditorForm');
   ef.addEventListener('input',paintPaneFoot);ef.addEventListener('change',paintPaneFoot);
   ef.addEventListener('focusin',ev=>paneHotKey(paneFieldKey(ev.target)));
@@ -1896,6 +1902,8 @@
    /* 右の詳細は**Esc では閉じない**（閉じるのは頭の×だけ・§9.598 AA）。覆わない器なので、詳細の中の ⋯ のメニュー・
       候補の一覧・確かめる窓の Esc はそれぞれの面が受け持つ（ここで先に取ると、メニューを閉じたつもりが詳細ごと閉じる）。 */
    if(paneDocked())return;
+   /* 窓の中の ⋯ のメニュー（§9.601）が開いているあいだの Esc はメニューの分（1回の Esc で閉じるのは1枚・§9.471）。 */
+   if(WL.popMenu&&WL.popMenu.isOpen())return;
    e.stopPropagation();closeMaintEditor();
   },true);
   return modal;
@@ -1921,11 +1929,20 @@
   if(main)main.classList.remove('has-pane');
   ['#maintEditorCancel','#maintEditorSave'].forEach(s=>{const b=$(s);if(b){b.disabled=false;b.title=''}});
   const more=$('#maintEditorMore');if(more)more.hidden=true;
+  modal.__moreItems=null;
+ }
+ /* 専用の画面の窓が ⋯ の中身を名乗る（データ接続の「無効にする」・クエリ結合の「削除」など・§9.601）。空なら伏せる。
+    窓を開くたびに呼ぶ（前の窓の中身を引き継がない）。 */
+ function editorMore(items){
+  const modal=ensureMaintEditor(),more=$('#maintEditorMore');
+  modal.__moreItems=items&&items.length?items:null;
+  if(more)more.hidden=!modal.__moreItems;
  }
  /* 閉じる（右の詳細なら器を窓の置き場へ戻し、頭の「追加」を塗りへ戻す）。消す・保存・移るの全部がここを通る。 */
  function hideMaintEditor(){
   const modal=$('#maintEditorModal');if(!modal)return;
   modal.hidden=true;paneSnap=null;
+  editorMore(null);   // 専用の画面が名乗った ⋯ の中身を次の窓へ持ち越さない（§9.601）
   if(modal.classList.contains('is-docked')){dockEditor(modal,false);quietHeadAct(false);markEditingRow(null)}
  }
  function markEditingRow(id){
@@ -2054,6 +2071,7 @@
   const modal=ensureMaintEditor();
   const docked=editorDocks(def);
   dockEditor(modal,docked);
+  modal.__moreItems=null;   // ⋯ は汎用の行の操作（専用の画面が名乗った中身を引き継がない）
   /* 組み立ての盤を持つ窓は広く取る（§9.226 ④）。**印を付け外しすること**
      ——付けっぱなしにすると、次に開いた別のマスタの窓まで広いまま
      （`mm-form-page`と同じ作法・§9.222 ⑤）。 */
@@ -3394,6 +3412,8 @@
      帯は ⓘ へ畳んだ）。この端末の権限で読むだけのときの札とは字で言い分ける。 */
   chip.classList.toggle('is-ro',!!(def.readOnly&&!def.readOnlyByLevel));
   if(writable&&def.readOnly&&!def.readOnlyByLevel){chip.hidden=false;chip.textContent='読むだけ';chip.title=def.readOnlyWhy||'この画面は表を読むだけです（書き換えません）';return}
+  /* 範囲の札（§9.601）: この画面の値がどこまで効くか（この端末だけ等）。読むだけの札と同じ灰の札・字で言う。 */
+  if(writable&&def.scope){chip.hidden=false;chip.classList.add('is-ro');chip.textContent=def.scope.word;chip.title=def.scope.why||'';return}
   if(writable){chip.hidden=true;return}
   const lv=masterEditLevel();
   const admin=Array.isArray(a.adminMasters)&&a.adminMasters.indexOf(def.key)>=0;
@@ -3411,7 +3431,7 @@
   const f=$('#masterMaintForm');
   /* 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。タブを移ったら必ず外す
      (付いたままだと他のマスタで上部フォームが伸び縮みして一覧の高さが安定しない)。 */
-  if(f){f.hidden=false;f.classList.remove('mm-form-page')}
+  if(f){f.hidden=false;f.classList.remove('mm-form-page','mm-set');delete f.dataset.setKey;delete f.dataset.setTab}   // 別の画面へ移ったら設定型の段は最初から（§9.601）
   /* **器の高さを渡す印も必ず外す**（§9.222 ⑤。`mm-form-page`と同じ作法）。
      外し忘れると、他のマスタの一覧がスクロールしない枠になって行が切れる。 */
   const mList=$('#masterMaintList');
@@ -3536,6 +3556,6 @@
     こちらが黙って閉じていた）。 */
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{listBar,barKept,markHits:mmMarkHits,cellText,cellHtml,setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{listBar,barKept,editorMore,markHits:mmMarkHits,cellText,cellHtml,setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();
