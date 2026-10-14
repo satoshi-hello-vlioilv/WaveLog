@@ -1,4 +1,4 @@
-# 作業スケジュール（115件）
+# 作業スケジュール（117件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ロットが完了したら上の設備停止へ時刻（`_settle_stop_times()`・開始と同じ分け方・出どころ「完了で自動」）。前のロットの終わりが分かるまで入れない | `test_donestops.py` | [§9.605](../../docs/decisions/9.605.md) |
+| 自動で入れる時刻は`plan_set_manual_times(keep=True)`（時刻のある行・取消は書かない）。書くのは`actual_keep.persist()` | `test_donestops.py` | [§9.605](../../docs/decisions/9.605.md) |
 | いまの予定で試すのは`actual_match.trial()`の1箇所（内訳は`TRIAL_KINDS`）。「2件以上は空にする」の定義は完了にしない | `test_boxactual.py` | [§9.596](../../docs/decisions/9.596.md) |
 | 「実績に当たったら」は仕掛に残っても完了。探すのは同じ設備のファイルだけ・明細に無い鍵は仕掛の行（1行のとき）から | `test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
 | 完了の道は`_done_by_join()`の1本。開始・終了が読めて逆転していなければ作業時間（`join_times()`・手入力と同じ形・人が入れた時刻が先） | `test_boxactual.py`・`test_actualmatch.py` | [§9.595](../../docs/decisions/9.595.md) |

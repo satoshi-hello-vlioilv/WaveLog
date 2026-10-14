@@ -584,6 +584,8 @@ MANUAL_END_FROM_INPUT='手入力'
 MANUAL_END_FROM_ESTIMATE='見積'
 # 厳密モードの開始で入れた時刻（§9.588）。`[手入力実績JSON]`の`source`——人が入れた時刻と見分ける。
 MANUAL_SOURCE_START='開始で自動'
+# ロットが完了へ移ったときに上の設備停止へ入れた時刻（§9.605）。人が入れた時刻・開始で入れた時刻と見分ける。
+MANUAL_SOURCE_DONE='完了で自動'
 MANUAL_FROM_PREV_END='前のロットの終わり〜開始'
 
 def manual_times(raw):
@@ -647,6 +649,33 @@ def _settle_passed_stops(entries,now,minutes_of):
     e['state']='完了';e['autoDone']=True
     e['doneReason']=f'固定した開始（{fixed:%m-%d %H:%M}）から見積{round(mins)}分が過ぎています。'
 
+def _settle_stop_times(entries,minutes_of):
+ """完了したロットより上の設備停止へ、**前のロットの終わり〜このロットの開始**を実際の時刻として入れる（§9.605）。
+
+ 利用者の指示「作業スケジュールのロットを完了へ移行…その時にそのスケジュールより以前にあった設備停止項目もその
+ スケジューリングされた時間(前後のロットに挟まれた時刻の範囲)に設備停止として自動登録」「ロットの実績が入って完了に
+ 移行したときにそのロットの開始時間がその前にある設備停止の終了時間」。分け方は厳密モードの開始（§9.588）と同じ1本
+ （`_strict_between`／`_strict_allocate`・見積の比・最後はちょうど開始で終わる）。
+
+ ・入れるのは**時刻の無い**設備停止だけ（人・開始で入れた時刻は動かさない）
+ ・**前のロットがまだ終わっていない・終わりの時刻が分からない**なら入れない（分かったときに入れる。推測で埋めない）
+ ・前の終わりがこのロットの開始より後（食い違い）も入れない。前にロットが無いときだけ開始から見積ぶん遡る
+ 入れた行は完了にし、保存する形を`stopTimesToSave`に控える（書くのは書込役の`actual_keep.persist()`）。"""
+ planned=[e for e in entries if not e.get('unplanned') and e.get('parentId') is None]
+ for e in planned:
+  if not _strict_work(e) or e['state']!='完了':continue
+  start=entry_start_at(e)
+  if start is None:continue
+  prev,stops,prev_end=_strict_between(planned,e)
+  if not stops:continue
+  if prev is not None and (prev['state']!='完了' or prev_end is None or prev_end>start):continue
+  out,_from=_strict_allocate(stops,prev_end,start,minutes_of)
+  for st,t in zip(stops,out):
+   pay=dict(strict_stop_payload(t,'auto:完了で自動'),source=MANUAL_SOURCE_DONE)
+   st['manual']=pay;st['state']='完了';st['autoDone']=True
+   st['doneReason']=f'後ろのロット {e.get("lotNo") or ""} が完了したので、あいだの時刻を入れました。'
+   st['stopTimesToSave']=pay
+
 def _times_prompts(entries,minutes_of):
  """時刻の登録を促す行と、入力の手がかり（§9.514）。**手がかりの答えはここ1箇所**。
 
@@ -675,6 +704,16 @@ def _times_prompts(entries,minutes_of):
    e['timesHint']=hint
   dt=entry_end_at(e)
   if dt is not None:prev_end=dt
+
+def entry_start_at(e):
+ """始まった行の始まりの時刻（測定の実績 → 手で入れた時刻・完了突合の作業時間）。無ければNone。"""
+ a=e.get('actual') or {}
+ m=e.get('manual') or {}
+ st=a.get('startAt') or m.get('startAt')
+ if not st:return None
+ try:return _parse_dt(st)
+ except Exception as _e:
+  quiet('始まりの時刻を読めない（分からないとして扱う）',_e);return None
 
 def entry_end_at(e):
  """終わった行の終わりの時刻（測定の実績 → 手で入れた時刻 → 完了突合の完了日時）。無ければNone。
@@ -935,6 +974,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
  # 時間的に終わった設備停止（§9.514）と、時刻の登録を促す行。**並びの順で見る**ので
  # 計画外の実績を混ぜる前に済ませる。
  _settle_passed_stops(entries,now,minutes_of)
+ _settle_stop_times(entries,minutes_of)
  _times_prompts(entries,minutes_of)
 
  # 計画外実績(§9.33)を合成する。実施中の分は先頭へ入れて、この直後の
@@ -1548,6 +1588,8 @@ def _actual_view(e,actual,now):
    return {'startAt':m['startAt'],'endAt':m['endAt'],'minutes':mins,
            'varianceMinutes':(round(mins-est,1) if est is not None else None),
            'source':m.get('source') or MANUAL_END_FROM_INPUT,'endFrom':m.get('endFrom') or MANUAL_END_FROM_INPUT,
+           # `[手入力実績JSON]`の時刻（人・開始で自動・完了で自動・§9.605）。画面は「実際の時刻を直す」で直せる。
+           'manual':m.get('endFrom')!=JOIN_TIMES_FROM,
            'by':m.get('by') or ''}
   except Exception as _e:
    quiet('手で入れた時刻を読めない（未登録として出す）',_e)

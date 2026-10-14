@@ -1,4 +1,4 @@
-# 一覧と列（166件）
+# 一覧と列（169件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 完了突合が予定へ残す値は`take_of()`の1箇所（時刻だけ／選んだ列も／すべて）。作業時間の列は外せない（`take_columns()`がいつも足す） | `test_boxactual.py`・`test_qjoinui.js` | [§9.605](../../docs/decisions/9.605.md) |
+| 相手が設備ごとのファイルの「一覧に足す」行は`definition_issue()`が名指し、仕掛一覧は当てない（毎回のエラーにしない） | `test_boxactual.py` | [§9.605](../../docs/decisions/9.605.md) |
+| 完了突合の窓の右は流れの図（作業スケジュールの予定→探す→完了→作業時間→残す）。欄に入ると同じ節が光る（`data-qj-jump-to`＝`data-qj-node`） | `test_qjoinui.js` | [§9.605](../../docs/decisions/9.605.md) |
 | 完了突合の窓は決める順の4節＋右に「いまの設定」の文（札で欄へ）と「いまの予定で試す」。用途で変わる字は`QJ_WORDS`の1箇所 | `test_qjoinui.js` | [§9.596](../../docs/decisions/9.596.md) |
 | 完了突合の②は（§9.596で③から）「いつ完了にするか」の札＋開始→終了の列＋見本の箱。数えるのは`probe_finish`（重なりはファイルごと） | `test_qjoinui.js`・`test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
 | 自動の幅の見積りは描かずに数える。半角は書体で測った表（`calibrateCharEm()`）、余白は計算済みのpx（`gridMetrics()`） | `test_listperf.js` | [§9.594](../../docs/decisions/9.594.md) |

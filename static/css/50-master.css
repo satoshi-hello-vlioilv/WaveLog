@@ -875,7 +875,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .qj-whens{margin-bottom:var(--gap-tight)}
 .qj-span-row{display:flex;align-items:flex-end;gap:var(--space-2);flex-wrap:wrap}
 .qj-span-row label{display:grid;gap:var(--gap-hair);font-size:var(--fs-sm);color:var(--ink-2)}
-.qj-span-row select{max-width:var(--w-lg)}
+.qj-span-row select{max-width:var(--w-xl)}
 .qj-span-arrow{padding-bottom:var(--gap-tight);color:var(--muted)}
 .qj-span-box{margin-top:var(--gap-tight);padding:var(--gap-tight) var(--space-2);
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface);
@@ -887,7 +887,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .qj-fin{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:var(--space-4);align-items:start}
 .qj-fin-main{display:grid;gap:var(--space-3);min-width:0}
 .qj-fin-side{position:sticky;top:0;display:grid;gap:var(--gap-tight);min-width:0}
-.qj-fin-sent{margin:0;font-size:var(--fs-sm);color:var(--ink);line-height:2}
 .qj-fin-chip{display:inline;margin:0 var(--gap-hair);padding:0 var(--gap-tight);border:1px solid var(--teal);
   border-radius:var(--radius-sm);background:var(--pale);color:var(--teal-ink);font:inherit;cursor:pointer}
 .qj-fin-chip:hover{background:var(--surface)}
@@ -980,6 +979,37 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   border-radius:var(--radius-pill);background:var(--pale);color:var(--teal-dark);
   font-size:var(--fs-tiny);font-weight:var(--fw-ui)}
 .qj-pane-tag.is-right{background:var(--surface-3);color:var(--ink-2)}
+/* 完了突合の左は作業スケジュールの予定（§9.605）。仕掛のデータの札と見分けて、予定の面の色で言う。 */
+.qj-pane-tag.is-plan{background:var(--teal-tint);color:var(--teal-ink)}
+/* 予定へ残す値（§9.605）。札は3枚（①②と同じ顔）・作業時間の列は格子の先頭の鍵の札（外せない・押すと②へ）。
+   「時刻だけ」では「2件以上あったら」と見本を左右に並べる（`is-pair`）。 */
+.qj-takes{grid-template-columns:repeat(3,minmax(0,1fr))}
+.qj-sec-add .qj-cols{grid-template-columns:repeat(auto-fill,minmax(var(--w-lg),1fr))}
+.qj-add-opts.is-pair{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.qj-col-lock{display:flex;align-items:center;gap:var(--gap-inline);min-width:0;padding:0 var(--gap-tight);
+  border:0;border-radius:var(--radius-sm);background:var(--teal-tint);color:var(--teal-ink);font-size:var(--fs-sm);cursor:pointer;text-align:left}
+.qj-col-lock span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj-col-lock small{margin-left:auto;font-size:var(--fs-tiny)}
+.qj-add-preview .qj-ex th .qj-role{display:inline-block;margin-right:var(--gap-hair);padding:0 var(--gap-hair);border-radius:var(--radius-sm);
+  background:var(--teal-tint);color:var(--teal-ink);font-style:normal;font-weight:var(--fw-ui)}
+/* いまの設定の流れの図（§9.605）: 1つのまとまりの枠に入れ、節は左の縦の線1本と下向きの矢じりで結ぶ（節ごとの枠は持たない・
+   基準10）。ラベルは固定幅（値の左端をそろえる）。欄に入ると同じ節が光る（`is-lit`・地は線の右から）。 */
+.qj-fig{list-style:none;margin:0;padding:var(--gap-tight) var(--space-2);display:grid;
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface)}
+.qj-fig-node{position:relative;display:grid;grid-template-columns:7.5em 1fr;align-items:baseline;gap:var(--gap-inline);
+  padding:var(--gap-tight) var(--space-2) var(--gap-tight) calc(var(--space-3) + var(--space-2));font-size:var(--fs-sm)}
+.qj-fig-node::before{content:'';position:absolute;left:var(--space-2);top:0;bottom:0;border-left:2px solid var(--teal)}
+.qj-fig-node:first-child::before{top:50%}
+.qj-fig-node:last-child::before{bottom:50%}
+.qj-fig-node+.qj-fig-node::after{content:'';position:absolute;left:calc(var(--space-2) - 4px);top:calc(50% - 8px);
+  border:5px solid transparent;border-top:8px solid var(--teal);border-bottom:0}
+.qj-fig-node.is-plan{grid-template-columns:auto 1fr;
+  background:linear-gradient(to right,transparent calc(var(--space-2) + 6px),var(--teal-tint) calc(var(--space-2) + 6px))}
+.qj-fig-node.is-lit{background:linear-gradient(to right,transparent calc(var(--space-2) + 6px),var(--pale) calc(var(--space-2) + 6px))}
+.qj-fig-label{color:var(--ink-2);font-weight:var(--fw-ui)}
+.qj-fig-node.is-plan .qj-fig-label,.qj-fig-node.is-lit .qj-fig-label{color:var(--teal-ink)}
+.qj-fig-body{min-width:0;line-height:1.9}
+.qj-fig-off{color:var(--ink-2)}
 .qj-pane-head select{width:100%;min-width:0}
 .qj-pane-meta{font-size:var(--fs-tiny);color:var(--muted);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1078,6 +1108,10 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .qj-ex th,.qj-ex td{border:1px solid var(--line-soft);padding:var(--gap-hair) var(--gap-tight);
   text-align:left;max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qj-ex th{background:var(--surface-2);color:var(--muted);font-weight:var(--fw-strong)}
+/* 残す値の見本の頭は役割（開始・終了）まで読ませる（§9.605）。名前は折り返す。 */
+.qj-add-preview .qj-ex th{white-space:normal;max-width:var(--w-md)}
+.qj-add-preview .qj-ex th:has(.qj-role){white-space:nowrap;max-width:none}
+.qj-add-preview .qj-ex th small{display:block;font-weight:var(--fw-ui);color:var(--teal-ink)}
 .mm-field-hint.is-warn{color:var(--warn-fg)}
 .ds-now{margin:0;display:grid;gap:var(--gap-hair)}
 .ds-now>div{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:var(--space-2);align-items:baseline}
