@@ -1,4 +1,4 @@
-# マスタ管理の画面（58件）
+# マスタ管理の画面（65件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,13 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 汎用の表のマスタの一覧はどれも札の行（`listBar()`）: タブ「一覧 N件」（絞ったら「n / N件」）・右に探す欄（行のある一覧だけ）と群の開閉。題の横に件数を出さない | `test_mmlist.js`・`test_mmfold.js` | [§9.599](../../docs/decisions/9.599.md) |
+| 探すとその場で絞る（表に出している全部の列の字・`mmFold`）。当たった字に印、群の見出しの件数と要約も絞った行で数え直す | `test_mmlist.js` | [§9.599](../../docs/decisions/9.599.md) |
+| 列の幅は中身なり（見出し〜320px）。器に入るなら px で表の幅に止め（`is-fitw`）、入らないときだけ`optional`の列を畳んで「ほか N列」と書く | `test_mmlist.js`・`test_mmtable.js` | [§9.599](../../docs/decisions/9.599.md) |
+| 数の列は右寄せ・単位は見出しの名前の外（`.mm-th-unit`）。値の書式は`MM_VALUE_TEXT`／`MM_VALUE_HTML`の表（印はセルだけ） | `test_mmlist.js`・`test_roll.js` | [§9.599](../../docs/decisions/9.599.md) |
+| 全行で同じ列を「全行で同じ」の1行へ畳むのは`fold`を名乗る列だけ（5行以上・2列は残す）。既定は名前の札（`tag`）、全部が既定なら1行 | `test_mmlist.js`・`test_eqfeature.js` | [§9.599](../../docs/decisions/9.599.md) |
+| 群の見出しは中立（選択中と違う形・地と左の帯なし）。要約は登録表`WL.mm.registerGroupSum()`（定義が`groupSum`で名乗る） | `test_mmlist.js` | [§9.599](../../docs/decisions/9.599.md) |
+| テーブル生データも同じ型（表を選ぶ欄は頭の右・札の行「中身 N件」・日時は短く・有効は字・入らない列は「横にあと N列 →」） | `test_mmlist.js` | [§9.599](../../docs/decisions/9.599.md) |
 | 専用の画面の欄も打った値は足元の「保存」で書く（欄を離れて保存しない）。追加・既定・消すのボタンは1押し、その前に保存していない変更を聞く（`afterLeave()`） | `test_stopsubui.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 塗りの主ボタンはいつも1つ: 変更が無いあいだは頭の「＋ 〜を追加」、変更が出たら足元の「保存」（頭を縁取りにするのは`paintFootState()`の1箇所） | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |
 | 選ぶ札の印は2つの形（1つ選ぶ＝丸・`.mm-card-row.is-one`／いくつでも＝四角）。札の一言は選んでも薄い字 | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |

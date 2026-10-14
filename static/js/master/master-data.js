@@ -3845,9 +3845,20 @@
      利用者が決める鍵（`TEXT PRIMARY KEY`）は編集できる。 */
   const cols=(t.schema||[]).filter(c=>!(c.auto!==undefined?c.auto:(c.audit||c.pk)));
   const fields=cols.map(c=>mtFieldOf(c,longNames));
+  /* 列の見せ方はサーバーの語彙（§9.599・`COLUMN_VIEWS`）。区分で読む列が変わる2列は1列「いつ」にまとめ、値→字を当てる。
+     「有効」は -1/1/0 の内部の値でなく字で。編集の欄（`fields`）は列そのままで変えない。 */
+  const views=t.views||{},when=views.when||null,words=views.words||{};
+  const listCols=cols.filter(c=>!(when&&(c.name===when.week||c.name===when.date)));
+  const colOf=(c,i)=>{
+   const o={k:c.name,label:c.name,grow:i===0?2:1};
+   if(when&&c.name===when.kind)return Object.assign(o,{label:when.label,format:'weekWhen',when});
+   if(Object.hasOwn(words,c.name))return Object.assign(o,{format:'words',words:words[c.name]});
+   if(c.name==='有効')Object.assign(o,{format:'enabledFlag',fold:true});   // 全行が有効なら「全行で同じ」の1行へ
+   return o;
+  };
   /* 一覧の列は**先頭から6本まで**。全部並べると1列あたりが潰れて読めない
      （残りは編集モーダルで見る。§CLAUDE 11「入れ物は中身の長さから決める」）。 */
-  const shown=cols.slice(0,6);
+  const shown=listCols.slice(0,6);
   const retired=t.kind==='retired';
   const where=t.where?`ふだんは**${t.where}**から書き換えています。`:'';
   return {group:retired?'retired':'internal',key:'mt:'+t.table,
@@ -3860,8 +3871,10 @@
              有効フラグを持つマスタのためのもので、ここでは嘘になる。 */
           deleteWord:'削除',
           fields:retired?[]:fields,
-          cols:shown.length?shown.map((c,i)=>({k:c.name,label:c.name,grow:i===0?2:1}))
-                          :[{k:'id',label:'行'}],
+          cols:shown.length?shown.map(colOf):[{k:'id',label:'行'}],
+          /* 用途の1行（§9.599）: 何の表か＋ふだんどこで直すか。「行をそのまま直せます」はどの表にも言えて何も言っていなかった。 */
+          lead:retired?undefined:([t.note,t.where?`ふだんは${t.where}で直します`:''].filter(Boolean).join('。')||'アプリの内部の表を行のまま足す・直す・消す画面です')+'。',
+          usualWhere:!!t.where,
           /* **説明は`**強調**`で書く**（§9.222 ⑧）——`hintHtml()`は
              エスケープしてから印を`<b>`へ変えるので、生のHTMLを書くと
              タグがそのまま画面に出る。 */
@@ -3870,7 +3883,6 @@
               +'ここに残してあるのは、移行前の中身を見返せるようにするためです。'
               +'**書き換えても画面は変わりません**——だからこの表は読み取り専用にしてあります。'
             : (t.note?t.note+'。':'')+where
-              +'ここでは**行をそのまま**足す・直す・消せます。'
               +'列の意味はアプリの内部の決まりに沿っているので、'
               +'**値の形（書き方）を変えると、その設定は読めなくなることがあります**。'
               +'迷ったときは、ふだんの画面から設定し直してください。')};
@@ -4245,34 +4257,27 @@
   renderRawTableForm();
   await loadRawTableRows();
  }
+ /* §9.599: 表を選ぶ欄は**頭の右**（主の操作の場所）、「ふだんどこで直すか」は一覧の札の行の右。説明の帯（主役の前の3段の箱）は
+    ⓘ と用途の1行（定義の`hint`／`lead`）へ畳んだ。表は汎用の一覧と同じ型（`.mm-raw-table`の線と高さ・札の行・探す欄）。 */
  function renderRawTableForm(){
   const form=$('#masterMaintForm');if(!form)return;
-  if(!rawTableState.tables.length){form.innerHTML='<div class="mm-form-head"><span class="mm-mode-chip new">テーブルがありません</span></div>';return}
+  form.innerHTML='';form.hidden=true;
+  if(!rawTableState.tables.length){WL.mm.setHeadActs({links:'<span class="mm-mode-chip new">テーブルがありません</span>'});return}
   const opts=rawTableState.tables.map(t=>`<option value="${esc(t)}"${t===rawTableState.table?' selected':''}>${esc(t)}</option>`).join('');
-  /* **行き止まりにしない**（§9.249 ②）。ここは読むだけの画面なので、
-     **その表をどこから直すのか**を必ず出して連れて行く（§CLAUDE 4・6）。
-     判定はサーバーの答え（`/api/master-table/catalog`）で、画面には
-     表と画面の対応を書き写さない（§9.163）。 */
-  const info=(mtState.tables||[]).find(t=>t.table===rawTableState.table);
-  const goKey=info?(info.kind==='covered'?info.tab:(info.kind==='retired'?'':'mt:'+info.table)):'';
-  const goLabel=goKey?(allDefs().find(d=>d.key===goKey)||{}).label||'':'';
-  const where=!info?''
-   :(info.kind==='retired'
-     ?`<p class="mm-def-hint">${hintHtml('**この表はアプリがもう読みません。**'+(info.where||''))}</p>`
-     :(goLabel?`<div class="mm-raw-goto"><span>この表は<b>${esc(goLabel)}</b>から編集できます</span>`
-       +`<button type="button" id="rawTableGo" class="mm-btn-primary sm">${esc(goLabel)}を開く</button></div>`:''));
-  form.innerHTML=`<div class="mm-form-head">
-    <label class="mm-field mm-field-inline"><span>テーブル</span><select id="rawTableSelect">${opts}</select></label>
-    <button type="button" id="rawTableReload" class="mm-btn-ghost sm">再読込</button>
-    <span class="mm-form-hint">ここは読むだけの画面です。編集は表ごとの専用タブから行います。</span>
-   </div>
-   <p class="mm-def-hint">${hintHtml('マスタDB(master.sqlite3)のテーブルをそのまま表示します。**専用タブを持たないマスタも「内部データ」から編集できます**（この一覧はどの表でも中身を確かめられる最後の手段です）。先頭200件まで表示します。')}</p>
-   ${where}`;
-  form.onsubmit=ev=>ev.preventDefault();
+  WL.mm.setHeadActs({links:`<label class="mm-raw-pick"><span>テーブル</span><select id="rawTableSelect">${opts}</select></label>`
+   +'<button type="button" id="rawTableReload" class="mm-btn-ghost">再読込</button>'});
   const sel=$('#rawTableSelect');if(sel)sel.onchange=()=>{rawTableState.table=sel.value;renderRawTableForm();loadRawTableRows()};
   const rb=$('#rawTableReload');if(rb)rb.onclick=()=>loadRawTableRows();
-  const go=$('#rawTableGo');
-  if(go)go.onclick=()=>{maintState.defKey=goKey;maintState.editing=null;maintState.query='';syncNav();loadMaint(true)};
+ }
+ /* その表をどこから直すか（**行き止まりにしない**・§9.249 ②）。判定はサーバーの答え（`/api/master-table/catalog`）で、
+    画面には表と画面の対応を書き写さない（§9.163）。 */
+ function rawTableGoto(){
+  const info=(mtState.tables||[]).find(t=>t.table===rawTableState.table);
+  if(!info)return {html:'',key:''};
+  if(info.kind==='retired')return {html:`<span class="mm-raw-go is-retired">アプリはもう読みません${info.where?`（${esc(info.where)}）`:''}</span>`,key:''};
+  const key=info.kind==='covered'?info.tab:'mt:'+info.table,label=(allDefs().find(d=>d.key===key)||{}).label||'';
+  if(!label)return {html:'',key:''};
+  return {key,html:`<span class="mm-raw-go">ふだんは<b>${esc(label)}</b>で直します<button type="button" id="rawTableGo" class="mm-btn-ghost sm">${esc(label)}を開く →</button></span>`};
  }
  async function loadRawTableRows(){
   const list=$('#masterMaintList');if(!list)return;
@@ -4281,18 +4286,52 @@
   try{
    const q=new URLSearchParams({db:'MASTER',table:rawTableState.table,page:1,page_size:200});
    const d=await api('/api/table?'+q);
-   rawTableState.columns=d.columns||[];rawTableState.rows=d.rows||[];
-   renderRawTableList(d.count);
+   rawTableState.columns=d.columns||[];rawTableState.rows=d.rows||[];rawTableState.count=d.count;
+   renderRawTableList();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
- function renderRawTableList(count){
+ /* 生の値の見せ方（§9.599）: 日時は「2026-10-12 21:03」（HTTP の日付の字のまま並べない）、有効は字、色コードは色見本。
+    **値そのものは変えない**——title に生の字を残す（読むだけの画面なので、何が入っているかを確かめられることが先）。 */
+ const RAW_HTTP_DATE=/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+ function rawCellHtml(col,v){
+  const t=String(v??'').trim();if(!t)return '<em class="mm-blank">—</em>';
+  if(col==='有効'){const c={format:'enabledFlag'};return WL.mm.cellHtml(c,WL.mm.cellText(c,t))}
+  if(RAW_HTTP_DATE.test(t)){const d=new Date(t);if(!isNaN(d)){const p2=x=>String(x).padStart(2,'0');
+   return `<span class="mm-val-dt">${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}</span>`}}
+  return WL.mm.cellHtml({},t);
+ }
+ function renderRawTableList(){
   const list=$('#masterMaintList');if(!list)return;
-  const cols=rawTableState.columns,rows=rawTableState.rows;
+  const cols=rawTableState.columns,all=rawTableState.rows,count=rawTableState.count;
   if(!cols.length){list.innerHTML='<div class="mm-empty">列がありません。</div>';return}
-  const head=cols.map(c=>`<th>${esc(c)}</th>`).join('');
-  const body=rows.map(r=>`<tr>${cols.map(c=>{const v=r[c];return `<td title="${esc(v??'')}">${esc(v??'')||'<em class="mm-blank">—</em>'}</td>`}).join('')}</tr>`).join('');
-  list.innerHTML=`<div class="mm-raw-meta">${esc(rawTableState.table)} — ${rows.length}件を表示${(count!=null&&count>rows.length)?` (全${count}件)`:''}</div>
-   <div class="mm-raw-scroll"><table class="mm-raw-table"><thead><tr>${head}</tr></thead><tbody>${body||`<tr><td colspan="${cols.length}">データがありません。</td></tr>`}</tbody></table></div>`;
+  if(!WL.mm.barKept(list,'raw:'+rawTableState.table))rawTableState.query='';   // 表を替えた回は絞る前に言葉を外す（汎用の一覧と同じ）
+  const q=String(rawTableState.query||'').normalize('NFKC').toLowerCase().trim();
+  const rows=q?all.filter(r=>cols.some(c=>String(r[c]??'').normalize('NFKC').toLowerCase().includes(q))):all;
+  const total=(count!=null&&count>all.length)?`先頭${all.length} / 全${count}件`:`${all.length}件`;
+  const go=rawTableGoto();
+  WL.mm.listBar(list,{key:'raw:'+rawTableState.table,label:rawTableState.table,findOn:all.length>0,extraHtml:go.html,
+   tabsHtml:`<span class="mm-ltab is-on is-only">中身<i class="mm-ltab-b">${esc(q?`${rows.length} / ${total}`:total)}</i></span>`,
+   query:rawTableState.query||'',onQuery:v=>{rawTableState.query=v;renderRawTableList()}});
+  /* 数の列は右寄せ（8割以上が数）。 */
+  const isNum=c=>{const tx=all.map(r=>String(r[c]??'').trim()).filter(Boolean);return c!=='有効'&&tx.length&&tx.filter(t=>/^-?[\d,]+(\.\d+)?$/.test(t)).length>=tx.length*0.8};
+  const num=new Set(cols.filter(isNum));
+  const head=cols.map(c=>`<th${num.has(c)?' class="is-num"':''}>${esc(c)}</th>`).join('');
+  const body=rows.map(r=>`<tr>${cols.map(c=>`<td${num.has(c)?' class="is-num"':''} title="${esc(r[c]??'')}">${rawCellHtml(c,r[c])}</td>`).join('')}</tr>`).join('');
+  list.insertAdjacentHTML('beforeend',`<div class="mm-raw-scroll"><table class="mm-raw-table"><thead><tr>${head}</tr></thead>`
+   +`<tbody>${body||`<tr><td colspan="${cols.length}" class="mm-raw-none">${q?'当たる行はありません。':'データがありません。'}</td></tr>`}</tbody></table></div>`);
+  const gb=$('#rawTableGo');
+  if(gb)gb.onclick=()=>{maintState.defKey=go.key;maintState.editing=null;syncNav();loadMaint(true)};
+  /* 右に隠れた列は「横にあと N列 →」と縁のぼかしで言う（切れて見えるのではなく、続きがあると読める）。 */
+  const sc=list.querySelector('.mm-raw-scroll'),bar=list.querySelector('.mm-lbar-note');
+  const paintMore=()=>{
+   if(!sc||!bar)return;
+   const r=sc.getBoundingClientRect().right,hid=[...sc.querySelectorAll('thead th')].filter(th=>th.getBoundingClientRect().right>r+1).length;
+   const more=sc.scrollWidth>sc.clientWidth+2&&sc.scrollLeft+sc.clientWidth<sc.scrollWidth-2;
+   sc.classList.toggle('is-more-r',more);
+   bar.textContent=more&&hid?`横にあと${hid}列 →`:'';
+  };
+  if(sc){sc.onscroll=paintMore;paintMore()}
+  if(q)WL.mm.markHits(list,rawTableState.query);
  }
 
  /* ============================================================

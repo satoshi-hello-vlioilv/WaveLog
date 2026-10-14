@@ -215,6 +215,20 @@
 .mm-val-bar.is-none>i{width:0}
 .mm-val-bar.is-live{width:80px;margin-left:var(--space-2)}
 .mm-val-n{margin-left:var(--space-2);color:var(--muted);font-size:var(--fs-sm)}
+/* §9.599 */
+.mm-val-sw{display:inline-block;width:14px;height:14px;margin-right:var(--space-2);border-radius:var(--radius-xs);box-shadow:inset 0 0 0 1px var(--line-strong);vertical-align:-3px}
+.mm-val-code{color:var(--muted);font-variant-numeric:tabular-nums;font-size:var(--fs-sm)}
+.mm-val-k{display:inline-block;min-width:2.6em;margin-right:var(--space-1);color:var(--muted);font-size:var(--fs-sm)}
+.mm-val-span{display:inline-flex;align-items:center;gap:var(--space-2)}
+.mm-val-span>i{display:inline-grid;grid-template-columns:repeat(12,5px);gap:1px}
+.mm-val-span>i>b,.mm-val-span>i>u{display:block;height:10px;text-decoration:none}
+.mm-val-span>i>b{background:var(--teal)}
+.mm-val-span>i>u{background:var(--surface-3)}
+.mm-val-span>em{font-style:normal;font-variant-numeric:tabular-nums;color:var(--ink-2);min-width:1.4em;text-align:right}
+.mm-val-items{display:inline-flex;align-items:center;gap:var(--space-1);min-width:0;overflow:hidden;white-space:nowrap}
+.mm-val-n2{margin-right:var(--space-1);font-weight:var(--fw-ui);color:var(--ink);font-variant-numeric:tabular-nums}
+.mm-val-chip{padding:1px var(--space-1);border-radius:var(--radius-xs);background:var(--surface-3);color:var(--ink-2);font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+.mm-val-more{font-style:normal;font-size:var(--fs-sm);color:var(--muted)}
 /* 欄と表を結ぶ: 入った欄の列は見出しが青緑の字、選んだ行のそのセルは一段濃い地（字に重ねない）。 */
 .mm-row.head>.mm-th.is-hot b{color:var(--teal-ink)}
 .mm-row.editing>.is-hot{background:var(--pale);border-radius:var(--radius-xs);box-shadow:0 0 0 var(--space-1) var(--pale)}
@@ -238,6 +252,8 @@
 .mm-editor-modal.is-docked .mm-form-hint{color:var(--muted);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .mm-form[hidden]{display:none}
 .mm-count{color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
+/* 元から読むだけの画面の札（§9.599）: 枠のない灰の札（タブの数字と同じ形）。 */
+.mm-mode-chip.is-ro{border:0;background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-ui)}
 .mm-btn-ghost{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;white-space:nowrap}
 .mm-btn-ghost:hover{background:var(--surface-2);border-color:var(--line-strong)}
 .mm-form{padding:12px 18px;background:#ffffff;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:var(--gap-section)}
@@ -413,17 +429,23 @@
 .mm-editor-foot{display:flex;align-items:center;gap:var(--space-3);padding:var(--pad-dialog);background:#fff;border-top:1px solid var(--line)}
 .mm-editor-actions{margin-left:auto;display:flex;gap:var(--space-2);flex:0 0 auto}
 /* ---------- テーブル生データ(旧マスタ一覧、ARCHITECTURE.md「マスタ管理の画面形態」で統合) ---------- */
-.mm-field-inline{flex-direction:row;align-items:center;gap:var(--space-2)}
-.mm-field-inline>span{white-space:nowrap}
-.mm-field-inline select{min-width:220px}
-.mm-raw-meta{padding:6px 2px;color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-/* .mm-list-wrapが縦スクロールを持つため、生データ表側は横スクロールだけを
-   受け持つ(表が広いときにページ全体が横に伸びないようにする)。 */
-.mm-raw-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
-.mm-raw-table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:var(--fs-sm)}
-.mm-raw-table th,.mm-raw-table td{padding:4px 9px;height:26px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);white-space:nowrap;text-align:left}
-.mm-raw-table th{position:sticky;top:0;z-index:1;background:var(--pale);font-weight:var(--fw-strong)}
-.mm-raw-table tbody tr:nth-child(even){background:var(--surface-2)}
+/* §9.599: 汎用の一覧と同じ型（見出し32px・行40px・縞なし・縦の罫線なし・読むだけなので押す形にしない）。
+   .mm-list-wrapが縦スクロールを持つため、生データ表側は横スクロールだけを受け持つ（表が広いときにページ全体が横に伸びない）。
+   右に列が隠れているあいだは縁をぼかす（`is-more-r`・札の行の右に「横にあと N列 →」）。 */
+.mm-raw-pick{display:inline-flex;align-items:center;gap:var(--space-2);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+.mm-raw-pick select{height:var(--bar-h);min-width:220px}
+.mm-raw-scroll{overflow-x:auto}
+.mm-raw-scroll.is-more-r{-webkit-mask-image:linear-gradient(to right,var(--ink) calc(100% - 56px),transparent);mask-image:linear-gradient(to right,var(--ink) calc(100% - 56px),transparent)}
+.mm-raw-table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:var(--fs-base-sm)}
+.mm-raw-table th,.mm-raw-table td{padding:0 var(--space-3);height:40px;border-bottom:1px solid var(--surface-3);white-space:nowrap;text-align:left}
+.mm-raw-table th{position:sticky;top:0;z-index:1;height:32px;background:var(--surface-2);border-bottom-color:var(--line);color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
+.mm-raw-table .is-num{text-align:right;font-variant-numeric:tabular-nums}
+.mm-raw-table .mm-raw-none{color:var(--muted);text-align:center}
+/* 縞なし（汎用の一覧と同じ）。土台の`tbody tr:nth-child(even)`（30-measure.css・測定表の縞）をここで打ち消す。 */
+.mm-raw-table tbody tr:nth-child(even){background:none}
+.mm-raw-go{display:inline-flex;align-items:center;gap:var(--space-2);color:var(--ink-2);font-size:var(--fs-sm);white-space:nowrap}
+.mm-raw-go.is-retired{color:var(--muted)}
+.mm-val-dt{font-variant-numeric:tabular-nums;color:var(--ink-2)}
 .mm-cd-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--gap-section)}
 .mm-cd-dbtabs{display:flex;gap:var(--gap-inline);flex-wrap:wrap}
 .mm-cd-tab{height:34px;padding:0 16px;border:1.5px solid var(--line-mid);border-radius:var(--radius-lg);background:#fff;color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-sm);cursor:pointer}
@@ -457,7 +479,13 @@
 .mm-list-wrap.is-fill{overflow:hidden;display:flex;flex-direction:column;padding-bottom:var(--space-3)}
 .mm-list-wrap.is-fill>.mm-list{flex:1;min-height:0}
 /* 表は**見出し32px・行40px・縞なし**（§9.598・LotScope の表）。行の線は一段淡い面の色、見出しは淡い地＋1本の線。 */
-.mm-row{display:grid;align-items:center;gap:var(--space-2);padding:0 var(--space-3);min-height:40px;border-bottom:1px solid var(--surface-3)}
+.mm-row{display:grid;align-items:center;gap:var(--space-2) var(--space-4);padding:0 var(--space-3);min-height:40px;border-bottom:1px solid var(--surface-3)}
+/* 器に入る表は表の幅で止める（§9.599・行の罫線が右の空きまで走らない）。 */
+.mm-list.is-fitw>.mm-row{width:max-content}
+/* 数の列は右寄せ・桁そろえ（§9.599・見出しも同じ側へ）。単位は見出しの小さな字。 */
+.mm-row>.is-num{text-align:right;font-variant-numeric:tabular-nums}
+.mm-row.head>.mm-th.is-num{justify-content:flex-end;text-align:right}
+.mm-th-unit{margin-left:3px;font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--muted)}
 .mm-row.head{position:sticky;top:0;z-index:2;min-height:32px;background:var(--surface-2);border-bottom:1px solid var(--line);color:var(--ink-2);font-weight:var(--fw-ui)}
 .mm-row:not(.head){background:var(--surface);cursor:pointer;transition:background .1s}
 /* 計算の列（§9.537）。値は登録表が答える（`.mm-calc[data-cell]`）。
@@ -475,6 +503,23 @@
 .mm-rc.is-eq{background:var(--warn-bg);color:var(--warn-fg)}
 /* 一覧のタブと行を開く（§9.538）。タブの札は数（⚠は橙）、行の下の節は一覧の地より一段沈める。 */
 .mm-ltabs{display:flex;gap:2px;border-bottom:2px solid var(--line);margin:0 0 var(--space-2)}
+/* 一覧の札の行（§9.599・`listBar()`）: 左＝タブ、右＝畳んだ列の言い方・探す欄・群の開閉・行き先。線は札の行が1本持つ。 */
+.mm-lbar{display:flex;align-items:flex-end;gap:var(--space-3);border-bottom:2px solid var(--line);margin:0 0 var(--space-2)}
+.mm-lbar>.mm-ltabs{border-bottom:0;margin:0;flex:0 0 auto}
+.mm-lbar-r{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);padding-bottom:var(--space-1);min-width:0}
+.mm-lbar-note{color:var(--muted);font-size:var(--fs-sm);white-space:nowrap}
+.mm-lbar-note:empty,.mm-lbar-x:empty,.mm-lbar-legend:empty{display:none}
+.mm-lbar .mm-fold{margin-left:0}
+.mm-find.is-list{margin:0;width:240px}
+.mm-find[hidden]{display:none}
+/* 1枚だけのタブは押す物ではない（件数の札）。 */
+.mm-ltab.is-only{cursor:default}
+.mm-ltab.is-only:hover{background:none}
+/* 全行で同じ値の列（§9.599）: 表の上の1行で一度だけ言う。 */
+.mm-same{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px var(--space-4);padding:0 var(--space-3) var(--space-2);font-size:var(--fs-sm);color:var(--ink-2)}
+.mm-same-k{color:var(--muted)}
+.mm-same-i>b{font-weight:var(--fw-body);color:var(--muted);margin-right:var(--space-2)}
+mark.mm-hit{background:var(--warn-bg);color:inherit;border-radius:var(--radius-xs);padding:0 1px}
 .mm-ltab{display:inline-flex;align-items:center;gap:var(--space-2);border:0;border-bottom:3px solid transparent;margin-bottom:-2px;
  background:none;padding:var(--space-2) var(--space-3);font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--muted);border-radius:0}
 .mm-ltab:hover:not(:disabled){color:var(--teal-dark);background:var(--pale)}
@@ -669,34 +714,36 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* 親子で束ねた見出し(§9.239 ⑥)。設備が親、行が子。**件数を文字で出す**
    ——色や区切りだけでは「何件あるか」が読めない（§3）。
    面は表の見出しより一段淡くして、見出し行と取り違えないようにする。 */
+/* §9.599: 選択中（淡い青緑の地＋左の帯）と同じ形をやめ、**地なし＋下の線＋濃い字**の中立の見出しにした（群→行の2段は太さと線で言う）。 */
 .mm-group-head{display:flex;align-items:center;gap:var(--gap-inline);
- margin-top:var(--space-2);padding:var(--pad-row);
- border-left:3px solid var(--teal);border-radius:var(--radius-xs);
- background:var(--pale);color:var(--computed-fg);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
-.mm-group-head span{color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-micro)}
+ margin-top:var(--space-4);padding:var(--space-2) var(--space-3) var(--space-1);
+ border-bottom:1px solid var(--line);color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-strong)}
+.mm-row.head+.mm-group-head{margin-top:var(--space-1)}
+.mm-group-head>.mm-group-n{padding:0 var(--space-1);border-radius:var(--radius-xs);background:var(--surface-3);color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
+.mm-group-sum{display:inline-flex;align-items:center;gap:var(--space-2);margin-left:var(--space-2);color:var(--muted);font-weight:var(--fw-body);font-size:var(--fs-sm)}
 /* 見出しそのものが開閉のつまみ(§9.241 ①)。**押せることを形と文字の両方で
    言う**（§3）——印(▸/▾)だけだと色と同じで「見れば分かる人にしか分からない」
    ので、畳んでいるときは文字も出す。 */
 .mm-group-head{cursor:pointer;user-select:none}
-.mm-group-head:hover{background:var(--teal-soft)}
+.mm-group-head:hover{background:var(--surface-2)}
 .mm-group-head:focus-visible{outline:0;box-shadow:inset 0 0 0 var(--edge-w) var(--teal)}
-.mm-group-mark{font-style:normal;font-weight:var(--fw-strong);color:var(--teal);
+.mm-group-mark{font-style:normal;font-weight:var(--fw-strong);color:var(--muted);
  width:1em;text-align:center;flex:0 0 auto}
 /* 畳んだ見出しは**次の行と離す**——開いている群では見出しの直下に行が
    続くので、間が空いていること自体が「ここは畳んでいる」の合図になる。
    色は合図に数えない（§3）。 */
-.mm-group-head.is-folded{border-left-color:var(--line-strong);background:var(--surface-2);
- margin-bottom:var(--space-1)}
+.mm-group-head.is-folded{margin-bottom:var(--space-1)}
 .mm-group-head .mm-group-folded{color:var(--muted);font-weight:var(--fw-strong)}
 /* 一覧の上の開閉の帯。**中身が無いときは器ごと畳む**（押せるのに何も
    起きないボタンを置かない・§CLAUDE 4）。 */
 .mm-fold{display:flex;align-items:center;gap:var(--gap-inline);flex:0 0 auto;margin-left:auto}
 .mm-fold[hidden]{display:none}
-.mm-fold-state{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);white-space:nowrap}
-.mm-fold-state span{font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--ink-2)}
 .mm-fold button[disabled]{opacity:var(--op-disabled);cursor:default}
 /* 空の表示は**字だけ**（§9.598）。破線の箱は押せる面に見え、枠の中に枠を作る。 */
 .mm-empty{padding:var(--space-6) var(--space-4);text-align:center;color:var(--muted)}
+.mm-empty.is-none,.mm-empty.is-q{display:flex;flex-direction:column;align-items:center;gap:var(--space-2);padding:64px var(--space-4);font-size:var(--fs-sm);line-height:1.7}
+.mm-empty.is-none>b,.mm-empty.is-q>b{color:var(--ink);font-size:var(--fs);font-weight:var(--fw-strong)}
+.mm-empty-ico{font-size:var(--fs-xl);color:var(--line-strong);margin-bottom:var(--space-1)}
 .mm-empty.error{color:var(--danger)}
 .mm-loading{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .mm-loading[hidden]{display:none}
@@ -3304,11 +3351,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .cl-cold-chip>i{font-style:normal;color:var(--muted);font-weight:var(--fw-strong)}
 .cl-cold-chip>em{font-style:normal;color:var(--muted)}
 
-/* 生データの一覧から「どこで直すか」へ連れて行く帯（§9.249 (2)）。 */
-.mm-raw-goto{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
- margin-top:var(--space-2);padding:var(--pad-card);
- border:1px solid var(--teal-soft);border-radius:var(--radius-card);background:var(--pale)}
-.mm-raw-goto>span{flex:1 1 auto;min-width:0;color:var(--ink);font-size:var(--fs-sm)}
 
 /* ============================================================
    帳票ブロックの編集窓（§9.249 (3)）

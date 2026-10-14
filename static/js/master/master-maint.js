@@ -531,8 +531,9 @@
   const sub=i>=0?t.slice(i+1).trim():'';
   const hint=String((def&&def.hint)||'');
   const sents=hint.split('。').filter(s=>s.trim()).map(s=>s+'。');
+  /* 用途の1行を定義が持つ（`lead`）なら、説明は ⓘ に全部（1文目を用途に使ったときだけ2文目から）。 */
   return {name:(def&&def.label)||t,lead:String((def&&def.lead)||sub||sents[0]||'').replace(/\*\*/g,''),
-   info:sub?hint:sents.slice(1).join('')};
+   info:(sub||(def&&def.lead))?hint:sents.slice(1).join('')};
  }
  function paintMaintHead(def){
   const h=headTextOf(def);
@@ -663,8 +664,8 @@
  /* 段の印を使う表は凡例を1つ（タブの帯の右端・無ければ表の上）。印だけで言わない（§CLAUDE 3）。 */
  function paintLevelLegend(def,list){
   if(!def.cols.some(c=>c.mark==='level'))return;
-  const bar=list.querySelector('.mm-ltabs');
-  if(bar)bar.insertAdjacentHTML('beforeend',levelLegendHtml());
+  const slot=list.querySelector('.mm-lbar-legend');   // 札の行の右（§9.599）
+  if(slot)slot.innerHTML=levelLegendHtml();
   else list.querySelector('.mm-row.head').insertAdjacentHTML('beforebegin',`<div class="mm-val-legendbar">${levelLegendHtml()}</div>`);
  }
  function cellHtml(col,text){
@@ -687,13 +688,61 @@
   }
   /* 運用モードは**厳密だけ札**（橙）。ふつう（通常）は既定と同じ薄い字——全行に同じ札が並ぶと、違う行が目に留まらない（§9.598 1i）。 */
   if(col.format==='runMode')return col.row&&col.row[col.k]==='strict'?`<i class="mm-val-tag is-warn">${esc(t)}</i>`:`<span class="mm-val-none">${esc(t)}</span>`;
+  const fm=Object.hasOwn(MM_VALUE_HTML,col.format||'')?MM_VALUE_HTML[col.format](col,t):null;
+  if(fm!==null)return fm;
   const d=t.match(/^(.+?)（既定）$/);
   if(d)return `${esc(d[1])}<span class="mm-val-def">既定</span>`;
   if(t==='未設定')return `<span class="mm-val-none">未設定</span>`;
+  /* 色コードは色見本つき（§9.599——「#d93a34」の字だけでは何色か読めない）。 */
+  if(/^#[0-9a-f]{6}$/i.test(t))return `<i class="mm-val-sw" style="background:${t}" aria-hidden="true"></i><span class="mm-val-code">${esc(t)}</span>`;
   return esc(t);
+ }
+ /* ---------- 値の見せ方の表（§9.599）。`col.format`→ 字（`MM_VALUE_TEXT`）と印（`MM_VALUE_HTML`）。 ----------
+    字は title・並べ替え・探す・「全行で同じ」が使い、印はセルの中身だけ（字と印が別のことを言わない）。 */
+ const MM_PAPER_COLS=12;   // 帳票の紙の横のマス（print-core の12マスと同じ）
+ const mmWordOf=(col,v)=>col.words&&Object.hasOwn(col.words,String(v))?col.words[String(v)]:null;
+ const MM_VALUE_TEXT={
+  /* 有効の印（-1/1/0 の内部の値を並べない）。 */
+  enabledFlag:v=>/^(-1|1|true)$/i.test(v.trim())?'有効':/^(0|false)$/i.test(v.trim())?'無効':v,
+  /* 帳票ブロックの高さ。空・0 は「中身なり」（編集の欄と同じ言葉）。 */
+  rowsAuto:v=>/^(0|)$/.test(v.trim())?'中身なり':`${v.trim()}行`,
+  /* 0 は未設定（ロールの径MIN: 0 のときは径MAXだけで見る）。 */
+  zeroBlank:v=>v.trim()==='0'?'':v,
+  /* 値→字はサーバーの語彙（内部データの列の見せ方・`COLUMN_VIEWS.words`）。 */
+  words:(v,col)=>{const w=mmWordOf(col,v);return w?w[0]:v},
+  /* 区分で読む列が変わる2列を1列「いつ」に（`COLUMN_VIEWS.when`）。 */
+  weekWhen:(v,col)=>{const w=col.when||{},r=col.row||{};
+   if(String(r[w.kind]??'')===String(w.weekKind||'曜日')){const n=Number(r[w.week]);const d=String(w.weekdays||'').charAt(n);return d?`${w.weekWord} ${d}曜`:`${w.weekWord} ${r[w.week]??''}`}
+   return r[w.date]?`${w.dateWord} ${r[w.date]}`:''},
+ };
+ const MM_VALUE_HTML={
+  enabledFlag:(col,t)=>t==='無効'?`<i class="mm-val-tag is-off">無効</i>`:t==='有効'?`<span class="mm-val-none">有効</span>`:null,
+  rowsAuto:(col,t)=>t==='中身なり'?`<span class="mm-val-none">中身なり</span>`:null,
+  words:(col,t)=>{const hit=Object.values(col.words||{}).find(w=>w[0]===t);if(!hit)return null;
+   return hit[1]==='on'?`<i class="mm-val-tag">${esc(t)}</i>`:`<span class="mm-val-none">${esc(t)}</span>`},
+  weekWhen:(col,t)=>{const m=t.match(/^(\S+) (.+)$/);return m?`<span class="mm-val-k">${esc(m[1])}</span>${esc(m[2])}`:null},
+  /* 紙の幅は12マスの帯（数だけでは紙のどれだけを取るか読めない）。 */
+  paperSpan:(col,t)=>{const n=Math.max(0,Math.min(MM_PAPER_COLS,Number(t)||0));if(!n)return null;
+   return `<span class="mm-val-span" role="img" aria-label="紙の幅${MM_PAPER_COLS}マスのうち${n}マス"><i>${'<b></b>'.repeat(n)}${'<u></u>'.repeat(MM_PAPER_COLS-n)}</i><em>${n}</em></span>`},
+  /* 中身の並び（帳票ブロックの「内容」）は「N項目＋名前の札」。札は描いたあと入るぶんだけ残す（`mmFitItemChips`）。 */
+  itemList:(col,t)=>{const it=mmItemsOf(t);if(!it)return null;
+   const shown=it.names.slice(0,8),rest=it.names.length-shown.length;
+   return `<span class="mm-val-items" data-more="${rest}"><b class="mm-val-n2">${it.names.length||it.count}${it.unit}</b>`
+    +shown.map(x=>`<i class="mm-val-chip">${esc(x)}</i>`).join('')+(rest?`<em class="mm-val-more">ほか${rest}</em>`:'')+`</span>`},
+ };
+ /* 「名前=道 名前=道…」と「[{label…},…]」（表に組んだセル）の2つの書き方を読む。読めなければ null（字のまま出す）。 */
+ function mmItemsOf(t){
+  const s=String(t||'').trim();if(!s)return null;
+  if(/^\[\s*\{/.test(s)){
+   try{const a=JSON.parse(s);if(!Array.isArray(a))return null;const names=a.map(x=>x&&String(x.label||'').trim()).filter(Boolean);return {names,count:a.length,unit:'セル'}}
+   catch(e){WL.quiet.note('表に組んだセルの JSON が読めない（字のまま出す）',e);return null}
+  }
+  if(/\S+=\S+/.test(s))return {names:s.split(/\s+/).map(p=>p.split('=')[0]).filter(Boolean),count:0,unit:'項目'};
+  return null;
  }
  function cellText(col,value){
   const v=String(value??'');
+  if(Object.hasOwn(MM_VALUE_TEXT,col.format||''))return MM_VALUE_TEXT[col.format](v,col);
   if(col.format==='maxStrips')return v.trim()===''?'40（既定）':v;
   /* マスタ編集（§9.322）。**保存値と効いている段が食い違ったら両方書く**
      ——区分の上限で頭打ちになっているのに保存値だけを出すと、「編集可に
@@ -1762,8 +1811,8 @@
    const drop=def.rawKind==='retired'&&def.rawTable
     ?`<button type="button" id="mmDropTable" class="mm-btn-danger sm"
         title="この表をマスタDBから丸ごと消します（取り消せません）">この表を削除</button>`:'';
-   form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip">読み取り専用</span>
-     <span class="mm-form-hint">この表は見るだけです。追加・編集はできません。</span>${drop}</div>`;
+   /* 「読むだけ」は題の横の札が言う（§9.599・同じことを帯に2度書かない）。帯に残すのは消す道だけ。 */
+   form.innerHTML=drop?`<div class="mm-form-head mm-form-drop">${drop}</div>`:'';form.hidden=!drop;
    form.onsubmit=ev=>ev.preventDefault();
    const db=$('#mmDropTable');
    if(db)db.onclick=()=>WL.mm.dropRetiredTable(def);
@@ -2794,8 +2843,13 @@
     （§9.119と同じ考え方。全部を px にすると器の広さに追随しなくなる）。 */
  /* `widths`は幅を引いている途中の値（省けば保存した幅）。行の操作の列は持たない（§9.598・削除は詳細の ⋯）。 */
  function maintGridTemplate(def,widths){
-  const w=widths||mmViewOf(def).widths||{},cw=mmContentW.get(def.key);
-  const data=def.cols.map((c,i)=>w[c.k]?`${Math.round(w[c.k])}px`:`minmax(0,${cw&&cw[i]?cw[i]:(c.grow||1)}fr)`).join(' ');
+  const w=widths||mmViewOf(def).widths||{},fit=mmFit.get(def.key);
+  const one=c=>{
+   if(w[c.k])return `${Math.round(w[c.k])}px`;
+   if(!fit||!fit.w[c.k])return `minmax(0,${c.grow||1}fr)`;
+   return fit.px?`${fit.w[c.k]}px`:`minmax(${fit.min[c.k]}px,${fit.w[c.k]}fr)`;
+  };
+  const data=mmShownCols(def).map(one).join(' ');
   return maintShowsAudit(def)?`${data} 96px 128px`:data;
  }
  /* 並べ替えの物差し。**空欄は必ず最後**（向きを変えても最後）——空欄が
@@ -2834,20 +2888,28 @@
     ctx＝{meta:一覧の応答, items:表の行, writable:このタブを保存できるか}。いま開いているタブ・行はこの端末の画面の間だけ覚える。 */
  const MM_LIST_VIEWS={},MM_ROW_DETAILS={},mmListViewNow={},mmOpenRows={};
  WL.mm.registerListView=(kind,h)=>{MM_LIST_VIEWS[kind]=h};
+ /* 群（設備）の見出しの要約（§9.599）。`def.groupSum:'種類'`を名乗ると、群の行（絞っていれば絞った行）から字を作る。盤は中身を知らない。 */
+ const MM_GROUP_SUMS={};
+ WL.mm.registerGroupSum=(kind,fn)=>{MM_GROUP_SUMS[kind]=fn};
+ const mmGroupSumOf=def=>def.groupSum&&Object.hasOwn(MM_GROUP_SUMS,def.groupSum)?MM_GROUP_SUMS[def.groupSum]:null;
  WL.mm.registerRowDetail=(kind,h)=>{MM_ROW_DETAILS[kind]=h};
  const mmViewsOf=def=>(def.listViews||[]).filter(k=>Object.hasOwn(MM_LIST_VIEWS,k));
  const mmDetailOf=def=>def.rowDetail&&Object.hasOwn(MM_ROW_DETAILS,def.rowDetail)?MM_ROW_DETAILS[def.rowDetail]:null;
  const mmOpenSet=def=>(mmOpenRows[def.key]=mmOpenRows[def.key]||new Set());
  const mmCtx=()=>({meta:maintState.meta||{},items:maintState.items||[],writable:masterDefWritable(currentDef())});
- /* タブの帯（1枚目＝一覧）。いま開いているタブの鍵を返す。 */
- function listTabsHtml(def){
-  const views=mmViewsOf(def);if(!views.length)return {html:'',now:''};
+ /* タブの帯（1枚目＝一覧）。いま開いているタブの鍵を返す。**タブが1枚でも出す**（§9.599）——件数の置き場をどの一覧も
+    「一覧 N件」の1か所にする（前は題の横の「有効 N件」とタブの2通りだった）。1枚だけのときは押す物ではないので`span`。 */
+ function listTabsHtml(def,st){
+  const views=mmViewsOf(def);
   const now=views.includes(mmListViewNow[def.key])?mmListViewNow[def.key]:'';
-  const t=def.listTab||{},n=(maintState.items||[]).length,ctx=mmCtx();
-  const tab=(key,label,badge)=>`<button type="button" role="tab" class="mm-ltab${now===key?' is-on':''}" aria-selected="${now===key}" data-ltab="${esc(key)}">`
-   +`${esc(label)}${badge?`<i class="mm-ltab-b${badge.tone?' is-'+esc(badge.tone):''}">${esc(badge.text)}</i>`:''}</button>`;
-  return {now,html:`<div class="mm-ltabs" role="tablist">${tab('',t.label||'一覧',{text:`${n}${t.unit||'件'}`})}`
-   +views.map(k=>tab(k,MM_LIST_VIEWS[k].label,MM_LIST_VIEWS[k].badge?MM_LIST_VIEWS[k].badge(ctx):null)).join('')+`</div>`};
+  const t=def.listTab||{},n=(maintState.items||[]).length,ctx=mmCtx(),unit=t.unit||'件';
+  const cnt=st&&st.q?`${st.shown} / ${n}${unit}`:`${n}${unit}`;
+  const badge=b=>b?`<i class="mm-ltab-b${b.tone?' is-'+esc(b.tone):''}">${esc(b.text)}</i>`:'';
+  if(!views.length)return {now:'',html:`<span class="mm-ltab is-on is-only">${esc(t.label||'一覧')}${badge({text:cnt})}</span>`};
+  const tab=(key,label,b)=>`<button type="button" role="tab" class="mm-ltab${now===key?' is-on':''}" aria-selected="${now===key}" data-ltab="${esc(key)}">`
+   +`${esc(label)}${badge(b)}</button>`;
+  return {now,html:tab('',t.label||'一覧',{text:cnt})
+   +views.map(k=>tab(k,MM_LIST_VIEWS[k].label,MM_LIST_VIEWS[k].badge?MM_LIST_VIEWS[k].badge(ctx):null)).join('')};
  }
  function bindListTabs(def,list){
   list.querySelectorAll('[data-ltab]').forEach(b=>{b.onclick=()=>{mmListViewNow[def.key]=b.dataset.ltab;renderMaintList()}});
@@ -2874,7 +2936,11 @@
   }).map(x=>x.it);
  }
  function filteredMaintItems(def){
-  return mmSortItems(def,maintState.items||[]);
+  const items=mmSortItems(def,maintState.items||[]),q=mmQueryOf(def);
+  if(!q)return items;
+  /* 探すのは**表に出しているすべての列の字**（見分けにくい相手の札の中も）。全角・半角と大小は区別しない。 */
+  const ctx=mmCellCtx(def),cols=def.cols||[];
+  return items.filter(it=>cols.some(c=>mmFold(mmCellTextOf(c,it,ctx)).includes(q)));
  }
  /* ---------- 束ねた見出しの開閉（§9.241 ①、利用者の指示「ロールマスタに
     ついて、設備名毎に折りたためるようにしてください」） ----------
@@ -2923,8 +2989,10 @@
   h.dataset.mmGroup=info.label;
   /* **状態は色だけで伝えない**（§CLAUDE 3）——印(▸/▾)と一緒に、件数と
      「畳んでいます」を必ず文字で出す。 */
+  const sum=mmGroupSumOf(def);
   h.innerHTML=`<i class="mm-group-mark" aria-hidden="true">${info.folded?'▸':'▾'}</i>`
-   +`<b>${esc(info.label)}</b><span>${info.count}件</span>`
+   +`<b>${esc(info.label)}</b><span class="mm-group-n">${info.count}件</span>`
+   +(sum?`<span class="mm-group-sum">${sum(info.items||[],mmCellCtx(def))}</span>`:'')
    +(info.folded?'<span class="mm-group-folded">畳んでいます（押すと開きます）</span>':'');
   h.title=info.folded
    ?`${info.label} の${def.label} ${info.count}件を畳んでいます。押すと開きます。`
@@ -2952,9 +3020,9 @@
   box.hidden=false;
   const open=groups.filter(g=>!g.folded).length;
   const allOpen=open===groups.length;
-  box.innerHTML=`<b class="mm-fold-state">${groups.length}${esc(def.groupWord||'設備')}`
-    +` <span>開 ${open} / 畳 ${groups.length-open}</span></b>`
-   +`<button type="button" class="mm-btn-ghost sm" data-mm-fold="open"${allOpen?' disabled':''}`
+  /* 「N設備 開 n / 畳 m」の字は持たない（§9.599）——どの群が畳まれているかは見出しの ▸ と「畳んでいます」が言い、
+     押せるかはボタンの形が言う（同じことを札の行で数え直させない）。 */
+  box.innerHTML=`<button type="button" class="mm-btn-ghost sm" data-mm-fold="open"${allOpen?' disabled':''}`
    +` title="${allOpen?'すべて開いています':'畳んでいる'+esc(def.groupWord||'設備')+'をすべて開きます'}">すべて開く</button>`
    +`<button type="button" class="mm-btn-ghost sm" data-mm-fold="close"${!open?' disabled':''}`
    +` title="${open?'見出しだけを残して行を畳みます':'すべて畳んでいます'}">すべて畳む</button>`;
@@ -2974,79 +3042,87 @@
   const marks=[];
   if(sc)marks.push(`並び: ${esc(sc.label)} ${v.sort.dir==='desc'?'降順':'昇順'}`);
   if(wn)marks.push(`幅: ${wn}列`);
-  cnt.innerHTML=(mmViewsOf(def).length?'':`有効 ${all.length}件`)
-   +(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
+  /* 件数は一覧の札（タブ「一覧 N件」）が言う（§9.599・どの一覧も同じ1か所。題の横と2か所に出さない）。 */
+  cnt.innerHTML=(marks.length?`<span class="mm-viewmark">${marks.map(esc).join('・')}`
      +`<button type="button" id="mmViewReset" title="この表の並びと列幅を既定へ戻します">✕</button></span>`:'');
   const rb=$('#mmViewReset');
   if(rb)rb.onclick=()=>{mmViewSet(def,{sort:null,widths:{}});renderMaintList()};
  }
+ /* ---------- 一覧（§9.599・ステップ2の K） ----------
+    描く順: 見え方を決める（mmListPlan）→ 札の行（タブ・探す欄・開閉）→「全行で同じ」の1行 → 見出し → 行 → 幅を測る。
+    見え方はその回の**全部の行**から1回だけ決める（探して絞っている途中で列が消えたり戻ったりしない）。 */
  function renderMaintList(){
   const def=currentDef(),list=$('#masterMaintList');if(!list)return;
-  const all=maintState.items||[],items=filteredMaintItems(def),tmpl=maintGridTemplate(def);
+  const all=maintState.items||[],ctx=mmCellCtx(def);
+  if(!mmRefit)mmAuto.delete(def.key);
+  /* 札の行を作り直す回（別のマスタから来た）は、探す言葉を**絞る前に**外す。後で外すと、その1回だけ前の言葉で絞った行が
+     空の欄の下に並ぶ（ロール→設備→ロールで「6 / 8件」なのに欄が空・§9.599 の採点で見つかった）。 */
+  if(!barKept(list,'mm:'+def.key))mmQuerySet(def,'');
+  mmPlans.set(def.key,mmListPlan(def,all,ctx));
+  const items=filteredMaintItems(def),q=mmQueryOf(def);
   paintMaintCount(def,all);
-  const showAudit=maintShowsAudit(def);
-  /* 見出しは**押すと並べ替え・右端を引くと幅**（§9.250 ⑥）。
-     いまの向きは矢印と`aria-sort`の両方で言う（色だけで伝えない・§CLAUDE 3）。 */
-  const sort=mmViewOf(def).sort||null;
-  const ctx=mmCellCtx(def);
-  const headCols=def.cols.map(c=>{
-   const on=sort&&sort.k===c.k,k=mmCellOf(c),label=k&&k.label?k.label(ctx[c.cell]):c.label;
-   const mark=on?(sort.dir==='desc'?'▼':'▲'):'';
-   return `<span class="mm-th" data-col="${esc(c.k)}" role="button" tabindex="0"`
-    +` aria-sort="${on?(sort.dir==='desc'?'descending':'ascending'):'none'}"`
-    +` title="${esc(label)}｜押すと並べ替え（もう一度で逆順・3回目で元の並び）／右端を引くと幅が変わります">`
-    +`<b>${esc(label)}</b>${mark?`<i class="mm-th-mark" aria-hidden="true">${mark}</i>`:''}`
-    +`<i class="mm-th-grip" aria-hidden="true"></i></span>`;
-  }).join('');
-  const tabs=listTabsHtml(def);
+  const tabs=listTabsHtml(def,{q,shown:items.length});
+  mmListBar(def,list,tabs,all.length);
+  bindListTabs(def,list);
   if(tabs.now){
-   const view=MM_LIST_VIEWS[tabs.now],ctx=mmCtx();
-   list.innerHTML=tabs.html+`<section class="mm-lview" role="tabpanel">${view.html(ctx)}</section>`;
-   bindListTabs(def,list);
-   if(view.wire)view.wire(list.querySelector('.mm-lview'),ctx);
+   list.classList.remove('is-fitw');
+   const view=MM_LIST_VIEWS[tabs.now],vctx=mmCtx(),sec=document.createElement('section');
+   sec.className='mm-lview';sec.setAttribute('role','tabpanel');sec.innerHTML=view.html(vctx);list.append(sec);
+   renderMaintFoldTools(def,[]);
+   if(view.wire)view.wire(sec,vctx);
    return;
   }
-  list.innerHTML=tabs.html+`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}</div>`;
+  mmSameLine(def,list);
+  list.insertAdjacentHTML('beforeend',maintHeadRowHtml(def,ctx));
   paintLevelLegend(def,list);
-  bindListTabs(def,list);
   bindMaintHeadTools(def,list);
   if(!items.length){
-   /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、
-      押せるのに何も起きない・§CLAUDE 4）。 */
-   renderMaintFoldTools(def,[]);
-   /* 足す道は**今その画面にある1つ**を言う（追加は頭の右端・§9.598／欄を並べる形は一覧の上）。 */
-   const how=def.readOnly?'':defUsesEditorModal(def)?`右上の「＋ ${def.label}を追加」から足せます。`:'上の欄から足せます。';
-   list.insertAdjacentHTML('beforeend',`<div class="mm-empty">有効なデータがありません。${esc(how)}</div>`);return}
-  const frag=document.createDocumentFragment();
-  /* ---------- 親子で束ねる(§9.239 ⑥、利用者の指示) ----------
-     「設備のカラムはマスタに親子関係を持たせ、設備単位でロールマスタを
-      持つ形とする」。**マスタを2つに割らない**——所属を変えるのは
-     `[対象設備]`を1つ直すだけで済む（割ると、移すために消して作り直す
-     ことになる）。見出しには**件数を文字で**添える（§3）。
-     `groupBy`を持たないマスタは今までどおり平らに並ぶ。 */
-  const gkey=def.groupBy||'';
-  let lastGroup=null,foldedNow=false;
-  /* 群ごとの件数と畳み。**出てくる順のまま**並べる（並べ替えるとサーバーが
-     返した順＝表示順の設定が効かなくなる）。 */
+   /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、押せるのに何も起きない・§CLAUDE 4）。
+      表の幅で止める印も外す（測っていないので、前のマスタの幅のまま見出しが縮んでいた）。 */
+   renderMaintFoldTools(def,[]);list.classList.remove('is-fitw');mmAlignToTable(list,list.querySelector('.mm-row.head'),false);
+   list.insertAdjacentHTML('beforeend',mmEmptyHtml(def,q));
+   const clr=list.querySelector('[data-mm-clearq]');
+   if(clr)clr.onclick=()=>{mmQuerySet(def,'');const i=list.querySelector('.mm-find input');if(i)i.value='';renderMaintList()};
+   return;
+  }
+  list.append(maintRowsFrag(def,items,ctx));
+  fitMaintColumns(def,list);
+  if(q)mmMarkHits(list,mmQuery.get(def.key));
+ }
+ /* 見出しの行。**押すと並べ替え・右端を引くと幅**（§9.250 ⑥）。いまの向きは矢印と`aria-sort`の両方で言う（色だけで伝えない・§CLAUDE 3）。 */
+ function maintHeadRowHtml(def,ctx){
+  const sort=mmViewOf(def).sort||null,plan=mmPlans.get(def.key);
+  const cols=mmShownCols(def).map(c=>{
+   const on=sort&&sort.k===c.k,k=mmCellOf(c),label=k&&k.label?k.label(ctx[c.cell]):c.label;
+   const mark=on?(sort.dir==='desc'?'▼':'▲'):'';
+   return `<span class="mm-th${plan&&plan.num.has(c.k)?' is-num':''}" data-col="${esc(c.k)}" role="button" tabindex="0"`
+    +` aria-sort="${on?(sort.dir==='desc'?'descending':'ascending'):'none'}"`
+    +` title="${esc(label)}${c.unit?`（${esc(c.unit)}）`:''}｜押すと並べ替え（もう一度で逆順・3回目で元の並び）／右端を引くと幅が変わります">`
+    +`<b>${esc(label)}</b>${c.unit?`<small class="mm-th-unit">${esc(c.unit)}</small>`:''}${mark?`<i class="mm-th-mark" aria-hidden="true">${mark}</i>`:''}`
+    +`<i class="mm-th-grip" aria-hidden="true"></i></span>`;
+  }).join('');
+  return `<div class="mm-row head" style="grid-template-columns:${maintGridTemplate(def)}">${cols}${maintShowsAudit(def)?'<span>更新者</span><span>更新日時</span>':''}</div>`;
+ }
+ /* ---------- 親子で束ねる(§9.239 ⑥、利用者の指示) ----------
+    「設備のカラムはマスタに親子関係を持たせ、設備単位でロールマスタを持つ形とする」。**マスタを2つに割らない**——所属を変えるのは
+    `[対象設備]`を1つ直すだけで済む。見出しには**件数を文字で**添える（§3）。`groupBy`を持たないマスタは今までどおり平らに並ぶ。
+    群ごとの件数と畳みは**出てくる順のまま**（並べ替えるとサーバーが返した順＝表示順の設定が効かなくなる）。 */
+ function maintRowsFrag(def,items,ctx){
+  const frag=document.createDocumentFragment(),gkey=def.groupBy||'',showAudit=maintShowsAudit(def),tmpl=maintGridTemplate(def);
   const groups=[],gidx={};
   if(gkey)items.forEach(it=>{
    const g=maintGroupLabel(it[gkey]);
-   if(gidx[g]===undefined){gidx[g]=groups.length;groups.push({label:g,count:0,folded:false})}
-   groups[gidx[g]].count++;
+   if(gidx[g]===undefined){gidx[g]=groups.length;groups.push({label:g,count:0,folded:false,items:[]})}
+   groups[gidx[g]].count++;groups[gidx[g]].items.push(it);
   });
   groups.forEach(g=>{g.folded=mmIsFolded(def,g.label)});
   renderMaintFoldTools(def,groups);
+  let lastGroup=null,foldedNow=false;
   items.forEach(it=>{
    if(gkey){
     const g=maintGroupLabel(it[gkey]);
-    if(g!==lastGroup){
-     lastGroup=g;
-     const info=groups[gidx[g]];
-     foldedNow=info.folded;
-     frag.append(maintGroupHeadEl(def,info));
-    }
-    /* 畳んだ群の行は**作らない**（§9.104。隠すだけでは組み直しが重い）。 */
-    if(foldedNow)return;
+    if(g!==lastGroup){lastGroup=g;const info=groups[gidx[g]];foldedNow=info.folded;frag.append(maintGroupHeadEl(def,info))}
+    if(foldedNow)return;   // 畳んだ群の行は**作らない**（§9.104。隠すだけでは組み直しが重い）
    }
    frag.append(maintRowEl(def,it,tmpl,showAudit,ctx));
    const det=mmDetailOf(def);
@@ -3055,23 +3131,158 @@
     d.innerHTML=det.html(it,mmCtx());frag.append(d);
    }
   });
-  list.append(frag);
-  fitMaintColumns(def,list);
+  return frag;
  }
- /* 列の幅は**中身を測った比**で配る（§9.598・1d）——同じ比（`grow`）で割ると、短い値の列が広く・長い値の列が「…」で切れる
-    （実測: 1536 で「120分（既…」）。中身なりの幅（見出しと先頭200行の最大）を比にするので、器に入るうちはどの列も切れない。
-    引いて決めた幅（`widths`）は測らない。測った比は`maintGridTemplate()`が読む（幅を引く途中のプレビューも同じ比）。 */
- const mmContentW=new Map();
+ /* ---------- 列の幅（§9.598 1d → §9.599） ----------
+    中身なり（見出しの幅〜320px）。**器に入るなら px で置き、行の罫線も表の幅で止める**（余りは「まとまりの外」・§9.209）。
+    入らなければ比で分け、短い中身の列は潰さない（最小＝見出しの幅か中身の120pxまで）。それでも入らないときだけ、
+    `optional`の列を右から畳み、札の行の右に「ほか N列」と書く（基準12: 余白があるうちは隠さない）。
+    1d では中身の幅をそのまま比にしたため、長い字の列（帳票ブロックの内容）が他の列を2pxまで潰していた（実測 2〜48px が10列）。 */
+ const MM_COL_CAP=320,MM_COL_MIN=120;
+ const mmFit=new Map();     // def.key → {px, w:{鍵:幅}, min:{鍵:最小}}（maintGridTemplate が読む）
+ const mmAuto=new Map();    // def.key → 入らないので畳んだ列の鍵
+ let mmRefit=false;         // 畳む列を決めて描き直している最中（2回目は畳まない）
  function fitMaintColumns(def,list){
-  const rows=[...list.querySelectorAll('.mm-row')],head=rows[0];
-  if(!head||rows.length<2)return;
-  const n=head.children.length,same=rows.filter(r=>r.children.length===n).slice(0,201);
-  same.forEach(r=>r.style.gridTemplateColumns=`repeat(${n},max-content)`);
-  const w=Array(n).fill(0);
-  same.forEach(r=>[...r.children].forEach((c,i)=>{w[i]=Math.max(w[i],c.getBoundingClientRect().width)}));
-  mmContentW.set(def.key,w.map(x=>Math.ceil(x)+8));
+  const head=list.querySelector('.mm-row.head');if(!head)return;
+  const cols=mmShownCols(def),n=head.children.length;
+  const rows=[...list.querySelectorAll('.mm-row')].filter(r=>r.children.length===n).slice(0,201);
+  rows.forEach(r=>r.style.gridTemplateColumns=`repeat(${n},max-content)`);
+  const cw=Array(n).fill(0);
+  rows.forEach(r=>[...r.children].forEach((c,i)=>{cw[i]=Math.max(cw[i],c.getBoundingClientRect().width)}));
+  const hw=[...head.children].map(c=>{const b=c.querySelector('b'),u=c.querySelector('.mm-th-unit');return b?Math.ceil(b.scrollWidth+(u?u.scrollWidth+3:0))+28:0});
+  const fit={px:false,w:{},min:{}};
+  cols.forEach((c,i)=>{fit.w[c.k]=Math.ceil(Math.max(hw[i],Math.min(cw[i]+2,MM_COL_CAP)));fit.min[c.k]=Math.ceil(Math.max(hw[i],Math.min(cw[i]+2,MM_COL_MIN)))});
+  const st=getComputedStyle(head),gap=parseFloat(st.columnGap)||0,pad=(parseFloat(st.paddingLeft)||0)+(parseFloat(st.paddingRight)||0);
+  const extra=maintShowsAudit(def)?96+128+gap*2:0;
+  const need=o=>cols.reduce((a,c)=>a+o[c.k],0)+gap*Math.max(0,cols.length-1)+extra+pad;
+  const avail=list.clientWidth;
+  fit.px=need(fit.w)<=avail;
+  if(!fit.px&&need(fit.min)>avail&&!mmRefit){
+   let over=need(fit.min)-avail;const hide=[];
+   cols.filter(c=>c.optional).reverse().forEach(c=>{if(over>0){hide.push(c.k);over-=fit.min[c.k]+gap}});
+   if(hide.length){mmAuto.set(def.key,new Set(hide));mmRefit=true;try{renderMaintList()}finally{mmRefit=false}return}
+  }
+  mmFit.set(def.key,fit);
   const t=maintGridTemplate(def);
-  rows.forEach(r=>r.style.gridTemplateColumns=t);
+  list.querySelectorAll('.mm-row').forEach(r=>r.style.gridTemplateColumns=t);
+  list.classList.toggle('is-fitw',fit.px);
+  mmAlignToTable(list,head,fit.px);
+  mmFitItemChips(list);
+ }
+ /* 表が器より狭いとき、札の行・「全行で同じ」・群の見出しも**表の幅で止める**（探す欄が何を絞るのかを近さで言う）。 */
+ function mmAlignToTable(list,head,on){
+  const w=on?Math.ceil(head.getBoundingClientRect().width):0;
+  list.querySelectorAll('.mm-group-head,.mm-same').forEach(el=>{el.style.maxWidth=on?w+'px':''});
+  const bar=list.querySelector(':scope>.mm-lbar');if(!bar)return;
+  bar.style.maxWidth='';
+  if(on){const need=[...bar.children].reduce((a,c)=>a+c.scrollWidth,0)+24;bar.style.maxWidth=Math.max(w,need)+'px'}
+ }
+ /* 中身の札は**入るぶんだけ**（はみ出す札は「ほか N」へ数える）。数え直すのは描いたあと（器の幅が決まってから）。 */
+ function mmFitItemChips(list){
+  list.querySelectorAll('.mm-val-items').forEach(sm=>{
+   const cell=sm.parentElement,chips=()=>[...sm.querySelectorAll('.mm-val-chip')];
+   let more=sm.querySelector('.mm-val-more'),extra=Number(sm.dataset.more||0);
+   while(cell.scrollWidth>cell.clientWidth+1&&chips().length>1){
+    chips().pop().remove();extra++;
+    if(!more){more=document.createElement('em');more.className='mm-val-more';sm.appendChild(more)}
+    more.textContent=`ほか${extra}`;
+   }
+  });
+ }
+ /* ---------- 見え方の決め（§9.599） ----------
+    その回の**全部の行**から1回だけ決める: 数の列（右寄せ）・全行で同じ値の列（表の上の1行へ畳む）・名前の札を全行で言うか。
+    畳むのは`fold`を名乗った列が5行以上の表で全部同じ値のときだけ（2〜3行で畳むと列が消えたように見える）。**少なくとも2列は表に残す**。 */
+ const MM_SAME_MIN=5;
+ /* 数か: 既定の印（「40（既定）」）は数の後ろの言い方なので外して見る。「未設定」は空欄と同じに数えない（設備の最大条数・標準時間が左寄せのまま残っていた）。 */
+ const mmIsNumText=t=>/^-?[\d,]+(\.\d+)?(\s*〜\s*-?[\d,]+(\.\d+)?)?(\s*(mm|m\/min|分|件|本|枚|台|条|%))?$/.test(String(t).replace(/（既定）$/,''));
+ const mmPlans=new Map();   // def.key → {off, num, same, tagOff}
+ function mmShownCols(def){
+  const p=mmPlans.get(def.key),auto=mmAuto.get(def.key);
+  return (def.cols||[]).filter(c=>!(p&&p.off.has(c.k))&&!(auto&&auto.has(c.k)));
+ }
+ function mmCellTextOf(c,it,ctx){return String((mmCellOf(c)?mmColText(c,it,ctx):cellText({...c,row:it},it[c.k]))??'').trim()}
+ function mmListPlan(def,items,ctx){
+  const off=new Set(),num=new Set(),same=[];let tagAll=null;
+  (def.cols||[]).forEach(c=>{
+   const vs=items.map(it=>mmCellTextOf(c,it,ctx)),ne=vs.filter(v=>v&&v!=='—'&&v!=='未設定');
+   /* 数の列は右寄せ。`align:'figure'`（帳票ブロックの幅＝12マスの帯）は図が主役なので帯にそろえて左（見出しが帯の上に来る）。 */
+   if(c.align==='num'||(!c.align&&ne.length&&ne.filter(mmIsNumText).length>=ne.length*0.8))num.add(c.k);
+   if(c.tag&&items.length>=MM_SAME_MIN&&items.every(it=>String(it[c.tag.k]??'').trim()))tagAll=c;
+   /* 畳むのは定義が`fold`で名乗った列だけ——1台ごとの設定を並べる表（設備）では、全台が既定でも列そのものが意味を持つ。 */
+   if(items.length<MM_SAME_MIN||!c.fold||mmCellOf(c)||!vs[0]||vs[0]==='—'||vs.some(v=>v!==vs[0]))return;
+   same.push({c,label:c.label,text:vs[0]===c.label?`すべて${vs[0]}`:vs[0]});
+  });
+  while(same.length&&(def.cols||[]).length-same.length<2)same.pop();
+  same.forEach(x=>off.add(x.c.k));
+  if(tagAll)same.unshift({c:tagAll,label:tagAll.tag.label,text:tagAll.tag.all});
+  return {off,num,same,tagOff:new Set(tagAll?[tagAll.k]:[])};
+ }
+ /* 「全行で同じ」の1行。値は一覧のセルと同じ字（`cellText`）。 */
+ function mmSameLine(def,list){
+  const p=mmPlans.get(def.key);if(!p||!p.same.length)return;
+  list.insertAdjacentHTML('beforeend',`<div class="mm-same"><span class="mm-same-k">全行で同じ</span>`
+   +p.same.map(x=>`<span class="mm-same-i"><b>${esc(x.label)}</b>${esc(x.text)}</span>`).join('')+`</div>`);
+ }
+ /* ---------- 札の行（§9.599） ----------
+    左＝タブ（1枚目は「一覧 N件」・絞ると「n / N件」）、右＝畳んだ列の言い方・探す欄・群の開閉。
+    **同じマスタのあいだは器を作り直さない**——探す欄を打っている途中で焦点と変換が切れないように。 */
+ const mmQuery=new Map();
+ const mmQueryOf=def=>mmFold(mmQuery.get(def.key)||'');   // 字のそろえ方は「マスタを探す」と同じ（mmFold）
+ const mmQuerySet=(def,v)=>{mmQuery.set(def.key,String(v||''))};
+ function mmListBar(def,list,tabs,rows){
+  const auto=[...(mmAuto.get(def.key)||[])].map(k=>(def.cols.find(c=>c.k===k)||{}).label).filter(Boolean);
+  return listBar(list,{key:'mm:'+def.key,label:def.label,tabsHtml:tabs.html,fold:true,
+   /* 探すのは1枚目（一覧）だけ・行が無ければ出さない（打っても何も起きない欄を置かない・§CLAUDE 4）。 */
+   findOn:!tabs.now&&!!rows,
+   note:auto.length?`ほか${auto.length}列（${auto.join('・')}）は行を開いた詳細`:'',
+   query:mmQuery.get(def.key)||'',onQuery:v=>{mmQuerySet(def,v);renderMaintList()}});
+ }
+ /* 札の行がその一覧（`key`）のまま残っているか。**探す言葉の寿命はこの答え**——作り直す回は、呼ぶ側が絞る前に言葉を外す。 */
+ function barKept(list,key){const b=list&&list.querySelector(':scope>.mm-lbar');return !!b&&b.dataset.key===key}
+ /* 札の行の器（汎用の一覧とテーブル生データが同じ部品を使う）。`key`が同じあいだは器を作り直さず、右の字と札だけ入れ替える。 */
+ function listBar(list,o){
+  let bar=list.querySelector(':scope>.mm-lbar');
+  if(!barKept(list,o.key)){
+   list.innerHTML='';
+   bar=document.createElement('div');bar.className='mm-lbar';bar.dataset.key=o.key;
+   bar.innerHTML=`<div class="mm-ltabs" role="tablist"></div><div class="mm-lbar-r"><span class="mm-lbar-legend"></span><span class="mm-lbar-note"></span>`
+    +`<label class="mm-find is-list" hidden><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>`
+    +`<input type="search" aria-label="${esc(o.label)}の中を探す" placeholder="${esc(o.label)}の中を探す"></label>`
+    +(o.fold?'<div class="mm-fold" id="masterMaintFold" hidden></div>':'')+'<span class="mm-lbar-x"></span></div>';
+   list.append(bar);
+   const inp=bar.querySelector('.mm-find input');
+   inp.value=o.query||'';   // 欄の字はいま効いている言葉そのもの（絞っているのに欄が空、を作らない）
+   WL.base.onTyped(inp,()=>o.onQuery(inp.value));
+  }
+  [...list.children].forEach(ch=>{if(ch!==bar)ch.remove()});
+  bar.querySelector('.mm-ltabs').innerHTML=o.tabsHtml;
+  bar.querySelector('.mm-find').hidden=!o.findOn;
+  bar.querySelector('.mm-lbar-note').textContent=o.note||'';
+  bar.querySelector('.mm-lbar-x').innerHTML=o.extraHtml||'';
+  bar.querySelector('.mm-lbar-legend').innerHTML='';
+  return bar;
+ }
+ /* 当たった字に印（その場で絞ったことを、行のどこで当たったかまで見せる）。 */
+ function mmMarkHits(list,raw){
+  const q=String(raw||'').trim();if(!q)return;
+  const low=q.toLowerCase();
+  list.querySelectorAll('.mm-row:not(.head),.mm-raw-table tbody tr').forEach(r=>{
+   const tw=document.createTreeWalker(r,NodeFilter.SHOW_TEXT),ns=[];let t;
+   while((t=tw.nextNode()))if(t.nodeValue.toLowerCase().includes(low))ns.push(t);
+   ns.forEach(t=>{
+    const f=document.createDocumentFragment(),v=t.nodeValue,lv=v.toLowerCase();let i=0,j;
+    while((j=lv.indexOf(low,i))>=0){f.append(v.slice(i,j));const m=document.createElement('mark');m.className='mm-hit';m.textContent=v.slice(j,j+q.length);f.append(m);i=j+q.length}
+    f.append(v.slice(i));t.replaceWith(f);
+   });
+  });
+ }
+ /* 空の表示（§9.598 → §9.599）: 絵＋何が無いか＋足す道。「ふだんどこで直すか」は用途の1行が言う（2か所に書かない）。 */
+ function mmEmptyHtml(def,q){
+  if(q)return `<div class="mm-empty is-q"><b>「${esc(mmQuery.get(def.key)||'')}」に当たる行はありません</b>`
+   +`<button type="button" class="mm-btn-ghost sm" data-mm-clearq>探す欄を空にする</button></div>`;
+  const add=def.readOnly?'':defUsesEditorModal(def)?`右上の「＋ ${def.label}を追加」から${def.usualWhere?'も作れます':'1行目を作ります'}。`:'上の欄から足せます。';
+  return `<div class="mm-empty is-none"><i class="fa-regular fa-rectangle-list mm-empty-ico" aria-hidden="true"></i>`
+   +`<b>まだ1行もありません</b><span>${def.usualWhere?'ふだんの画面で設定すると、ここに行が増えます。<br>':''}${esc(add)}</span></div>`;
  }
  /* 一覧の1行（§9.537 で`renderMaintList`から切り出した）。計算の列は登録表（`MM_CELLS`）が描く。 */
  function maintRowEl(def,it,tmpl,showAudit,ctx){
@@ -3084,13 +3295,17 @@
   const how=def.readOnly?'':editorDocks(def)?'押すと右に詳細を開きます':defUsesEditorModal(def)?'押すと編集の窓を開きます':'押すと上の欄に読み込みます';
   row.title=[how,showAudit?'':audit].filter(Boolean).join('\n');
   const det=mmDetailOf(def),open=det&&mmOpenSet(def).has(it.id);
-  const cells=def.cols.map((c,ci)=>{
+  const plan=mmPlans.get(def.key);
+  const cells=mmShownCols(def).map((c,ci)=>{
    const tw=det&&ci===0?`<button type="button" class="mm-rowtw" aria-expanded="${!!open}" title="${open?'閉じる':'この行の中身を開く'}">${open?'▾':'▸'}</button>`:'';
    const k=mmCellOf(c);
    if(k){const v=mmColText(c,it,ctx),h=k.html?k.html(it,ctx[c.cell]):esc(v);
-    return `<span class="mm-calc" data-cell="${esc(c.cell)}" title="${esc(v)}">${tw}${h||'<em class="mm-blank">—</em>'}</span>`}
+    return `<span class="mm-calc${plan&&plan.num.has(c.k)?' is-num':''}" data-cell="${esc(c.cell)}" title="${esc(v)}">${tw}${h||'<em class="mm-blank">—</em>'}</span>`}
    const cc={...c,row:it},v=cellText(cc,it[c.k]);
-   return `<span title="${esc(v)}">${tw}${cellHtml(cc,v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
+   /* 名前の後ろの札（帳票ブロックの「既定」）。全行が持つなら札は出さず「全行で同じ」の1行が言う（§9.599）。 */
+   const tag=c.tag&&!(plan&&plan.tagOff.has(c.k))&&String(it[c.tag.k]??'').trim()
+    ?`<span class="mm-val-def" title="${esc(c.tag.title||'')}">${esc(c.tag.word)}</span>`:'';
+   return `<span${plan&&plan.num.has(c.k)?' class="is-num"':''} title="${esc(v)}">${tw}${(cellHtml(cc,v)+tag)||'<em class="mm-blank">—</em>'}</span>`}).join('');
   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}`;
   // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
   // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
@@ -3175,7 +3390,10 @@
   const chip=$('#masterMaintLevel');if(!chip)return;
   const a=window.accessMode||{};
   const writable=masterDefWritable(def);
-  if(writable&&def.readOnly&&!def.readOnlyByLevel){chip.hidden=true;return}  // 元から読むだけの表は既存の帯が言う
+  /* 元から読むだけの画面（テーブル生データ・移行済みの表）は題の横に灰の札「読むだけ」（§9.599——前は説明の帯が言っていたが、
+     帯は ⓘ へ畳んだ）。この端末の権限で読むだけのときの札とは字で言い分ける。 */
+  chip.classList.toggle('is-ro',!!(def.readOnly&&!def.readOnlyByLevel));
+  if(writable&&def.readOnly&&!def.readOnlyByLevel){chip.hidden=false;chip.textContent='読むだけ';chip.title=def.readOnlyWhy||'この画面は表を読むだけです（書き換えません）';return}
   if(writable){chip.hidden=true;return}
   const lv=masterEditLevel();
   const admin=Array.isArray(a.adminMasters)&&a.adminMasters.indexOf(def.key)>=0;
@@ -3197,7 +3415,7 @@
   /* **器の高さを渡す印も必ず外す**（§9.222 ⑤。`mm-form-page`と同じ作法）。
      外し忘れると、他のマスタの一覧がスクロールしない枠になって行が切れる。 */
   const mList=$('#masterMaintList');
-  if(mList){mList.classList.remove('is-fill');mList.parentElement?.classList.remove('is-fill')}
+  if(mList){mList.classList.remove('is-fill','is-fitw');mList.parentElement?.classList.remove('is-fill')}   // is-fitw＝表の幅で止める（§9.599）
  }
  /* 前のタブ（専用の画面）の読み込みが**後から届いて器を上書きした**とき、いまのタブを描き直す（§9.331）。
     汎用の表は勝った側が控えた行（`maintState.items`）から**その場で**描く——取り直すと、届くまでの間（実測 10〜25ms・
@@ -3318,6 +3536,6 @@
     こちらが黙って閉じていた）。 */
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{listBar,barKept,markHits:mmMarkHits,cellText,cellHtml,setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();

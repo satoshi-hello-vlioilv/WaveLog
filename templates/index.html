@@ -1072,10 +1072,8 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
             言う**のがこの帯の役目（§4）。 -->
        <span class="mm-mode-chip" id="masterMaintLevel" hidden></span></div>
        <p class="mm-hd-lead" id="masterMaintLead" hidden></p></div>
-      <!-- 束ねた見出しの開閉（§9.241 ①）。**群を持つマスタのときだけ**中身が
-           入る（renderMaintList が出し入れする。押せるのに何も起きない
-           ボタンを置かない・§CLAUDE 4）。 -->
-      <div class="mm-fold" id="masterMaintFold" hidden></div>
+      <!-- 束ねた見出しの開閉（§9.241 ①）は一覧の札の行の右へ移した（§9.599・`listBar()`）。頭の行に置くと、
+           一覧を持たない画面（テーブル生データ）へ移っても前の画面の「すべて開く」が残っていた。 -->
       <div class="mm-hd-acts" id="masterMaintActs"></div>
      </div>
      <form class="mm-form" id="masterMaintForm"></form>
