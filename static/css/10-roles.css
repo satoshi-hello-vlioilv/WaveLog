@@ -201,5 +201,6 @@
    同じ列が別の幅に解け、左端が最大25pxずれた（1366px・§9.193と同じ罠）。 */
 .mm-row.head,.oc-row.is-head>span,.bk-table thead th,.rt-table thead th,.mm-raw-table th{font-size:var(--fs-sm)}
 .mm-row.head,.oc-row.is-head{min-height:var(--th-h)}
-.bk-table thead th,.rt-table thead th,.mm-raw-table th{height:var(--th-h);vertical-align:middle}
+/* 上下の余白は0（高さが決める）。判定表の見出しは「＋ 条件の列を追加」（30px）を持ち、余白4pxずつで39pxに伸びていた */
+.bk-table thead th,.rt-table thead th,.mm-raw-table th{height:var(--th-h);padding-block:0;vertical-align:middle}
 }

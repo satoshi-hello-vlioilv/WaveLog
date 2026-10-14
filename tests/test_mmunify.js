@@ -54,7 +54,7 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  /* ---------- 選択肢の値（選んだ項目・表の見出し・詳細の頭2段・本文の追加） ---------- */
  await openNav('opChoice', '.oc-group.is-on');
  sel.oc = await look('.oc-group.is-on', SEL);
- const th = { oc: await look('.oc-row.is-head', TH) };
+ const th = { oc: await look('.oc-row.is-head', TH) }, thH = {};
  /* 選択肢の値は列の幅を em で書いているので、字の大きさは行でなくセルが持つ（行に当てると見出しと本文で列がずれる） */
  th.oc.fontSize = (await look('.oc-row.is-head>span:nth-child(2)', ['fontSize'])).fontSize;
  const ocHead = await page.evaluate(() => { const h = document.querySelector('.oc-values-head'); const s = h && h.querySelector('small'), t = h && h.querySelector('h3');
@@ -67,6 +67,7 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  /* ---------- 設備（表の見出し・札の高さ） ---------- */
  await openNav('equipment', '.mm-row.head');
  th.mm = await look('.mm-row.head', TH);
+ thH.mm = await look('.mm-row.head', ['h']);
  const tabH = { list: await look('.mm-lbar .mm-ltab', ['h']) };
  verbs.push(...await plusVerbs());
  /* ---------- ゴムリング（選んだ項目・一覧の頭・詳細の頭・札の高さ） ---------- */
@@ -82,6 +83,7 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  /* ---------- スペーサー（表の見出し・縞） ---------- */
  await openNav('bladesetSpacer', '.bk-table tbody tr');
  th.bk = await look('.bk-table thead th', TH);
+ thH.bk = await look('.bk-table thead th', ['h']);
  const zebra = await page.evaluate(() => [...new Set([...document.querySelectorAll('.bk-table tbody tr')].slice(0, 8).map(r => getComputedStyle(r).backgroundColor))]);
  rec('2) マスタの表に縞が無い（スペーサーの在庫表の行の地は1色）', zebra.length === 1, JSON.stringify(zebra));
  verbs.push(...await plusVerbs());
@@ -94,6 +96,8 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  /* ---------- 刃選択（判定表の見出し・本文の追加） ---------- */
  await openNav('bladesetPick', '.rt-table');
  th.rt = await look('.rt-table thead th:not(.rt-no)', TH);
+ /* 見出しの行は「＋ 条件の列を追加」（30px）を持つ。上下の余白が残ると39pxに伸びた */
+ thH.rt = await look('.rt-table thead tr:first-child th:not(.rt-no)', ['h']);
  addBtn.rt = await look('[data-rt="addcol"]', BTN);
  verbs.push(...await plusVerbs());
  /* ---------- 設備停止の時間（本文の追加・欄30px） ---------- */
@@ -101,6 +105,9 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  addBtn.smn = await look('#smnAdd', BTN);
  const smnIn = await look('#smnNew', ['h']);
  verbs.push(...await plusVerbs());
+ /* ---------- 測定データの保存（設定の段の札＝左の一覧の2行の項目） ---------- */
+ await openNav('measStorage', '.mm-tabbar.is-rail .mm-tab');
+ const railH = await look('.mm-tabbar.is-rail .mm-tab', ['h']);
  /* ---------- 勤務形態（押す札にピルを使わない） ---------- */
  await openNav('shiftMaster', '.shift-list-item');
  const pill = await page.evaluate(() => [...document.querySelectorAll('.mm-main button')].filter(b => { const r = b.getBoundingClientRect(), c = getComputedStyle(b);
@@ -113,7 +120,8 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  rec('3) 札（タブ）の高さは1つ（一覧の札の行＝設備の札の行）', tabH.list && tabH.scope && tabH.list.h === tabH.scope.h, JSON.stringify(tabH));
  rec('4) 本文の中の「＋ 追加」は1つの形（選択肢の値＝判定表＝設備停止の時間）', same(addBtn.oc, addBtn.rt) && same(addBtn.smn, addBtn.rt), JSON.stringify(addBtn));
  rec('4) 追加の行の欄も30px（設備停止の時間の分の欄＝ボタンの高さ）', smnIn && addBtn.smn && smnIn.h === addBtn.smn.h, JSON.stringify({ smnIn, btn: addBtn.smn && addBtn.smn.h }));
- rec('4) 2行の一覧の項目は40px（選択肢の値のまとまり）', ocItemH && ocItemH.h === 40, JSON.stringify(ocItemH));
+ rec('2) 表の見出しの高さは1つ（汎用の表＝在庫表＝判定表）', thH.mm && thH.bk && thH.rt && thH.mm.h === thH.bk.h && thH.rt.h === thH.bk.h, JSON.stringify(thH));
+ rec('4) 2行の一覧の項目は40px（選択肢の値のまとまり＝設定の段の札）', ocItemH && ocItemH.h === 40 && railH && railH.h === 40, JSON.stringify({ ocItemH, railH }));
  const badVerb = verbs.filter(t => /足す|つくる|作る/.test(t));
  rec('4) 「＋」のボタンは「追加」の1つの動詞（足す・つくるを使わない）', !badVerb.length && verbs.length > 5, JSON.stringify(badVerb.length ? badVerb : verbs.slice(0, 6)));
 
