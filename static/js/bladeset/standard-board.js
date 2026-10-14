@@ -95,10 +95,10 @@
   const g=gs.find(x=>x.name===sb.sel)||{list:[]};
   const body=K().frame(sb,{key:'standard',label:'刃組基準値',onEquipment:()=>load(true),
    save,cancel:()=>{sb.edits={};render()},what:editedGroups,
-   body:K().pane({label:'刃組基準値の節',items:gs.map(x=>{const n=setIn(x);
+   body:K().pane({label:'刃組基準値の節',head:{name:'節'},items:gs.map(x=>{const n=setIn(x);
     return {key:x.name,on:x.name===sb.sel,mark:`<i class="sb-ico" aria-hidden="true">${esc(x.name.slice(0,1))}</i>`,title:x.name,
      sub:F.sayOf(x.name)||`${x.list.length}項目`,tags:n?[{text:`設定 ${n}`,tone:'teal'}]:[]}}),
-    detail:`<article class="bk-card sb-card"><header class="bk-card-h"><div class="bk-card-t"><h3>${esc(g.name)}</h3></div></header>
+    detail:`<article class="bk-card sb-card"><header class="bk-card-h"><div class="bk-card-t"><small class="bk-card-eb">節</small><h3>${esc(g.name)}</h3></div></header>
      <div class="sb-fig">${F.figOf(g.name,valueOf)||''}</div><div class="sb-rows">${g.list.map(rowHtml).join('')}</div></article>`})});
   if(!body)return;
   K().wirePane(body,{onPick:k=>{sb.sel=k;render()}});
@@ -154,7 +154,7 @@
   if(!sb.row)return;
   if(!await confirmModal({title:'すべて既定へ戻す',eyebrow:'刃組基準値',
     bodyHtml:`<p class="confirm-modal-message">${esc(sb.equipment)} の登録（設定 ${changedCount()}項目）を消し、すべて既定値に戻します。元に戻せません。</p>`,
-    confirmLabel:'既定へ戻す',cancelLabel:'やめる'}))return;
+    confirmLabel:'既定へ戻す'}))return;
   if(await K().guarded(sb,async()=>{await K().post('/api/bladeset-standard-master/delete',{id:sb.row.id})},'戻せませんでした')){sb.edits={};await load(true)}
  }
  async function load(force){

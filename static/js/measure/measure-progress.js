@@ -321,7 +321,7 @@ async function toggleExcluded(name){
    +`${usage.measured}件(${usage.pct}%)でこの項目が測定されています。`,'');
   else lines.push('同じ用途コードの完了データがまだ無いため、過去の実績は表示できません。','');
   lines.push('対象外にすると、完了時の未測定の確認から外れます。','','よろしいですか？');
-  if(!await confirmModal(lines.join('\n')))return;
+  if(!await confirmModal({message:lines.join('\n'),confirmLabel:'対象外にする'}))return;
   sc.excluded.push(name);
  }
  sc.decidedAt=new Date().toISOString();sc.decidedBy='manual';
@@ -399,7 +399,7 @@ WL.measureHooks.gate('persistAndTransition',async status=>{
      skipped.length?`対象外に設定した項目: ${skipped.join('、')}`:'',
      review.ngTotal?'このまま完了として登録しますか？（公差外・基準外があったことは記録に残ります）'
                    :'このまま完了として登録しますか？'].filter(x=>x!=='').join('\n');
-    const ok=await confirmModal(text);
+    const ok=await confirmModal({message:text,confirmLabel:'完了として登録する'});
     if(!ok)return false;  // 断る
    }
   }

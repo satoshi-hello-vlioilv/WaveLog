@@ -99,7 +99,7 @@
   if(busy||!S.db||!S.table)return;
   const n=S.count|0;
   if(n>100000&&!await confirmModal({title:`${n.toLocaleString()}件を出力しますか？`,eyebrow:'Excel に出力',
-    message:'件数が多いので、出来上がりまで時間がかかります。絞り込んでから出すと速くなります。',confirmLabel:'出力する',cancelLabel:'やめる'}))return;
+    message:'件数が多いので、出来上がりまで時間がかかります。絞り込んでから出すと速くなります。',confirmLabel:'出力する'}))return;
   busy=true;
   const btn=document.getElementById('listFileBtn');if(btn)btn.disabled=true;
   showToast&&showToast('Excel に出力しています…',`${n?n.toLocaleString()+'件':''}を集めています`,2400);

@@ -3016,7 +3016,7 @@
    renderLots(); renderOrder(); scheduleRender();
   });
  }
- /* 条の設計（その場で記録・既定へ戻す・条を足す）。 */
+ /* 条の設計（その場で記録・既定へ戻す・条を追加）。 */
  function wireStripDesign() {
   /* 条の設計を**その場で記録**（§9.381）。刃組完了のときにも記録するが、
      測定が先に始まることがあるので、**完了を待たずに残せる**ようにする。 */
@@ -3494,7 +3494,7 @@
  async function deleteHistory(id) {
   const ok = await confirmModal({ title: '刃組の記録を消します',
                                   message: 'この記録を消すと、台車差分の比べる相手が1つ前へずれます。',
-                                  confirmLabel: '消す', danger: true });
+                                  confirmLabel: '削除する', danger: true });
   if (!ok) return;
   try {
    await api('/api/bladeset/history/delete', {

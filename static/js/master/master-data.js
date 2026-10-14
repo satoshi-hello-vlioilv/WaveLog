@@ -215,7 +215,7 @@
    more:[{label:'状態を読み直す',data:{msAct:'reload'},onClick:msReload},
     ...(canExport?[{label:'いま複製する',note:'間隔を待たずに②を③へ写します',data:{msAct:'export'},onClick:msExportNow}]:[])]});
   const form=mountSetPage({key:'measStorage',figure:msFlowHtml(F),secs:[
-   {key:'place',name:'置き場と引っ越し',icon:'fa-folder-tree',sub:'② の置き場',body:msPlaceHtml(F),state:loc.perEquipment?'設備ごと':'OK'},
+   {key:'place',name:'置き場と引っ越し',icon:'fa-folder-tree',sub:'② の置き場',body:msPlaceHtml(F),state:loc.perEquipment?'設備ごと':'正常'},
    {key:'export',name:'閲覧用の複製',icon:'fa-copy',sub:'③ Box 等へ',body:msExportHtml(F),foot:setFootHtml('変更なし',SET_SAVE_BTNS),
     state:exp.retired?'使いません':exp.lastError?'失敗':canExport?'複製あり':'未設定',tone:exp.lastError?'bad':''}]});
   if(!form)return;
@@ -325,7 +325,7 @@
      :`<p class="ms-split-total">振り分ける記録がありません（${esc(r.note||'')}）</p>`;
     const go=$('#msSplitApply');
     if(go)go.onclick=async()=>{
-     if(!await confirmModal({message:'今ある測定データを、設備ごとのフォルダへ写します。\n\n元のファイルは消しません（記録は1件も消えず、二重にも出ません）。\nよろしいですか？'}))return;
+     if(!await confirmModal({confirmLabel:'写す',message:'今ある測定データを、設備ごとのフォルダへ写します。\n\n元のファイルは消しません（記録は1件も消えず、二重にも出ません）。\nよろしいですか？'}))return;
      run(true);
     };
     if(apply){showToast&&showToast('振り分けました',`${r.moved}件を設備ごとのフォルダへ写しました`,6000);msReload()}
@@ -435,8 +435,8 @@
   const orphan=ids.filter(id=>!importBackupState.localIds.has(id)).length;
   const msg=`バックアップから ${ids.length}件を削除します。`
    +(orphan<ids.length?`\n\nうち ${ids.length-orphan}件はこの端末のデータ一覧にも存在します。削除するとスケジュールの実績表示から消えますが、端末内のデータは残ります。`:'')
-   +'\n\nこの操作は元に戻せません。よろしいですか?';
-  const ok=await confirmModal(msg);
+   +'\n\nよろしいですか？';
+  const ok=await confirmModal({message:msg,confirmLabel:'削除する',danger:true,facts:[{text:'戻せません',danger:true}]});
   if(!ok)return;
   try{
    setMaintLoading(true,`バックアップから ${ids.length}件を削除しています…`);
@@ -458,7 +458,7 @@
   // 取り消せない操作なので、何がどう変わるかを箇条書きで示してから確認する
   // (確認の窓は`confirmModal`の1つ。§9.342)。
   const okRun=await confirmModal({
-   eyebrow:'IMPORT TO THIS TERMINAL',title:'この端末へ取り込みます',
+   title:'この端末へ取り込みます',
    danger:true,confirmLabel:'取り込む',
    bodyHtml:`<p class="confirm-modal-message">選択した <b>${esc(String(targets.length))}件</b> をこの端末のデータへ取り込みます。</p>
     <ul class="confirm-modal-points">
@@ -601,7 +601,7 @@
     無効にしたデータソースが選択肢に残る。
 
     並びは作業の順番そのもの:「①どの一覧に足すか → ②どこから → ③どうつなぐ
-    → ④何を足す → ⑤結果」。**保存する前に当ててみられる**(下見)のが値打ちで、
+    → ④何を追加 → ⑤結果」。**保存する前に当ててみられる**(下見)のが値打ちで、
     読み込み先は起動時に1回だけ決まるため、これが無いと打ち間違いに気づける
     のが再起動のあとになる（§9.168と同じ作法）。
     ================================================================== */
@@ -680,7 +680,7 @@
    </div>`;
  }
  const QJ_MULTI_LABEL={first:'最初の1件を使う',blank:'空にする（どれか決められないので出さない）'};
- /* 用途ごとの言葉（§9.596）。**完了突合は「一覧に列を足す」ではない**——同じ窓を使うので、言い方だけは用途で
+ /* 用途ごとの言葉（§9.596）。**完了突合は「一覧に列を追加」ではない**——同じ窓を使うので、言い方だけは用途で
     分ける（答えは`qjWord()`の1箇所。画面のあちこちに「完了突合なら」を書かない）。 */
  const QJ_WORDS={
   left:{list:'この一覧（足す先）',finish:'予定のロット（仕掛の列）'},
@@ -760,7 +760,7 @@
   if(!(qjState.sources||[]).some(s=>s.key===x.right))missing.push('相手');
   return {cls:'qj-item'+(x.active?'':' is-off')+(missing.length?' is-pending':''),attrs:setRowAttrs(x.id,'押すと直す窓を開きます（削除は窓の ⋯）'),
    note:missing.length?`${esc(missing.join('と'))}のデータ接続が見つかりません（無効にした・キーを変えた・再起動していない、のいずれかです）。この結合は当たりません。`:'',
-   cells:[`<span class="mm-set-tag${isFin?' is-teal':''} qj-use" title="${esc(pp.summary||'')}">${esc(pp.short||pp.label||'列を足す')}</span>`
+   cells:[`<span class="mm-set-tag${isFin?' is-teal':''} qj-use" title="${esc(pp.summary||'')}">${esc(pp.short||pp.label||'列を追加')}</span>`
      +(isFin?'':`<small class="mm-set-sub">${x.useInSchedule===false?'一覧だけ':'予定でも使う'}</small>`),
     `<b class="qj-name" title="${esc(x.name)}">${esc(x.name)}</b>${x.prefix?` <code class="mm-set-key" title="足す列の名前に付ける文字">${esc(x.prefix)}…</code>`:''}`
      +(x.active?'':' <span class="mm-set-tag-off">停止中</span>'),
@@ -773,7 +773,7 @@
   const on=qjState.builtinEnabled!==false,kind=qjKind(b.kind||qjState.kindDefault);
   return {cls:'qj-item is-builtin'+(on?'':' is-off'),attrs:setRowAttrs('builtin','押すと「複製して編集」「既定を解除する」を選べます'),
    note:on?'':'解除中です。品質データの列は一覧に出ません（エラーにはならず、その列を見ていた設定は静かに落ちます）。品質データは相手として選べるので、自分で結合を登録すれば出せます。',
-   cells:['<span class="mm-set-tag qj-use">列を足す</span>',
+   cells:['<span class="mm-set-tag qj-use">列を追加</span>',
     `<b class="qj-name">${esc(b.name)}</b> ${on?'<span class="mm-set-tag-off" title="役割「仕掛」と「品質」が揃っているので自動で効いています。同じ相手への結合を登録すると、そちらが優先されます">既定</span>':'<span class="mm-set-tag is-warn">解除中</span>'}`,
     qjJoinHtml(qjSourceLabel(b.left),qjSourceLabel(b.right),(b.keys||[]).map(k=>k.left).join('・')),
     esc(kind?kind.label:'左外部結合'),'相手の全列']};
@@ -797,7 +797,7 @@
  }
  async function qjToggleBuiltin(on){
   const uid=requireMaintUser();if(uid===null)return;
-  if(!on&&!await confirmModal('既定の品質データ結合を解除します。\n品質データの列（鋳造番号・製造材質・検査結果など）は一覧に出なくなります。\nエラーにはならず、その列を見ていた設定は静かに落ちます。よろしいですか？'))return;
+  if(!on&&!await confirmModal({message:'既定の品質データ結合を解除します。\n品質データの列（鋳造番号・製造材質・検査結果など）は一覧に出なくなります。\nエラーにはならず、その列を見ていた設定は静かに落ちます。よろしいですか？',confirmLabel:'解除する'}))return;
   try{
    setMaintLoading(true,on?'既定に戻しています…':'解除しています…');
    const r=await api('/api/query-join-master/builtin',{method:'POST',
@@ -810,7 +810,7 @@
  }
  async function qjDelete(id){
   const x=qjState.items.find(i=>String(i.id)===String(id));if(!x)return;
-  if(!await confirmModal({message:`結合「${x.name}」を削除します。\nこの結合で足していた列は一覧から消えます。よろしいですか？`,danger:true}))return;
+  if(!await confirmModal({confirmLabel:'削除する',message:`結合「${x.name}」を削除します。\nこの結合で足していた列は一覧から消えます。よろしいですか？`,danger:true}))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    setMaintLoading(true,'削除しています…');
@@ -990,7 +990,7 @@
     +`<button type="button" class="qj-status-cancel" id="qjPickCancel">選ぶのをやめる</button>`;
   }
   return n
-   ?`<span class="qj-status-now">突合キーは<b>${n}</b>組。列をもう1組押せば足せます</span>`
+   ?`<span class="qj-status-now">突合キーは<b>${n}</b>組。列をもう1組押せば追加できます</span>`
    :'<span class="qj-status-now"><b>突合キーがまだありません。</b>'
     +'左右の列を1つずつ押すか、片方をもう片方へドラッグしてください</span>';
  }
@@ -1122,12 +1122,12 @@
     ${n?`<div class="qj-trial-bar" aria-hidden="true">${bar}</div>${rows}`:'<p class="mm-field-hint">まだ完了していない作業の予定がありません。</p>'}
    </div>`;
  }
- /* ④ 何を足すか／何を持ち帰るか。完了突合では持ち帰った値の見本（`#qjAddPreview`）も置く(§9.596)。 */
+ /* ④ 何を追加するか／何を持ち帰るか。完了突合では持ち帰った値の見本（`#qjAddPreview`）も置く(§9.596)。 */
  function qjAddHtml(x,rc,kind,isFinish){
   const pickAll=!(x.columns||[]).length;
   const colList=(rc.columns||[]).filter(c=>!(x.keys||[]).some(k=>k.right===c));
   return `<section class="qj-sec qj-sec-add">
-    <h4 class="mm-fieldgroup">${isFinish?'④ 何を持ち帰るか':'④ 何を足すか'}</h4>
+    <h4 class="mm-fieldgroup">${isFinish?'④ 何を持ち帰るか':'④ 何を追加するか'}</h4>
     ${isFinish?`<p class="mm-field-hint">${WL.markup(qjWord('addIntro'))}</p>`:''}
     ${(kind.key&&!kind.matched&&!kind.rightOnly)?`<p class="mm-field-hint">
       <b>この結合は列を足しません。</b>「${esc(kind.label)}」は相手に当たらなかった行だけを残す使い方なので、
@@ -1475,7 +1475,7 @@
   if(!p){box.innerHTML='<p class="mm-field-hint">突合キーを選ぶと、いまのデータで当ててみた結果がここに出ます。</p>';return}
   /* **色だけで伝えない**(§3)。当たった件数・足す列数・実例を文字で出す。 */
   const names=(p.addedColumnNames||[]);
-  const cols=p.addedColumns?`<b>${p.addedColumns}</b> 列を足します`:'列は足しません';
+  const cols=p.addedColumns?`<b>${p.addedColumns}</b> 列を追加します`:'列は足しません';
   const head=p.ok
    ?`<p class="qj-probe-ok"><b>${p.matched}</b> / ${p.sampled} 行に当たりました。${cols}（相手の表: ${esc(p.table||'—')}）。</p>`
    :`<p class="qj-probe-ng">当たりませんでした。${esc(p.reason||'')}</p>`;
@@ -1548,7 +1548,7 @@
  }
  async function dsDelete(id){
   const x=dsState.items.find(i=>String(i.id)===String(id));if(!x)return;
-  if(!await confirmModal(`「${x.label||x.key}」を無効にします。\n一覧から消えるのはサーバー再起動後です。よろしいですか？`))return;
+  if(!await confirmModal({message:`「${x.label||x.key}」を無効にします。\n一覧から消えるのはサーバー再起動後です。よろしいですか？`,confirmLabel:'無効にする'}))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    setMaintLoading(true,'無効にしています…');
@@ -2600,7 +2600,7 @@
   if(badge){p.dataset.tabBadge=String(badge);p.dataset.tabTone=tone||'warn';p.dataset.tabBadgeTitle=title||''}
   else{delete p.dataset.tabBadge;delete p.dataset.tabTone;delete p.dataset.tabBadgeTitle}
   const n=Number(badge);
-  p.dataset.tabState=badge?(Number.isFinite(n)&&n>0?`要対応 ${n}`:(state||'要対応')):(state||'OK');
+  p.dataset.tabState=badge?(Number.isFinite(n)&&n>0?`要対応 ${n}`:(state||'要対応')):(state||'正常');
   p.dataset.tabStateTone=badge?(tone||'warn'):'';
  }
  function paintPcTabs(){
@@ -2608,7 +2608,7 @@
   const term=(window.WL&&WL.terminal)||null,act=pathConfigState.active||{};
   const pcNow=act.pc_name||(term&&term.pcName())||'';
   pcTabSet(form,'terminal',[pcNow,(term&&term.loginId())||'',pcModeWord()].filter(Boolean).join('・'),
-   pcNow?0:'!','warn','要対応 PC名を取得できていません',pcNow?'OK':'名前なし');
+   pcNow?0:'!','warn','要対応 PC名を取得できていません',pcNow?'正常':'名前なし');
   const st=pathConfigState.storage,items=(st&&st.items)||[];
   if(items.length){
    const live=items.filter(x=>!x.retired);
@@ -2628,7 +2628,7 @@
    /* 資材が無いのを**要対応に数えるのは使うとき**（定期実行が回る・取得元が local）だけ。使わない端末では字で言う。 */
    const uses=!!s.enabled||s.source==='local';
    pcTabSet(form,'rne',(s.running?'抽出中':(s.enabled?`定期 ${s.intervalSec}秒ごと`:'定期 停止中'))+(miss?'・資材なし':''),
-    uses?miss:0,'bad','要対応 足りない資材 '+miss,s.running?'抽出中':(s.enabled?'OK':'停止中'));
+    uses?miss:0,'bad','要対応 足りない資材 '+miss,s.running?'抽出中':(s.enabled?'正常':'停止中'));
   }
   if(typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
  }
@@ -2862,8 +2862,7 @@
      <p class="confirm-modal-message">${plan.kind==='network'||plan.kind==='cloud'
        ?'共有の置き場です。<b>作るだけ</b>で、中のデータは触りません。'
        :'この端末の中に作ります。'}</p>`;
-   const ok=await confirmModal({title:`${label||'置き場'}を作ります`,eyebrow:'CREATE',
-                                bodyHtml:body,confirmLabel:'作る'});
+   const ok=await confirmModal({title:`${label||'置き場'}を作ります`,bodyHtml:body,confirmLabel:'作る'});
    if(!ok)return;
    setMaintLoading(true,'作っています…');
    const r=await api('/api/storage-layout/prepare',{method:'POST',
@@ -3516,7 +3515,7 @@
    {key:'auto',name:'定期掃除',icon:'fa-clock',sub:'決めた間隔で',body:clAutoHtml(pol),foot:setFootHtml('変更なし',SET_SAVE_BTNS),
     state:pol.auto?`入・${clEvery(pol.intervalSec).replace(/ごと$/,'')}`:'切'},
    {key:'place',name:'置き場',icon:'fa-folder-open',sub:'どこを見ているか',body:clPlaceHtml(d),
-    state:st.lastError?'前回は失敗':'OK',tone:st.lastError?'bad':''}]});
+    state:st.lastError?'前回は失敗':'正常',tone:st.lastError?'bad':''}]});
   if(!form)return;
   clFillList();
   $('#clRun').onclick=()=>cleanupRun();
@@ -3604,7 +3603,7 @@
      `<li><b>${esc(c.label)}</b>${c.auto?'':'<i>自動掃除の対象外</i>'}<em>${clSize(c.removableBytes)}・${c.removable}件</em></li>`).join('')}</ul>
    <p class="confirm-modal-message">合計 <b>${clSize(sel.bytes)}（${sel.n}件）</b>。
     どれも<b>作り直せるファイル</b>で、測定データ・マスタ・共有スケジュールには触れません。</p>`;
-  const ok=await confirmModal({title:'不要ファイルを消します',eyebrow:'CLEANUP',bodyHtml:body,
+  const ok=await confirmModal({title:'不要ファイルを消します',bodyHtml:body,
                               confirmLabel:'掃除する',danger:true});
   if(!ok)return;
   cleanupState.busy=true;
@@ -3717,7 +3716,7 @@
    <ul class="cl-confirm"><li><b>${esc(def.rawTable)}</b><em>${rows}件</em></li></ul>
    <p class="confirm-modal-message">この表は<b>アプリがもう読みません</b>
     （中身は移行先へ移っています）。消しても画面の動きは変わりません。</p>`;
-  const ok=await confirmModal({title:'移行済みの表を削除します',eyebrow:'DROP TABLE',bodyHtml:body,
+  const ok=await confirmModal({title:'移行済みの表を削除します',bodyHtml:body,
                               confirmLabel:'削除する',danger:true});
   if(!ok)return;
   try{
@@ -3911,10 +3910,10 @@
   const f=d.fleet||{terminals:[],users:[],counts:{},latestVersion:'',myVersion:'',recordingSince:''},items=d.items||[];
   const cut=items.filter(x=>x.revoked).length,old=(f.counts||{}).outdated||0;
   const form=mountSetPage({key:'presence',figure:pzFigureHtml(d,f),secs:[
-   {key:'live',name:'いま接続中',icon:'fa-plug',sub:'10秒ごとに読み直す',state:cut?`切断中 ${cut}`:'OK',tone:cut?'warn':'',
+   {key:'live',name:'いま接続中',icon:'fa-plug',sub:'10秒ごとに読み直す',state:cut?`切断中 ${cut}`:'正常',tone:cut?'warn':'',
     body:`${pzRevokedHtml(d.revoked)}<div class="mm-list mm-set-list" id="pzList"></div>`},
    /* 札は字だけ（台数は帯の凡例とタブが言う・同じ数を2か所に出さない）。 */
-   {key:'hist',name:'接続の履歴',icon:'fa-clock-rotate-left',sub:'配る相手を決める',state:old?'要更新':'OK',tone:old?'warn':'',
+   {key:'hist',name:'接続の履歴',icon:'fa-clock-rotate-left',sub:'配る相手を決める',state:old?'要更新':'正常',tone:old?'warn':'',
     stateTitle:old?'最新でない版の端末があります（帯の凡例が台数を言います）':'',body:'<div class="mm-list mm-set-list" id="pzTerms"></div>'}]});
   if(!form)return;
   pzFillLive(d,f);pzFillHist(d,f);
@@ -3999,8 +3998,8 @@
 
  async function pzForget(key){
   const t=((presenceState.data||{}).fleet?.terminals||[]).find(x=>x.key===key);if(!t)return;
-  if(!await confirmModal({message:`${t.login||'（不明）'}／${t.pc||'（不明）'} の接続の記録を消します。`
-     +'使わなくなった端末を「最新でない端末」の数から外すためのものです。元に戻せません。',danger:true}))return;
+  if(!await confirmModal({confirmLabel:'削除する',facts:[{text:'戻せません',danger:true}],message:`${t.login||'（不明）'}／${t.pc||'（不明）'} の接続の記録を消します。`
+     +'使わなくなった端末を「最新でない端末」の数から外すためのものです。',danger:true}))return;
   try{await api('/api/presence/forget',{method:'POST',body:JSON.stringify({key})});
       showToast('記録を消しました',`${t.login||''}／${t.pc||''}`)}
   catch(e){showToast('記録を消せませんでした',e.message||String(e),6000)}
@@ -4135,7 +4134,7 @@
 
     §9.389／§9.390 では**3つのタブ**（設備停止分類／設備停止／設備停止の内訳）
     に分かれていた。同じ1つの階層を3枚に割っていたので、
-     ・分類を足す → タブを移る → 停止内容を足す → またタブを移る → 内訳を足す
+     ・分類を追加 → タブを移る → 停止内容を追加 → またタブを移る → 内訳を追加
        という**タブ往復が2回**要り、
      ・いま作っている分類がどの停止内容で使われているのか、
        その停止内容がどんな内訳を持つのかが**1画面のどこにも出ていなかった**。
@@ -4354,7 +4353,7 @@
        canDel?`<button type="button" class="ssb-ic ssb-cat-more" data-ssb-cat-more="${esc(key)}" aria-haspopup="menu" aria-expanded="false"
         aria-label="分類「${esc(label)}」の操作" title="分類「${esc(label)}」の操作（消すなど）"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`
        :'<span class="ssb-ic is-void" aria-hidden="true"></span>'}
-      <button type="button" class="ssb-ic" data-ssb-add-in="${esc(key)}" title="「${esc(label)}」に停止内容を足します">＋</button></div>
+      <button type="button" class="ssb-ic" data-ssb-add-in="${esc(key)}" title="「${esc(label)}」に停止内容を追加します">＋</button></div>
      ${/* 空の分類は件数（0）が言う——「まだありません」の字を分類ごとに並べない。 */
        open?(rows.map(s=>ssbStopRowHtml(s,picked)).join('')
        ||(ssbState.q?'<p class="mm-empty ssb-empty">絞り込みに当たる停止内容がありません。</p>':'')):''}
@@ -4548,7 +4547,7 @@
    };
   }
  }
- /* 左＝分類（畳む・開く・消す・足す・その分類に停止内容を足す）。 */
+ /* 左＝分類（畳む・開く・消す・足す・その分類に停止内容を追加）。 */
  function ssbWireCats(list){
   /* 分類の行は**畳む／開く**（§9.590）。選んでいる停止内容と右の段はそのまま。 */
   list.querySelectorAll('[data-ssb-cat]').forEach(btn=>{
@@ -4587,7 +4586,7 @@
         body:JSON.stringify({name,user_id:uid})});
      ssbState.fold.delete(name);
      await loadStopSubMaint(true);
-     ssbSay(`分類「${name}」を足しました（右の「＋」でこの分類に停止内容を足せます）`);
+     ssbSay(`分類「${name}」を追加しました（右の「＋」でこの分類に停止内容を追加できます）`);
      const again=$('#ssbNewCat');
      if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
     }catch(e){ssbSay(`足せませんでした: ${e.message||String(e)}`,true)}
@@ -4599,9 +4598,9 @@
  async function ssbDeleteCat(name,used){
   const row=(ssbState.cats||[]).find(c=>String(c.name||'').trim()===name);
   if(!row){ssbSay(`「${name}」は分類マスタに登録されていません（停止内容の側で使われているだけです）。`,true);return}
-  if(!(await confirmModal(`分類「${name}」をマスタから消しますか？\n`
+  if(!(await confirmModal({message:`分類「${name}」をマスタから消しますか？\n`
     +(used?`この分類を使っている停止内容が ${used}件 あります。停止内容そのものは消えませんが、分類の選択肢からは消えます。\n`:'')
-    +'これまでに入れた予定の記録は、その予定の中に残ります。')))return;
+    +'これまでに入れた予定の記録は、その予定の中に残ります。',confirmLabel:'削除する',danger:true})))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    await api('/api/schedule/stop-category-master/delete',
@@ -4624,9 +4623,9 @@
  }
  async function ssbDeleteStop(row){
   const subs=ssbSubsOf(row.id);
-  if(!(await confirmModal(`停止内容「${row.name}」を消しますか？\n`
+  if(!(await confirmModal({message:`停止内容「${row.name}」を消しますか？\n`
     +(subs.length?`その内訳 ${subs.length}件（${subs.map(x=>x.name).join('、')}）も一緒に消えます。\n`:'')
-    +'これまでに入れた予定の記録は、その予定の中に残ります。')))return;
+    +'これまでに入れた予定の記録は、その予定の中に残ります。',confirmLabel:'削除する',danger:true})))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    await api('/api/schedule/stop-reason-master/delete',
@@ -4732,7 +4731,7 @@
     if(min===undefined){ssbSay('分は0より大きい数で入れてください。',true);minEl&&minEl.focus();return}
     const under=Number(ssbState.addUnder||0);
     if(await ssbSave({stopReasonId:ssbPickedId(),name,standardMinutes:min,parentSubId:under},
-                     `「${name}」を足しました`)){
+                     `「${name}」を追加しました`)){
      const again=$('#ssbNewName');
      if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
      const m2=$('#ssbNewMin');if(m2)m2.value='';
@@ -4766,9 +4765,9 @@
   const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
   if(!cur)return;
   const kids=ssbSubsOf(ssbPickedId()).filter(x=>Number(x.parentSubId||0)===Number(id));
-  if(!(await confirmModal(`「${cur.name}」を内訳から消しますか？\n`
+  if(!(await confirmModal({message:`「${cur.name}」を内訳から消しますか？\n`
     +(kids.length?`この下の内訳 ${kids.length}件（${kids.map(k=>k.name).join('、')}）も一緒に消えます。\n`:'')
-    +'これまでに入れた予定の内訳の記録は、その予定の中に残ります。')))return;
+    +'これまでに入れた予定の内訳の記録は、その予定の中に残ります。',confirmLabel:'削除する',danger:true})))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    await api('/api/schedule/stop-sub-master/delete',
@@ -4834,7 +4833,7 @@
     消すのは点の字に乗せると出る ×、足すのは目盛りの下の欄。 */
  function smnRulerHtml(items,sl){
   const mins=items.map(r=>Number(r.minutes)).filter(n=>Number.isFinite(n)&&n>0).sort((a,b)=>a-b);
-  if(!mins.length)return '<p class="mm-empty">選択肢がまだありません。下の欄から足せます。</p>';
+  if(!mins.length)return '<p class="mm-empty">選択肢がまだありません。下の欄から追加できます。</p>';
   const max=Math.max(...mins,sl?sl.max:0)||1;
   const pos=v=>`${(v/max*100).toFixed(2)}%`;
   let lastUp=-Infinity;
@@ -4861,9 +4860,9 @@
   list.innerHTML=`<div class="smn-wrap">
     <p class="smn-ruler-k">${esc(key)}<span class="smn-count">${items.length}件</span></p>
     ${smnRulerHtml(items,sl)}
-    <div class="smn-add"><span class="smn-add-k">選べる時間を足す</span>
-     <input type="text" id="smnNew" placeholder="分（例: 45）" autocomplete="off" inputmode="decimal" aria-label="足す時間（分）">
-     <button type="button" id="smnAdd" class="mm-btn-ghost">＋ 足す</button>
+    <div class="smn-add">
+     <input type="text" id="smnNew" placeholder="分（例: 45）" autocomplete="off" inputmode="decimal" aria-label="追加する時間（分）">
+     <button type="button" id="smnAdd" class="mm-btn-ghost">＋ 時間を追加</button>
     </div>
    </div>`;
   bindStopMinutes();
@@ -4882,7 +4881,7 @@
        {method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({minutes:n,user_id:uid})});
      await loadStopMinutesMaint();
-     smnSay(`${WL.duration.text(n)}を足しました`);
+     smnSay(`${WL.duration.text(n)}を追加しました`);
      const again=$('#smnNew');
      if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
     }catch(e){smnSay(`足せませんでした: ${e.message||String(e)}`,true)}
@@ -4896,8 +4895,8 @@
     const cur=(smnState.items||[]).find(x=>Number(x.id)===id);
     if(!cur)return;
     const label=WL.duration.text(Number(cur.minutes));
-    if(!(await confirmModal(`「${label}」を選択肢から消しますか？\n`
-      +'これまでに入れた予定の時間は変わりません（消えるのは選択肢だけです）。')))return;
+    if(!(await confirmModal({message:`「${label}」を選択肢から消しますか？\n`
+      +'これまでに入れた予定の時間は変わりません（消えるのは選択肢だけです）。',confirmLabel:'削除する',danger:true})))return;
     const uid=requireMaintUser();if(uid===null)return;
     try{
      await api('/api/schedule/stop-minutes-master/delete',

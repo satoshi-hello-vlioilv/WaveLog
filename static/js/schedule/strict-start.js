@@ -42,7 +42,7 @@
   return confirmModal({
    title: '厳密モードの開始を確かめられません', eyebrow: '厳密モード',
    message: `${err.message || err}\n\nこのまま開始すると、開始判定と設備停止の実際の時刻は記録されません（あとで作業スケジュールの「時刻入力」で入れられます）。`,
-   confirmLabel: 'このまま開始する', cancelLabel: 'やめる'
+   confirmLabel: 'このまま開始する'
   });
  }
  async function gate(row) {

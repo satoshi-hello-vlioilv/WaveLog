@@ -896,8 +896,8 @@ body.bs-mode .bs-shell{display:flex}
 .bk-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--space-2);
  width:100%;padding:var(--space-1) var(--space-2);border:0;border-radius:var(--radius-sm);
  background:transparent;font:inherit;text-align:left;color:var(--ink);cursor:pointer}
-.bk-item:hover{background:var(--pale)}
-.bk-item.is-on{background:var(--pale);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
+/* 選んだ項目は**ほかの一覧と同じ見せ方**（淡い青緑の地＋左の帯・90-state.css の束ね・§9.604）。乗せたときは淡い灰。 */
+.bk-item:hover{background:var(--surface-2)}
 .bk-item.is-near .bk-mark{box-shadow:0 0 0 2px var(--warn-fg);border-radius:var(--radius-round)}
 .bk-item.is-hard .bk-mark{box-shadow:0 0 0 2px var(--danger);border-radius:var(--radius-round)}
 .bk-mark{display:inline-flex}
@@ -916,7 +916,8 @@ body.bs-mode .bs-shell{display:flex}
 .bk-card{display:flex;flex-direction:column;gap:var(--space-3)}
 .bk-card-h{display:flex;align-items:center;gap:var(--space-3)}
 .bk-card-t{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
-.bk-card-t h3{margin:0;font-size:var(--fs-lg)}
+/* 詳細の頭は2段（種類の小見出し`.bk-card-eb`→名前→ひとこと）。名前は15px（右の詳細の`.mm-dhead h3`と同じ・§9.604。前は20px） */
+.bk-card-t h3{margin:0;font-size:var(--fs-title)}
 .bk-card-t small{font-size:var(--fs-sm);color:var(--muted)}
 /* 欄の段: ラベルは上・値は下（1段に横並び）。読み取り専用の値は枠を付けない（§CLAUDE 10）。 */
 .bk-fields{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4)}
@@ -935,7 +936,6 @@ body.bs-mode .bs-shell{display:flex}
 /* 中身の表（刃厚ごと・幅ごと）。数は右揃え・単位は薄く。 */
 .bk-table{border-collapse:collapse;font-size:var(--tbl-fs);align-self:flex-start}
 .bk-table th,.bk-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);text-align:left;white-space:nowrap}
-.bk-table thead th{color:var(--muted);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
 .bk-table tbody th{text-align:right;min-width:5em;font-variant-numeric:tabular-nums}
 .bk-table u{text-decoration:none;color:var(--muted);margin-left:var(--space-1);font-weight:var(--fw-body)}
 .bk-table input{width:6em;height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box;text-align:right}
@@ -981,8 +981,7 @@ body.bs-mode .bs-shell{display:flex}
 .bb-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:var(--space-2)}
 .bb-card{display:flex;flex-direction:column;align-items:center;gap:var(--space-1);padding:var(--space-2);
  border:0;border-radius:var(--radius-sm);background:none;font-size:var(--fs-sm);cursor:pointer}
-.bb-card:hover{background:var(--pale);transform:translateY(-1px)}
-.bb-card.is-on{background:var(--pale);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
+.bb-card:hover{background:var(--surface-2);transform:translateY(-1px)}
 .bb-card.is-off{opacity:var(--op-disabled)}
 .bb-card-h{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap;justify-content:center}
 .bb-card-h .bb-tile{width:1.6em;height:1.6em;font-size:var(--fs-sm)}
@@ -1027,9 +1026,10 @@ body.bs-mode .bs-shell{display:flex}
 .bk-item .rb-sw{width:1.4em;height:1.4em}
 .bk-card-h .rb-sw{width:2.4em;height:2.4em}
 /* 色名は詳細の頭（いちばん上）。新しい色ではここに焦点が来る（§9.529 ②「色名の欄が見つからない」）。 */
-.rb-name{display:flex;align-items:center;gap:var(--space-2)}
-.rb-name s{text-decoration:none;color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap}
-.rb-name input{height:var(--ctl-h);font-size:var(--fs-lg);font-weight:var(--fw-strong);width:12em;box-sizing:border-box}
+/* ゴムリングの名前は欄そのもの。「色名」を種類の小見出しとして上に置く（2段・§9.604） */
+.rb-name{display:flex;flex-direction:column;align-items:flex-start;gap:0}
+.rb-name s{text-decoration:none;color:var(--muted);font-size:var(--fs-sm);font-weight:var(--fw-body);white-space:nowrap}
+.rb-name input{height:var(--ctl-h-sm);font-size:var(--fs-title);font-weight:var(--fw-strong);width:12em;box-sizing:border-box}
 .rb-pick input[type=color]{width:3em;padding:0 2px;cursor:pointer}
 .rb-pick code{font-size:var(--fs-sm);color:var(--muted)}
 .rb-chip{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--space-2);
@@ -1068,10 +1068,7 @@ body.bs-mode .bs-shell{display:flex}
 .rt-h{display:flex;align-items:center;gap:var(--space-2)}
 .rt-h h3{margin:0;font-size:var(--fs-title)}
 .rt-state{font-size:var(--fs-sm);color:var(--muted)}
-/* 列を足す・決まりを足すは**表の中の、足される場所**に置く（§9.574・H1）。点線の札＝まだ無い物の置き場。 */
-.rt-ghost{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px dashed var(--teal);border-radius:var(--radius-sm);
- background:var(--teal-tint);color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;cursor:pointer}
-.rt-ghost:hover,.rt-ghost:focus-visible{border-style:solid;background:var(--teal-soft)}
+/* 列を追加・決まりを追加は**表の中の、追加される場所**に置く（§9.574・H1）。形は本文の中の「＋ 追加」の1つ（白の縁・`.mm-btn-ghost`・§9.604）。 */
 .rt-table .rt-addc{width:1%}
 .rt-addr th,.rt-addr td{background:var(--surface)}
 /* 空の表の道しるべは1行（§9.603）: 何が無いか＋次にすること。 */
@@ -1092,7 +1089,6 @@ body.bs-mode .bs-shell{display:flex}
 .rt-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
 .rt-table th,.rt-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
  text-align:left;vertical-align:middle;white-space:nowrap}
-.rt-table thead th{font-weight:var(--fw-strong);color:var(--ink-2);vertical-align:bottom}
 .rt-cn{display:flex;align-items:center;gap:var(--space-1)}
 .rt-cn .rt-x{margin-left:auto}
 .rt-cn .rt-grip{margin-right:0}

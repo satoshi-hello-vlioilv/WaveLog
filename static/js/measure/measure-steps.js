@@ -332,7 +332,7 @@
   }
   /* **取り消せない操作なので1回だけ確認する**（§5）。件数も出す——
      何回目になるのかが分からないまま押させない。 */
-  const ok=await confirmModal(`このロットでNGが発生したことを記録します（${g.count+1}回目）。\n記録すると状態は「測定値NG」になり、次に押せるのは15分後です。`);
+  const ok=await confirmModal({message:`このロットでNGが発生したことを記録します（${g.count+1}回目）。\n記録すると状態は「測定値NG」になり、次に押せるのは15分後です。`,confirmLabel:'記録する'});
   if(!ok)return;
   await WL.measureNg.register();
   const m=measuring()?S.measure:null;

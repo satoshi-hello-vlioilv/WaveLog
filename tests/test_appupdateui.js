@@ -134,7 +134,7 @@ run('test_appupdateui: 版を置く間の進み具合（§9.556）・版を消�
    決定:document.getElementById('appConfirmOk').textContent,危ない:document.getElementById('appConfirmOk').className}));
   rec('確かめの窓は消す量・取り消せない・前に配った版へ戻せなくなる・戻す道を言う',
    /2\.441\.0/.test(m.題)&&/15\.4 MB/.test(m.本文)&&/取り消せません/.test(m.本文)&&/前に配った版/.test(m.本文)&&/もう一度置けば戻せます/.test(m.本文),JSON.stringify(m));
-  rec('決定のボタンは「消す」で危ない色',m.決定==='消す'&&/danger/.test(m.危ない),JSON.stringify(m));
+  rec('決定のボタンは「削除する」で危ない色（削除の動詞は1つ・§9.604）',m.決定==='削除する'&&/danger/.test(m.危ない),JSON.stringify(m));
   await page.click('#closeAppConfirm');
   await page.waitForSelector('#appConfirmModal',{state:'hidden',timeout:5000});
   rec('やめたら何も送らない',sent.length===0,JSON.stringify(sent));

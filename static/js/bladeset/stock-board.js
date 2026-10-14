@@ -47,13 +47,13 @@
   const shownRows=withEdits(st,rows);
   return `<table class="bk-table bk-stock"><thead><tr><th>${esc(o.dimLabel)}</th><th>保有</th>${calc.map(c=>`<th>${esc(c.label)}</th>`).join('')}${ex?`<th>${esc(ex.label)}</th>`:''}<th></th><th title="外すと刃組ガイダンスが候補に使いません（行は残ります）">候補</th><th></th></tr></thead>
    <tbody>${body||`<tr><td colspan="${n}" class="bk-none">まだありません。下の行から足してください。</td></tr>`}</tbody>
-   <tfoot><tr class="bk-new"><th><input type="number" id="${o.newId}D" min="0" step="any" placeholder="${esc(o.dimLabel)}" aria-label="足す${esc(o.dimLabel)}"><u>mm</u></th>
-    <td><input type="number" id="${o.newId}Q" min="0" step="1" placeholder="0" aria-label="足す行の保有${o.unit}数"><u>${o.unit}</u></td>
-    <td colspan="${n-2}"><button type="button" class="mm-btn-ghost sm" data-act="add">＋ ${esc(o.dimLabel)}を足す</button></td></tr>
+   <tfoot><tr class="bk-new"><th><input type="number" id="${o.newId}D" min="0" step="any" placeholder="${esc(o.dimLabel)}" aria-label="追加する${esc(o.dimLabel)}"><u>mm</u></th>
+    <td><input type="number" id="${o.newId}Q" min="0" step="1" placeholder="0" aria-label="追加する行の保有${o.unit}数"><u>${o.unit}</u></td>
+    <td colspan="${n-2}"><button type="button" class="mm-btn-ghost sm" data-act="add">＋ ${esc(o.dimLabel)}を追加</button></td></tr>
    <tr class="bk-sum"><th>合計</th><td><b>${total(shownRows)}${o.unit}</b></td><td colspan="${n-2}"><small>${rows.length}種</small></td></tr></tfoot></table>
    ${ex?`<datalist id="${o.newId}L">${(ex.list||[]).map(v=>`<option value="${esc(v)}">`).join('')}</datalist>`:''}`;
  }
- /* 足す行へ（頭の主の操作「＋ 寸法を足す」）。表の下の欄に焦点を置き、見える所まで送る。 */
+ /* 足す行へ（頭の主の操作「＋ 寸法を追加」）。表の下の欄に焦点を置き、見える所まで送る。 */
  function focusAdd(newId){
   const el=document.getElementById(newId+'D');
   if(el){el.scrollIntoView({block:'nearest'});el.focus()}
@@ -65,7 +65,7 @@
   const add=box.querySelector('[data-act="add"]');
   if(add)add.onclick=async()=>{
    const d=box.querySelector(`#${o.newId}D`).value,q=box.querySelector(`#${o.newId}Q`).value;
-   if(String(d).trim()===''||!(+d>0))return void alertModal(`足す${o.dimLabel}（mm）を入れてください。`);
+   if(String(d).trim()===''||!(+d>0))return void alertModal(`追加する${o.dimLabel}（mm）を入れてください。`);
    /* 同じ寸法の2行目は作らない——在る行の本数を直す（どちらが効くか分からなくなるため）。 */
    const same=o.rows().find(x=>Math.abs(+x[o.dim]-(+d))<1e-9);
    if(same){const el=box.querySelector(`tr[data-id="${same.id}"] [data-f="qty"]`);
@@ -74,13 +74,13 @@
    const ok=await K().guarded(st,async uid=>{
     await K().post(o.path,Object.assign({equipment:st.equipment,[o.dim]:d,qty:q===''?0:q,user_id:uid},o.addExtra?o.addExtra():{}));
    },`${o.dimLabel}を足せませんでした`);
-   if(ok){WL.mm.headSay(`${fmt(d)}mm を足しました`);await o.reload();focusAdd(o.newId)}
+   if(ok){WL.mm.headSay(`${fmt(d)}mm を追加しました`);await o.reload();focusAdd(o.newId)}
   };
   box.querySelectorAll('[data-act="del"]').forEach(b=>{b.onclick=async()=>{
    const x=rowOf(+b.dataset.id);if(!x)return;
    if(!await confirmModal({title:'この行を消す',eyebrow:o.what,
      bodyHtml:`<p class="confirm-modal-message">${esc(o.title(x))}（${x.qty||0}${o.unit}）を消します。元に戻せません。<br>しばらく使わないだけなら「候補」を外してください（行は残ります）。</p>`,
-     confirmLabel:'消す',cancelLabel:'やめる'}))return;
+     confirmLabel:'削除する'}))return;
    if(await K().guarded(st,async()=>{await K().post(o.path+'/delete',{id:x.id})},'消せませんでした')){
     Object.keys(st.edits||{}).filter(k=>k.startsWith(`row:${x.id}:`)).forEach(k=>delete st.edits[k]);
     WL.mm.headSay(`${o.title(x)} を消しました`);await o.reload();
@@ -116,7 +116,7 @@
   }catch(e){WL.quiet.note('在庫の見通しを計算できない（表だけ出す）',e);return null}
  }
  function spHead(){
-  K().head({primary:sp.loaded?{id:'spAdd',label:'寸法を足す',title:'表の下の行に寸法と枚数を入れて足します',onClick:()=>focusAdd('spNew')}:null});
+  K().head({primary:sp.loaded?{id:'spAdd',label:'寸法を追加',title:'表の下の行に寸法と枚数を入れて追加します',onClick:()=>focusAdd('spNew')}:null});
  }
  function spPaint(){
   spHead();
@@ -164,19 +164,19 @@
    return `<span class="bk-split" aria-hidden="true"><i class="is-shelf" style="width:${(v/max*100).toFixed(1)}%"></i></span>`}}];
  }
  function fgHead(){
-  K().head({primary:fg.loaded&&fg.sel?{id:'fgAdd',label:'幅を足す',title:`${fg.sel} の表の下の行に幅と本数を入れて足します`,onClick:()=>focusAdd('fgNew')}:null});
+  /* 頭に主の操作は置かない（§9.604）: 左の一覧は材質（決まった顔ぶれ）で頭から追加できる物が無い。幅は表の下の「＋ 幅を追加」の1つ（同じ入口を2つ置かない）。 */
+  K().head({primary:null});
  }
  function fgPaint(){
   fgHead();
   if(!fg.loaded)return;
   const items=fg.materials.map(m=>{const rs=withEdits(fg,matRows(m));
    return {key:m,on:m===fg.sel,mark:fgSw(m),title:m,sub:rs.length?`幅 ${rs.length}種・${total(rs)}本`:'まだありません',tags:[]}});
-  const rs=matRows(fg.sel),all=withEdits(fg,fg.rows);
+  const rs=matRows(fg.sel);
   const body=K().frame(fg,{key:'finger',label:'フィンガー',onEquipment:()=>fgLoad(true),
-   note:`材質 ${fg.materials.filter(m=>matRows(m).length).length}・幅 ${fg.rows.length}種・合計 ${total(all)}本`,
    save:()=>saveStock(fg,'/api/bladeset-finger-master',()=>fgLoad(true),'フィンガー'),cancel:()=>{fg.edits={};fgPaint()},what:()=>rowsEdited(fg,'width'),
-   body:K().pane({label:'フィンガーの材質',items,detail:`<article class="bk-card">
-   <header class="bk-card-h">${fgSw(fg.sel)}<div class="bk-card-t"><h3>${esc(fg.sel)}</h3>
+   body:K().pane({label:'フィンガーの材質',head:{name:'材質',n:items.length},items,detail:`<article class="bk-card">
+   <header class="bk-card-h">${fgSw(fg.sel)}<div class="bk-card-t"><small class="bk-card-eb">材質</small><h3>${esc(fg.sel)}</h3>
     <small>${fg.sel===fg.materials[0]?'既定の材質（保持方式の表で材質を決めていないときはこれ）':'保持方式の表でこの材質に決まったときに使います'}</small></div></header>
    ${stockTable(fg,rs,{dim:'width',dimLabel:'幅',unit:'本',newId:'fgNew',calc:fgBar(rs)})}</article>`})});
   if(!body)return;

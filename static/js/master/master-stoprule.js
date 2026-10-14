@@ -129,8 +129,8 @@
       <button type="button" class="mm-btn-ghost sm" data-revert${st.dirty?'':' disabled'}>元に戻す</button>
       <button type="button" class="mm-btn-primary sm" data-save${st.dirty?'':' disabled'}>保存</button></div>
      <ol class="srb-list">${st.rows.map(cardHtml).join('')}</ol>
-     <button type="button" class="srb-addrule" data-add>＋ 決まりを足す</button>
-     ${n?'':'<p class="srb-note">まだ決まりがありません。「＋ 決まりを足す」で、例えば「製造材質 が変わる なら 1本・自動で入れる」を作れます。</p>'}
+     <button type="button" class="srb-addrule" data-add>＋ 決まりを追加</button>
+     ${n?'':'<p class="srb-note">まだ決まりがありません。「＋ 決まりを追加」で、例えば「製造材質 が変わる なら 1本・自動で入れる」を作れます。</p>'}
     </div>
     <aside class="srb-try" aria-label="いまの予定の境目で試した結果">${tryHtml()}</aside>
    </div>`;

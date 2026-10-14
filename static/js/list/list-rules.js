@@ -563,8 +563,8 @@
        esc(used.slice(0,4).map(u=>u.column).join('、'))}${used.length>4?' ほか':''}）。
       消すと、その列は<b>元の値のまま</b>表示されます。</p>`
    : '<p class="confirm-modal-message">このルールを使っている列は、元の値のまま表示されます。</p>';
-  const ok=await confirmModal({eyebrow:'DELETE',title:`表示ルール「${ruleName}」を削除`,
-                              bodyHtml:where,confirmLabel:'削除する',cancelLabel:'やめる'});
+  const ok=await confirmModal({title:`表示ルール「${ruleName}」を削除`,
+                              bodyHtml:where,confirmLabel:'削除する'});
   if(!ok)return;
   try{
    const r=await api('/api/display-rule-master/delete',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -583,7 +583,7 @@
     以前はここに自前の小窓があり、同じ「名前を聞く」窓が画面ごとに
     3つの見た目を持っていた。 */
  function askName(){
-  return promptModal({eyebrow:'NEW',title:'新しい表示ルール',
+  return promptModal({title:'新しい表示ルール',
    message:'複数の列から使い回すための名前を付けます。',
    label:'表示ルールの名前',placeholder:'例: 有無フラグ、合否',
    maxLength:60,confirmLabel:'作る'});

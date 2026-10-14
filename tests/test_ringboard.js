@@ -81,10 +81,13 @@ H.run('test_ringboard: ゴムリングマスタの盤（§9.528）', async ({ pa
   const head = await page.evaluate(() => {
    const ins = [...document.querySelectorAll('#masterMaintList .bk-detail input, #masterMaintList .bk-detail select')];
    const nm = document.querySelector('#masterMaintList .bk-detail [data-k="color"]');
-   return { index: ins.indexOf(nm), focused: document.activeElement === nm, px: nm ? parseFloat(getComputedStyle(nm).fontSize) : 0 };
+   /* 見出しの大きさ＝ほかの詳細の題と同じ1つ（`--fs-title`・§9.604で刃組の題を20px→15pxへそろえた） */
+   const t = document.createElement('span'); t.style.fontSize = 'var(--fs-title)'; document.body.append(t);
+   const title = parseFloat(getComputedStyle(t).fontSize); t.remove();
+   return { index: ins.indexOf(nm), focused: document.activeElement === nm, px: nm ? parseFloat(getComputedStyle(nm).fontSize) : 0, title };
   });
-  rec('§9.529 ② 新しい色は色名がいちばん上の欄・焦点もそこ・見出しの大きさ（前は3番目・焦点なし・12px）',
-      head.index === 0 && head.focused && head.px >= 18, JSON.stringify(head));
+  rec('§9.529 ② 新しい色は色名がいちばん上の欄・焦点もそこ・見出しの大きさ＝詳細の題（前は3番目・焦点なし・12px）',
+      head.index === 0 && head.focused && head.title > 12 && head.px === head.title, JSON.stringify(head));
   const kinds = await page.evaluate(() => [...(document.querySelector('.rb-card [data-k="kind"]') || { options: [] }).options].map(o => o.textContent));
   rec('§9.531 新しい色の種類はゴムリング／潤滑リング／スペーサー一体型から選ぶ',
       kinds.join('/') === 'ゴムリング/潤滑リング/スペーサー一体型', kinds.join('/'));

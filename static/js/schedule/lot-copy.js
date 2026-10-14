@@ -324,7 +324,7 @@
   ui={lots:(lots||[]).map(v=>String(v??'').trim()).filter(Boolean),
       ruleId:currentId()||((list[0]||{}).id||''),
       marks:true,count:12,deleting:''};
-  const asked=confirmModal({eyebrow:'ICAS COPY',title:'ICASコピーの設定',
+  const asked=confirmModal({title:'ICASコピーの設定',
    hideCancel:true,confirmLabel:'閉じる',
    bodyHtml:'<div class="icc-modal" id="iccModal"></div>'});
   render();

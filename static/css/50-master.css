@@ -178,7 +178,7 @@
 .mm-scopebar{margin:0 0 var(--space-3)}
 .mm-scopebar>.mm-ltabs{flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin}
 .mm-scopebar-k{align-self:center;flex:none;margin-right:var(--space-2);color:var(--muted);font-size:var(--fs-sm)}
-.mm-scopebar .mm-ltab{flex:none;white-space:nowrap;height:var(--ctl-h);padding:0 var(--space-3)}
+.mm-scopebar .mm-ltab{flex:none;white-space:nowrap}
 /* ---------- 右の詳細（§9.598・AA）----------
    汎用の表のマスタは「一覧＋右の詳細」。器は`.mm-main`の格子——頭の行は横いっぱい、一覧の上の道具と一覧は左、
    詳細は右の列（窓のように覆わないので、一覧を見たまま直せる）。幅は採点で決めた 360px（1536×864 でも一覧の主な列が残る）。
@@ -436,12 +436,14 @@
 .mm-raw-scroll{overflow-x:auto}
 .mm-raw-scroll.is-more-r{-webkit-mask-image:linear-gradient(to right,var(--ink) calc(100% - 56px),transparent);mask-image:linear-gradient(to right,var(--ink) calc(100% - 56px),transparent)}
 .mm-raw-table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:var(--fs-base-sm)}
-.mm-raw-table th,.mm-raw-table td{padding:0 var(--space-3);height:40px;border-bottom:1px solid var(--surface-3);white-space:nowrap;text-align:left}
-.mm-raw-table th{position:sticky;top:0;z-index:1;height:32px;background:var(--surface-2);border-bottom-color:var(--line);color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
+.mm-raw-table th,.mm-raw-table td{padding:0 var(--space-3);white-space:nowrap;text-align:left}
+.mm-raw-table td{height:40px;border-bottom:1px solid var(--surface-3)}
+.mm-raw-table th{position:sticky;top:0;z-index:1}
 .mm-raw-table .is-num{text-align:right;font-variant-numeric:tabular-nums}
 .mm-raw-table .mm-raw-none{color:var(--muted);text-align:center}
-/* 縞なし（汎用の一覧と同じ）。土台の`tbody tr:nth-child(even)`（30-measure.css・測定表の縞）をここで打ち消す。 */
-.mm-raw-table tbody tr:nth-child(even){background:none}
+/* 縞なし（汎用の一覧と同じ）。土台の`tbody tr:nth-child(even)`（30-measure.css・測定表の縞）をここで打ち消す。
+   マスタの表は全部ここ（刃組の在庫表・判定表も・§9.604。前はスペーサー・フィンガー・ゴムリングの表だけ縞が残っていた）。 */
+:is(.mm-raw-table,.bk-table,.rt-table) tbody tr:nth-child(even){background:none}
 .mm-raw-go{display:inline-flex;align-items:center;gap:var(--space-2);color:var(--ink-2);font-size:var(--fs-sm);white-space:nowrap}
 .mm-raw-go.is-retired{color:var(--muted)}
 .mm-val-dt{font-variant-numeric:tabular-nums;color:var(--ink-2)}
@@ -467,7 +469,8 @@
 .mm-row>.is-num{text-align:right;font-variant-numeric:tabular-nums}
 .mm-row.head>.mm-th.is-num{justify-content:flex-end;text-align:right}
 .mm-th-unit{margin-left:3px;font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--muted)}
-.mm-row.head{position:sticky;top:0;z-index:2;min-height:32px;background:var(--surface-2);border-bottom:1px solid var(--line);color:var(--ink-2);font-weight:var(--fw-ui)}
+/* 地・字・高さ・下の線は「表の見出し」の役割（10-roles.css・§9.604） */
+.mm-row.head{position:sticky;top:0;z-index:2}
 .mm-row:not(.head){background:var(--surface);cursor:pointer;transition:background .1s}
 /* 計算の列（§9.537）。値は登録表が答える（`.mm-calc[data-cell]`）。
    ロールマスタ: 1周の帯（全行で同じ目盛り・色は当たる面）と見分けにくい相手の札（＝は橙・倍数は灰）。 */
@@ -502,7 +505,9 @@
 .mm-same-i>b{font-weight:var(--fw-body);color:var(--muted);margin-right:var(--space-2)}
 mark.mm-hit{background:var(--warn-bg);color:inherit;border-radius:var(--radius-xs);padding:0 1px}
 .mm-ltab{display:inline-flex;align-items:center;gap:var(--space-2);border:0;border-bottom:3px solid transparent;margin-bottom:-2px;
- background:none;padding:var(--space-2) var(--space-3);font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--muted);border-radius:0}
+ background:none;padding:0 var(--space-3);font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--muted);border-radius:0;
+ /* 札の高さは1つ（設備の札の行・一覧の札の行・段の札・§9.604。前は余白なりの37pxと高さ指定の36pxが混ざっていた） */
+ height:var(--ctl-h);box-sizing:border-box}
 .mm-ltab:hover:not(:disabled){color:var(--teal-dark);background:var(--pale)}
 /* まだ決められない段（新しい停止内容の内訳・挿入の条件など）。押せない形で、理由は title。 */
 .mm-ltab:disabled{cursor:default;opacity:var(--op-disabled)}
@@ -1683,7 +1688,12 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-dialog{width:98vw;height:96vh;max-height:96vh;
   display:flex;flex-direction:column}
 .op-modal-head{display:flex;align-items:center;gap:var(--space-3)}
-.op-modal-id{display:flex;align-items:baseline;gap:var(--space-2);min-width:0;flex:1 1 auto}
+.op-modal-id{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--space-2);min-width:0;flex:1 1 auto}
+/* 頭は2段（種類の小見出しが上・名前が下。確かめる窓・右の詳細と同じ・§9.604） */
+.op-modal-id>small{flex:1 0 100%}
+/* 決める物は右下の足元（画面の足元`.pc-save`と同じ部品・§9.604）。知らせ（保存しました・できません）は変えたかの字の隣 */
+.op-dialog>.op-modal-foot{padding:var(--pad-dialog)}
+.op-modal-acts{display:flex;gap:var(--space-2)}
 .op-modal-id h2{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .op-modal-top{display:flex;align-items:center;gap:var(--space-2);flex:none}
 .op-role-chip{
@@ -1772,8 +1782,10 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .op-modal-preview[data-hot="unit"] .op-prev-field .opf-unit,
 .op-modal-preview[data-hot="card"] .op-prev-card{
   box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal);border-radius:var(--radius-xs)}
+/* スクロールバーの席は**送れるときだけ**取る（`auto`・§9.604）。`stable`で席を常に空けると、列を送れる状態のとき
+   一部のラベル（③の「幅」「群」「色」）が描かれなかった——DOMの上では在り、色も大きさも正しいのに画面に出ない。 */
 .op-cols>.op-form-sec{display:flex;flex-direction:column;gap:var(--gap-inline);
-  min-width:0;min-height:0;overflow:auto;scrollbar-gutter:stable;
+  min-width:0;min-height:0;overflow:auto;
   padding:0 var(--space-3) 0 0;border-right:1px solid var(--line-soft);border-top:0}
 .op-cols>.op-form-sec:last-child{border-right:0;padding-right:0}
 /* 塊の見出しは**列の頭に貼り付ける**（流れても「いまどの塊か」を見失わない）。 */
@@ -2190,9 +2202,7 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* 盤の型（§9.602）: 面は枠で囲まない（まとまりと木のあいだに罫線1本）。 */
 .cl-pool,.cl-tree{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0}
 .cl-pool{padding-right:var(--space-4);border-right:1px solid var(--line)}
-.cl-pane-head{margin:0;flex:none;font-size:var(--fs-base-sm);color:var(--teal-dark);
-  display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
-.cl-pane-head small{font-weight:var(--fw-body);font-size:var(--fs-sm);color:var(--muted)}
+.cl-pane-head{margin:0;flex:none;display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
 /* **`.cl-search`は更新履歴の検索欄（20-shell.css）が先に使っている名前**（§9.324 R6）。
    同じ名前を使うと、この枠と高さが更新履歴の欄へ漏れる（実測: 更新履歴の
    `label.cl-search`に`border:1px solid`・`height:30.2px`・`flex:0 0 auto`が
@@ -2257,8 +2267,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .oc-groups{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;min-height:0;
   padding-right:var(--space-4);border-right:1px solid var(--line)}
 .oc-groups-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline)}
-.oc-groups-head>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
-.oc-count{font-size:var(--fs-sm);color:var(--muted);font-weight:var(--fw-ui)}
 .oc-groups-head input[type=search]{flex:1 1 100%;height:var(--ctl-h-sm);min-width:0;
   padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
   font-size:var(--fs-sm)}
@@ -2268,7 +2276,8 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .oc-group-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto}
 /* **1件は2行**（§9.222 ⑤）。3行だと1件60pxで、器いっぱいでも10件しか
    見えない——探すのに毎回スクロールが要る。件数と使い道は同じ行へ。 */
-.oc-group{display:grid;gap:0;width:100%;text-align:left;padding:2px var(--space-2);
+/* 2行の一覧の項目は40px（余白は刃組の一覧・設備停止の一覧と同じ`--space-1`・§9.604。前は2pxで36pxに詰まっていた） */
+.oc-group{display:grid;gap:0;width:100%;text-align:left;padding:var(--space-1) var(--space-2);
   border:0;border-radius:var(--radius-sm);background:transparent;
   cursor:pointer}
 .oc-group-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
@@ -2284,7 +2293,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
   --oc-w:calc(1.4em + var(--w-md) + var(--w-lg) + var(--w-sm) + var(--w-lg) + var(--w-xs) + var(--w-sm) + 6 * var(--gap-inline) + 2 * var(--space-1))}
 .oc-values>.oc-values-head,.oc-values>.oc-flow,.oc-values>.oc-table{width:100%;max-width:var(--oc-w)}
 .oc-values-head{flex:none}
-.oc-values-head small{display:inline;margin-right:var(--space-2)}
 .oc-legacy{flex:none;margin:0;font-size:var(--fs-sm);color:var(--teal-dark);font-weight:var(--fw-ui);line-height:1.6}
 /* 使っている項目 → このまとまり → 値 N つ（§9.602・どこから引かれ、何を出すかを図で）。 */
 .oc-flow{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);flex:none;margin:var(--space-1) 0 var(--space-2);font-size:var(--fs-sm)}
@@ -2331,11 +2339,8 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* **見出しにも本文と同じ文字サイズを置く**（§9.193）。列幅を`em`で書いて
    いるので、器の文字サイズを変えると**同じ`--w-md`が別の幅に解ける**
    ——見出しと本文の左端がそろわなくなる（実測66.5pxと84px）。
-   小さくするのはセル（`>span`）だけ。 */
-.oc-row.is-head{position:sticky;top:0;z-index:1;background:var(--surface);
-  font-weight:var(--fw-strong);color:var(--muted);
-  border-bottom:1px solid var(--line-soft);padding-bottom:var(--space-1)}
-.oc-row.is-head>span{font-size:var(--fs-sm)}
+   小さくするのはセル（`>span`）だけ（地・字・大きさは「表の見出し」の役割・10-roles.css・§9.604）。 */
+.oc-row.is-head{position:sticky;top:0;z-index:1}
 .oc-row.is-drag{opacity:.4}
 .oc-row[data-oc-id]{cursor:pointer;min-height:var(--ctl-h-sm);border-bottom:1px solid var(--surface-3);border-radius:0}
 .oc-row[data-oc-id]:hover{background:var(--surface-2)}
@@ -2348,10 +2353,9 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* 「出す」はふつうの字、「出さない」は薄い字（§9.602。行に押す物を置かない——直すのは右の詳細）。 */
 .oc-on{font-size:var(--fs-sm);color:var(--ink);white-space:nowrap}
 .oc-on.is-off{color:var(--muted)}
-/* 「＋ 値を追加」は最後の行のすぐ下（§9.602。足すと行が入る場所で押す）。押すと右の詳細が新しい値で開く。 */
-.oc-addrow{display:block;width:100%;height:var(--ctl-h-sm);padding:0 var(--space-2);border:0;background:none;text-align:left;
-  color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
-.oc-addrow:hover{background:var(--teal-tint)}
+/* 「＋ 値を追加」は最後の行のすぐ下（§9.602。足すと行が入る場所で押す）。押すと右の詳細が新しい値で開く。
+   形は本文の中の「＋ 追加」の1つ（白の縁・`.mm-btn-ghost`・§9.604。前は枠なしの青緑の字で、ほかの画面と違った）。 */
+.oc-addrow{margin:var(--space-2) 0 0 var(--space-2)}
 
 /* ================================================================
    設備停止マスタ（§9.389 → §9.397で1枚へ統合）
@@ -2384,8 +2388,11 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 /* ペインの見出しは**同じ形**（§CLAUDE 「同じ役割には同じ形」）。 */
 .ssb-pane-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
 /* 一覧の見出しは「名前 件数」の1つの形（勤務形態の左の一覧と同じ・§9.598 1i）。 */
-.ssb-pane-head>b{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
-.ssb-count{font-size:var(--fs-sm);color:var(--muted);font-weight:var(--fw-ui)}
+/* 一覧の頭（何の一覧・件数）は**1つの形**（§9.604）: 名前＝12px・ui・濃い灰／件数＝薄い字。設備停止・選択肢の値・親子・勤務形態・
+   刃組の一覧（`.mm-panehead`）が同じ規則を読む。前は青緑の13px太字（選択肢の値・親子）と濃い灰の12px（設備停止・勤務形態）が混ざり、刃組は頭が無かった。 */
+.mm-panehead{display:flex;align-items:baseline;gap:var(--gap-inline);margin:0 0 var(--space-2);padding:0 var(--space-2)}
+:is(.mm-panehead,.ssb-pane-head,.oc-groups-head)>b,.cl-pane-head,.shift-list-head{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
+.mm-panehead>span,.ssb-count,.oc-count,.cl-pane-head>small,.shift-list-n{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--muted);font-style:normal}
 .ssb-pane-head input[type=search]{flex:1 1 100%;height:var(--ctl-h-sm);min-width:0;
   padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
   font-size:var(--fs-sm)}
@@ -2626,10 +2633,9 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .smn-tick>b>button:hover{background:var(--danger-bg);color:var(--danger)}
 .smn-axis{position:absolute;left:0;top:100%;transform:translateX(-50%);margin-top:var(--space-1);font-size:var(--fs-sm);color:var(--muted)}
 .smn-add{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
-.smn-add-k{font-size:var(--fs-sm);color:var(--muted)}
-.smn-add input{width:var(--w-sm);height:var(--ctl-h);padding:0 var(--space-2);font-size:var(--fs);
+/* 追加の行は欄もボタンも30px（ほかの画面の「追加」の行と同じ・§9.604）。何を追加するかはボタンの字が言う（欄の名前と動詞を2つにしない）。 */
+.smn-add input{width:var(--w-sm);height:var(--ctl-h-sm);padding:0 var(--space-2);font-size:var(--fs-sm);
   border:1px solid var(--line);border-radius:var(--radius-sm)}
-.smn-add .mm-btn-ghost{height:var(--ctl-h);padding:0 var(--space-3);border-radius:var(--radius-sm)}
 
 /* ================================================================
    選んで組み立てる（§9.226 ④、利用者の指示「帳票ブロックを新規登録が
@@ -2867,10 +2873,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .mm-bulk-pick.is-all{border-color:var(--danger-border);background:var(--danger-bg)}
 .mm-bulk-need{color:var(--ink-2);font-size:var(--fs-micro)}
 .mm-bulk-tip{color:var(--ink-2);font-size:var(--fs-micro);line-height:1.5}
-/* 見本のロットで帳票を見る（§9.253）。**追加の隣に置く**——実データが
-   要らない確認は危ない操作ではないので、主要動線の中で構わない
-   （消す操作だけが右端へ離れる・§CLAUDE 5）。 */
-.mm-sample-tools{display:flex;align-items:center;gap:var(--gap-tight);flex:0 0 auto}
 
 /* ==========================================================
    「記録した値」の配置（§9.243、利用者の指示）
@@ -3214,8 +3216,11 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .pc-page.is-rail{flex-direction:row}
 .pc-page>.mm-tabbar.is-page.is-rail{flex:0 0 var(--mm-rail-w,232px);width:auto;flex-direction:column;align-items:stretch;
   gap:var(--space-1);padding:var(--space-2);border-bottom:0;border-right:1px solid var(--line);overflow-y:auto}
-.mm-tabbar.is-page.is-rail .mm-tab{grid-template-columns:auto minmax(0,1fr) auto;row-gap:2px;margin:0;padding:var(--space-2) var(--space-3);
+/* 余白・行送り・名前の大きさはほかの左の一覧の項目（刃組の一覧`.bk-tx`）と同じ——2行の項目は40pxの1つ（前は53px・§9.604） */
+.mm-tabbar.is-page.is-rail .mm-tab{grid-template-columns:auto minmax(0,1fr) auto;row-gap:0;margin:0;padding:var(--space-1) var(--space-2);
   border:0;border-radius:var(--radius-sm)}
+.mm-tabbar.is-page.is-rail .mm-tab>:is(.mm-fieldgroup,.mm-tab-sum){line-height:1.3}
+.mm-tabbar.is-page.is-rail .mm-tab>.mm-fieldgroup{font-size:var(--fs-base-sm)}
 .mm-tabbar.is-page.is-rail .mm-tab.is-on{border:0}
 .mm-tabbar.is-page.is-rail .mm-tab-sum{grid-column:2;color:var(--muted)}
 .mm-tabbar.is-page.is-rail .mm-tab-badge{grid-column:3;grid-row:1/3;align-self:center;margin-left:var(--space-2);padding:0 var(--space-2);
@@ -3544,7 +3549,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
    右端がずれていた。表の幅は中身なり（`width:max-content`）なので、器の`min-content`＝表の幅。頭の行はその中で右へ寄せる。 */
 .rly-blocks:has(>.rly-table){width:min-content;max-width:100%}
 .rly-blocks-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
-.rly-blocks-head>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
+.rly-blocks-head>.mm-panehead{margin:0}
 /* 紙の割り（列×段）。**いまの値を札で言う**（§CLAUDE 3）——分割の切り替え（`.mm-seg`）。 */
 .rly-grid{display:flex;align-items:center;gap:var(--space-2);margin-left:auto;
   font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-ui)}
@@ -3557,9 +3562,8 @@ html[data-hint="off"] .mm-def-hint{display:none}
 /* 表は中身の幅で止める（§9.599 の型・行の罫線が右の空きまで走らない）。 */
 .rly-table.has-rows .rly-row,.rly-table.has-pos .rly-row{grid-template-columns:var(--rly-cols) var(--w-sm)}
 .rly-table.has-rows.has-pos .rly-row{grid-template-columns:var(--rly-cols) var(--w-sm) var(--w-sm)}
-.rly-row.is-head{position:sticky;top:0;z-index:1;min-height:0;padding-bottom:var(--space-1);background:var(--surface);
-  border-bottom:1px solid var(--line);color:var(--ink-2);font-weight:var(--fw-strong)}
-.rly-row.is-head>span{font-size:var(--fs-sm)}
+/* 地・字・高さ・下の線は「表の見出し」の役割（10-roles.css・§9.604）。列の幅は em なので字の大きさはセルが持つ。 */
+.rly-row.is-head{position:sticky;top:0;z-index:1}
 .rly-row[data-rly-key]{cursor:pointer}
 .rly-row[data-rly-key]:hover{background:var(--surface-2)}
 /* **出していない塊は薄い字。ただし色だけで伝えない**（§CLAUDE 3）——「出さない」の字が言う。 */

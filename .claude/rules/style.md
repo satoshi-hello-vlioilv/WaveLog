@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（75件）
+# 見た目（CSS・寸法・色）（77件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 表の見出しは役割の1つ（10-roles.css・`--th-h`・上下の余白0・字の大きさはセルへ）。マスタの表に縞を付けない | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
+| 送る列に`scrollbar-gutter:stable`を付けない（列を送れるとき一部のラベルが描かれなかった） | — | [§9.604](../../docs/decisions/9.604.md) |
 | 盤の面（盤・候補・木・表・詳細・要約の数）は枠で囲まず罫線1本。選んだ行は淡い地＋左の帯（90-state.css の束ね） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 帯（ヘッダー・一覧の帯・操作列）の寸法は`--bar-h`／`--bar-fs`／`--bar-px`（30px・13px）の1箇所 | `test_listtoolsui.js`・`test_headbar.js` | [§9.591](../../docs/decisions/9.591.md) |
 | `:is()`の詳細度は中のいちばん強い物。打ち消したい部品は束ねた規則に入れず自前で書く | `test_typescale.js` | [§9.591](../../docs/decisions/9.591.md) |

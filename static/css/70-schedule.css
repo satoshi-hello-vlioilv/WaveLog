@@ -1208,8 +1208,8 @@
 .shift-editor{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--space-3);align-items:stretch;flex:1;min-height:0;padding-top:var(--space-4)}
 .shift-list{overflow:auto}
 .shift-list{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0}
-.shift-list-head{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2);padding:0 4px 2px}
-.shift-list-n{font-style:normal;margin-left:var(--space-1);color:var(--muted)}
+.shift-list-head{padding:0 4px 2px}
+.shift-list-n{margin-left:var(--space-1)}
 /* 左の一覧の小さな24時間の帯（§9.598）: 開かずに「どの時間帯を埋める体系か」を読む。 */
 .shift-mini24{position:relative;display:block;width:100%;height:4px;margin:2px 0;border-radius:var(--radius-xs);background:var(--surface-3);overflow:hidden}
 .shift-list-item{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-card);border:1px solid transparent;border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:var(--surface);cursor:pointer;text-align:left;min-width:0;width:100%}

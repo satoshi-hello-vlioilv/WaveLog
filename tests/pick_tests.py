@@ -36,6 +36,8 @@ TESTS = ROOT / 'tests'
 # 開き忘れた1つが永久に残る。字を見るだけの網なら新しいマスタも自動で対象。
 ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_docindex', 'test_pywarn', 'test_hintlint',
+          # §9.604: 窓の言葉（英字の小見出し・「OK」の確かめる窓）を字で読む（1秒未満・150か所）
+          'test_modalwords',
           # §9.315: 後から足した列を「無ければ足す」のは1箇所。マスタを1つ
           # 足した人がここを通さずに書くと、同じ不具合が別の列で戻る。
           'test_ddllint',
@@ -143,7 +145,7 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            # §9.259: 列の見せ方を「みんなと同じ／自分だけ」で選ぶ
            'test_colscope', 'test_colscopeui']
 # モーダルの閉じ方(§9.221 ①)はどの画面にも掛かる横断の約束。
-G['モーダル'] = ['test_modalkeep', 'test_maint', 'test_master', 'test_opui', 'test_opchoice',
+G['モーダル'] = ['test_modalkeep', 'test_mmunify', 'test_maint', 'test_master', 'test_opui', 'test_opchoice',
                  # §9.257 ②: 使用設備の設定（窓の作りは1箇所・選んでも動かない）
                  'test_eqsetup']
 G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
@@ -184,7 +186,7 @@ G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope', 'test_recordlayou
 # 刃組（§9.377）。**部材マスタ・ガイダンス・設備停止の連携**は1つの仕事なので、
 # どれを触っても3本まとめて回す（計算はサーバー不要の1本、画面は1本）。
 G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_holdpick', 'test_bladesets', 'test_ringboard', 'test_bladeboard', 'test_screenprint', 'test_stopeq', 'test_partboards']
-G['マスタ'] = ['test_master', 'test_mmshell', 'test_mmpane', 'test_mmlist', 'test_mmset', 'test_mmboard', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
+G['マスタ'] = ['test_master', 'test_mmshell', 'test_mmpane', 'test_mmlist', 'test_mmset', 'test_mmboard', 'test_mmunify', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                # §9.389: 設備停止の内訳（サブカテゴリ）と時間の選択肢
                'test_stopsub', 'test_stopsubui',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',

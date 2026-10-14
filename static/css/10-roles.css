@@ -54,7 +54,7 @@
 .mm-btn-danger.sm,
 .sc-float-foot button,.record-sync-bar button,.rp-back-btn,
 .split-ghost-btn,.qa-v7 .qa-seg button,.sc-stop-button,.sc-column-actions button,
-.split-recheck-btn,.rp-foot-btn{
+.split-recheck-btn,.rp-foot-btn,.confirm-modal-dialog .settings-actions button{
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   font-size:var(--fs-sm);font-weight:var(--fw-ui);border-radius:var(--radius-sm);
 }
@@ -188,4 +188,19 @@
 .filter-token-search,
 .sc-content-filter,
 .record-searchbar input,.record-searchbar select{padding-block:0}
+/* ============================================================
+   表の見出し（§9.604）——**表の形（グリッドの行／table の th）によらず1つの形**
+   ------------------------------------------------------------
+   高さ`--th-h`（≒32px）・淡い地・12px・ui の太さ・濃い灰・下に線1本。前は汎用の表が32pxの淡い地、
+   刃組の在庫表が25px・地なし・薄い灰、判定表が39px、選択肢の値が白の地で、画面を移るたびに表の頭の形が変わった。
+   各表のクラスには並び・揃えなど「その表だけの違い」しか書かない。
+   ============================================================ */
+.mm-row.head,.oc-row.is-head,.rly-row.is-head,.bk-table thead th,.rt-table thead th,.mm-raw-table th{
+  background:var(--surface-2);color:var(--ink-2);font-weight:var(--fw-ui);border-bottom:1px solid var(--line)}
+/* 字の大きさは**セル**へ当てる。選択肢の値（`.oc-row`）は列の幅を em で書いているので、行に当てると見出しと本文で
+   同じ列が別の幅に解け、左端が最大25pxずれた（1366px・§9.193と同じ罠）。 */
+.mm-row.head,.oc-row.is-head>span,.rly-row.is-head>span,.bk-table thead th,.rt-table thead th,.mm-raw-table th{font-size:var(--fs-sm)}
+.mm-row.head,.oc-row.is-head,.rly-row.is-head{min-height:var(--th-h)}
+/* 上下の余白は0（高さが決める）。判定表の見出しは「＋ 条件の列を追加」（30px）を持ち、余白4pxずつで39pxに伸びていた */
+.bk-table thead th,.rt-table thead th,.mm-raw-table th{height:var(--th-h);padding-block:0;vertical-align:middle}
 }

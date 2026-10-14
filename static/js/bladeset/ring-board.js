@@ -10,7 +10,7 @@
    利用者の選択（§9.529）: 刃と同じ形——「一覧＋詳細の2ペイン」（`board-kit.js`）。
 
    ・左＝登録済みの色を**外径の順に全部**（見本・色名・外径／内径・幅と本数）。押すとその色。
-     「＋ 色を足す」は空いている標準の色（無ければ登録済みの色からいちばん離れた色）で開く。
+     「＋ 色を追加」は空いている標準の色（無ければ登録済みの色からいちばん離れた色）で開く。
    ・右＝選んだ色: **色名がいちばん上**（新しい色では焦点もここ）→ 色（ピッカー）・外径・内径は
      **1回だけ**（その色の幅ぜんぶに効く）→ 幅ごとの本数は表の中で直す。§9.603 で保存は足元の1つ（属性も本数も）、
      輪の図は欄の右（寸法線と名前だけ・外径／内径の欄に入ると同じ寸法が光る）。
@@ -49,10 +49,8 @@
 
  /* ---------- 頭と一覧（登録済みの色） ---------- */
  function renderForm(){
-  K().head({primary:rs.loaded?{id:'rbAdd',label:'色を足す',title:'空いている標準の色で新しい色を開きます',onClick:async()=>{if(await leaveOk())select(NEW)}}:null});
+  K().head({primary:rs.loaded?{id:'rbAdd',label:'色を追加',title:'空いている標準の色で新しい色を開きます',onClick:async()=>{if(await leaveOk())select(NEW)}}:null});
  }
- const noteOf=()=>{const rubber=rs.colors.filter(g=>!g.lube&&!g.integ).length,lube=rs.colors.filter(g=>g.lube).length,integ=rs.colors.filter(g=>g.integ).length;
-  return `登録済みの色 ${rubber}色${integ?`＋スペーサー一体型 ${integ}`:''}${lube?`＋潤滑リング ${lube}`:''}`};
  const swOf=g=>swatch(g.tone||g.hex,g.lube);
  function itemOf(g){
   return {key:g.color,on:g.color===rs.sel,mark:swOf(g),title:g.color,
@@ -81,18 +79,18 @@
   if(!rs.loaded)return;
   const items=rs.colors.map(itemOf);
   if(rs.sel===NEW)items.push({key:NEW,on:true,mark:swatch(rs.draft.hex,rs.draft.lube),title:rs.draft.color||'新しい色',sub:'まだ登録していません'});
-  const body=K().frame(rs,{key:'ring',label:'ゴムリング',note:noteOf(),onEquipment:()=>{rs.sel='';load(true)},
+  const body=K().frame(rs,{key:'ring',label:'ゴムリング',onEquipment:()=>{rs.sel='';load(true)},
    count:()=>attrCount()+K().editCount(rs),dirty:()=>attrCount()>0,isNew:()=>rs.sel===NEW,touched:()=>!!(rs.draft&&rs.draft.touched),
    blocked:()=>rs.check.hard.length?'登録済みの色と被っています（赤の字）':'',
    save:()=>saveAll(),cancel:()=>{if(rs.sel===NEW){select((rs.colors[0]||{}).color||'');return}rs.edits={};select(rs.sel)},
-   body:K().pane({label:'ゴムリングの色',items,empty:'まだ1色もありません。頭の「＋ 色を足す」から登録してください。',detail:cardHtml()})});
+   body:K().pane({label:'ゴムリングの色',head:{name:'色',n:items.length},items,empty:'まだ1色もありません。頭の「＋ 色を追加」から登録してください。',detail:cardHtml()})});
   if(!body)return;
   K().wirePane(body,{onPick:async k=>{if(k!==rs.sel&&await leaveOk())select(k)}});
   wireCard(body);paintCheck();paintMarks();
  }
  function cardHtml(){
   const d=rs.draft;
-  if(!d)return `<div class="mm-empty">${rs.colors.length?'左の一覧から色を選ぶと、その色の幅と本数が出ます。':'頭の「＋ 色を足す」から最初の色を登録してください。'}</div>`;
+  if(!d)return `<div class="mm-empty">${rs.colors.length?'左の一覧から色を選ぶと、その色の幅と本数が出ます。':'頭の「＋ 色を追加」から最初の色を登録してください。'}</div>`;
   const g=colorOf(d.current),isNew=!g;
   return `<article class="bk-card rb-card${d.lube?' is-lube':''}">
    <header class="bk-card-h">${swatch(d.hex,d.lube)}<div class="bk-card-t">
@@ -145,7 +143,7 @@
   return `<table class="bk-table"><thead><tr><th>幅</th><th>保有本数</th><th></th></tr></thead>
    <tbody>${rows}</tbody><tfoot><tr><th><input type="number" id="rbNewW" min="0" step="any" placeholder="幅"></th>
    <td><input type="number" id="rbNewQ" min="0" step="1" placeholder="本数"></td>
-   <td><button type="button" class="mm-btn-ghost sm" data-act="addwidth">＋ 幅を足す</button></td></tr>
+   <td><button type="button" class="mm-btn-ghost sm" data-act="addwidth">＋ 幅を追加</button></td></tr>
    <tr class="bk-sum"><th>合計</th><td><b data-sum>${sum}本</b></td><td></td></tr></tfoot></table>`;
  }
  function newWidthsHtml(d){
@@ -153,7 +151,7 @@
    d.widths.map((w,i)=>`<tr><th><input type="number" data-nw="${i}" data-f="width" min="0" step="any" value="${esc(w.width)}"><u>mm</u></th>
     <td><input type="number" data-nw="${i}" data-f="qty" min="0" step="1" value="${esc(w.qty)}" placeholder="0"></td>
     <td><button type="button" class="bk-x" data-act="dropnew" data-i="${i}" aria-label="この幅を外す">×</button></td></tr>`).join('')}</tbody>
-   <tfoot><tr><td colspan="3"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 幅の行を足す</button></td></tr></tfoot></table>`;
+   <tfoot><tr><td colspan="3"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 幅の行を追加</button></td></tr></tfoot></table>`;
  }
 
  /* ---------- 被り（サーバーへ聞く） ---------- */
@@ -250,24 +248,24 @@
  }
  async function addWidth(){
   const w=document.getElementById('rbNewW').value,q=document.getElementById('rbNewQ').value;
-  if(String(w).trim()==='')return void alertModal('足す幅（mm）を入れてください。');
+  if(String(w).trim()==='')return void alertModal('追加する幅（mm）を入れてください。');
   const ok=await guarded(async uid=>{
    await post('/api/bladeset-ring-master',{equipment:rs.equipment,color:rs.sel,width:w,qty:q===''?0:q,user_id:uid});
   },'幅を足せませんでした');
-  if(ok){WL.mm.headSay(`幅 ${fmt(w)}mm を足しました`);await load(true)}
+  if(ok){WL.mm.headSay(`幅 ${fmt(w)}mm を追加しました`);await load(true)}
  }
  async function delWidth(id){
   const g=colorOf(rs.sel),w=g&&g.widths.find(x=>x.id===id);if(!w)return;
   if(!await confirmModal({title:'この幅を消す',eyebrow:'ゴムリング',
     bodyHtml:`<p class="confirm-modal-message">「${esc(g.color)}」の幅 ${fmt(w.width)}mm（${w.qty||0}本）を消します。</p>`,
-    confirmLabel:'消す',cancelLabel:'やめる'}))return;
+    confirmLabel:'削除する'}))return;
   if(await guarded(async()=>{await post('/api/bladeset-ring-master/delete',{id})},'消せませんでした')){delete rs.edits[`qty:${id}`];await load(true)}
  }
  async function delColor(){
   const g=colorOf(rs.sel);if(!g)return;
   if(!await confirmModal({title:'この色を消す',eyebrow:'ゴムリング',
     bodyHtml:`<p class="confirm-modal-message">「${esc(g.color)}」の幅 ${g.widths.length}種（合計 ${g.total}本）をすべて消します。元に戻せません。</p>`,
-    confirmLabel:'消す',cancelLabel:'やめる'}))return;
+    confirmLabel:'削除する'}))return;
   if(await guarded(async uid=>{await post('/api/bladeset/ring-colors',{equipment:rs.equipment,current:g.color,delete:true,user_id:uid})},'消せませんでした')){
    rs.sel='';rs.edits={};await load(true);
   }

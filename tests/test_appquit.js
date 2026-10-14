@@ -75,7 +75,7 @@ run('test_appquit: ×で閉じる前の確かめと、書込役が応答しな�
    やめる:(document.getElementById('appConfirmCancel')||{}).textContent||''}));
   rec('保存していない測定があれば確認を出す',/閉じますか/.test(conf.題)&&/保存されていない測定/.test(conf.本文),
       JSON.stringify(conf).slice(0,200));
-  rec('ボタンの文字が「閉じる」「やめる」',/閉じる/.test(conf.OK)&&/やめる/.test(conf.やめる),`${conf.OK} / ${conf.やめる}`);
+  rec('ボタンの文字が「閉じる」「キャンセル」（ほかの窓と同じ字・§9.604）',/閉じる/.test(conf.OK)&&/キャンセル/.test(conf.やめる),`${conf.OK} / ${conf.やめる}`);
   rec('確認を出したことを窓へ先に返す（窓は待ち切りで閉じない）',answers[0]==='asking',JSON.stringify(answers));
   await page.click('#appConfirmCancel');
   await closed();

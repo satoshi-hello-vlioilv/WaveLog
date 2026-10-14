@@ -201,13 +201,19 @@
    いちばん内側（本文）だけ**にする（§9.222 ⑤）。`max-height`は「これ以上
    大きくならない」なので、収まる窓の見え方は今までのまま。 */
 .settings-dialog{width:min(620px,94vw);max-height:92vh;display:flex;flex-direction:column;
-  background:#fff;border:2px solid var(--teal);border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--elev-modal)}
-.settings-dialog>header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:var(--pad-dialog);background:var(--nav);color:#fff}
-.settings-dialog h2{margin:2px 0}
-.settings-dialog small{color:#8fd4d4}
-.settings-dialog header button{border:0;background:transparent;color:#fff;font-size:var(--fs-lg)}
+  background:#fff;border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--elev-modal)}
+/* 窓の頭は**白・下に線1本**（§9.604）。マスタの編集窓（`.mm-editor-head`）と同じ形——種類（いる画面の名前）は薄い字の小見出し、題は15px、
+   × は30pxの四角。前は紺の帯＋青緑の縁取りで、白い頭の編集窓と2つの型が混ざっていた。 */
+.settings-dialog>header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
+  padding:var(--pad-dialog);background:var(--surface);color:var(--ink);border-bottom:1px solid var(--line)}
+.settings-dialog h2{margin:1px 0 0;font-size:var(--fs-title);color:var(--ink)}
+.settings-dialog small{color:var(--muted);font-size:var(--fs-sm)}
+.settings-dialog>header>button[aria-label="閉じる"]{flex:none;display:inline-grid;place-items:center;width:var(--ctl-h-sm);height:var(--ctl-h-sm);padding:0;
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);line-height:1}
+.settings-dialog>header>button[aria-label="閉じる"]:hover{border-color:var(--teal);color:var(--teal-dark)}
 .settings-body{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--space-5)}
-.settings-body>p{margin:0 0 18px;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:var(--ink-2);line-height:1.7}
+/* 窓の中に箱を作らない（文は地のまま・§9.604） */
+.settings-body>p{margin:0 0 18px;color:var(--ink-2);line-height:1.7}
 .settings-body label{display:grid;gap:var(--gap-inline);font-weight:var(--fw-strong)}
 /* ---------- 使用設備の設定（§9.257 ②、利用者の指示） ----------
    「アプリ使用設備の設定のモーダルが使いづらいのでわかりやすく使いやすく
@@ -290,7 +296,29 @@
 .delete-confirm-warning{margin:0;padding:var(--pad-card);border-left:4px solid var(--invalid);background:var(--danger-bg);color:#7a1f1f;line-height:1.7;font-weight:var(--fw-strong)}
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
-.confirm-modal-message{margin:0;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:var(--ink-2);line-height:1.7;white-space:pre-line}
+.confirm-modal-message{margin:0;color:var(--ink);line-height:1.7;white-space:pre-line}
+/* 確かめる窓の種類の印（§9.604）: 題の左の28pxの丸。危ない＝淡い赤に赤の !、お知らせ＝淡い青緑に i、確認＝?・入力＝✎ は淡い灰。
+   文を読む前に「危ない窓か」が分かる（色だけで言わない——印の字と決めるボタンの字が同じことを言う）。 */
+.confirm-modal-dialog>header>div{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:var(--space-3);align-items:center;min-width:0}
+.confirm-modal-dialog>header>div>small,.confirm-modal-dialog>header>div>h2{grid-column:2}
+.cm-mark{grid-row:1/3;display:grid;place-items:center;width:28px;height:28px;border-radius:var(--radius-round);
+  font-style:normal;font-weight:var(--fw-strong);font-size:var(--fs-sm);background:var(--surface-2);color:var(--ink-2)}
+.cm-mark[data-kind="danger"]{background:var(--danger-bg);color:var(--danger)}
+.cm-mark[data-kind="notice"]{background:var(--teal-tint);color:var(--teal-ink)}
+/* 消えるもの・戻せないことは文の前の札（文に無い事実だけ。文の写しにしない） */
+.cm-facts{display:flex;flex-wrap:wrap;gap:var(--space-2);margin:0 0 var(--space-2)}
+.cm-fact{display:inline-flex;align-items:center;min-height:22px;padding:0 var(--space-2);border-radius:var(--radius-xs);
+  font-size:var(--fs-sm);font-weight:var(--fw-ui);background:var(--surface-2);color:var(--ink-2)}
+.cm-fact.is-danger{background:var(--danger-bg);color:var(--danger)}
+/* 題だけで言い切れる窓（短いお知らせ）は本文と頭の下の線を出さない */
+.confirm-modal-dialog.is-titleonly>header{border-bottom:0;padding-bottom:0}
+.confirm-modal-dialog.is-titleonly #appConfirmBody{display:none}
+.confirm-modal-dialog.is-titleonly .settings-actions{margin-top:0}
+/* 決めるボタンは補助の規格（30px）。決める側は塗り（危ない操作は赤の塗り）・やめる側は白の縁 */
+.confirm-modal-dialog .settings-actions{gap:var(--space-2)}
+.confirm-modal-dialog .settings-actions button{min-width:0;padding:0 var(--ctl-pad-x)}
+.confirm-modal-dialog #appConfirmOk:not(.danger){background:var(--teal);color:var(--surface);border:1px solid var(--teal)}
+.confirm-modal-dialog #appConfirmCancel{background:var(--surface);color:var(--ink-2);border:1px solid var(--line)}
 /* 1行入力の窓（§9.342）。**器は確認モーダルと同じ**なので、足すのは
    「ラベル＋欄」と「添え書き」の2つだけ。入力欄は器いっぱいに伸ばす
    ——名前は何文字入るか分からず、途中で見切れると読み直せない。 */

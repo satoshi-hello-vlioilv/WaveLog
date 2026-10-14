@@ -89,12 +89,12 @@
   async function confirmRemoveLockedFilter(f){
     const target=f||S.genericFilters.find(isLockedFilter);
     if(!target)return true;
-    return await confirmModal(`この条件(${lockedFilterDescription(target)})は鍵付きの必須条件です。外すと一時的に条件が緩和されます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`);
+    return await confirmModal({message:`この条件(${lockedFilterDescription(target)})は鍵付きの必須条件です。外すと一時的に条件が緩和されます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`,confirmLabel:'解除する'});
   }
   async function confirmRemoveAllLocked(lockedList){
     if(lockedList.length<=1)return await confirmRemoveLockedFilter(lockedList[0]);
     const desc=lockedList.map(lockedFilterDescription).join('、');
-    return await confirmModal(`鍵付きの必須条件が${lockedList.length}件あります(${desc})。全解除すると一時的にこれらの条件も外れます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`);
+    return await confirmModal({message:`鍵付きの必須条件が${lockedList.length}件あります(${desc})。全解除すると一時的にこれらの条件も外れます(この一覧を開き直すと自動的に元へ戻ります)。\n本当に解除しますか？`,confirmLabel:'全部解除する'});
   }
 
   /* ---- アクティブなフィルタ設定状態(S.genericFilters)を、ファイル(DB)＆
@@ -449,7 +449,7 @@
      ビルダーの「登録」の2つ。**まとめて登録の入口を戻さないこと**——
      何が登録されたのか・何が既に登録済みなのかが読めなくなる（§9.80）。 */
   async function deletePreset(preset){
-    if(!(await confirmModal(`登録フィルタ「${preset.name}」を削除しますか？`)))return;
+    if(!(await confirmModal({message:`登録フィルタ「${preset.name}」を削除しますか？`,confirmLabel:'削除する',danger:true})))return;
     const listEl=$('#filterPresetList');
     if(preset.master&&preset.id!=null){
       setPanelLoading(listEl,true,'マスタから削除しています...');
@@ -473,14 +473,14 @@
     }
     const toShared=!!preset.owner;   // 今が自分のもの → みんなへ
     const ok=await confirmModal(toShared
-      ?{eyebrow:'SHARE FILTER',title:`「${preset.name}」をみんなで使えるようにします`,
+      ?{title:`「${preset.name}」をみんなで使えるようにします`,
         confirmLabel:'みんなで使う',
         bodyHtml:`<p class="confirm-modal-message">この登録フィルタが<b>ほかの人の「登録した条件とプリセット」にも出る</b>ようになります。</p>
          <ul class="confirm-modal-points">
           <li>条件そのものが共有されます。「デフォルト」「鍵」の印は<b>人ごと</b>なので、ほかの人へは付きません。</li>
           <li>みんなのものになったフィルタは、<b>ほかの人も消せます</b>。</li>
          </ul>`}
-      :{eyebrow:'MAKE PRIVATE',title:`「${preset.name}」を自分だけのものにします`,
+      :{title:`「${preset.name}」を自分だけのものにします`,
         confirmLabel:'自分だけにする',
         bodyHtml:`<p class="confirm-modal-message">この登録フィルタが<b>ほかの人の一覧から消えます</b>（${esc(filterUserLabel())} だけに見えます）。</p>
          <ul class="confirm-modal-points">
@@ -1050,7 +1050,7 @@
   }
   /* 組み合わせの名前を聞く。**窓そのものは`promptModal`の1箇所**（§9.342）。 */
   function askGroupName(seed){
-    return promptModal({title:'組み合わせに名前を付ける',confirmLabel:'決める',
+    return promptModal({title:'組み合わせに名前を付ける',confirmLabel:'名前を付ける',
       label:'プリセットの名前',placeholder:'例: 今日の担当',value:seed||'',
       hint:'同じ名前を付けた条件がひとまとまりのプリセットになり、'
         +'絞り込みバーの「プリセット」から切り替えられます。'});
@@ -2052,7 +2052,7 @@
     modal=document.createElement('div');modal.className='record-modal';modal.id='filterPresetModal';modal.hidden=true;
     modal.innerHTML=`
       <div class="filter-preset-dialog">
-        <header><div><small>SAVED FILTERS (MASTER)</small><h2>登録した条件とプリセット</h2></div><button id="closeFilterPresets" type="button">×</button></header>
+        <header><div><small>一覧の絞り込み</small><h2>登録した条件とプリセット</h2></div><button id="closeFilterPresets" type="button" aria-label="閉じる">×</button></header>
         <div class="filter-preset-body">
           <div class="filter-preset-toolbar"><span id="filterPresetSummary"></span>
            <span class="filter-preset-tools">
@@ -2098,9 +2098,9 @@
   async function copyOtherScene(){
     const items=otherScene.items||[];
     if(!items.length)return;
-    if(!(await confirmModal(`「${SCENE_OF[otherMode()]}」にある ${items.length}件を、`
+    if(!(await confirmModal({message:`「${SCENE_OF[otherMode()]}」にある ${items.length}件を、`
       +`この場面（${sceneLabel()}）でも使えるようにします。\n`
-      +`条件と「デフォルト」「鍵」の印を写します（元の登録はそのまま残ります）。`)))return;
+      +`条件と「デフォルト」「鍵」の印を写します（元の登録はそのまま残ります）。`,confirmLabel:'使えるようにする'})))return;
     let ok=0,ng=0,markNg=0;
     for(const it of items){
       try{
@@ -2216,8 +2216,8 @@
     /* **0件の組み合わせは作らない**（中身の無い登録＝押しても何も起きない
        プリセット・§4）。消すかどうかは聞いてから。 */
     if(!now.length){
-      if(!(await confirmModal(`「${presetTitle(p)}」を外すと、組み合わせ「${presetTitle(combo)}」は条件が0件になります。\n`
-        +`組み合わせごと削除しますか？（条件そのものは消えません）`)))return;
+      if(!(await confirmModal({message:`「${presetTitle(p)}」を外すと、組み合わせ「${presetTitle(combo)}」は条件が0件になります。\n`
+        +`組み合わせごと削除しますか？（条件そのものは消えません）`,confirmLabel:'組み合わせごと削除する',danger:true})))return;
       await deletePreset(combo);return;
     }
     await saveCombo({id:combo.id,members:now},
@@ -2280,7 +2280,7 @@
         btn.type='button';btn.className='fp-memo-clear';btn.textContent='覚えを消す';
         btn.title='この端末に覚えている「適用中の条件」をすべて忘れます（登録フィルタは消えません）';
         btn.onclick=async()=>{
-          if(!(await confirmModal(`この端末に覚えている「適用中の条件」${memo}件ぶんを忘れますか？\n登録フィルタそのものは消えません。今開いている一覧の条件はそのままです。`)))return;
+          if(!(await confirmModal({message:`この端末に覚えている「適用中の条件」${memo}件ぶんを忘れますか？\n登録フィルタそのものは消えません。今開いている一覧の条件はそのままです。`,confirmLabel:'忘れる'})))return;
           forgetActiveFilterMemory();renderFilterPresetList();
           showToast&&showToast('覚えを消しました','次に一覧を開いたときは条件なしで始まります',3000);
         };
@@ -2447,9 +2447,9 @@
       const on2=!!e.target.checked;
       /* 外すときは確認する——「いつも適用」は外れないことに値打ちがあるので、
          うっかり外れないようにする（§9.190）。 */
-      if(!on2&&!(await confirmModal(
+      if(!on2&&!(await confirmModal({message:
         `「${presetTitle(p)}」の「いつも適用（固定）」を外します。\n`
-        +`この一覧を開いても自動では入らなくなります。よろしいですか？`))){
+        +`この一覧を開いても自動では入らなくなります。よろしいですか？`,confirmLabel:'固定を外す'}))){
         e.target.checked=true;return;
       }
       await setAlwaysOnPreset(p,S.db,S.table,on2);

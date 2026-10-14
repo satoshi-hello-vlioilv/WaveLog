@@ -155,11 +155,13 @@
  }
 
  /* 2ペイン。左＝一覧（`items`の項目を全部。まとまりで分けて描く盤は組み上がった`listHtml`）、右＝詳細。
-    `cls`は盤ごとの寸法の名乗り（`--bk-list-w`を宣言し直す）。足すのは頭の主の操作（一覧の下に「足す」を置かない）。 */
+    `cls`は盤ごとの寸法の名乗り（`--bk-list-w`を宣言し直す）。追加は頭の主の操作（一覧の下に「追加」を置かない）。
+    `head`＝一覧の頭（何の一覧・件数）。ほかのマスタの左の一覧と同じ形（`.mm-panehead`・§9.604）——件数を頭へ置いたら、札の行の右に同じ数を出さない。 */
  function pane(o){
   const list=o.listHtml!=null?o.listHtml:(o.items||[]).map(itemHtml).join('');
+  const h=o.head?`<div class="mm-panehead"><b>${esc(o.head.name)}</b>${o.head.n!=null?`<span>${o.head.n}件</span>`:''}</div>`:'';
   return `<div class="bk-pane${o.cls?' '+o.cls:''}">
-   <nav class="bk-list" aria-label="${esc(o.label||'一覧')}">
+   <nav class="bk-list" aria-label="${esc(o.label||'一覧')}">${h}
     <div class="bk-items" role="listbox">${list||`<p class="bk-none">${esc(o.empty||'まだありません')}</p>`}</div>
    </nav>
    <section class="bk-detail">${o.detail||''}</section></div>`;
@@ -210,9 +212,7 @@
  /* 保存していない変更を捨てて離れてよいか（変更が無ければ聞かない）。 */
  function leave(dirty,what){
   if(!dirty)return Promise.resolve(true);
-  return confirmModal({title:'保存していない変更を捨てる',eyebrow:what,
-   bodyHtml:'<p class="confirm-modal-message">保存していない変更があります。捨てて切り替えますか？</p>',
-   confirmLabel:'捨てて切り替える',cancelLabel:'やめる'});
+  return WL.mm.confirmDiscard(what);   // 窓はマスタの右の詳細と同じ1つ（§9.604）
  }
  /* 読み込みの器（本文に「読み込んでいます…」・頭の印）。 */
  async function loading(fn){
@@ -248,8 +248,8 @@
    if(t.cols.length)return t.addRow();
    const b=t.o.host()&&t.o.host().querySelector('[data-rt="addcol"]');if(b){b.scrollIntoView({block:'nearest'});t.openColMenu(b)}
   };
-  return {primary:{id:'rtAddRow',label:'決まりの行',title:'表の既定の行の上に決まりを1行足します（列がまだ無い表は、条件にするデータを選ぶところから）',
-    menu:tables.map(t=>({label:`${t.label}の表に足す`,note:t.cols.length?'既定の行の上に入ります':'先に条件にするデータを選びます',data:{rtAdd:t.key},onClick:()=>add(t)}))},
+  return {primary:{id:'rtAddRow',label:'決まりを追加',title:'表の既定の行の上に決まりを1行足します（列がまだ無い表は、条件にするデータを選ぶところから）',
+    menu:tables.map(t=>({label:`${t.label}の表に追加`,note:t.cols.length?'既定の行の上に入ります':'先に条件にするデータを選びます',data:{rtAdd:t.key},onClick:()=>add(t)}))},
    more:tables.filter(t=>t.stored).map(t=>({label:`${t.label}を未登録に戻す…`,note:`以後は${t.o.seedNote}`,danger:true,data:{rtReset:t.key},onClick:()=>t.reset()}))};
  }
  /* 判定表の足元: 変更のある表を順に保存（1つでも断られたらそこで止める）。 */

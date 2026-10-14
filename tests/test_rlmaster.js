@@ -64,10 +64,8 @@ run('test_rlmaster: 帳票レイアウトマスタ（§9.254 ③、利用者の�
   /* 紙（設備）は主役の上の対象の札（§9.602。前は左の一覧`[data-rly-paper]`）。 */
   const pickPaper=async eq=>{
    await page.click(`#masterMaintList .mm-scopebar [data-mm-scope="${eq}"]`).catch(()=>{});
-   await page.waitForFunction(e=>{
-    const h=document.querySelector('.rly-blocks-head');
-    return !!h&&h.textContent.indexOf(e)>=0;
-   },eq,{timeout:20000});
+   /* どの紙を描いたかは器が名乗る（§9.604。前は頭の字「◯◯の紙」で見ていた）。 */
+   await page.waitForFunction(e=>!!document.querySelector(`.rly-blocks[data-rly-paper="${CSS.escape(e)}"]`),eq,{timeout:20000});
   };
   const saveDetail=async re=>{
    await page.click('#rlySave');
@@ -179,16 +177,18 @@ run('test_rlmaster: 帳票レイアウトマスタ（§9.254 ③、利用者の�
    await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:5000,what:'子の編集窓が閉じる'});
   }
 
-  /* ---- 6) 子→親のリンク ---- */
+  /* ---- 6) 子→親のリンク（頭の ⋯ の項目・§9.604。左の一覧にも同じ行き先がある副の道） ---- */
+  await page.click('#masterMaintMore');
+  await page.waitForSelector('#mmActMenu:not([hidden]) [data-mm-act="linkMaster"]',{timeout:5000});
   const linked=await page.evaluate(()=>{
-   const b=document.getElementById('mmLinkMaster');
+   const b=document.querySelector('#mmActMenu:not([hidden]) [data-mm-act="linkMaster"]');
    return b?{text:b.textContent.trim(),
              tab:(document.querySelector('#masterMaintNav [data-master].active')||{}).dataset.master}:null;
   });
-  rec('帳票ブロックの帯から親（帳票レイアウト）へ渡れる',
+  rec('帳票ブロックの頭の ⋯ から親（帳票レイアウト）へ渡れる',
       !!linked&&linked.tab==='reportBlock'&&/帳票レイアウト/.test(linked.text),JSON.stringify(linked));
   if(linked){
-   await page.click('#mmLinkMaster');
+   await page.click('#mmActMenu [data-mm-act="linkMaster"]');
    await page.waitForSelector('.rly-edit',{timeout:20000});
    const back=await page.evaluate(()=>(document.querySelector('#masterMaintNav [data-master].active')||{}).dataset.master);
    rec('押すと帳票レイアウトへ移る',back==='reportLayout',String(back));
