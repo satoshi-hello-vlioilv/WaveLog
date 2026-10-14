@@ -106,9 +106,11 @@ run('test_opauto: 自動で入る値・計算値を操業データ項目とし�
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('.op-board',{timeout:20000});
   await idle();
+  /* 入口は頭の「＋ 項目を追加 ▾」のメニューの1つ（§9.602。前は帯の #opAddAuto）。 */
+  await page.click('#opAdd');
   rec('盤に「自動で入る値を足す」の入口がある',
-      await page.$eval('#opAddAuto',e=>!!e.offsetParent).catch(()=>false),'');
-  await page.click('#opAddAuto');
+      await page.waitForSelector('#mmActMenu [data-op-add="auto"]',{timeout:5000}).then(()=>true).catch(()=>false),'');
+  await page.click('#mmActMenu [data-op-add="auto"]');
   await page.waitForSelector('.op-menu-auto',{timeout:8000});
   const menu=await page.evaluate(()=>{
    const m=document.querySelector('.op-menu-auto');

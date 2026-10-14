@@ -114,7 +114,6 @@ run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①
    return{
     枚数:grids.length,
     置き場:grids.map(g=>g.dataset.opPlace),
-    列:grids.map(g=>getComputedStyle(g).gridTemplateColumns.split(' ').length),
     帯:[...document.querySelectorAll('#masterMaintList .op-band')].map(x=>x.dataset.opBand),
     タイル:document.querySelectorAll('#masterMaintList .op-tile').length,
     掴める:[...document.querySelectorAll('#masterMaintList .op-tile')].every(x=>x.draggable),
@@ -122,6 +121,17 @@ run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①
     柱:!!document.querySelector('#masterMaintList .op-detail'),
    };
   });
+  /* 見ていない盤は伏せてある（§9.602・盤の上の切り替え）。伏せた盤の`gridTemplateColumns`は宣言の字のまま
+     （`repeat(12, minmax(0, 1fr))`）で列の数にならないので、**盤ごとに切り替えの札を押して出してから**測る（人と同じ道）。 */
+  board.列=[];
+  for(const pl of board.置き場){
+   await page.click(`.op-boardseg [data-op-board="${pl}"]`);
+   await W.until(page,p=>{const g=document.querySelector(`#masterMaintList .op-board-grid[data-op-place="${p}"]`);
+     return !!g&&!g.closest('[hidden]')},pl,{ms:5000,what:`盤「${pl}」が出る`});
+   board.列.push(await page.evaluate(p=>getComputedStyle(document.querySelector(
+     `#masterMaintList .op-board-grid[data-op-place="${p}"]`)).gridTemplateColumns.split(' ').length,pl));
+  }
+  await page.click(`.op-boardseg [data-op-board="${board.置き場[0]}"]`);
   /* §9.232 で母材の面が3枚目の置き場になった（利用者の指示「測定画面の
      入力内容の母材の部分も汎用設定で作った形にしたい」）。**枚数は
      サーバーの`PLACES`と同じ数**——増やしたのに盤が出ないと、行はあるのに
@@ -1087,13 +1097,15 @@ run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①
   const bands=await page.$$eval('#masterMaintList .op-band',es=>es.map(e=>e.dataset.opBand));
   let side={前提なし:bands.length<2};
   if(bands.length>=2){
+   /* 幅は群の ⋯ のメニュー（§9.602。前は帯に並べた4つの札）。 */
+   const pickSpan=async(nm,v)=>{
+    await page.click(`.op-band[data-op-band="${nm}"] [data-op-gmore]`);
+    await page.click(`#mmActMenu [data-op-gspan="${v}"]`);
+   };
    for(const n of bands.slice(0,2)){
-    await page.evaluate(nm=>{
-     const b=document.querySelector(`.op-band[data-op-band="${nm}"] [data-op-gspan="6"]`);
-     if(b)b.click();
-    },n);
+    await pickSpan(n,6);
     await page.waitForFunction(()=>!/保存しています/.test(
-      (document.querySelector('#opLayoutState')||{}).textContent||''),null,{timeout:8000})
+      (document.querySelector('#masterMaintSay')||{}).textContent||''),null,{timeout:8000})
       .catch(()=>{});
     await idle();  // 盤の幅の保存と描き直しが済むまで
    }
@@ -1108,10 +1120,7 @@ run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①
    },bands);
    /* 戻す（§9.121。盤の設定は実行をまたいで生き延びる）。 */
    for(const n of bands.slice(0,2)){
-    await page.evaluate(nm=>{
-     const b=document.querySelector(`.op-band[data-op-band="${nm}"] [data-op-gspan="0"]`);
-     if(b)b.click();
-    },n);
+    await pickSpan(n,0);
     await idle();  // 盤の幅の保存と描き直しが済むまで
    }
   }

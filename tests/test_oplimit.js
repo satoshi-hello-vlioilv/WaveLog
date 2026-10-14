@@ -112,7 +112,7 @@ run('test_oplimit: 設備マスタの最大ライン速度と、数の決まり�
   await page.waitForSelector('.op-board',{timeout:20000});
   /* 盤は設備で絞れる。**この設備を選ぶ**——選ばないと「いまの値」が
      引けず、案内の文が変わる（そこも下で確かめる）。 */
-  await page.selectOption('#opEqPick',EQ).catch(()=>{});
+  await page.click(`#masterMaintList .mm-scopebar [data-mm-scope="${EQ}"]`).catch(()=>{});   // 対象の札（§9.602。前は #opEqPick）
   await page.waitForFunction(id=>!!document.querySelector(`.op-tile[data-op-id="${id}"]`),
     String(itemId),{timeout:20000});
   const openModal=async()=>{
@@ -220,7 +220,7 @@ run('test_oplimit: 設備マスタの最大ライン速度と、数の決まり�
   /* ---- 自分で決めるへ戻す ---- */
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('.op-board',{timeout:20000});
-  await page.selectOption('#opEqPick',EQ).catch(()=>{});
+  await page.click(`#masterMaintList .mm-scopebar [data-mm-scope="${EQ}"]`).catch(()=>{});   // 対象の札（§9.602。前は #opEqPick）
   await page.waitForFunction(id=>!!document.querySelector(`.op-tile[data-op-id="${id}"]`),
     String(itemId),{timeout:20000});
   await openModal();

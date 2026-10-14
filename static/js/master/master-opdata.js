@@ -8,7 +8,7 @@
    盤（master-maint.js）から `WL.mm` で受け取り、`registerSpecial` で名乗る。
    ============================================================ */
 (function(){
- const {EQUIPMENT_ALL,closeMaintEditor,maintState,openMaintEditor,openMasterMaint,requireMaintUser}=WL.mm;
+ const {closeMaintEditor,maintState,openMaintEditor,openMasterMaint,requireMaintUser}=WL.mm;
  /* ================================================================
     操業データの配置（§9.216 ④、利用者の指示）
     ----------------------------------------------------------------
@@ -84,7 +84,9 @@
                 healed:new Set(),
                 /* 掴んでいるもの。**カードと群は別の控え**（§9.230 ④）
                    ——1つにまとめると「いま何を運んでいるか」が読めない。 */
-                picked:null,busy:false,drag:null,dragGroup:null};
+                picked:null,busy:false,drag:null,dragGroup:null,
+                /* いま見ている盤（置き場・§9.602）と、役割の一覧を開いているか。 */
+                place:'',roleOpen:false,counts:{}};
  const OP_PLACE_NOTE={
   '準備':'①準備の「操業データ」カード（横3マス×縦2マス）',
   '入力内容':'②測定の「入力内容」カード（畳んでおき、下の「開く条件」に当たる項目を選ぶと開きます）',
@@ -446,15 +448,12 @@
   const hit=OP_GROUP_SPANS.find(x=>x.v===Number(v||0));
   return hit?hit.label:`${v}/${opState.gridCols}マス`;
  }
- /* 群の幅のボタン（ダミーでも使うので切り出す）。 */
- function opBandSpanHtml(r,cur){
-  return `<span class="op-band-span" role="group" aria-label="群の幅">`
-   +OP_GROUP_SPANS.map(o=>`<button type="button" data-op-gspan="${o.v}"`
-     +` data-op-band2="${esc(r.name)}" data-op-place="${esc(r.place)}"`
-     +` class="${cur===o.v?'is-on':''}" title="この群の幅を${esc(o.label)}にします`
-     +`${o.v?'（横いっぱいでない群は横に並びます）':'（今までどおり1段を丸ごと使います）'}">`
-     +`${esc(o.label)}</button>`).join('')
-   +`</span>`;
+ /* 群の道具は ⋯ の1つ（§9.602）。幅・名前・畳むは押すと開くメニューの中（`opOpenGroupMenu()`）——群ごとに6つの
+    ボタンを並べると、盤の頭が道具の列になって群の名前と項目が読めなかった（実測 6×群の数）。 */
+ function opBandMoreHtml(r){
+  return `<button type="button" class="op-band-more" data-op-gmore="${esc(r.name)}" data-op-place="${esc(r.place)}"`
+   +` aria-haspopup="menu" aria-expanded="false" aria-label="「${esc(r.name)}」の操作" title="この群の幅・名前${r.dummy?'':'・畳む'}">`
+   +`<i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`;
  }
  function opBandHtml(r,count,spot){
   const cond=(r.showWhen||[]).length?`／開く条件: ${esc((r.showWhen||[]).join('、'))}`:'';
@@ -475,27 +474,19 @@
     +`<small class="op-band-note">空きだけの群`
     +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:'／幅 全幅'}`
     +`／測定画面では<b>見出しも出しません</b></small>`
-    +`<span class="op-band-tools" draggable="false">`
-    +opBandSpanHtml(r,cur)
-    +`<button type="button" class="ghost" data-op-rename="${esc(r.name)}" data-op-place="${esc(r.place)}">名前</button>`
-    +`</span></div>`;
+    +`<span class="op-band-tools" draggable="false">${opBandMoreHtml(r)}</span></div>`;
   }
   /* **帯を掴むと群ごと動く**（§9.230 ④、利用者の指示「郡単位で移動できる
      ようにしたいです」）。道具（幅・名前・畳む）からは掴ませない
      ——押そうとしたら群が動く、では押せない。 */
+  /* 畳むかどうかは帯が名乗る（`data-op-fold-on`）——並びの保存（`opCollectLayout()`）が読む。 */
   return `<div class="op-band" draggable="true" data-op-band="${esc(r.name)}" data-op-place="${esc(r.place)}"`
+   +` data-op-fold-on="${r.fold?'1':'0'}"`
    +` style="${place}" title="この帯より下の項目が「${esc(r.name)}」になります（帯を掴むと群ごと動きます）">`
    +`<b class="op-band-name">${esc(r.name)}</b>`
    +`<small class="op-band-note">${count}項目${r.fold?'／畳む':''}`
    +`${cur?`／幅 ${esc(opGroupSpanLabel(cur))}`:''}${cond}</small>`
-   +`<span class="op-band-tools" draggable="false">`
-   /* **列でも区切れる**（§9.226 ③、利用者の指示）。全幅でない群は横に
-      並ぶので、「誰が測るか」と「使う機材」を左右に置ける。 */
-   +opBandSpanHtml(r,cur)
-   +`<button type="button" class="ghost" data-op-rename="${esc(r.name)}" data-op-place="${esc(r.place)}">名前</button>`
-   +`<button type="button" class="ghost" data-op-fold="${esc(r.name)}" data-op-place="${esc(r.place)}"`
-   +` aria-pressed="${r.fold?'true':'false'}">${r.fold?'畳む':'開いたまま'}</button>`
-   +`</span></div>`;
+   +`<span class="op-band-tools" draggable="false">${opBandMoreHtml(r)}</span></div>`;
  }
  function opBoardHtml(place){
   const rows=opRows(place);
@@ -519,10 +510,10 @@
      使っているのかが読めないと「1つ増やせるか」が分からない。 */
   const ruler=Array.from({length:opState.gridCols},(_,i)=>
     `<i class="op-ruler-cell">${i+1}</i>`).join('');
-  return `<section class="op-board" data-op-place="${esc(place)}">`
-   +`<div class="op-board-head"><b>${esc(place)}</b>`
-   +`<small>${esc(OP_PLACE_NOTE[place]||'')}</small>`
-   +`<span class="op-board-count">${n}項目</span></div>`
+  /* 盤の名前・件数・どこに出るかは盤の上の切り替えが言う（§9.602・`opBoardBarHtml()`）。盤は全部描き、いま見ていない盤は
+     伏せる——掴んだカードを切り替えの札へ運ぶとその盤が開いて落とせる（置き場をまたぐ道を残す）。 */
+  opState.counts[place]=n;
+  return `<section class="op-board" data-op-place="${esc(place)}"${place===opCurPlace()?'':' hidden'}>`
    +`<div class="op-ruler" style="--op-cols:${opState.gridCols}">${ruler}</div>`
    +`<div class="op-board-grid" data-op-place="${esc(place)}"`
    +` style="--op-cols:${opState.gridCols}">${body}</div></section>`;
@@ -541,36 +532,78 @@
     分類名と件数を必ず文字で出す」）。**1つも無い場面では行ごと消す**
     （§4／§9.199）。件数を出すのは**ここだけ**——盤の頭にも出すと同じ数字が
     2箇所になる（§CLAUDE 8）。 */
+ /* 凡例は盤の上の切り替えの右（§9.602）: 札（分類名と件数）＋説明の頭の1句。全文と「初期値は数えない」は title。 */
  function opAutoLegendHtml(){
   const kinds=(opState.autoFills||[]).map(a=>Object.assign({},a,
     {n:(opState.items||[]).filter(x=>opAutoOf(x)===a.key).length})).filter(a=>a.n);
   if(!kinds.length)return '';
-  return `<p class="op-auto-legend"><span>地に色の付いたカードは、値が<b>この画面の外から</b>入ります</span>`
+  const tip='地に色の付いたカードは、値がこの画面の外から入ります。'+kinds.map(a=>`${a.label}: ${a.note}`).join('')
+   +'マスタで決めた初期値はここに数えません（カードの「初期 …」の印が持ちます）。';
+  return `<span class="op-auto-legend" title="${esc(tip)}">`
    +kinds.map(a=>`<b class="op-chip op-chip-auto" data-op-auto="${esc(a.key)}">${esc(a.label)} ${a.n}件</b>`
-     +`<small>${esc(a.note)}</small>`).join('')
-   +`<small>マスタで決めた<b>初期値</b>はここに数えません（カードの「初期 …」の印が持ちます）。</small></p>`;
+     +`<small>${esc(String(a.note||'').split(/[（。]/)[0])}</small>`).join('')+`</span>`;
  }
- function opRoleStripHtml(){
-  const rep=opState.roleReport;
-  if(!rep)return '';
+ /* いま見ている盤（置き場）。届いた置き場に無ければ最初の盤。 */
+ function opCurPlace(){
+  const ps=opState.places||[];
+  if(ps.indexOf(opState.place)<0)opState.place=ps[0]||'準備';
+  return opState.place;
+ }
+ /* 盤の上の1行（§9.602）: 盤の切り替え（名前と項目数）・いまの盤が測定画面のどこに出るか・凡例。 */
+ function opBoardBarHtml(){
+  const cur=opCurPlace();
+  return `<div class="op-boardbar"><span class="mm-seg op-boardseg" role="tablist" aria-label="盤（置き場）">`
+   +opState.places.map(p=>`<button type="button" role="tab" data-op-board="${esc(p)}" class="${p===cur?'is-on':''}"`
+     +` aria-selected="${p===cur}" title="${esc(OP_PLACE_NOTE[p]||'')}（掴んだカードをここへ運ぶとこの盤が開きます）">`
+     +`${esc(p)}<small>${opState.counts[p]||0}項目</small></button>`).join('')
+   +`</span><span class="op-boardbar-note" title="${esc(OP_PLACE_NOTE[cur]||'')}">${esc(OP_PLACE_NOTE[cur]||'')}</span>`
+   +opAutoLegendHtml()+`</div>`;
+ }
+ /* 構成チェックの数（頭の状態の札と、足りないときの直し方が同じ答えを読む）。 */
+ function opRoleCounts(){
+  const rep=opState.roleReport;if(!rep)return null;
   const roles=rep.roles||[];
   const need=roles.filter(r=>r.required);
-  const okNeed=need.filter(r=>r.state==='ok').length;
-  const miss=roles.filter(r=>r.required&&r.state==='none');
-  const dup=roles.filter(r=>r.state==='dup');
-  const filled=roles.filter(r=>r.state==='ok').length;
-  const chip=(cls,txt,tip)=>`<b class="op-role-stat ${cls}"${tip?` title="${esc(tip)}"`:''}>${txt}</b>`;
+  return {roles,need,okNeed:need.filter(r=>r.state==='ok').length,
+   miss:roles.filter(r=>r.required&&r.state==='none'),dup:roles.filter(r=>r.state==='dup'),
+   filled:roles.filter(r=>r.state==='ok').length,down:rep.steppedDown||[]};
+ }
+ /* 頭（§9.602）: 状態の札「必須 n/N」・主の操作（＋ 項目を追加 ▾＝項目・群・空きカード・自動で入る値）・⋯（役割の一覧）。 */
+ function opPaintHead(){
+  const c=opRoleCounts();
+  WL.mm.setHeadState(c?{text:`必須 ${c.okNeed}/${c.need.length}`+(c.dup.length?`・二重 ${c.dup.length}`:''),
+   tone:(c.miss.length||c.dup.length)?'warn':'ok',
+   title:(c.miss.length||c.dup.length)
+    ?[c.miss.length?'足りない役割: '+c.miss.map(r=>r.label).join('・'):'',c.dup.length?'二重の役割: '+c.dup.map(r=>r.label).join('・'):''].filter(Boolean).join('／')+'（直し方は盤の上）'
+    :`必要な役割は${c.need.length}件すべて埋まっています（役割の付いた項目 ${c.filled}件）。役割の一覧は ⋯ から`}:null);
+  WL.mm.setHeadActs({
+   primary:{id:'opAdd',label:'項目を追加',menu:[
+    {label:'項目',note:'名前・型を決めて1枚足す',data:{opAdd:'item'},onClick:()=>opCreateItem()},
+    {label:'群',note:'見出しの帯を1本足す（帯より下がその群）',data:{opAdd:'group'},onClick:()=>opCreateGroup()},
+    {label:'空きカード',note:'測定画面で何も描かない空き（区切りの良い並びに整列させる）',data:{opAdd:'pad'},onClick:()=>opCreatePad()},
+    {label:'自動で入る値',note:'ロット番号・製造板厚・実働時間など、画面が入れる値',data:{opAdd:'auto'},
+     onClick:()=>opOpenAutoMenu({currentTarget:$('#opAdd')})}]},
+   more:[{label:opState.roleOpen?'役割の一覧を閉じる':'役割の一覧',note:'必須の役割をどの項目が担っているか',
+    data:{opMore:'roles'},onClick:()=>{opState.roleOpen=!opState.roleOpen;renderOpItem()}}]});
+ }
+ /* 構成チェックの帯は**言うことがあるときだけ**（§9.602）: 足りない・二重・譲って下がった欄、または ⋯ で開いた役割の一覧。
+    数（必須 n/N）は頭の状態の札が持つ（同じ数を2箇所に出さない）。 */
+ function opRoleStripHtml(){
+  const c=opRoleCounts();
+  if(!c)return '';
+  const {roles,miss,dup}=c;
   /* **譲って下がった組み込みの欄は名指しで言う**（§9.223 ①）。窓には
      「役割を別の項目へ移すと、この欄は自動で下がります」と書いてあるので、
      下がったことを黙っていると「消えた」と読まれる。 */
-  const down=(rep.steppedDown||[]);
+  const down=c.down;
   const downLine=down.length
    ?`<span class="op-role-line is-info"><b>役割を譲って下がった欄</b>`
      +down.map(h=>`<i>${esc(h.name||h.builtin||'')}</i>`).join('')
      +`<small>同じ役割の項目を作ったので、画面がもともと持っているこの欄は`
      +`測定画面に出しません（役割を外せば戻ります）。</small></span>`
    :'';
-  const body=(miss.length||dup.length)
+  if(!miss.length&&!dup.length&&!down.length&&!opState.roleOpen)return '';
+  const body=(miss.length||dup.length||down.length)
    ?`<span class="op-role-fix">`+downLine
      +(miss.length?`<span class="op-role-line"><b>足りない役割</b>`
        +miss.map(r=>`<i>${esc(r.label)}</i>`).join('')
@@ -579,87 +612,52 @@
        +dup.map(r=>`<i>${esc(r.label)}（${r.holders.map(h=>esc(h.name)).join('・')}）</i>`).join('')
        +`<small>どちらの値が使われるか決まりません。片方の役割を外してください。</small></span>`:'')
      +`</span>`
-   :`<span class="op-role-fix"><span class="op-role-ok">`
-     +`必要な役割は${need.length}件すべて埋まっています`
-     +`（役割の付いた項目 ${filled}件）。カードの作りは全部同じなので、`
-     +`名前・型・選ばせ方は項目ごとに自由に決められます。</span>${downLine}</span>`;
-  return `<section class="op-role-strip${(miss.length||dup.length)?' is-bad':''}">`
-   +`<h4 class="op-role-head">構成チェック`
-   +chip(miss.length?'is-bad':'is-ok',`必須 ${okNeed}/${need.length}`,
-         '必須の役割が担われているか。担うのはどの項目でもかまいません')
-   +(dup.length?chip('is-bad',`二重 ${dup.length}`,'同じ役割を2つの項目が持っています'):'')
-   +`<button type="button" class="ghost op-role-more" id="opRoleMore" aria-expanded="false">役割の一覧</button>`
-   +`</h4>${body}`
-   +`<div class="op-role-list" id="opRoleList" hidden>`
+   :'';
+  return `<section class="op-role-strip${(miss.length||dup.length)?' is-bad':''}">`+body
+   +(opState.roleOpen?`<h4 class="op-role-head">役割の一覧<small>必須の役割は、担うのがどの項目でもかまいません（カードの作りは全部同じ）</small>`
+     +`<button type="button" class="mm-btn-ghost sm" id="opRoleClose">閉じる</button></h4>`
+     +`<div class="op-role-list" id="opRoleList">`
    +roles.map(r=>`<span class="op-role-item is-${esc(r.state)}">`
      +`<b>${esc(r.label)}</b>${r.required?'<i class="op-role-req">必須</i>':''}`
      +`<span class="op-role-who">${r.holders.length?r.holders.map(h=>esc(h.name)).join('・'):'—'}`
      +((r.steppedDown||[]).length
        ?`<i class="op-role-down">${esc((r.steppedDown||[]).map(h=>h.name||h.builtin).join('・'))}は下がりました</i>`
        :'')+`</span>`
-     +`<small>${esc(r.note)}</small></span>`).join('')
-   +`</div></section>`;
+     +`<small>${esc(r.note)}</small></span>`).join('')+`</div>`:'')
+   +`</section>`;
  }
  function renderOpItem(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   const eqs=(WL.records.equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
-  form.innerHTML=`<div class="op-bar">`
-   +`<label class="op-bar-eq" title="どの設備のレイアウトを編集するかです。`
-   +`「共通」で並べ替えるとすべての設備に効き、設備を選んで並べ替えるとその設備だけに効きます。">`
-   +`レイアウトの対象<select id="opEqPick">`
-   +`<option value="">共通（すべての設備）</option>`
-   +eqs.map(n=>`<option value="${esc(n)}"${opState.equipment===n?' selected':''}>${esc(n)}</option>`).join('')
-   +`</select></label>`
-   /* **いま何を触っているかを文字で出す**（§9.239 ②・§CLAUDE 6）。
-      黙って設備ごとに分かれると、共通を直したつもりが1設備にしか
-      効いていない（あるいはその逆）ことに気づけない。 */
-   +`<span class="op-bar-scope${opState.equipment?' is-one':''}">`
-   +(opState.equipment
-     ?`<b>${esc(opState.equipment)}だけ</b>のレイアウトを編集しています`
-      +`<i>（置き場・群・並び・幅・畳みはこの設備だけに効きます。名前・型・選択肢・単位・意匠は共通です）</i>`
-     :`<b>共通</b>のレイアウトを編集しています<i>（設備ごとに変えたいときは上で設備を選んでください）</i>`)
-   +`</span>`
-   +`<span class="op-bar-note">掴んで動かすと<b>並び</b>が決まり、<b>帯より下</b>がその群になります。`
-   +`置き場をまたげば「準備」と「入力内容」も入れ替わります。押すと<b>設定の窓</b>が開きます。</span>`
-   +`<button type="button" id="opAddItem" class="ghost">項目を追加</button>`
-   +`<button type="button" id="opAddGroup" class="ghost">群を追加</button>`
-   /* **空き（ダミー）の群**（§9.227 ③、利用者の指示）。並びを区切りの
-      良いところで折り返すための、何も出さない場所。 */
-   +`<button type="button" id="opAddPad" class="ghost"`
-   +` title="測定画面で何も描かない「空き」のカードを1枚足します（区切りの良い並びに整列させるため）">空きカードを追加</button>`
-   /* **自動で入る値・計算値**（§9.234 ②、利用者の指示）。人が打たない値も
-      1枚のカードとして置けるようにする。一覧はサーバーが答える。 */
-   +`<button type="button" id="opAddAuto" class="ghost"`
-   +` title="ロット番号・製造板厚・実働時間など、画面が自動で入れる値を1枚のカードとして足します">自動で入る値を足す</button>`
-   +`<span class="op-bar-state" id="opLayoutState"></span></div>`;
-  /* **まとめ直したことを画面に書く**（§9.219 ③）。保存されている並びでは
-     同じ群がばらけていたが、盤ではまとめて描いている——黙って直すと、
-     保存されている形と見えている形が食い違ったままになる。 */
-  /* **盤を先に組み立ててから案内を作る。** `opRows()`が`opState.healed`を
+  /* 帯（`.op-bar`）は持たない（§9.602）: 説明は頭の ⓘ（定義の`hint`）、追加は頭の主の操作、対象は盤の上の札の行、
+     保存の結果は頭の知らせ（`WL.mm.headSay()`）。 */
+  form.innerHTML='';form.hidden=true;
+  opPaintHead();
+  /* **盤を先に組み立ててから案内を作る。** `opRows()`が`opState.healed`と件数を
      埋めるので、先に読むと初回だけ案内が出ない（実際にそうなった）。 */
+  opState.counts={};
   const boards=opState.places.map(opBoardHtml).join('');
   const healed=[...opState.healed];
+  /* **いま何を触っているかを字で出す**（§9.239 ②・§CLAUDE 6）——対象の札の行。設備を選んだときは、何がその設備だけに
+     効くかを行の右で言う（名前・型・選択肢・単位・意匠は共通）。 */
+  const only='置き場・群・並び・幅・畳みはこの設備だけに効きます（名前・型・選択肢・単位・意匠は共通）';
   list.innerHTML=`<div class="op-edit">`
+   +WL.mm.scopeBarHtml({label:'対象',cur:opState.equipment||'',note:opState.equipment?only:'',
+     items:[{v:'',label:'共通',title:'すべての設備に効く並び（設備を選んで並べ替えた設備は、その設備の並び）'}]
+      .concat(eqs.map(n=>({v:n,label:n,title:`${n}だけの並び。${only}`})))})
    +opRoleStripHtml()
-   +opAutoLegendHtml()
+   /* **まとめ直したことを画面に書く**（§9.219 ③）。保存されている並びでは同じ群がばらけていたが、盤ではまとめて
+      描いている——黙って直すと、保存されている形と見えている形が食い違ったままになる。 */
    +(healed.length?`<p class="op-healed">同じ群がばらばらの位置に保存されていたので、`
      +`<b>${esc(healed.join('・'))}</b>の盤ではまとめて出しています`
      +`（この盤で一度でも掴んで動かすと、その形で保存されます）。</p>`:'')
+   +opBoardBarHtml()
    +`<div class="op-boards">`+boards+`</div></div>`;
   bindOpItem();
-  /* 役割の一覧は**畳んでおく**（§9.223 ②の作法）——14件を常に出すと盤が
-     押し下げられる。足りない・二重のときだけ、上の1行が理由を言う。 */
-  const more=$('#opRoleMore'),rlist=$('#opRoleList');
-  if(more&&rlist)more.onclick=()=>{
-   rlist.hidden=!rlist.hidden;
-   more.setAttribute('aria-expanded',rlist.hidden?'false':'true');
-  };
   if(opState.picked&&!$('#opItemModal'))renderOpModal();
  }
- function opSay(text,bad){
-  const el=$('#opLayoutState');if(!el)return;
-  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
- }
+ /* 保存の結果は頭の知らせ（§9.602。前は帯の中の`#opLayoutState`）。 */
+ function opSay(text,bad){WL.mm.headSay(text,bad)}
  /* 画面に出ている順をそのままマスタへ書く。**帯より下がその群**なので、
     並びと群を1回の保存で決められる（§9.216 ④）。 */
  function opCollectLayout(){
@@ -671,8 +669,7 @@
     if(el.dataset.opMark!==undefined)return;      /* 落とす場所の印は行ではない */
     if(el.dataset.opBand!==undefined){
      group=el.dataset.opBand;
-     const btn=el.querySelector('[data-op-fold]');
-     fold=btn?btn.getAttribute('aria-pressed')==='true':false;
+     fold=el.dataset.opFoldOn==='1';
      const g=opState.items.find(x=>(x.group||'その他')===group&&(x.place||'準備')===place);
      showWhen=g?(g.showWhen||[]):[];
      return;
@@ -715,18 +712,38 @@
   document.querySelectorAll('#masterMaintList .op-board-grid').forEach(wireOpGrid);
   wireOpGroupTools();
  }
- /* 盤の頭: レイアウトの対象と「追加」の4つ。 */
+ /* 盤の上: 対象の札（共通／設備）・盤の切り替え・役割の一覧を閉じる。「追加」は頭の主の操作（`opPaintHead()`）。 */
  function wireOpBoardHead(){
-  const pick=$('#opEqPick');
-  if(pick)pick.onchange=()=>{opState.equipment=pick.value;loadOpItemMaint(true)};
-  const add=$('#opAddItem');
-  if(add)add.onclick=()=>opCreateItem();
-  const addG=$('#opAddGroup');
-  if(addG)addG.onclick=()=>opCreateGroup();
-  const addP=$('#opAddPad');
-  if(addP)addP.onclick=()=>opCreatePad();
-  const addA=$('#opAddAuto');
-  if(addA)addA.onclick=e=>opOpenAutoMenu(e);
+  const list=$('#masterMaintList');if(!list)return;
+  WL.mm.wireScopeBar(list,v=>{opState.equipment=v;loadOpItemMaint(true)});
+  const close=$('#opRoleClose');
+  if(close)close.onclick=()=>{opState.roleOpen=false;renderOpItem()};
+  list.querySelectorAll('[data-op-board]').forEach(b=>{
+   b.onclick=()=>opShowBoard(b.dataset.opBoard);
+   /* 掴んだカード・群を札へ運ぶと、その盤を開く（置き場をまたぐ道。盤は描いてあるので、開いた盤へそのまま落とせる）。
+      札へ落とすと、その盤の末尾へ入れる。 */
+   b.ondragenter=e=>{if(!(opState.drag||opState.dragGroup))return;e.preventDefault();opShowBoard(b.dataset.opBoard)};
+   b.ondragover=e=>{if(opState.drag||opState.dragGroup)e.preventDefault()};
+   b.ondrop=e=>{
+    if(!(opState.drag||opState.dragGroup))return;
+    e.preventDefault();
+    const grid=list.querySelector(`.op-board-grid[data-op-place="${CSS.escape(b.dataset.opBoard)}"]`);
+    if(!grid)return;
+    if(opState.dragGroup){opDropGroup(grid,null);return}
+    const el=list.querySelector(`.op-tile[data-op-id="${CSS.escape(opState.drag)}"]`);
+    if(el){grid.appendChild(el);opClearMark();opSaveLayout()}
+   };
+  });
+ }
+ /* 盤を切り替える（描き直さない——伏せた盤を出すだけ。掴んでいる最中でも運んでいる物を失わない）。 */
+ function opShowBoard(place){
+  if(opState.place===place)return;
+  opState.place=place;
+  const list=$('#masterMaintList');if(!list)return;
+  list.querySelectorAll('.op-board').forEach(b=>{b.hidden=b.dataset.opPlace!==place});
+  list.querySelectorAll('[data-op-board]').forEach(b=>{const on=b.dataset.opBoard===place;b.classList.toggle('is-on',on);b.setAttribute('aria-selected',String(on))});
+  const note=list.querySelector('.op-boardbar-note');
+  if(note){note.textContent=OP_PLACE_NOTE[place]||'';note.title=OP_PLACE_NOTE[place]||''}
  }
  /* 札（項目のカード）1枚。 */
  function wireOpTile(t){
@@ -798,12 +815,12 @@
    opSaveLayout();
   };
  }
- /* 群ごと。**帯とその下の札をまとめて**挿す（順番は塊のまま）。 */
+ /* 群ごと。**帯とその下の札をまとめて**挿す（順番は塊のまま）。`e`が無い＝盤の切り替えの札へ落とした（末尾へ）。 */
  function opDropGroup(grid,e){
   const src=[...document.querySelectorAll('#masterMaintList .op-band')]
     .find(b=>b.dataset.opBand===opState.dragGroup.name
            &&b.dataset.opPlace===opState.dragGroup.place);
-  const at=opGroupDropAt(grid,e);
+  const at=e?opGroupDropAt(grid,e):null;
   if(src){
    const block=opGroupBlock(src.parentElement,src);
    /* 自分の塊の中へは落とさない（動かないのに保存だけ走る）。 */
@@ -818,56 +835,59 @@
  function opGroupRow(place,group){
   return opState.items.find(x=>(x.place||'準備')===place&&(x.group||'その他')===group);
  }
- /* 帯の上の「名前」「幅」「畳む」。 */
+ /* 群の ⋯（§9.602）: 押すと幅（4段）・名前・畳むのメニュー。帯を掴む道と分けるため、押しても群は動かない。 */
  function wireOpGroupTools(){
-  document.querySelectorAll('#masterMaintList [data-op-rename]').forEach(b=>{
-   b.onclick=async e=>{
-    e.stopPropagation();
-    const now=b.dataset.opRename,place=b.dataset.opPlace;
-    const next=await promptModal({title:'群の名前を変える',label:'群の名前',value:now});
-    if(next===null)return;
-    const name=String(next).trim();
-    if(!name||name===now)return;
-    await opRenameGroup(place,now,name);
-   };
+  document.querySelectorAll('#masterMaintList [data-op-gmore]').forEach(b=>{
+   b.onclick=e=>{e.stopPropagation();opOpenGroupMenu(b)};
+   b.ondragstart=e=>{e.preventDefault();e.stopPropagation()};
   });
-  /* 群の幅（§9.226 ③）。**群の全部の行へ同じ値**を書く（畳むと同じ作法）
-     ——1行だけ直すと、`form_for_equipment`が「1つでもあればそれ」で読むので
-     消したはずの幅が残る。 */
-  document.querySelectorAll('#masterMaintList [data-op-gspan]').forEach(b=>{
-   b.onclick=async e=>{
-    e.stopPropagation();
-    const uid=requireMaintUser();if(uid===null)return;
-    const place=b.dataset.opPlace,group=b.dataset.opBand2;
-    const g=opGroupRow(place,group);
-    try{
-     await api('/api/operation-item-master/group',{method:'POST',
-       headers:{'Content-Type':'application/json'},
-       body:JSON.stringify({place,group,fold:!!(g&&g.fold),
-         showWhen:g?(g.showWhen||[]):[],groupSpan:Number(b.dataset.opGspan)||0,user_id:uid,
-         equipment:opState.equipment||''})});
-     await loadOpItemMaint(true);
-     if(window.WL&&WL.opData)WL.opData.forget();
-     opSay(Number(b.dataset.opGspan)?`「${group}」の幅を${opGroupSpanLabel(b.dataset.opGspan)}にしました（横に並びます）`
-       :`「${group}」を全幅に戻しました`);
-    }catch(err){opSay('保存できませんでした: '+err.message,true)}
-   };
-  });
-  document.querySelectorAll('#masterMaintList [data-op-fold]').forEach(b=>{
-   b.onclick=async e=>{
-    e.stopPropagation();
-    const uid=requireMaintUser();if(uid===null)return;
-    const on=b.getAttribute('aria-pressed')==='true';
-    const place=b.dataset.opPlace,group=b.dataset.opFold;
-    const g=opGroupRow(place,group);
-    try{
-     await opSyncGroupFlags(place,group,g?(g.showWhen||[]):[],!on,uid);
-     await loadOpItemMaint(true);
-     opSay(on?'この群は開いたままにしました':'この群は畳んで出します');
-     if(window.WL&&WL.opData)WL.opData.forget();
-    }catch(err){opSay('保存できませんでした: '+err.message,true)}
-   };
-  });
+ }
+ function opOpenGroupMenu(b){
+  const place=b.dataset.opPlace,group=b.dataset.opGmore;
+  const g=opGroupRow(place,group);
+  const dummy=!!b.closest('.op-band.is-dummy');
+  const cur=Number(g&&g.groupSpan)||0;
+  /* **列でも区切れる**（§9.226 ③、利用者の指示）。全幅でない群は横に並ぶので、「誰が測るか」と「使う機材」を左右に置ける。 */
+  const spans=OP_GROUP_SPANS.map(o=>({label:`幅 ${o.label}`,note:(o.v===cur?'いまの幅・':'')+(o.v?'横いっぱいでない群は横に並びます':'1段を丸ごと使います'),
+   data:{opGspan:String(o.v),opBand2:group,opPlace:place},onClick:()=>opSetGroupSpan(place,group,o.v)}));
+  const fold=!!(g&&g.fold);
+  const items=[...spans,{label:'名前を変える…',note:'',data:{opRename:group,opPlace:place},onClick:()=>opAskRename(place,group)},
+   ...(dummy?[]:[{label:fold?'開いたままにする':'畳んで出す',note:fold?'いまは畳んで出しています':'いまは開いたまま出しています',
+    data:{opFold:group,opPlace:place},onClick:()=>opToggleFold(place,group,fold)}])];
+  WL.mm.openActMenu(b,items,`「${group}」の操作`);
+ }
+ async function opAskRename(place,now){
+  const next=await promptModal({title:'群の名前を変える',label:'群の名前',value:now});
+  if(next===null)return;
+  const name=String(next).trim();
+  if(!name||name===now)return;
+  await opRenameGroup(place,now,name);
+ }
+ /* 群の幅（§9.226 ③）。**群の全部の行へ同じ値**を書く（畳むと同じ作法）——1行だけ直すと、`form_for_equipment`が
+    「1つでもあればそれ」で読むので消したはずの幅が残る。 */
+ async function opSetGroupSpan(place,group,span){
+  const uid=requireMaintUser();if(uid===null)return;
+  const g=opGroupRow(place,group);
+  try{
+   await api('/api/operation-item-master/group',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({place,group,fold:!!(g&&g.fold),
+       showWhen:g?(g.showWhen||[]):[],groupSpan:Number(span)||0,user_id:uid,
+       equipment:opState.equipment||''})});
+   await loadOpItemMaint(true);
+   if(window.WL&&WL.opData)WL.opData.forget();
+   opSay(Number(span)?`「${group}」の幅を${opGroupSpanLabel(span)}にしました（横に並びます）`:`「${group}」を全幅に戻しました`);
+  }catch(err){opSay('保存できませんでした: '+err.message,true)}
+ }
+ async function opToggleFold(place,group,on){
+  const uid=requireMaintUser();if(uid===null)return;
+  const g=opGroupRow(place,group);
+  try{
+   await opSyncGroupFlags(place,group,g?(g.showWhen||[]):[],!on,uid);
+   await loadOpItemMaint(true);
+   opSay(on?'この群は開いたままにしました':'この群は畳んで出します');
+   if(window.WL&&WL.opData)WL.opData.forget();
+  }catch(err){opSay('保存できませんでした: '+err.message,true)}
  }
  /* 落とす場所は**まず段（行）を決め、その段の中でいちばん近い境目**
     （§9.219 ③、利用者の報告「『誰が測るか』と『測定表の形』には項目を
@@ -1095,12 +1115,16 @@
     追加したいがダミー群ごとしか追加できないのも修正してほしい」）。
     **群は作らない**——いま選んでいるカードと同じ群へ入れ、掴んで好きな
     場所へ動かせる。名前も聞かない（測定画面に出ないので決めることが1つ減る）。 */
+ /* 足す場所はいま見ている盤（§9.602。伏せた盤へ黙って足さない）。選んでいるカードがその盤にあればその群、無ければ盤の最初の群。 */
+ function opAddSpot(fallback){
+  const place=opCurPlace(),cur=opItemById(opState.picked);
+  const group=(cur&&(cur.place||'準備')===place&&cur.group)
+    ||((opState.items||[]).find(x=>(x.place||'準備')===place)||{}).group||fallback;
+  return {place,group};
+ }
  async function opCreatePad(){
   const uid=requireMaintUser();if(uid===null)return;
-  const cur=opItemById(opState.picked);
-  const place=(cur&&cur.place)||'準備';
-  const group=(cur&&cur.group)
-    ||((opState.items||[]).find(x=>(x.place||'準備')===place)||{}).group||'その他';
+  const {place,group}=opAddSpot('その他');
   /* 項目名は**鍵**（自然キーは設備×項目名）なので重ならない値を作る。 */
   const used=new Set((opState.items||[]).map(x=>x.name));
   let n=1,nm='空き';
@@ -1308,10 +1332,7 @@
   const uid=requireMaintUser();if(uid===null)return;
   const a=(opState.autoValues||[]).find(x=>x.key===key);
   if(!a){opSay('その値は一覧にありません',true);return}
-  const cur=opItemById(opState.picked);
-  const place=(cur&&cur.place)||'準備';
-  const group=(cur&&cur.group)
-    ||((opState.items||[]).find(x=>(x.place||'準備')===place)||{}).group||'自動で入る値';
+  const {place,group}=opAddSpot('自動で入る値');
   /* 項目名は**鍵**（自然キーは設備×項目名）なので重ならない値を作る。
      呼び名をそのまま使い、埋まっていたら番号を足す（名前は後から直せる）。 */
   const usedNames=new Set((opState.items||[]).map(x=>x.name));
@@ -1343,7 +1364,7 @@
    const r=await api('/api/operation-item-master',{method:'POST',
      headers:{'Content-Type':'application/json'},
      body:JSON.stringify({equipment:opState.equipment||'*',group:base.group||'その他',
-       name:nm,type:'文字',place:'準備',span:4,user_id:uid})});
+       name:nm,type:'文字',place:opCurPlace(),span:4,user_id:uid})});
    opState.picked=r.id;
    await loadOpItemMaint(true);
    opSay('項目を追加しました');
@@ -3409,7 +3430,7 @@
    /* **保存したら閉じる**（§9.222 ⑦、利用者の指示「保存ボタンを押したら
       モーダルは閉じてほしいです」）。列の設定と同じ作法（§9.207）で、
       **失敗したときは閉じない**——直す場所が消えると打ち直せない。
-      閉じるので「保存しました」は**盤の側**（`#opLayoutState`）へ出す
+      閉じるので「保存しました」は**頭の知らせ**（`WL.mm.headSay()`・§9.602）へ出す
       ——モーダルの中へ出しても見えないまま消える。 */
    closeOpModal();
    opSay('保存しました');
@@ -3541,10 +3562,8 @@
   if(g.isChild)return 'このまとまりには既に親があります（1つの子に親は1つだけ）。先に今の親子を外してください。';
   return '';
  }
- function clSay(text,bad){
-  const el=$('#clState');if(!el)return;
-  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
- }
+ /* 結果と断りの理由は頭の知らせ（§9.602。前は帯の中の`#clState`）。 */
+ function clSay(text,bad){WL.mm.headSay(text,bad)}
  async function loadChoiceLinkMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
@@ -3580,35 +3599,38 @@
    :`<p class="cl-empty">${q?`「${esc(q)}」に当てはまるまとまりがありません。`
        :'まとまりがまだありません。「選択肢の値」で作ってください。'}</p>`;
   return `<section class="cl-pool">`
-   +`<h4 class="cl-pane-head">まとまり<small>右の箱へ入れると親子になります。</small></h4>`
+   +`<h4 class="cl-pane-head">まとまり<small>${(clState.groups||[]).length}件</small></h4>`
    +`<input type="search" id="clSearch" class="cl-filter" value="${esc(clState.q||'')}"`
    +` placeholder="まとまり名で絞る" autocomplete="off">`
    +`<div class="cl-list">${body}</div></section>`;
  }
- /* 「◯◯を子にする」ボタン。**押せないときは理由をその場に書く**（§4）。 */
+ /* 「◯◯を子にする」。左でまとまりを選んでいるときだけ出す（§9.602。選んでいないときの案内は ⓘ）。押せないときは理由をその場に書く（§4）。 */
  function clAddBtnHtml(parent){
   const p=clState.pick;
-  if(!p)return `<span class="cl-hint">左でまとまりを選ぶと、ここへ足せます（掴んで落としても同じです）。</span>`;
+  if(!p)return '';
   const why=(p===parent)?'同じまとまりを親と子にはできません。':clBlock(p,'child');
   if(why)return `<span class="cl-hint is-bad">${esc(p)}は子にできません — ${esc(why)}</span>`;
   return `<button type="button" class="cl-add" data-cl-addchild="${esc(parent)}">`
-   +`${esc(p)}を子にする</button>`;
+   +`＋ ${esc(p)}を子にする</button>`;
  }
- /* 1つの親の箱。**子は箱の中**——向きを位置が語る。 */
+ /* 1本の親子の木（§9.602）: 親の札 → 矢印 → 子の札（子が2つ以上なら括りから1本ずつ）。向きは矢印が言う。
+    子の札の × で外す（乗せたときだけ出る）。落とし先は木の行そのもの（中＝子）。 */
  function clBoxHtml(parent,children,pending){
   const g=clGroup(parent);
-  const kids=children.map(x=>`<span class="cl-chip" data-cl-link="${x.id}">`
-   +`<b>${esc(x.child)}</b><i class="cl-chip-count">値 ${x.childCount}件</i>`
+  const kids=children.map(x=>`<span class="cl-node cl-chip" data-cl-link="${x.id}"><i class="cl-node-role">子</i>`
+   +`<b>${esc(x.child)}</b><small class="cl-chip-count">値 ${x.childCount}件</small>`
    +`<button type="button" class="cl-chip-del" data-cl-del="${x.id}"`
-   +` title="この親子を外す（値に入れた「親の値」は残ります）">×</button></span>`).join('');
+   +` title="この親子を外す（値に入れた「親の値」は残ります）" aria-label="${esc(parent)} → ${esc(x.child)} を外す">×</button></span>`).join('');
+  const add=clAddBtnHtml(parent);
   return `<section class="cl-box${pending?' is-pending':''}" data-cl-parent="${esc(parent)}">`
-   +`<h5 class="cl-box-head"><i class="cl-box-role">親</i><b>${esc(parent)}</b>`
-   +`<span class="cl-box-count">値 ${g?g.count:0}件</span>`
+   +`<div class="cl-tree-row${children.length>1?'':' is-one'}">`
+   +`<span class="cl-node is-parent"><i class="cl-node-role">親</i><b>${esc(parent)}</b><small class="cl-box-count">値 ${g?g.count:0}件</small></span>`
+   +`<i class="cl-edge" aria-hidden="true"></i>`
+   +`<span class="cl-kids">${kids||'<span class="cl-node is-empty">子をここへ</span>'}</span>`
    +(pending?`<span class="cl-box-pending">まだ保存していません</span>`
-            +`<button type="button" class="cl-box-cancel" id="clNewCancel">やめる</button>`:'')
-   +`</h5>`
-   +`<div class="cl-kids">${kids||'<span class="cl-hint">子がまだありません。</span>'}</div>`
-   +`<div class="cl-box-foot">${clAddBtnHtml(parent)}</div></section>`;
+            +`<button type="button" class="mm-btn-ghost sm cl-box-cancel" id="clNewCancel">やめる</button>`:'')
+   +`</div>`
+   +(add?`<div class="cl-box-foot">${add}</div>`:'')+`</section>`;
  }
  function clTreeHtml(){
   const rows=clState.items||[];
@@ -3617,16 +3639,16 @@
   const boxes=parents.map(p=>clBoxHtml(p,rows.filter(x=>x.parent===p),false));
   if(clState.newParent&&parents.indexOf(clState.newParent)<0)
    boxes.push(clBoxHtml(clState.newParent,[],true));
-  /* **新しい親をつくる受け皿**。押す道はボタン、掴む道はこの箱そのもの。 */
+  /* **新しい親の受け皿**は、まとまりを選んでいる（掴んでいる）ときだけ出す（§9.602。いつも出すと空の破線の箱が主役の木に並ぶ）。
+     押す道は頭の「＋ 親子をつくる」とこの箱のボタン、掴む道はこの箱そのもの。 */
   const p=clState.pick;
-  const why=p?clBlock(p,'parent'):'';
-  const btn=!p
-   ?`<span class="cl-hint">左でまとまりを選んでから押してください（掴んで落としても同じです）。</span>`
-   :(why?`<span class="cl-hint is-bad">${esc(p)}は親にできません — ${esc(why)}</span>`
-        :`<button type="button" class="cl-add" id="clNewParent">${esc(p)}を親にする</button>`);
+  if(!p)return boxes.join('')||'<p class="cl-empty">親子はまだありません。頭の「＋ 親子をつくる」で親にするまとまりを選びます。</p>';
+  const why=clBlock(p,'parent');
+  const btn=why?`<span class="cl-hint is-bad">${esc(p)}は親にできません — ${esc(why)}</span>`
+        :`<button type="button" class="cl-add" id="clNewParent">＋ ${esc(p)}を親にする</button>`;
   return boxes.join('')
    +`<section class="cl-box cl-box-new" data-cl-newparent="1">`
-   +`<h5 class="cl-box-head"><b>新しい親をつくる</b></h5>`
+   +`<div class="cl-tree-row"><span class="cl-node is-empty">新しい親</span></div>`
    +`<div class="cl-box-foot">${btn}</div></section>`;
  }
  function renderChoiceLink(){
@@ -3635,17 +3657,26 @@
   list.classList.add('is-fill');
   list.parentElement&&list.parentElement.classList.add('is-fill');
   const n=(clState.items||[]).length;
-  form.innerHTML=`<div class="op-bar">`
-   +`<span class="op-bar-note">まとまりどうしを<b>親子</b>で結びます。`
-   +`結ぶと「選択肢の値」で<b>どの親の値のときに出すか</b>を決められ、`
-   +`測定画面では<b>親で選んだ値に合わせて子の候補が絞られます</b>`
-   +`（親をまだ選んでいないときは全部出ます）。</span>`
-   +`<span class="op-bar-state" id="clState"></span></div>`;
+  /* 帯（`.op-bar`）は持たない（§9.602）: 説明は ⓘ、「親子をつくる」は頭の主の操作（親にするまとまりを選ぶ）。 */
+  form.innerHTML='';form.hidden=true;
+  const cands=(clState.groups||[]).filter(g=>!g.isChild);
+  WL.mm.setHeadActs({primary:{id:'clCreate',label:'親子をつくる',title:'親にするまとまりを選びます（次に子にするまとまりを左で選ぶ）',
+   menu:cands.length?cands.map(g=>({label:g.name,note:g.isParent?'もう親です（子を足す）':`値 ${g.count}件`,data:{clParent:g.name},
+     onClick:()=>clStartParent(g.name)})):[{label:'親にできるまとまりがありません',note:'「選択肢の値」でまとまりを作ってください',onClick:()=>{}}]}});
   list.innerHTML=`<div class="cl-edit">${clPoolHtml()}`
-   +`<section class="cl-tree"><h4 class="cl-pane-head">いまの親子`
-   +`<small>${n?`${n}本`:'まだ1本もありません'}。親子は<b>1段だけ</b>です（親→子。孫は作りません）。</small></h4>`
+   +`<section class="cl-tree"><h4 class="cl-pane-head">いまの親子<small>${n?`${n}本`:'0本'}</small></h4>`
    +`<div class="cl-tree-body">${clTreeHtml()}</div></section></div>`;
   bindChoiceLink();
+ }
+ /* 頭の「＋ 親子をつくる」で選んだ親。もう親ならその木を指し、まだなら新しい親の木を出す。どちらも次は左で子を選ぶ。 */
+ function clStartParent(name){
+  if(clGroup(name)&&clGroup(name).isParent){
+   const box=document.querySelector(`#masterMaintList [data-cl-parent="${CSS.escape(name)}"]`);
+   if(box){box.scrollIntoView({block:'nearest'});box.classList.add('is-over');setTimeout(()=>box.classList.remove('is-over'),1200)}
+   clSay(`${name}の木へ子を足します。子にするまとまりを左で選んで「子にする」を押してください。`);
+   return;
+  }
+  clMakeParent(name);
  }
  /* 木と一覧だけを差し替える（絞り込み・選び直しで欄を作り直さない・§9.117）。 */
  function clRepaint(){
@@ -3804,9 +3835,12 @@
    list.innerHTML=`<div class="mm-empty">選択肢を読み込めませんでした: ${esc(e.message||String(e))}</div>`;
   }
  }
- function ocSay(text,bad){
-  const el=$('#ocState');if(!el)return;
-  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
+ /* 保存の結果は頭の知らせ（§9.602。前は帯の中の`#ocState`）。 */
+ function ocSay(text,bad){WL.mm.headSay(text,bad)}
+ /* 右の詳細が開いているか（開いている値の行に印を付ける）。 */
+ function ocPaneId(){
+  const m=$('#maintEditorModal');
+  return m&&!m.hidden&&m.classList.contains('is-docked')&&maintState.editing?String(maintState.editing.id||''):'';
  }
  function renderOpChoice(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
@@ -3818,11 +3852,9 @@
      スクロールしない枠になって行が切れる。 */
   list.classList.add('is-fill');
   list.parentElement&&list.parentElement.classList.add('is-fill');
-  form.innerHTML=`<div class="op-bar">`
-   +`<span class="op-bar-note">左が<b>まとまり</b>、右がその中の<b>値</b>です。`
-   +`項目マスタの「選択肢」はこの<b>まとまり名</b>で結び付きます。</span>`
-   +`<button type="button" id="ocAddGroup" class="ghost">まとまりを追加</button>`
-   +`<span class="op-bar-state" id="ocState"></span></div>`;
+  /* 帯（`.op-bar`）は持たない（§9.602）: 説明は ⓘ、「まとまりを追加」は頭の主の操作、値は行を押すと右の詳細。 */
+  form.innerHTML='';form.hidden=true;
+  WL.mm.setHeadActs({primary:{id:'ocAddGroup',label:'まとまりを追加',onClick:()=>WL.mm.afterLeave(()=>ocCreateGroup())}});
   list.innerHTML=`<div class="oc-edit">${ocGroupPaneHtml(picked)}${ocValuePaneHtml(picked)}</div>`;
   bindOpChoice();
  }
@@ -3835,6 +3867,8 @@
  function ocSelectGroup(name){
   const n=String(name||'');
   if(!n||ocState.picked===n)return;
+  /* 右の詳細に前のまとまりの値を残さない（閉じると描き直すので、そのまま新しいまとまりで出る）。 */
+  if(ocPaneId()){ocState.picked=n;closeMaintEditor();return}
   ocState.picked=n;
   const list=$('#masterMaintList');
   const pane=list&&list.querySelector('.oc-values');
@@ -3873,84 +3907,51 @@
   const rows=ocRows(name);
   const used=ocState.usage[name]||[];
   const legacy=(ocState.legacy||[]).includes(name);
-  const eqs=(WL.records.equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
+  /* 頭（§9.602）: 種類の小さな字＋まとまり名＋ ⋯（名前を変える・まとまりごと削除）——右の詳細の頭と同じ形。
+     その下に「使っている項目 → このまとまり → 値 N つ」の流れ（どこから引かれ、何を出すかを図で）。 */
+  const shown=used.slice(0,3);
   return `<div class="oc-values">
-    <div class="oc-values-head">
-     <label class="oc-name">まとまり名<input type="text" id="ocGroupName" value="${esc(name)}" autocomplete="off"></label>
-     <button type="button" id="ocRename" class="mm-btn-ghost sm">名前を変える</button>
-     <button type="button" id="ocDeleteGroup" class="mm-btn-ghost sm danger"${used.length?' disabled':''}>まとまりごと削除</button>
-     <span class="oc-use">${used.length
-       ?`使っている項目: ${esc(used.slice(0,6).join('、'))}${used.length>6?` ほか${used.length-6}件`:''}`
-       :'まだどの項目からも使われていません。'}</span>
-     ${legacy?`<span class="oc-legacy">オペレータ・機器などの専用マスタから移してきたまとまりです。測定画面の欄はこの並びを見ます。</span>`:''}
+    <div class="mm-dhead oc-values-head"><div><div class="mm-dhead-line"><small>まとまり</small><h3>${esc(name)}</h3></div></div>
+     <button type="button" id="ocGroupMore" class="mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false" aria-label="このまとまりの操作" title="名前を変える・まとまりごと削除"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button></div>
+    <div class="oc-flow" title="${esc(used.length?'このまとまりを選択肢に使っている項目: '+used.join('、'):'まだどの項目からも使われていません')}">
+     <span class="oc-flow-k">使っている項目</span>
+     ${used.length?shown.map(u=>`<span class="oc-node">${esc(u)}</span>`).join('')+(used.length>shown.length?`<span class="oc-flow-more">ほか${used.length-shown.length}件</span>`:'')
+       :'<span class="oc-node is-none">なし</span>'}
+     <i class="oc-arrow" aria-hidden="true"></i><span class="oc-node is-grp">${esc(name)}</span>
+     <i class="oc-arrow" aria-hidden="true"></i><span class="oc-flow-n">値 ${rows.length}つ（下の表）</span>
     </div>
+    ${legacy?`<p class="oc-legacy">オペレータ・機器などの専用マスタから移してきたまとまりです。測定画面の欄はこの並びを見ます。</p>`:''}
     <div class="oc-table" role="table">
      <div class="oc-row is-head" role="row">
-      <span></span><span>値</span><span>説明</span><span>よみ</span><span>出る設備</span><span title="この値が測定画面で選ばれた回数です。項目マスタで「選択肢の並び」を『よく使う順』にすると、この回数の多いものから並びます（§9.248 ⑤）">使用</span><span>出す</span><span></span>
+      <span></span><span>値</span><span>説明</span><span>よみ</span><span>出る設備</span><span title="この値が測定画面で選ばれた回数です。項目マスタで「選択肢の並び」を『よく使う順』にすると、この回数の多いものから並びます（§9.248 ⑤）">使用</span><span>出す</span>
      </div>
      <div class="oc-table-scroll">
-      ${rows.map(r=>ocValueRowHtml(r)).join('')
-        ||'<p class="mm-empty">値がまだありません。下の「値を追加」から入れます。</p>'}
+      ${rows.map(r=>ocValueRowHtml(r)).join('')}
+      <button type="button" id="ocAddValue" class="oc-addrow">＋ 値を追加</button>
      </div>
     </div>
-    <div class="oc-add">
-     <button type="button" id="ocAddValue" class="mm-btn-primary">値を追加</button>
-     <span class="oc-add-note">行を押すと<b>同じ窓</b>で直せます（値・説明・よみ・出る設備・出す・表示順）。</span>
-    </div>
-    <datalist id="ocEqList">${eqs.map(n=>`<option value="${esc(n)}"></option>`).join('')}</datalist>
    </div>`;
  }
- /* 出る設備の見え方。**タグで出す**（§9.222 ⑥）——カンマ区切りの生の文字列は
-    どこまでが1つの設備名なのか読み取れない。空欄は「すべて」と**文字で**言う
-    （§3。空欄のままだと未設定なのか全部なのか推測させる）。 */
- function ocEqTagsHtml(raw){
-  const v=String(raw||'').trim();
-  if(!v)return '<span class="oc-eq-tag is-all">すべての設備</span>';
-  if(v===EQUIPMENT_ALL)return '<span class="oc-eq-tag is-all">すべての設備</span>';
-  return v.replace(/、/g,',').split(',').map(x=>x.trim()).filter(Boolean)
-    .map(n=>`<span class="oc-eq-tag">${esc(n)}</span>`).join('');
- }
- /* 1行＝1値。**中身は読むだけ**（§9.222 ⑥）。以前は5つの入力欄を行の中へ
-    並べていたが、①見出しと本文で列幅の`em`が別の文字サイズで解け、左端が
-    ずれる（§9.193）②設備がカンマ区切りの手打ちでサジェストが効かない
-    ③登録用の行は3マスしか無く表の7列と対応していない、の3つが同時に出ていた
-    （利用者の指摘そのもの）。編集は**汎用モーダル1枚**に寄せてある。
-    行に残すのは「出す/出さない」（毎日触る）と削除と並べ替えの取っ手だけ。 */
+ /* 1行＝1値。**中身は読むだけ**（§9.222 ⑥）。直すのは行を押して開く右の詳細（§9.602。前は窓）——「出す」も消すも詳細の中
+    （行に押す物を並べない・危ない操作は ⋯ の先）。出る設備は字で（空欄＝すべての設備と字で言う・§3）。 */
  function ocValueRowHtml(r){
-  return `<div class="oc-row" role="row" draggable="true" data-oc-id="${r.id}"
-     title="押すと編集の窓が開きます">
+  const on=ocPaneId()===String(r.id);
+  return `<div class="oc-row${on?' is-on':''}${r.enabled?'':' is-off'}" role="row" draggable="true" data-oc-id="${r.id}"
+     title="押すと右に詳細が開きます">
     <span class="oc-grip" title="ドラッグで並べ替えます" aria-hidden="true">⠿</span>
     <span class="oc-cell" title="${esc(r.value)}">${esc(r.value)}</span>
     <span class="oc-cell is-sub${r.note?'':' is-blank'}" title="${esc(r.note||'（説明なし）')}">${esc(r.note||'—')}</span>
     <span class="oc-cell is-sub${r.reading?'':' is-blank'}" title="${esc(r.reading||'（よみなし）')}">${esc(r.reading||'—')}</span>
-    <span class="oc-eq-tags" title="${esc(ocEqLabel(r.equipment))}">${ocEqTagsHtml(r.equipment)}</span>
+    <span class="oc-cell is-sub${ocEqList(r.equipment).length?'':' is-all'}" title="${esc(ocEqLabel(r.equipment))}">${esc(ocEqLabel(r.equipment))}</span>
     <span class="oc-used${Number(r.used)?'':' is-blank'}" title="${
       Number(r.used)?`測定画面でこの値が選ばれた回数です（${Number(r.used)}回）。項目マスタで「選択肢の並び」を『よく使う順』にすると、この回数の多いものから並びます`
                     :'測定画面でまだ1度も選ばれていません'
      }">${Number(r.used)||'—'}</span>
-    <label class="oc-on" title="外すと選択肢に出なくなります（記録は消えません）">
-     <input type="checkbox" data-oc-f="enabled"${r.enabled?' checked':''}><span>${r.enabled?'出す':'出さない'}</span></label>
-    <button type="button" class="oc-del" title="この値を削除します">削除</button>
+    <span class="oc-on${r.enabled?'':' is-off'}" title="${r.enabled?'選択肢に出ます':'選択肢に出ません（記録は消えません）'}">${r.enabled?'出す':'出さない'}</span>
    </div>`;
- }
- async function ocSaveRow(id,patch){
-  const row=(ocState.items||[]).find(x=>String(x.id)===String(id));if(!row)return;
-  const uid=requireMaintUser();if(uid===null)return;
-  const body={id:row.id,user_id:uid,name:row.name,value:row.value,note:row.note||'',
-    reading:row.reading||'',equipment:row.equipment||'',enabled:row.enabled!==false,...patch};
-  try{
-   ocSay('保存しています…');
-   await api('/api/operation-choice-master/update',{method:'POST',
-     headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-   ocSay('保存しました');
-   if(window.WL&&WL.opData)WL.opData.forget();
-   await loadOpChoiceMaint(true);
-  }catch(e){ocSay('保存できませんでした: '+(e.message||String(e)),true)}
  }
  function bindOpChoice(){
   const list=$('#masterMaintList');if(!list)return;
-  const add=$('#ocAddGroup');
-  if(add)add.onclick=()=>ocCreateGroup();
   /* **入力中に一覧を作り直さない**（§9.117）——入力欄を作り替えると
      1文字ごとにカーソルが飛ぶ。絞り込みは左の一覧だけを描き直す。 */
   const q=$('#ocSearch');
@@ -3962,9 +3963,10 @@
    pane.outerHTML=ocGroupPaneHtml(ocPickedName());
    const again=$('#ocSearch');
    if(again){again.focus();try{again.setSelectionRange(at,at)}catch(e){WL.quiet.note('カーソル位置を戻せない（値は入っている）',e)}}
-   list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>ocSelectGroup(b.dataset.ocGroup));
+    list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>WL.mm.afterLeave(()=>ocSelectGroup(b.dataset.ocGroup)));
   };
-  list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>ocSelectGroup(b.dataset.ocGroup));
+  /* 右の詳細に保存していない変更があれば、まとまりを移る前に聞く（黙って捨てない・§9.598）。 */
+  list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>WL.mm.afterLeave(()=>ocSelectGroup(b.dataset.ocGroup)));
   /* **スクロールの位置を覚える**（下の`ocSelectGroup`の但し書きと同じ理由）。
      読み込み直しのあと（`renderOpChoice`）は一覧ごと作り直すので、覚えて
      いないと戻せない。 */
@@ -3973,25 +3975,24 @@
    gl.scrollTop=Number(ocState.scroll)||0;
    gl.addEventListener('scroll',()=>{ocState.scroll=gl.scrollTop},{passive:true});
   }
-  const rename=$('#ocRename');
-  if(rename)rename.onclick=()=>ocRenameGroup();
-  const delg=$('#ocDeleteGroup');
-  if(delg)delg.onclick=()=>ocDeleteGroup();
+  /* まとまりの ⋯（§9.602）: 名前を変える・まとまりごと削除（使われているまとまりは消せない理由を言う）。 */
+  const gm=$('#ocGroupMore');
+  if(gm)gm.onclick=()=>{
+   const used=ocState.usage[ocPickedName()]||[];
+   WL.mm.openActMenu(gm,[{label:'名前を変える…',note:'使っている項目も一緒に付け替えます',data:{ocAct:'rename'},onClick:()=>ocRenameGroup()},
+    used.length?{label:'まとまりごと削除',note:`${used.length}項目が使っているので消せません（項目の選択肢を外してから）`,data:{ocAct:'delete-blocked'},onClick:()=>ocSay(`「${ocPickedName()}」は${used.length}項目が使っているので消せません。項目の「選択肢」を外してから消してください。`,true)}
+     :{label:'まとまりごと削除…',note:'値をまとめて消します（取り消せません）',danger:true,data:{ocAct:'delete'},onClick:()=>ocDeleteGroup()}],'このまとまりの操作');
+  };
   const addv=$('#ocAddValue');
-  if(addv)addv.onclick=()=>ocOpenEditor(null);
+  if(addv)addv.onclick=()=>WL.mm.afterLeave(()=>ocOpenEditor(null));
   list.querySelectorAll('.oc-row[data-oc-id]').forEach(row=>{
    const id=row.dataset.ocId;
-   /* **押したら同じ窓で直す**（§9.222 ⑥）。行の中の入力欄をやめたので、
-      編集の入口は行そのもの——「出す/出さない」と削除だけは行で完結する
-      （毎日触るものと、取り消しの効くものを窓へ隠さない）。 */
+   /* **押したら右の詳細で直す**（§9.602。前は同じ窓・§9.222 ⑥）。一覧は見えたまま、どの行かは行の印。 */
    row.onclick=e=>{
-    if(e.target.closest('.oc-on')||e.target.closest('.oc-del')||e.target.closest('.oc-grip'))return;
-    ocOpenEditor(id);
+    if(e.target.closest('.oc-grip'))return;
+    if(ocPaneId()===id)return;
+    WL.mm.afterLeave(()=>ocOpenEditor(id));
    };
-   const on=row.querySelector('input[data-oc-f="enabled"]');
-   if(on)on.onchange=()=>ocSaveRow(id,{enabled:on.checked});
-   const del=row.querySelector('.oc-del');
-   if(del)del.onclick=e=>{e.stopPropagation();ocDeleteValue(id)};
   });
   ocBindReorder(list);
  }
@@ -4010,15 +4011,17 @@
   /* 新規は`id`を持たせない（`openMaintEditor`は`id`の有無で「編集/新規」を
      決める）。既定値だけを積んだ器を渡す。 */
   if(!row)delete item.id;
+  /* 右の詳細（§9.602・定義の`dock`）。汎用の表のマスタと同じ部品——頭・欄・足元の保存・⋯ を書き写さない。 */
   openMaintEditor(row?item:Object.assign({__new__:true},item));
-  /* 新規のときだけ「追加登録」に見せる。`openMaintEditor`は渡した器を
-     `編集`と見なすので、題と保存ボタンの文言だけ言い直す。 */
+  /* ⋯ は値を消す1つ（汎用の「行の操作」は先頭列＝まとまり名で名指すので、値で名指す自前の1つを名乗る）。 */
+  WL.mm.editorMore(row?[{label:`「${row.value}」を削除…`,note:'選択肢から無くなります（記録は消えません）',danger:true,data:{ocAct:'delete-value'},onClick:()=>ocDeleteValue(row.id)}]:null);
+  /* 新規のときだけ題を言い直す。`openMaintEditor`は渡した器を`編集`と見なすので、保存は POST（新規）へ倒す。 */
   if(!row){
    const t=$('#maintEditorTitle');if(t)t.textContent=`「${name}」に値を追加`;
-   const sv=$('#maintEditorSave');if(sv)sv.textContent='追加登録';
-   const h=$('#maintEditorHint');if(h)h.textContent='値は必ず入れてください。まとまり名は選んでいるものが入っています。';
    maintState.editing=null;                 /* 保存はPOST（新規）で行く */
   }
+  /* 開いた行に印（一覧は見えたまま、どの行かを言う）。 */
+  document.querySelectorAll('#masterMaintList .oc-row[data-oc-id]').forEach(r=>r.classList.toggle('is-on',!!row&&r.dataset.ocId===String(row.id)));
  }
  /* 並べ替えは**まとめて1回**で書く（§9.221 ②）。1行ずつ送ると往復が増え、
     途中で切れると半分だけ動いた並びが残る。 */
@@ -4073,7 +4076,10 @@
     ので消してある。 */
  async function ocRenameGroup(){
   const from=ocPickedName();
-  const el=$('#ocGroupName');const to=String(el&&el.value||'').trim();
+  const next=await promptModal({title:'まとまり名を変える',label:'まとまり名',value:from,
+   hint:'操業データ項目の「選択肢」はこの名前で結び付きます（使っている項目も一緒に付け替えます）。',confirmLabel:'次へ'});
+  if(next===null)return;
+  const to=String(next).trim();
   if(!to||to===from)return;
   const used=ocState.usage[from]||[];
   const ok=await confirmModal({title:'まとまり名を変えますか？',
@@ -4235,6 +4241,8 @@
     1枚に混ぜると、盤の1枚のカードが2つの並びを同時に表すことになる。
     ================================================================== */
  const rlState={equipment:'',items:[],rows:null,busy:false,
+                /* 保存していない並びの変更があるか（§9.602。足元の「変更あり」と、離れる前に聞く答え）。 */
+                dirty:false,
                 /* 同じ群がばらけて保存されていたのを盤でまとめ直したか
                    （§9.219 ③）。黙って直すと、保存されている形と見えている
                    形が食い違ったままになるので画面に書く。 */
@@ -4308,18 +4316,19 @@
       ③確認のカードも同じ「出てきた順に束ねる」で描く。 */
    parts.push('同じ群がばらばらの位置にあるので、盤では<b>群ごとにまとめて</b>出しています'
      +(fixed?'（<b>保存を押すと、この形で確定します</b>）':'（③確認のカードも同じようにまとめます）')+'。');
+  /* 全部が表示順に従う（既定）ときは言わない——その決まりは ⓘ が持つ（§9.602。いつも同じ文は読まれない）。 */
   if(fixed&&follows)
    parts.push(`<b>${fixed}件</b>はこの盤で並びを決めています（実線）。`
      +`<b>${follows}件</b>は項目の「表示順」に従います（点線）。`
-     +'「既定へ戻す」で全部を表示順へ帰せます。');
-  else if(follows)
-   parts.push('並びは<b>それぞれの項目の「表示順」</b>に従っています。'
-     +'掴んで動かした項目だけが、この盤の並びで固定されます。');
+     +'⋯ の「既定へ戻す」で全部を表示順へ帰せます。');
   return parts.length?`<p class="rl-hint rl-legend">${parts.join('')}</p>`:'';
  }
- function rlSay(text,bad){
-  const el=$('#rlState');if(!el)return;
-  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
+ /* 保存の結果は頭の知らせ（§9.602。前は帯の中の`#rlState`）。 */
+ function rlSay(text,bad){WL.mm.headSay(text,bad)}
+ /* 盤を触った（並び・見出し・既定へ戻す）。保存するまで足元が「変更あり」と言い、離れる前に聞く。 */
+ function rlChanged(msg){
+  rlState.dirty=true;renderRecordLayout();
+  if(msg)rlSay(msg);
  }
  function rlChipHtml(r,off){
   const x=rlItemById(r.id);if(!x)return '';
@@ -4341,59 +4350,39 @@
   return `<div class="rl-chip${auto?' is-auto':''}${(!off&&follow)?' is-follow':''}" draggable="true" data-rl-id="${esc(String(x.id))}"`
    +` title="${esc(tip)}"><b>${esc(x.name)}</b>`
    +(unit?`<i>${esc(unit)}</i>`:'')
-   +`<span class="rl-chip-from">${esc(x.place||'準備')}／${esc(own)}</span>`
+   /* 札の字は置き場だけ（群は盤の見出しが言う・全文は title）。 */
+   +`<span class="rl-chip-from">${esc(x.place||'準備')}</span>`
    +(auto?'<em class="rl-chip-auto">自動</em>':'')
    +`<button type="button" class="rl-chip-x" data-rl-${off?'add':'off'}="${esc(String(x.id))}"`
    +` title="${off?'このカードに出す':'このカードから外す（項目そのものは消えません）'}">${off?'＋':'✕'}</button></div>`;
  }
  function renderRecordLayout(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  form.classList.remove('mm-form-compact');
+  /* 帯（`.op-bar`）は持たない（§9.602）: 説明は ⓘ、「群を追加」は頭の主の操作、「既定へ戻す」は ⋯、保存は足元、
+     候補を絞る設備は候補の頭。 */
+  form.innerHTML='';form.hidden=true;
+  WL.mm.setHeadActs({primary:{id:'rlAddGroup',label:'群を追加',title:'カードの中だけの見出しを1つ足します（測定画面の入力欄の群は変わりません）',onClick:()=>rlCreateGroup()},
+   more:[{label:'既定へ戻す',note:'並びと見出しを、項目の「群」「表示順」に従う状態へ（保存を押すと確定）',data:{rlMore:'reset'},onClick:()=>rlResetLayout()}]});
+  list.classList.add('is-fill');list.parentElement&&list.parentElement.classList.add('is-fill');
   const eqs=(WL.records.equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
-  form.innerHTML=`<div class="op-bar">`
-   +`<label class="op-bar-eq" title="どの設備の項目を候補に出すかです。並び自体は設備によらず共通です。">`
-   +`候補に出す設備<select id="rlEqPick">`
-   +`<option value="">共通（すべての設備）</option>`
-   +eqs.map(n=>`<option value="${esc(n)}"${rlState.equipment===n?' selected':''}>${esc(n)}</option>`).join('')
-   +`</select></label>`
-   /* **設備で絞っているのは候補だけ**だと書く（§CLAUDE 6）——書かないと、
-      設備ごとに別の並びを作れると読まれる。 */
-   +`<span class="op-bar-scope"><b>並びは設備によらず共通</b>です`
-   +`<i>（上の設備は、候補に出す項目を絞るためだけのものです）</i></span>`
-   +`<button type="button" id="rlAddGroup" class="ghost"`
-   +` title="カードの中だけの見出しを1つ足します（測定画面の入力欄の群は変わりません）">群を追加</button>`
-   +`<button type="button" id="rlReset" class="ghost"`
-   +` title="カードの並びと見出しを、それぞれの項目の「群」「表示順」に従う状態へ戻します">既定へ戻す</button>`
-   +`<button type="button" id="rlSave" class="primary">保存</button>`
-   +`<span class="op-bar-state" id="rlState"></span>`
-   /* **案内は最後の行へ回す**（§9.199／§9.211 ③）——`op-bar`は折り返す帯なので、
-      長い文を先に置くと**「保存」だけが2行目へこぼれる**（実機の見え方で確認）。 */
-   +`<span class="op-bar-note rl-note">右の盤が<b>③確認の「記録した値」のカード</b>そのものです。`
-   +`掴んで動かすと<b>並び</b>が決まり、<b>別の群へ落とせば見出しも変わります</b>。`
-   +`左へ落とすとカードから外れます（項目そのものは消えません）。</span></div>`;
   const groups=rlGroups(),off=rlRows().off;
   const total=rlRows().on.length;
   const follows=rlRows().on.filter(r=>r.follow).length,fixed=total-follows;
   list.innerHTML=`<div class="rl-edit">`
    +`<div class="rl-pool" data-rl-pool="1">`
    +`<h4>候補<small title="${esc('このカードに出していない項目 '+off.length+'件')}">${off.length}</small></h4>`
-   +`<p class="rl-hint">カードに出していない項目です。右へ掴んで落とすと出ます。</p>`
+   /* **設備で絞っているのは候補だけ**（§CLAUDE 6）——並びは設備によらず共通（用途の1行が言う）。 */
+   +`<label class="rl-poolpick" title="どの設備の項目を候補に出すかです。並び自体は設備によらず共通です。"><span>候補を設備で絞る</span>`
+   +`<select id="rlEqPick"><option value="">共通（すべての設備）</option>`
+   +eqs.map(n=>`<option value="${esc(n)}"${rlState.equipment===n?' selected':''}>${esc(n)}</option>`).join('')
+   +`</select></label>`
    +(off.length?`<div class="rl-pool-list">${off.map(r=>rlChipHtml(r,true)).join('')}</div>`
-     :`<p class="mm-empty">すべての項目をカードに出しています。</p>`)
+     :`<p class="mm-empty">すべてカードに出しています</p>`)
    +`</div>`
    +`<div class="rl-board">`
    +`<h4>③確認のカード<small title="${esc('このカードに出す項目 '+total+'件・'+groups.length+'群')}">`
    +`${total}件・${groups.length}群</small></h4>`
-   /* **状態は色だけで伝えない**（§3）——点線の印が何なのかを件数つきの文で言う。
-      **どちらも0のときは書かない**（自明な文は読まれない・§9.127）。 */
-   /* **案内は1行にまとめる**（§9.304、CLAUDE 画面基準 8）。以前は
-      「まとめ直した」（§9.219 ③）と「誰が並びを決めているか」を**別々の
-      段落**で出しており、どちらも「この盤に出ている並びは何なのか」という
-      **同じ問い**に答えていた。しかも上の段落だけが常に先に読まれるので、
-      「既定へ戻す」を押しても**戻ったことが読める文が下に隠れた**。
-      **まとめ直したことの言い方は、保存が何を書くかで変える**——掴んで
-      決めた項目が1つも無いときに保存が書くのは**空**（＝表示順へ帰す・
-      §9.243 ②）なので、「この形で確定します」は嘘になる。 */
+   /* **案内は1行にまとめる**（§9.304）。言うことがあるとき（まとめ直した・盤で決めた項目がある）だけ。 */
    +(rlLegendHtml(fixed,follows))
    +(groups.length?groups.map(g=>`<div class="rl-group" data-rl-group="${esc(g.name)}">`
      +`<b><span class="rl-group-name" data-rl-rename="${esc(g.name)}"`
@@ -4402,7 +4391,12 @@
      +`<div class="rl-group-list" data-rl-drop="${esc(g.name)}">`
      +g.rows.map(r=>rlChipHtml(r,false)).join('')+`</div></div>`).join('')
      :`<p class="mm-empty">カードに出す項目がありません。左の候補から掴んで落としてください。</p>`)
-   +`</div></div>`;
+   +`</div></div>`
+   /* 足元（§9.602）: 状態と記録者＋キャンセル＋保存（共通設定・右の詳細と同じ部品）。 */
+   +`<div class="pc-save rl-foot"><span class="mm-form-hint pc-dirty"></span>`
+   +`<button type="button" class="mm-btn-ghost" id="rlCancel">キャンセル</button>`
+   +`<button type="button" class="mm-btn-primary" id="rlSave">保存</button></div>`;
+  WL.mm.paintFootState(list.querySelector('.rl-foot .pc-dirty'),[$('#rlCancel'),$('#rlSave')],false,rlState.dirty);
   bindRecordLayout();
  }
  /* 落とす場所の印は**流れの中へ入れない**（§9.218 ④）——入れた瞬間に
@@ -4470,19 +4464,21 @@
  }
  function bindRecordLayout(){
   const pick=$('#rlEqPick');
-  if(pick)pick.onchange=()=>{rlState.equipment=pick.value;rlState.rows=null;loadRecordLayoutMaint(true)};
+  if(pick)pick.onchange=async()=>{
+   /* 候補を絞り直すと盤を読み直す——保存していない並びは捨てる前に聞く（黙って捨てない・§9.598）。 */
+   if(rlState.dirty&&!await confirmModal({title:'候補の設備を変える',message:'保存していない並びの変更があります。捨てて、候補の設備を変えますか？',confirmLabel:'捨てて変える'})){pick.value=rlState.equipment;return}
+   rlState.equipment=pick.value;rlState.rows=null;loadRecordLayoutMaint(true)};
   const save=$('#rlSave');if(save)save.onclick=()=>rlSaveLayout();
-  const add=$('#rlAddGroup');if(add)add.onclick=()=>rlCreateGroup();
-  const reset=$('#rlReset');if(reset)reset.onclick=()=>rlResetLayout();
+  const cancel=$('#rlCancel');if(cancel)cancel.onclick=()=>{rlState.rows=null;rlState.dirty=false;renderRecordLayout();rlSay('')};
   document.querySelectorAll('#masterMaintList [data-rl-off]').forEach(b=>{
-   b.onclick=e=>{e.stopPropagation();rlMove(b.dataset.rlOff,null);renderRecordLayout();rlSay('保存を押すと確定します')};
+   b.onclick=e=>{e.stopPropagation();rlMove(b.dataset.rlOff,null);rlChanged()};
   });
   document.querySelectorAll('#masterMaintList [data-rl-add]').forEach(b=>{
    b.onclick=e=>{
     e.stopPropagation();
     const x=rlItemById(b.dataset.rlAdd);
     rlMove(b.dataset.rlAdd,x?rlGroupOf(x):'その他');
-    renderRecordLayout();rlSay('保存を押すと確定します');
+    rlChanged();
    };
   });
   document.querySelectorAll('#masterMaintList [data-rl-rename]').forEach(el=>{
@@ -4509,7 +4505,7 @@
     e.preventDefault();e.stopPropagation();
     const at=rlDropAt(box,e);
     rlMove(rlState.drag,box.dataset.rlDrop,at?at.dataset.rlId:'');
-    rlState.drag=null;rlClearMark();renderRecordLayout();rlSay('保存を押すと確定します');
+    rlState.drag=null;rlClearMark();rlChanged();
    };
   });
   const pool=$('#masterMaintList [data-rl-pool]');
@@ -4524,7 +4520,7 @@
     if(!rlState.drag)return;
     e.preventDefault();e.stopPropagation();
     rlMove(rlState.drag,null);
-    rlState.drag=null;rlClearMark();renderRecordLayout();rlSay('保存を押すと確定します');
+    rlState.drag=null;rlClearMark();rlChanged();
    };
   }
  }
@@ -4534,7 +4530,7 @@
   if(to===null)return;
   const n=String(to).trim();if(!n||n===from)return;
   rlRows().on.forEach(r=>{if(r.group===from)r.group=n});
-  renderRecordLayout();rlSay('保存を押すと確定します');
+  rlChanged();
  }
  async function rlCreateGroup(){
   const name=await promptModal({title:'見出しを作る',label:'新しい見出しの名前',
@@ -4548,10 +4544,9 @@
   const src=off[0]||rlRows().on[rlRows().on.length-1];
   if(!src){rlSay('項目が1つも無いので見出しを作れません',true);return}
   rlMove(src.id,n);
-  renderRecordLayout();
   /* `rlSay()`は`textContent`へ書くので、ここで`esc()`を通すと実体参照が
      そのまま読めてしまう（同じ文字列をHTMLへ入れないこと）。 */
-  rlSay(`「${n}」を作り、${(rlItemById(src.id)||{}).name||''}を移しました（保存を押すと確定します）`);
+  rlChanged(`「${n}」を作り、${(rlItemById(src.id)||{}).name||''}を移しました（保存を押すと確定します）`);
  }
  function rlResetLayout(){
   /* **戻せること**（§CLAUDE 4）——盤で決めた群・並びを捨てて、それぞれの
@@ -4562,8 +4557,7 @@
   rlState.rows={
    on:list.filter(x=>on.has(String(x.id))).map((x,i)=>mk(x,i,true)),
    off:list.filter(x=>!on.has(String(x.id))).map((x,i)=>mk(x,i,false))};
-  renderRecordLayout();
-  rlSay('それぞれの項目の「群」「表示順」に従う並びへ戻しました（保存を押すと確定します）');
+  rlChanged('それぞれの項目の「群」「表示順」に従う並びへ戻しました（保存を押すと確定します）');
  }
  async function rlSaveLayout(){
   if(rlState.busy)return;
@@ -4584,7 +4578,7 @@
    await api('/api/operation-item-master/record-layout',{method:'POST',
      headers:{'Content-Type':'application/json'},
      body:JSON.stringify({items:body,user_id:uid})});
-   rlState.rows=null;
+   rlState.rows=null;rlState.dirty=false;
    await loadRecordLayoutMaint(true);
    rlSay('保存しました');
    /* **測定画面の写しを捨てる**（§9.226 ①）——捨てないとカードは古い並びのまま。 */
@@ -4600,7 +4594,7 @@
    const q=rlState.equipment?('?equipment='+encodeURIComponent(rlState.equipment)):'';
    const it=await api('/api/operation-item-master'+q);
    rlState.items=(it.items||[]).map(x=>({...x}));
-   rlState.rows=null;
+   rlState.rows=null;rlState.dirty=false;
    renderRecordLayout();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
@@ -4613,7 +4607,7 @@
 
  /* 盤の登録簿へ名乗る（§9.324 R3）。 */
  WL.mm.registerSpecial('op-item',{load:loadOpItemMaint,onEditorClose:renderOpItem});
- WL.mm.registerSpecial('record-layout',{load:loadRecordLayoutMaint,onEditorClose:renderRecordLayout});
+ WL.mm.registerSpecial('record-layout',{load:loadRecordLayoutMaint,onEditorClose:renderRecordLayout,dirty:()=>rlState.dirty});
  WL.mm.registerSpecial('op-choice',{load:loadOpChoiceMaint,onEditorClose:renderOpChoice});
  WL.mm.registerSpecial('choice-link',{load:loadChoiceLinkMaint,onEditorClose:renderChoiceLink});
 })();

@@ -532,7 +532,7 @@ body.sc-mode #headerContextSource{display:none}
      ここは `@layer state`。component 層のどの規則よりも後に効く。
      ============================================================ */
 
-  /* 濃い面（縁つき）（30族） */
+  /* 濃い面（縁つき）（31族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
   .bs-hide button.is-on,
@@ -546,7 +546,6 @@ body.sc-mode #headerContextSource{display:none}
   .hd-viewbar button.active, .hd-viewbar [role="tab"].active,
   .lc-state-chip.is-on,
   .lg-seg button.is-on,
-  .mm-cd-tab.active,
   .nl-win .nl-span.is-on,
   .op-mini.is-on,
   .op-seg button.is-on, .op-toggle.is-on, .op-when button.is-on,
@@ -566,9 +565,10 @@ body.sc-mode #headerContextSource{display:none}
   .status-filter-btn.active,
   .suggest-chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
 
-  /* 濃い面（縁なし）（8族） */
+  /* 濃い面（縁なし）（9族） */
   .db-viewtabs button.active,
   .mm-card-opt.is-on .mm-card-ico,
+  .mm-seg>button.is-on,
   .mode-tabs button.active,
   .nav-item--admin.active:hover,
   .os-pv-tabs button.is-on,
@@ -576,15 +576,17 @@ body.sc-mode #headerContextSource{display:none}
   .sc-mode-toggle-btn.active,
   .work-tabs button.active{background:var(--teal);color:#fff}
 
-  /* 濃い面（字は各自）（3族） */
+  /* 濃い面（字は各自）（2族） */
   .bs-tg.is-on::before,
-  .oc-group.is-on,
-  .op-span-pick button.is-on,
-  .rly-paper.is-on{background:var(--teal);border-color:var(--teal)}
+  .op-span-pick button.is-on{background:var(--teal);border-color:var(--teal)}
 
-  /* 一覧から1つ選んだ行（4族）: **淡い地＋左の帯**（§9.598・LotScope と同じ選び方）。濃い塗りで選ばない——
+  /* 一覧から1つ選んだ行（8族）: **淡い地＋左の帯**（§9.598・LotScope と同じ選び方）。濃い塗りで選ばない——
      塗りの面は押す物（主ボタン）に見え、字を白へ反転させる規則も要る。表の行（`.mm-row.editing`）と同じ形。 */
   .ssb-stop.is-on,
+  .oc-group.is-on,
+  .oc-row.is-on,
+  .rly-row.is-on,
+  .cl-item.is-pick,
   .shift-seg.is-focus,
   .mm-tabbar.is-rail .mm-tab.is-on,
   .shift-list-item.active{background:var(--teal-tint);border-color:transparent;box-shadow:inset var(--bar-w) 0 0 var(--teal);color:var(--teal-ink)}
@@ -601,13 +603,11 @@ body.sc-mode #headerContextSource{display:none}
   .fb-cat.is-on,
   .lc-origin-chip.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
 
-  /* 紺の面（縁なし）（4族） */
+  /* 紺の面（縁なし）（2族） */
   .fb-seg>button.is-on,
-  .op-band-span>button.is-on,
-  .op-menu button.is-on,
-  .rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
+  .op-menu button.is-on{background:var(--nav);color:#fff}
 
-  /* 淡い面（7族） */
+  /* 淡い面（11族） */
   .bs-chip.is-on,
   .fx-sg-item.is-on,
   .lr-tofx.is-on,
@@ -620,7 +620,7 @@ body.sc-mode #headerContextSource{display:none}
   .sc-subtotal-opt.is-on,
   .sc-pick-all.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
-  /* 淡い面（字は各自）（4族） */
+  /* 淡い面（字は各自）（10族） */
   .bs-g tr.is-pick>td,
   .bs-opts label.is-on,
   .bs-sc.is-on,
@@ -632,10 +632,9 @@ body.sc-mode #headerContextSource{display:none}
   .sp-pat.is-on,
   .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}
 
-  /* 濃い面の中の字（3族） */
-  .fb-cat.is-on>i,
-  .oc-group.is-on>b, .oc-group.is-on .oc-group-meta, .oc-group.is-on .oc-group-use,
-  .rly-paper.is-on>b, .rly-paper.is-on .rly-paper-meta, .rly-paper.is-on .rly-paper-gone{color:#fff}
+  /* 濃い面の中の字（1族） */
+  .fb-cat.is-on>i{color:#fff}
+  .oc-group.is-on>b,.oc-group.is-on .oc-group-meta{color:var(--teal-ink)}
 
   /* 淡い面の中の字（5族） */
   .mm-card-opt.is-on>small,

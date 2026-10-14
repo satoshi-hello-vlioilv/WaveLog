@@ -413,7 +413,9 @@ run('test_oppad: 角丸ベースの意匠・設定窓の揺れ・空き（ダミ
          されている…実装したかったダミーで余白を作りたかった意味と全く違う」）
      ========================================================== */
   const before=await page.$$eval('.op-tile',es=>es.length);
-  await page.click('#opAddPad');
+  /* 足すのは頭の「＋ 項目を追加 ▾」のメニュー（§9.602。前は帯の #opAddPad）。 */
+  await page.click('#opAdd');
+  await page.click('#mmActMenu [data-op-add="pad"]');
   await page.waitForFunction(n=>document.querySelectorAll('.op-tile').length>n,
     before,{timeout:15000});
   await idle();
@@ -580,14 +582,14 @@ run('test_oppad: 角丸ベースの意匠・設定窓の揺れ・空き（ダミ
      .map(el=>el.dataset.opBand);
   });
   /* 動かす前に前の「保存しました」を消す——残っていると待たずに通る。 */
-  await page.evaluate(()=>{const e=document.getElementById('opLayoutState');if(e)e.textContent=''});
+  await page.evaluate(()=>{const e=document.getElementById('masterMaintSay');if(e)e.textContent=''});   // 頭の知らせ（§9.602）
   const moved=await page.evaluate(names=>{
    const grid=document.querySelector('#masterMaintList .op-board-grid');
    const place=grid.dataset.opPlace;
    /* 2つ目の群を先頭へ動かす。 */
    return WL.opBoard.moveGroup(place,names[1],names[0]);
   },before4);
-  await W.until(page,()=>/保存しました|できませんでした/.test((document.getElementById('opLayoutState')||{}).textContent||''));
+  await W.until(page,()=>/保存しました|できませんでした/.test((document.getElementById('masterMaintSay')||{}).textContent||''));
   const after4=await page.evaluate(()=>{
    const grid=document.querySelector('#masterMaintList .op-board-grid');
    return {帯:[...grid.children].filter(el=>el.dataset.opBand!==undefined)

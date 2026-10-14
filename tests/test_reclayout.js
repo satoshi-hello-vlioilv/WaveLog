@@ -54,8 +54,11 @@ run('test_reclayout: 「記録した値」の配置をD&Dで組めるマスタ�
   rec('候補の受け皿がある', shape.pool);
   rec('口（WL.recordBoard）が開いている', shape.api);
   /* **並びは設備によらず共通であることを画面に書く**（§CLAUDE 6）。 */
-  const scope=await page.evaluate(()=>document.querySelector('.op-bar-scope')?.textContent||'');
-  rec('設備で分かれないことが文字で出る', /設備によらず共通/.test(scope), scope.slice(0,40));
+  /* 用途の1行が言う（§9.602。前は帯の`.op-bar-scope`）。候補を絞る設備の欄は候補の頭にある。 */
+  const scope=await page.evaluate(()=>({lead:document.querySelector('#masterMaintLead')?.textContent||'',
+   pick:!!document.querySelector('.rl-pool #rlEqPick'),form:!document.querySelector('#masterMaintForm .op-bar')}));
+  rec('設備で分かれないことが文字で出る', /全設備で共通/.test(scope.lead), scope.lead.slice(0,40));
+  rec('候補を絞る設備の欄は候補の頭にある（帯は持たない）', scope.pick&&scope.form, JSON.stringify(scope));
 
   /* ==========================================================
      2) ✕で外れ、＋で戻る（項目そのものは消えない）
@@ -109,11 +112,15 @@ run('test_reclayout: 「記録した値」の配置をD&Dで組めるマスタ�
      4) 保存 → 測定画面の recordRows() が同じ並びを返す
         （盤で見た形＝出る形。別々に組み立てると必ず食い違う）
      ========================================================== */
+  /* 足元（§9.602）: 触ったら「変更あり」で保存が押せる。結果は頭の知らせ。 */
+  const foot=await page.evaluate(()=>({state:document.querySelector('.rl-foot .pc-dirty')?.textContent||'',
+   save:!document.getElementById('rlSave')?.disabled}));
+  rec('触ったら足元が「変更あり」と言い、保存が押せる', /変更あり/.test(foot.state)&&foot.save, JSON.stringify(foot));
   await page.click('#rlSave');
   await page.waitForFunction(
-    ()=>/保存しました|保存できません/.test(document.querySelector('#rlState')?.textContent||''),
+    ()=>/保存しました|保存できません/.test(document.querySelector('#masterMaintSay')?.textContent||''),
     null,{timeout:20000});
-  const saved=await page.evaluate(()=>document.querySelector('#rlState').textContent);
+  const saved=await page.evaluate(()=>document.querySelector('#masterMaintSay').textContent);
   rec('保存できる', /保存しました/.test(saved), saved);
   await page.waitForFunction(()=>document.querySelectorAll('.rl-group').length>0,null,{timeout:20000});
   const row=await get('/api/operation-item-master').then(r=>
@@ -144,11 +151,15 @@ run('test_reclayout: 「記録した値」の配置をD&Dで組めるマスタ�
   /* ==========================================================
      5) 「既定へ戻す」で本当に空へ帰る（押しても戻らない設定を作らない）
      ========================================================== */
-  await page.click('#rlReset');
+  /* 「既定へ戻す」は頭の ⋯（§9.602。前は帯の #rlReset）。戻したことは頭の知らせが字で言う。 */
+  await page.click('#masterMaintMore');
+  await page.click('#mmActMenu [data-rl-more="reset"]');
   await page.waitForFunction(()=>WL.recordBoard.rows().on.every(r=>r.follow),null,{timeout:5000});
+  const resetSaid=await page.evaluate(()=>document.querySelector('#masterMaintSay')?.textContent||'');
+  rec('戻したことが画面にも出る', /表示順/.test(resetSaid), resetSaid.slice(0,60));
   await page.click('#rlSave');
   await page.waitForFunction(
-    ()=>/保存しました|保存できません/.test(document.querySelector('#rlState')?.textContent||''),
+    ()=>/保存しました|保存できません/.test(document.querySelector('#masterMaintSay')?.textContent||''),
     null,{timeout:20000});
   const after=await get('/api/operation-item-master').then(r=>r.items||[]);
   const left=after.filter(x=>Number(x.recordOrder)>0||String(x.recordGroup||'').trim());
@@ -160,8 +171,9 @@ run('test_reclayout: 「記録した値」の配置をD&Dで組めるマスタ�
    return {follow:on.filter(r=>r.follow).length,total:on.length,
            枚数:ls.length,legend:ls.map(x=>x.textContent||'').join(' / ')};
   });
-  rec('戻したことが画面にも出る', followAll.follow===followAll.total&&/表示順/.test(followAll.legend),
-      followAll.legend.slice(0,60));
+  /* 全部が表示順に従う（既定）ときは盤の案内を出さない（§9.602。いつも同じ文は ⓘ が持つ）。 */
+  rec('戻すと全部が表示順に従う（既定の盤は案内を出さない）', followAll.follow===followAll.total&&followAll.枚数===0,
+      JSON.stringify({follow:followAll.follow,total:followAll.total,枚数:followAll.枚数}));
   /* **案内は1行にまとめる**（§9.304）——2段落に分けると、先に読まれる側だけが
      目に入り「戻した」ことを言う文が下に隠れる（実際に隠れていた）。 */
   rec('盤の案内は1つの段落にまとまっている', followAll.枚数<=1, `${followAll.枚数}段落`);

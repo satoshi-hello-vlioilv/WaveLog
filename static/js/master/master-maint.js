@@ -576,6 +576,40 @@
   }
  }
  function quietHeadAct(on){const b=$('#masterMaintActs .mm-hd-primary');if(b)b.classList.toggle('is-quiet',!!on)}
+ /* ---------- 盤の型（§9.602）: 頭の状態の札・頭の知らせ・対象の札の行 ----------
+    盤の画面（操業データ項目・記録した値の配置・選択肢の値・親子・帳票レイアウト・換算係数・設備停止の時間）は、頭と主役の
+    あいだに帯（`.op-bar`）を持たない。帯が持っていた4つは置き場を分けた——説明は ⓘ（定義の`hint`）、追加は頭の主の操作、
+    「いま何を触っているか」は主役の上の対象の札の行、保存の結果は頭の知らせ。どれもここの1つで、画面は名乗るだけ。 */
+ /* 画面ぜんたいの状態を1語で（例: 必須 3/3）。`tone`＝ok（青緑）／warn（橙）／空（灰）。`null`で伏せる。 */
+ function setHeadState(o){
+  const el=$('#masterMaintState');if(!el)return;
+  el.hidden=!o;el.className='mm-mode-chip mm-hd-state'+(o&&o.tone?' is-'+o.tone:'');
+  el.textContent=o?o.text:'';
+  if(o&&o.title)el.title=o.title;else el.removeAttribute('title');
+ }
+ /* いま起きたこと（保存しました／保存できませんでした: 理由）。全文は title（字が長いと頭の行で省略になる）。 */
+ function headSay(text,bad){
+  const el=$('#masterMaintSay');if(!el)return;
+  el.textContent=text||'';el.title=text||'';el.classList.toggle('is-bad',!!bad);
+ }
+ /* 対象の札の行（§9.602）: いま触っている対象（共通／設備・紙）を札で並べ、いまの対象を下線で言う。ステップ2の札の行
+    （`.mm-lbar`・§9.599）と同じ部品で、頭の右の選ぶ欄にしない——選べる対象が全部見え、いまの対象を探さずに読める。
+    `items`＝`[{v,label,n,tone,title}]`（`n`は札の小札・`tone:'warn'`は橙）。`note`は行の右の短い一言（効く範囲など）。 */
+ function scopeBarHtml(o){
+  const badge=it=>it.n!=null&&it.n!==''?`<i class="mm-ltab-b${it.tone?' is-'+esc(it.tone):''}">${esc(it.n)}</i>`:'';
+  return `<div class="mm-lbar mm-scopebar"><div class="mm-ltabs" role="tablist" aria-label="${esc(o.label||'対象')}">`
+   +`<span class="mm-scopebar-k" aria-hidden="true">${esc(o.label||'対象')}</span>`
+   +(o.items||[]).map(it=>{const on=String(it.v)===String(o.cur);
+     return `<button type="button" role="tab" class="mm-ltab${on?' is-on':''}" aria-selected="${on}" data-mm-scope="${esc(it.v)}"`
+      +`${it.title?` title="${esc(it.title)}"`:''}>${esc(it.label)}${badge(it)}</button>`}).join('')
+   +`</div><div class="mm-lbar-r"><span class="mm-lbar-note">${esc(o.note||'')}</span></div></div>`;
+ }
+ /* 札を押したら`onPick(値)`。いまの対象をもう一度押しても何もしない（読み直さない）。 */
+ function wireScopeBar(root,onPick){
+  (root||document).querySelectorAll('.mm-scopebar [data-mm-scope]').forEach(b=>{
+   b.onclick=()=>{if(b.classList.contains('is-on'))return;onPick(b.dataset.mmScope)};
+  });
+ }
  function hintSectionsHtml(def){
   const secs=(def&&def.hintMore)||[];
   if(!secs.length)return '';
@@ -1913,7 +1947,8 @@
     窓（中央）に残すのは、広さの要る組み立て（`field-builder`）・紙の見本を並べる窓（`asideHtml`）・専用の画面が
     自分で使う窓だけ。**答えは`editorDocks()`の1箇所**。 */
  function editorDocks(def){
-  return defUsesEditorModal(def)&&!def.special&&typeof def.asideHtml!=='function'
+  /* 専用の画面でも、行を押して1行を直す画面は名乗れば右の詳細（`dock:true`・選択肢の値・§9.602）。 */
+  return defUsesEditorModal(def)&&(!def.special||def.dock===true)&&typeof def.asideHtml!=='function'
    &&!def.fields.some(f=>f.type==='field-builder');
  }
  let paneSnap=null;   // 開いたときの値（`collectMaintBody()`の写し）。変更の有無はこれと比べる
@@ -3427,7 +3462,7 @@
  /* 器（頭の操作・上の帯・一覧）をどのマスタにも属さない形へ戻す。専用の画面は器に印や頭の操作を足していくので、
     タブを移るたび（と、遅れて届いた前のタブが器を上書きしたあと）にここを通す。 */
  function resetMaintShell(){
-  setHeadActs(null);
+  setHeadActs(null);setHeadState(null);headSay('');
   const f=$('#masterMaintForm');
   /* 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。タブを移ったら必ず外す
      (付いたままだと他のマスタで上部フォームが伸び縮みして一覧の高さが安定しない)。 */
@@ -3556,6 +3591,6 @@
     こちらが黙って閉じていた）。 */
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{listBar,barKept,editorMore,markHits:mmMarkHits,cellText,cellHtml,setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{listBar,barKept,editorMore,setHeadState,headSay,scopeBarHtml,wireScopeBar,markHits:mmMarkHits,cellText,cellHtml,setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();

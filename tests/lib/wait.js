@@ -105,11 +105,12 @@ async function poll(fn,pred,ms=15000,step=250){
    保存は`closeOpModal()`→`opSay('保存しました')`の順（master-opdata.js）。
    **押す前に前の文言を消す**——前回の「保存しました」が残っていると、
    押した瞬間に条件が真になって何も待たない。 */
+/* 保存の結果は頭の知らせ（`#masterMaintSay`・§9.602。前は帯の中の`#opLayoutState`）。 */
 async function opSave(page,ms=15000){
- await page.evaluate(()=>{const e=document.getElementById('opLayoutState');if(e)e.textContent=''});
+ await page.evaluate(()=>{const e=document.getElementById('masterMaintSay');if(e)e.textContent=''});
  await page.click('#opdSave');
  await until(page,()=>{const m=document.getElementById('opItemModal');
-   const t=(document.getElementById('opLayoutState')||{}).textContent||'';
+   const t=(document.getElementById('masterMaintSay')||{}).textContent||'';
    return (!m||m.hidden)&&/保存しました|できませんでした/.test(t)},null,ms);
 }
 
