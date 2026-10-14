@@ -1,4 +1,4 @@
-# 刃組ガイダンス（259件）
+# 刃組ガイダンス（265件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,10 +10,16 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 刃組の盤7画面は`WL.bsKit.frame()`の骨組み（設備の札の行→本文（送る）→足元の保存1つ）。頭は`WL.mm`の頭 | `test_partboards.js`・`test_bladeboard.js` | [§9.603](../../docs/decisions/9.603.md) |
+| 盤の欄は打っても書かない。控え（`st.edits`）に積み足元の保存でまとめて書く。行を足す・消す・名前を変えるはその場 | `test_partboards.js`・`test_ringboard.js` | [§9.603](../../docs/decisions/9.603.md) |
+| 欄を離れた後の描き直しは焦点と押した物が落ち着いてから（`later()`）。表の中の Enter は次の行の同じ欄 | `test_partboards.js`・`test_bladeboard.js` | [§9.603](../../docs/decisions/9.603.md) |
+| 判定表の保存は画面の足元の1つ（表の頭は名前・ⓘ・状態だけ）。未登録に戻すは頭の ⋯（`ruleActs()`） | `test_bladepick.js`・`test_holdpick.js` | [§9.603](../../docs/decisions/9.603.md) |
+| スペーサーの3つの札は表の右の列（左に出す物を1つ選ぶ丸）。輪の図は欄の右・寸法線と名前だけで欄と結ぶ | `test_partboards.js`・`test_ringboard.js` | [§9.603](../../docs/decisions/9.603.md) |
+| 刃の詳細はタイルの右（`.bb-dock`）。セット・色を消すは詳細の頭の ⋯（主の動線に置かない） | `test_bladeboard.js`・`test_ringboard.js` | [§9.603](../../docs/decisions/9.603.md) |
 | 断面図の有効長の寸法線は**線ぜんたいも席を取る**（字の箱だけでなく線と立て線）。高さは下の軸の字の段のすぐ下（`h-54`の決め打ちをしない・`SPAN_TICK`の1つ） | `test_bladeui.js` | [§9.589](../../docs/decisions/9.589.md) |
 | 判定表のセルの書き方と判定は`WL.ruleCells`（`core/rule-cells.js`）。【§9.590で外した】盤が列の組と答えの欄を呼ぶ側から受ける口 | `test_holdpick.js`・`test_stoprulemaster.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 判定表は空から始める（列なし・既定の行だけ）。盤は既定の列を持たない。試す欄は字の欄（`inputmode="decimal"`・`type=number`は右寄せになる） | `test_holdpick.js`・`test_bladepick.js` | [§9.574](../../docs/decisions/9.574.md) |
-| 列は表の中で足す（見出しの「＋ 条件の列」＝何の値かを読んで選ぶ・探せる／空の表は道しるべの札・最初の列で決まりの行も1つ）。説明は`PICK_FIELD_DESC`の1箇所 | `test_holdpick.js`・`test_bladeset.py` | [§9.574](../../docs/decisions/9.574.md) |
+| 列は表の中で足す（見出しの「＋ 条件の列」＝何の値かを読んで選ぶ・探せる・最初の列で決まりの行も1つ）。説明は`PICK_FIELD_DESC`の1箇所 | `test_holdpick.js`・`test_bladeset.py` | [§9.574](../../docs/decisions/9.574.md) |
 | 判定表の盤は送り先と読み直しだけ渡す（段取り・見本・仕掛の列は`rule-table.js`）。保存の読み直しは隣の表の未保存の変更を捨てない | `test_bladepick.js` | [§9.574](../../docs/decisions/9.574.md) |
 | 判定表の選択肢の列も字の列と同じ書き方を全部候補に出す（判定は字で比べる）。列幅は見出しの縁で変え、この端末に覚える（`wl.ruleTable.widths`） | `test_bladepick.js`・`test_holdpick.js` | [§9.573](../../docs/decisions/9.573.md) |
 | 台車の載り方は`carriageLoad()`の1箇所（稼働中＝直前の記録）。刃組ガイダンスと在庫の盤が同じ答えを読む | `test_partboards.js`・`test_bladeui.js` | [§9.540](../../docs/decisions/9.540.md) |
@@ -38,7 +44,7 @@
 | 真偽の項目の呼び名は`STANDARD_FLAG_WORDS`の1箇所。切の側は`flags.OFF_WORDS`にも並べる | `test_bladeset.py`・`test_flags.py` | [§9.532](../../docs/decisions/9.532.md) |
 | 刃組の盤の高さを決めた欄は上下の余白0（土台の余白7px＋枠線で字の席が1行より狭い）。規則は72-bladeset.cssの1つ | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
 | 判定表の頭・刃組基準値の節に番号を付けない。決める順は矢印と並びが言う | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
-| スペーサー・フィンガーの在庫表は`stockTable()`の1本。欄を離れると保存・同じ寸法の2行目は作らない | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
+| スペーサー・フィンガーの在庫表は`stockTable()`の1本。同じ寸法の2行目は作らない（【§9.603で改めた】保存は足元） | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
 | 刃組基準値の盤は1設備の全部の欄。顔ぶれは`bladesetStandard.fields`の1箇所・空欄は既定値の薄字 | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
 | スペーサー一体型はゴムリングの種類（`RING_KINDS`の1箇所）。外径はゴムリングどうしで被らせない | `test_bladeset.py`・`test_ringboard.js` | [§9.531](../../docs/decisions/9.531.md) |
 | 一体型は幅が寸法を作る。区間は`integFill()`（残りをスペーサーでちょうどに作れる最大）。【§9.532で切り替えに】潤滑 | `test_bladesets.js` | [§9.531](../../docs/decisions/9.531.md) |
@@ -50,7 +56,7 @@
 | 刃選択は判定表3つ（**保持方式 → 刃のカテゴリ → 刃厚**）。後ろの表は前の答えを列にできる。表ごとの項目は`pick_fields_for()`の1箇所 | `test_bladeset.py`・`test_bladepick.js` | [§9.529](../../docs/decisions/9.529.md) |
 | 刃の選び方は`bladeChoice()`→`applyBladePick()`、札の字は`pickWord()`。使えない答えは`missing`で言う | `test_bladesets.js`・`test_bladeui.js` | [§9.529](../../docs/decisions/9.529.md) |
 | ゴムリングの被りは**見えている色**（`ring_tone()`）で比べる。潤滑リングの`RING_LUBE_HEX`はCSSの`--look-violet`と同じ値 | `test_bladeset.py`・`test_ringboard.js` | [§9.529](../../docs/decisions/9.529.md) |
-| 刃組のマスタの盤は`board-kit.js`（頭・一覧＋詳細）と`rule-table.js`（判定表）を使う。盤ごとに頭・表を書かない | `test_bladeboard.js`・`test_holdpick.js` | [§9.529](../../docs/decisions/9.529.md) |
+| 刃組のマスタの盤は`board-kit.js`（骨組み・一覧＋詳細）と`rule-table.js`（判定表）を使う。盤ごとに頭・表を書かない | `test_bladeboard.js`・`test_holdpick.js` | [§9.529](../../docs/decisions/9.529.md) |
 | ゴムリングの色の属性（色名・色コード・外径・内径）は色で1つ。書くのは`ring_color_save()`と`_align_ring_color()`だけ | `test_bladeset.py`・`test_ringboard.js` | [§9.528](../../docs/decisions/9.528.md) |
 | 色の被りは`ring_color_conflicts()`の1箇所: 同じ色名・色コード・（ゴムリングどうしの）外径は断る、色差20未満は注意 | `test_bladeset.py`・`test_ringboard.js` | [§9.528](../../docs/decisions/9.528.md) |
 | フィンガーの材質は**1回の刃組で1つ**。答えは`holdPick()`の`material`（表の行が持つ・空欄は既定） | `test_bladesets.js`・`test_bladeset.py` | [§9.527](../../docs/decisions/9.527.md) |

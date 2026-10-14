@@ -23,6 +23,7 @@
    設備停止の挿入条件の盤もこの部品を使う。列の組・答えの欄は呼ぶ側が渡す）——盤と刃組
    ガイダンスで判定が食い違うと、「盤では当たるのに現場では当たらない」という最も分かりにくい形で
    壊れる（§9.379）。表は1枚として編集し、保存は丸ごと（送り先と読み直しは呼ぶ側が渡す・`send()`）。
+   §9.603: 保存は**画面の足元の1つ**（盤が変更のある表の`save()`を順に呼ぶ）。表の頭は名前・ⓘ・状態だけ。
    ============================================================ */
 (function(){
  /* 判定は共通の部品（`core/rule-cells.js`・§9.588）。刃組を知らない。 */
@@ -376,16 +377,17 @@
   }
 
   /* ---------- 描く ---------- */
+  /* 表の頭（§9.603）: 名前・ⓘ（`lead`）・状態（登録済み／未登録・当たらない決まり）。保存は画面の足元の1つ、未登録に戻すは
+     頭の ⋯（盤が`reset()`を呼ぶ）——表ごとに保存のボタンを置くと、2つの表の画面で保存の道が3つになった。変更の有無は足元が言う。 */
   headHtml(){
    const o=this.o;
-   const st=this.dirty?'<span class="rt-state is-dirty">保存していない変更があります</span>'
-    :this.stored?'<span class="rt-state">登録済み</span>':`<span class="rt-state is-seed">未登録——${o.seedNote}</span>`;
+   const st=this.stored?'<span class="rt-state">登録済み</span>':`<span class="rt-state is-seed">未登録——${o.seedNote}</span>`;
    const nd=this.rows.filter((r,i)=>this.rowDead(r)||this.shadowOf(i)).length;
-   return `<header class="rt-h"><h3>${esc(o.label)}</h3>${st}${nd?`<span class="rt-state is-warn">当たらない決まり ${nd}行</span>`:''}
-    <span class="rt-acts">${this.stored?`<button type="button" class="mm-btn-ghost sm" data-rt="reset" title="この表の登録を消し、${esc(o.seedNote)}へ戻します">未登録に戻す</button>`:''}
-     <button type="button" class="mm-btn-primary sm" data-rt="save"${this.dirty&&!this.busy?'':' disabled'}>保存</button></span></header>`;
+   const tip=o.lead?WL.mm.tipHtml(String(o.lead).replace(/<[^>]+>/g,'')):'';
+   return `<header class="rt-h"><h3>${esc(o.label)}</h3>${tip}${st}${nd?`<span class="rt-state is-warn">当たらない決まり ${nd}行</span>`:''}</header>`;
   }
-  leadHtml(){return this.o.lead?`<p class="rt-lead">${this.o.lead}</p>`:''}
+  /* 決まりの行（既定の行のほか）があるか。無い表の「読み」は既定の行と同じことを言うので出さない。 */
+  hasRules(){return this.rows.some(r=>!this.isDefault(r))}
   /* 足せる列（使っていない列）。群の並びのまま・仕掛の列は名前の順のまま。 */
   addable(){
    const used=new Set(this.cols);
@@ -424,15 +426,12 @@
    const el=this.o.host().querySelector(`.rt-c[data-r="${ri}"][data-f="${CSS.escape(f)}"]`);if(el)el.focus();
   }
   /* 空の表（列なし）の道しるべ。①はよく使うデータ（仕掛の列以外）を札で並べ、押せば列と最初の決まりができる。 */
+  /* 空の表（列なし）の道しるべは1行（§9.603）: 何が無いかと、次にすること（見出しの「＋ 条件の列」）。何の値かは列を足す面が
+     説明つきで並べる——前は同じ顔ぶれを札（`.rt-chip`）でも並べ、2つの表で札が4行になっていた（同じ物を2か所に出さない）。 */
   emptyHtml(){
-   const chips=this.addable().filter(x=>!this.sets().some(y=>y.key===x.g.key)).flatMap(x=>x.fs);
    /* 行いっぱい＝番号・列・「＋ 条件の列」・答え・備考・操作。 */
-   return `<tr class="rt-empty"><td colspan="${this.cols.length+4+this.ansCols().length}"><ol class="rt-steps">
-    <li class="is-now"><b>条件にするデータを選ぶ</b><small>押すと列と決まりの行が1つでき、そのセルへ入ります</small>
-     <span class="rt-chips">${chips.map(f=>`<button type="button" class="rt-chip" data-addcol="${esc(f)}" title="${esc(this.colDesc(f))}">＋ ${esc(this.colLabel(f))}</button>`).join('')}
-     <button type="button" class="mm-btn-ghost sm" data-rt="addcol" title="仕掛の列も含めて、説明を読んで選ぶ・名前で探す">ほかのデータ…</button></span></li>
-    <li><b>セルに条件を書く</b><small>例 ＜ 0.6・0.6〜1.0・SUS*。セルに入ると書き方の候補が出ます</small></li>
-    <li><b>右端で答えを選んで保存</b><small>どれにも当たらない作業は、いちばん下の既定の行で決まります</small></li></ol></td></tr>`;
+   return `<tr class="rt-empty"><td colspan="${this.cols.length+4+this.ansCols().length}"><p class="rt-empty-l">`
+    +'決まりの行はまだありません。見出しの<b>＋ 条件の列</b>で何の値で分けるかを選ぶと、1行目ができます</p></td></tr>';
   }
   colHeadHtml(f,ci){
    return `<th class="rt-col" data-f="${esc(f)}" data-g="${esc(this.groupOf(f)||'')}" title="${esc(this.colDesc(f))}"${widthStyle(widthOf(this.o.key,f))}>`
@@ -458,7 +457,7 @@
    const body=rows.slice(0,-1).join('')+add+rows.slice(-1).join('');
    const ri=this.read>=0&&this.read<this.rows.length?this.read:(hit?hit.index:0);
    return `<div class="rt-wrap"><table class="rt-table"><thead>${head}${this.cols.length?this.probeRowHtml(hit):''}</thead><tbody>${body}</tbody></table></div>
-    <p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>${this.deadHtml()}${this.mapHtml()}`;
+    ${this.hasRules()?`<p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>`:''}${this.deadHtml()}${this.mapHtml()}`;
   }
   probeInput(f){
    const v=this.o.probe[f]??'';
@@ -518,8 +517,8 @@
     :a.dataset.f!==undefined&&a.dataset.r!==undefined?`.rt-c[data-r="${a.dataset.r}"][data-f="${CSS.escape(a.dataset.f)}"]`
     :a.classList.contains('rt-n')?`.rt-n[data-r="${a.dataset.r}"]`:''):'';
    const pos=mine&&typeof a.selectionStart==='number'?a.selectionStart:null;
-   host.innerHTML=this.headHtml()+this.leadHtml()+this.tableHtml();
-   this.wire(host);
+   host.innerHTML=this.headHtml()+this.tableHtml();
+   this.wire(host);WL.popMenu.tips(host);
    const el=key&&host.querySelector(key);
    if(el){el.focus();if(pos!=null&&el.setSelectionRange)el.setSelectionRange(pos,pos)}
   }
@@ -567,7 +566,6 @@
   touch(){this.dirty=true;this.o.onChange&&this.o.onChange()}
   wire(host){
    host.querySelectorAll('[data-rt]').forEach(b=>{b.onclick=()=>this.act(b.dataset.rt,+b.dataset.r,+b.dataset.c,b)});
-   host.querySelectorAll('.rt-chip').forEach(b=>{b.onclick=()=>this.addCol(b.dataset.addcol)});
    host.querySelectorAll('.rt-c').forEach(el=>{
     WL.popMenu.suggest(el,inp=>this.suggestFor(inp),{onFocus:true});
     el.onchange=()=>this.setCell(+el.dataset.r,el.dataset.f,el.value);
@@ -577,7 +575,7 @@
    host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{
     const a=this.ansCols().find(x=>x.key===el.dataset.ak);if(!a)return;
     a.set(this.rows[+el.dataset.r],el.value);this.touch();this.render()}});
-   host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>this.setNote(host,+el.dataset.r,el.value)});
+   host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>this.setNote(+el.dataset.r,el.value)});
    this.wireGrips(host);this.wireWidths(host);this.wireDead(host);this.wireMap(host);
    host.querySelectorAll('.rt-p').forEach(el=>{
     const set=()=>{this.o.probe[el.dataset.p]=el.value;this.o.onProbe?this.o.onProbe():this.render()};
@@ -603,10 +601,9 @@
     });
    });
   }
-  /* 備考は打つそばから写す（表は作り直さない＝打っている欄の焦点を奪わない）。頭の「保存」だけ押せる形へ。 */
-  setNote(host,ri,v){
-   this.rows[ri].note=v;
-   if(!this.dirty){this.dirty=true;const h=host.querySelector('.rt-h');if(h){h.outerHTML=this.headHtml();this.wire(host)}}
+  /* 備考は打つそばから写す（表は作り直さない＝打っている欄の焦点を奪わない）。足元の「変更あり」だけ塗り直す。 */
+  setNote(ri,v){
+   this.rows[ri].note=v;this.dirty=true;
    this.o.onChange&&this.o.onChange(true);
   }
   paintRead(host){const p=host.querySelector('.rt-read');if(p)p.innerHTML=`<s>読み</s>${esc(this.sentence(this.read))}`;this.paintDead(host);this.paintMapRow(host)}
@@ -628,7 +625,6 @@
     addcol:()=>this.openColMenu(btn),
     delrow:()=>{this.rows.splice(ri,1);this.read=-1;this.touch();this.render()},
     delcol:()=>this.delCol(ci),
-    save:()=>this.save(),reset:()=>this.reset(),
    };
    return moves[a]&&moves[a]();
   }
@@ -712,34 +708,37 @@
   /* 保存できる行（書きかけ・読めないセルを断ってから）。 */
   async save(){
    const bad=this.rows.filter(r=>r.bad).length;
-   if(bad)return void alertModal(`読めないセルが ${bad}行にあります。赤い枠のセルを直してから保存してください（セルの下に理由が出ています）。`);
+   if(bad){await alertModal(`読めないセルが ${bad}行にあります。赤い枠のセルを直してから保存してください（セルの下に理由が出ています）。`);return false}
    const empty=this.rows.filter(r=>r.fresh&&!(r.conditions||[]).length).length;
    if(empty&&!await confirmModal({title:'条件の無い決まり',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">条件が1つも無い決まりが ${empty}行あります。条件の無い行は既定の行と同じ意味になるので、保存では落とします。</p>`,
-     confirmLabel:'落として保存する',cancelLabel:'やめる'}))return;
+     confirmLabel:'落として保存する',cancelLabel:'やめる'}))return false;
    const dead=this.rows.map((r,i)=>this.rowDead(r)||this.shadowOf(i)?i:-1).filter(i=>i>=0);
    if(dead.length&&!await confirmModal({title:'当たらない決まり',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">${dead.map(i=>`${i+1}行目（→ ${esc(this.o.answerLabel(this.rows[i]))}）`).join('・')}は、`
       +`当たり得ない条件か、上の行に覆われているため<b>どの作業にも当たりません</b>。保存すると作業はこの行を素通りして下の行で決まり、この答えは使われません。</p>`
       +'<p class="confirm-modal-message">直す案は表の下に出ています。</p>',
-     confirmLabel:'このまま保存する',cancelLabel:'やめて直す'}))return;
+     confirmLabel:'このまま保存する',cancelLabel:'やめて直す'}))return false;
    const last=this.rows[this.rows.length-1];
    const rows=this.rows.filter(r=>(r.conditions||[]).length||r===last)
     .map(r=>Object.assign(this.o.rowOut(r),{conditions:r.conditions||[],note:r.note||''}));
    this.busy=true;this.render();
+   let ok=false;
    try{
     const eq=this.o.payload().equipment||'';
     if(!await this.send({rows,cols:this.cols.slice()}))throw new Error('更新者IDが決まっていません');
     showToast&&showToast(`${this.label}の表を保存しました`,`${eq}・${rows.length}行`,2600);
+    ok=true;
    }
    catch(e){await alertModal('保存できませんでした：'+(e&&e.message?e.message:e))}
    finally{this.busy=false;this.render();this.o.onChange&&this.o.onChange()}
+   return ok;
   }
   async reset(){
    if(!await confirmModal({title:'未登録に戻す',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">「${esc(this.o.label)}」の表の登録を消します。以後は${esc(this.o.seedNote)}で決めます。</p>`,
      confirmLabel:'未登録に戻す',cancelLabel:'やめる'}))return;
-   try{await this.send({reset:true})}catch(e){await alertModal('戻せませんでした：'+(e&&e.message?e.message:e))}
+   try{return await this.send({reset:true})}catch(e){await alertModal('戻せませんでした：'+(e&&e.message?e.message:e));return false}
   }
   /* 書く段取り（更新者ID → 送る → 読み直す）は1つ（§9.574 で盤ごとの写しを1つへ）。盤は送り先（`endpoint`）・
      いつも載せる鍵（`payload()`＝設備・表の名前）・読み直し（`reload()`）だけを渡す。IDが決まらなければ送らずに偽。

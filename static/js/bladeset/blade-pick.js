@@ -40,7 +40,7 @@
   return WL.ruleTable.create(Object.assign({
    key,host:()=>document.querySelector(`#masterMaintList [data-table="${key}"]`),
    fields:()=>defOf(key).fields,groups:()=>ps.groups,sourceCols:()=>ps.sourceCols,samples:()=>ps.samples,
-   probe:ps.probe,onProbe:()=>render(),onChange:quiet=>{if(!quiet)paintTry()},
+   probe:ps.probe,onProbe:()=>render(),onChange:quiet=>{if(!quiet)paintTry();K().paintFoot()},
    blankRow:()=>({answer:'',group:''}),rowOut:r=>({answer:r.answer||'',group:r.group||''}),
    endpoint:'/api/bladeset/blade-pick',payload:()=>({equipment:ps.equipment,table:key}),reload:()=>load(true,true),
   },o));
@@ -59,17 +59,14 @@
    setAnswer:(r,v)=>{r.answer=v},
    blankRow:()=>({answer:String(ps.thicknesses[0]||''),group:''})}),
  };
- /* ---------- 頭と「試す」の帯 ---------- */
+ /* ---------- 頭と「試す」の1行 ---------- */
  const dirty=()=>T.category.dirty||T.thickness.dirty;
- function renderHead(){
-  K().renderHead(ps,{id:'bpEq',
-   hint:'刃組ガイダンスは <b>保持方式 → 刃のカテゴリ → 刃厚</b> の順に表を見て刃を選びます。どの表も<b>上から見て最初に当たった行</b>の答え（最後の行は既定）。後ろの表は前の表の答えを列に使えます。',
-   leaveOk:()=>K().leave(dirty(),'刃選択'),onEquipment:()=>load(true)});
- }
- /* 「この作業なら」を1行で（2つの表の当たりを順に）。字は`ruleTable.sentence()`と同じ読み方。 */
+ const tables=()=>[T.category,T.thickness];
+ function renderHead(){K().head(ps.loaded?K().ruleActs(tables()):{})}
+ /* 「この作業なら」を1行で（2つの表の当たりを順に）。流れの1行の右に置く（主役の前は1行・§9.603）。 */
  function tryHtml(){
   const c=T.category.probeHit(),t=T.thickness.probeHit();
-  if(!c&&!t)return '<span class="is-idle">表の「試す」行に値を入れると、この作業でどの刃になるかがここに出ます（値は2つの表で共通）</span>';
+  if(!c&&!t)return '<span class="is-idle">表の「試す」行に値を入れると、この作業でどの刃になるかがここに出ます</span>';
   const one=(tb,h,lab)=>h?`<b>${esc(lab(h.row))}</b><small>（${esc(tb.label)}・${tb.isDefault(h.row)?'既定の行':`${h.index+1}行目`}）</small>`
    :`<span class="is-idle">${esc(tb.label)}: 当たる行なし</span>`;
   return `この作業なら → ${one(T.category,c,catLabel)} → ${one(T.thickness,t,thLabel)}`
@@ -81,14 +78,20 @@
   const clr=el.querySelector('#bpClear');
   if(clr)clr.onclick=()=>{Object.keys(ps.probe).forEach(k=>delete ps.probe[k]);render()};
  }
- function render(){
+ /* 骨組み（対象の札の行・流れと試すの1行・2つの表・足元）を描く。 */
+ function paint(){
   renderHead();
-  const box=document.getElementById('masterMaintList');if(!box||!ps.loaded)return;
-  /* 試す欄の焦点は表の`render()`が戻すので、器は作り直さず中身だけ描き直す。 */
-  if(!box.querySelector('.bp-try')){
-   box.innerHTML='<div class="bp-try" aria-live="polite"></div><section class="rt" data-table="category"></section><section class="rt" data-table="thickness"></section>';
-  }
-  T.category.render();T.thickness.render();paintTry();
+  if(!ps.loaded)return;
+  const body=K().frame(ps,Object.assign({key:'bladePick',label:'刃選択',onEquipment:()=>load(true),
+   top:K().flowHtml([1,2],'<span class="bp-try" aria-live="polite"></span>'),
+   body:'<section class="rt" data-table="category"></section><section class="rt" data-table="thickness"></section>'},
+   K().ruleFoot(tables(),()=>load(true))));
+  if(body)render();
+ }
+ /* 表と試すの1行だけ描き直す（器は作り直さない＝試す欄の焦点は表の`render()`が戻す）。 */
+ function render(){
+  if(!document.querySelector('#masterMaintList .rt[data-table="category"]'))return paint();
+  T.category.render();T.thickness.render();paintTry();K().paintFoot();
  }
 
  /* `keep`＝保存のあとの読み直し: もう1つの表に保存していない変更があれば、その表は読み直さない（捨てない）。 */
@@ -105,11 +108,10 @@
                      categories:sets.categories||['通常刃','専用刃'],sourceCols:src.columns,samples:src.samples,loaded:true});
    const tb=c.tables||{};
    Object.entries(T).forEach(([k,t])=>{if(!(keep&&t.dirty))t.setData((tb[k]||{}).rows,(tb[k]||{}).stored,(tb[k]||{}).cols)});
-   box.innerHTML='';
-   render();
+   paint();
   });
  }
 
- WL.mm.registerSpecial('blade-pick',{load});
+ WL.mm.registerSpecial('blade-pick',{load,dirty});
  WL.bladePick={state:ps,tables:T,load};
 })();

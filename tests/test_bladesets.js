@@ -41,16 +41,15 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   await W.until(page, () => !!document.querySelector('[data-master="bladesetBlade"]'), null, { ms: 15000, what: '刃のタブ' });
   rec('① 「刃セット」のタブは「刃」へ統合した（§9.529）', await page.evaluate(() => !document.querySelector('[data-master="bladesetSets"]')));
   await page.evaluate(() => document.querySelector('[data-master="bladesetBlade"]').click());
-  await W.until(page, () => !!document.querySelector('#bbEq'), null, { ms: 10000, what: '刃の盤' });
-  await page.selectOption('#bbEq', { label: EQ });
-  await W.until(page, e => document.querySelector('#bbEq')?.value === e && !!document.querySelector('.bk-card'), EQ, { ms: 10000, what: '設備の刃セット' });
+  await W.bkEquip(page, EQ, '#masterMaintList .bk-card');
   const g0 = groups[0];
   const cardOf = g => page.evaluate(g => {
    const it = document.querySelector(`#masterMaintList [data-bk-key="${g}"]`);   // §9.536: 既定はタイル
    if (!it) return null;
    if (!it.classList.contains('is-on')) return { pick: true };
-   const on = k => document.querySelector(`.bk-card .bk-opt.is-on[data-seg="${k}"]`)?.textContent || '';
-   return { cat: on('category'), use: on('use'), say: document.querySelector('.bk-card-t small')?.textContent || '',
+   const on = k => document.querySelector(`.bk-card [data-seg="${k}"].is-on`)?.textContent || '';
+   const sm = document.querySelector('.bk-card-t small');   // §9.603: 一言は最初の1文・続きと「未登録」は ⓘ
+   return { cat: on('category'), use: on('use'), say: sm ? sm.textContent + ' ' + (sm.querySelector('[data-tip]')?.dataset.tip || '') : '',
             tags: [...it.querySelectorAll('.bk-tag')].map(t => t.textContent).join('/') };
   }, g);
   await page.click(`#masterMaintList [data-bk-key="${g0}"]`);
@@ -58,16 +57,19 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   const r0 = await cardOf(g0);
   rec('① 未登録の組は通常刃・使用中で、「ふつうは…選ばれます」と言う',
       !!r0 && r0.cat === '通常刃' && r0.use === '使用中' && /ふつうは/.test(r0.say) && /未登録/.test(r0.say), JSON.stringify(r0));
-  const sel = (k, v) => `.bk-card .bk-opt[data-seg="${k}"][data-v="${v}"]`;
+  const sel = (k, v) => `.bk-card [data-seg="${k}"][data-v="${v}"]`;
   await page.click(sel('use', '研磨中'));
-  await W.until(page, () => /研磨中/.test(document.querySelector('.bk-card .bk-opt.is-on[data-seg="use"]')?.textContent || ''), null, { ms: 8000, what: '研磨中へ' });
+  await W.until(page, () => /研磨中/.test(document.querySelector('.bk-card [data-seg="use"].is-on')?.textContent || ''), null, { ms: 8000, what: '研磨中へ' });
+  /* §9.603: 札も控え（足元の保存で書く）。 */
+  await W.bkSave(page);
   const s1 = (await api('/api/bladeset/blade-sets?equipment=' + encodeURIComponent(EQ))).items.find(x => x.group === g0);
   const r1 = await cardOf(g0);
-  rec('① 札を押すとその場で保存される（保存ボタンを持たない）', s1 && s1.use === '研磨中' && s1.stored === true, JSON.stringify(s1));
+  rec('① 札を選び、足元の保存で書かれる（§9.603）', s1 && s1.use === '研磨中' && s1.stored === true, JSON.stringify(s1));
   rec('① 研磨中のセットは「刃組ガイダンスでは選ばれません」と字で言い、一覧にも札が付く',
       /選ばれません/.test(r1.say) && /研磨中/.test(r1.tags), JSON.stringify(r1));
   await page.click(sel('category', '専用刃'));
-  await W.until(page, () => /専用刃/.test(document.querySelector('.bk-card .bk-opt.is-on[data-seg="category"]')?.textContent || ''), null, { ms: 8000, what: '専用刃へ' });
+  await W.until(page, () => /専用刃/.test(document.querySelector('.bk-card [data-seg="category"].is-on')?.textContent || ''), null, { ms: 8000, what: '専用刃へ' });
+  await W.bkSave(page);
   const s2 = (await api('/api/bladeset/blade-sets?equipment=' + encodeURIComponent(EQ))).items.find(x => x.group === g0);
   rec('① カテゴリを変えても使用状態は残る（送った項目だけ書く）', s2 && s2.category === '専用刃' && s2.use === '研磨中', JSON.stringify(s2));
 

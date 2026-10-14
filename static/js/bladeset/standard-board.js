@@ -19,7 +19,7 @@
    ============================================================ */
 (function(){
  const K=()=>WL.bsKit;
- const sb={equipment:'',row:null,defaults:{},sel:'',busy:false,loaded:false};
+ const sb={equipment:'',row:null,defaults:{},sel:'',edits:{},busy:false,loaded:false};
  const def=()=>(WL.mm.MASTER_DEFS||[]).find(d=>d.key==='bladesetStandard')||{fields:[]};
  /* 設備は頭が選ぶので欄に出さない。 */
  const fields=()=>def().fields.filter(f=>f.k!=='equipment');
@@ -33,67 +33,79 @@
   return String(v);
  };
  const stored=f=>{const r=sb.row;if(!r)return null;const v=r[keyOf(f)];return v==null||v===''?null:v};
+ /* 控えの鍵は欄の鍵（`f:`＋鍵）。書いてある値は欄に出す字（真偽は選択肢の字）。 */
+ const ek=f=>'f:'+f.k;
+ const storedText=f=>{const v=stored(f);return v==null?'':typeof v==='boolean'?flagWord(f,v):String(v)};
+ /* いま欄に出ている字（控え → 書いてある値）。空＝既定値で効く。 */
+ const shown=f=>String(K().editOf(sb,ek(f),storedText(f))??'');
+ const isSet=f=>f.k!=='note'&&shown(f)!=='';
  const changedCount=()=>fields().filter(f=>stored(f)!=null&&f.k!=='note').length;
 
+ /* 頭（§9.603）: 状態の札は欄の札・左の節と同じ数（保存の前の値も含む——保存していないことは足元が言う。札だけ保存した値で
+    数えると、同じ画面に「すべて既定値」と「設定 1」が並んだ）。副の操作は ⋯（確かめる・既定へ戻す）。 */
  function renderHead(){
-  const n=changedCount();
-  K().renderHead(sb,{id:'sbEq',
-   state:!sb.loaded?'':sb.row?(n?`既定と違う値 <b>${n}</b>項目（ほかは既定値）`:'登録あり・すべて既定値'):'未登録——<b>すべて既定値</b>で効いています',
-   actions:sb.row?'<button type="button" class="mm-btn-ghost sm bk-danger" id="sbReset">すべて既定へ戻す</button>':'',
-   hint:'刃組ガイダンスが使う<b>このラインの諸元と判定の帯</b>です（1設備に1つ）。<b>空欄の欄は既定値</b>（欄の中の薄い字）で効きます。変えたいところだけ打ち、<b>欄を離れるとすぐ保存</b>されます。',
-   onEquipment:()=>load(true)});
-  const rs=document.getElementById('sbReset');
-  if(rs)rs.onclick=resetAll;
+  const n=fields().filter(isSet).length;
+  K().head({state:!sb.loaded?null:{text:n?`設定 ${n}項目・ほかは既定値`:'すべて既定値',tone:n?'ok':''},
+   more:[{label:'刃組ガイダンスの図で確かめる',note:'見本の作業（50mm×22条・元板巾1130・板厚1.2）で開きます',onClick:openGuide}]
+    .concat(sb.row?[{label:'すべて既定へ戻す…',note:`${sb.equipment} の登録を消します`,danger:true,onClick:resetAll}]:[])});
  }
  function ctrlHtml(f){
-  const v=stored(f),d=sb.defaults[keyOf(f)];
+  const v=shown(f),d=sb.defaults[keyOf(f)];
+  const ed=` data-edit="${esc(ek(f))}" data-was="${esc(storedText(f))}"`;
   if(f.type==='select'){
-   return `<select data-k="${esc(f.k)}" aria-label="${esc(f.label)}"><option value="">既定（${esc(fmtDef(f,d))}）</option>${
-    (f.options||[]).map(o=>{const cur=typeof v==='boolean'?flagWord(f,v):v;
-     return `<option${String(cur??'')===o?' selected':''}>${esc(o)}</option>`}).join('')}</select>`;
+   return `<select data-k="${esc(f.k)}"${ed} class="${K().editCls(sb,ek(f)).trim()}" aria-label="${esc(f.label)}"><option value="">既定（${esc(fmtDef(f,d))}）</option>${
+    (f.options||[]).map(o=>`<option${v===o?' selected':''}>${esc(o)}</option>`).join('')}</select>`;
   }
   const num=f.type==='number';
-  return `<input data-k="${esc(f.k)}" type="${num?'number':'text'}"${num?` step="${f.step??'any'}"${f.min!=null?` min="${f.min}"`:''}`:''}`
-   +` value="${esc(v??'')}" placeholder="${esc(f.k==='note'?'—':fmtDef(f,d))}" aria-label="${esc(f.label)}"${f.size==='lg'?' class="is-lg"':''}>`;
+  return `<input data-k="${esc(f.k)}"${ed} type="${num?'number':'text'}"${num?` step="${f.step??'any'}"${f.min!=null?` min="${f.min}"`:''}`:''}`
+   +` value="${esc(v)}" placeholder="${esc(f.k==='note'?'—':fmtDef(f,d))}" aria-label="${esc(f.label)}" class="${(f.size==='lg'?'is-lg':'')+K().editCls(sb,ek(f))}">`;
+ }
+ /* 欄の説明は最初の1文（続きは見出しの ⓘ）。12px の段落を欄ごとに並べると、主役の欄が説明に埋もれた（§9.603）。 */
+ function hintParts(h){
+  const t=String(h||''),i=t.indexOf('。');
+  return i>0&&i<t.length-1?[t.slice(0,i+1),t.slice(i+1).trim()]:[t,''];
  }
  function rowHtml(f){
-  const on=stored(f)!=null&&f.k!=='note';
-  const st=on?`<i class="bk-tag is-teal">変更</i><button type="button" class="bk-x sb-undo" data-undo="${esc(f.k)}" title="既定値（${esc(fmtDef(f,sb.defaults[keyOf(f)]))}）へ戻す">既定へ</button>`
+  const on=isSet(f),[first,rest]=hintParts(f.hint);
+  const st=on?`<i class="bk-tag is-teal">設定</i><button type="button" class="bk-x sb-undo" data-undo="${esc(f.k)}" title="既定値（${esc(fmtDef(f,sb.defaults[keyOf(f)]))}）へ戻す（保存で効きます）">既定へ</button>`
    :(f.k==='note'?'':'<small class="sb-def">既定</small>');
-  return `<div class="sb-row${on?' is-set':''}"><label class="sb-l" for="sb_${esc(f.k)}">${esc(f.label)}</label>`
+  /* 説明の ⓘ は Tab の順に入れない（欄から欄へ Tab で進む手を、行ごとの ⓘ で2回止めない）。乗せる・押すで読める。 */
+  const tip=rest?WL.mm.tipHtml(rest.replace(/\*\*/g,'')).replace('<button ','<button tabindex="-1" '):'';
+  return `<div class="sb-row${on?' is-set':''}"><label class="sb-l" for="sb_${esc(f.k)}">${esc(f.label)}${tip}</label>`
    +`<span class="sb-c">${ctrlHtml(f).replace('<input ',`<input id="sb_${esc(f.k)}" `).replace('<select ',`<select id="sb_${esc(f.k)}" `)}${f.unit?`<u>${esc(f.unit)}</u>`:''}</span>`
-   +`<span class="sb-s">${st}</span>${f.hint?`<small class="sb-h">${WL.mm.hintHtml(f.hint)}</small>`:''}</div>`;
+   +`<span class="sb-s">${st}</span>${first?`<small class="sb-h">${WL.mm.hintHtml(first)}</small>`:''}</div>`;
  }
  const groupsOf=()=>{const out=[];
   fields().forEach(f=>{const g=f.fieldGroup||'';let x=out.find(y=>y.name===g);if(!x)out.push(x={name:g,list:[]});x.list.push(f)});
   return out};
- const changedIn=g=>g.list.filter(f=>stored(f)!=null&&f.k!=='note').length;
- /* 図が読む「いまの値」——打っている途中の欄 → 登録 → 既定。鍵は欄の鍵でも値の鍵でもよい。 */
+ const setIn=g=>g.list.filter(isSet).length;
+ /* 図が読む「いまの値」——控え（打っている途中も）→ 登録 → 既定。鍵は欄の鍵でも値の鍵でもよい。 */
  function valueOf(k){
   const f=fields().find(x=>x.k===k||keyOf(x)===k);if(!f)return sb.defaults[k];
-  const el=document.querySelector(`#masterMaintList .sb-rows [data-k="${CSS.escape(f.k)}"]`);
-  const typed=el&&el.value!==''?el.value:null;
-  const v=typed!=null?typed:stored(f);
-  if(v==null)return sb.defaults[keyOf(f)];
-  if(typeof sb.defaults[keyOf(f)]==='boolean'&&typeof v==='string')return v===(f.options||[])[0];
+  const v=shown(f);
+  if(v==='')return sb.defaults[keyOf(f)];
+  if(typeof sb.defaults[keyOf(f)]==='boolean')return v===(f.options||[])[0];
   return v;
  }
  function render(){
   renderHead();
-  const box=document.getElementById('masterMaintList');if(!box||!sb.loaded)return;
+  if(!sb.loaded)return;
   const gs=groupsOf(),F=WL.standardFigs;
   if(!gs.some(g=>g.name===sb.sel))sb.sel=(gs[0]||{}).name||'';
   const g=gs.find(x=>x.name===sb.sel)||{list:[]};
-  box.innerHTML=K().pane({label:'刃組基準値の節',items:gs.map(x=>{const n=changedIn(x);
-   return {key:x.name,on:x.name===sb.sel,mark:`<i class="sb-ico" aria-hidden="true">${esc(x.name.slice(0,1))}</i>`,title:x.name,
-    sub:F.sayOf(x.name)||`${x.list.length}項目`,tags:n?[{text:`変更 ${n}`,tone:'teal'}]:[]}}),
-   detail:`<article class="bk-card sb-card"><header class="bk-card-h"><div class="bk-card-t"><h3>${esc(g.name)}</h3>
-    <small>${esc(F.sayOf(g.name))}${F.sayOf(g.name)?'。':''}欄に入ると図の同じところが光り、打った値で図が動きます。</small></div>
-    <button type="button" class="mm-btn-ghost sm" id="sbGuide" title="見本の作業（50mm×22条・元板巾1130・板厚1.2）で刃組ガイダンスを開きます">刃組ガイダンスの図で確かめる</button></header>
-    <div class="sb-fig">${F.figOf(g.name,valueOf)||''}</div><div class="sb-rows">${g.list.map(rowHtml).join('')}</div></article>`});
-  K().wirePane(box,{onPick:k=>{sb.sel=k;render()}});
-  wireDetail(box);
+  const body=K().frame(sb,{key:'standard',label:'刃組基準値',onEquipment:()=>load(true),
+   save,cancel:()=>{sb.edits={};render()},what:editedGroups,
+   body:K().pane({label:'刃組基準値の節',items:gs.map(x=>{const n=setIn(x);
+    return {key:x.name,on:x.name===sb.sel,mark:`<i class="sb-ico" aria-hidden="true">${esc(x.name.slice(0,1))}</i>`,title:x.name,
+     sub:F.sayOf(x.name)||`${x.list.length}項目`,tags:n?[{text:`設定 ${n}`,tone:'teal'}]:[]}}),
+    detail:`<article class="bk-card sb-card"><header class="bk-card-h"><div class="bk-card-t"><h3>${esc(g.name)}</h3></div></header>
+     <div class="sb-fig">${F.figOf(g.name,valueOf)||''}</div><div class="sb-rows">${g.list.map(rowHtml).join('')}</div></article>`})});
+  if(!body)return;
+  K().wirePane(body,{onPick:k=>{sb.sel=k;render()}});
+  wireDetail(body);
  }
+ /* 変更のある節の名前（足元の「変更 N件（機械の寸法）」）。 */
+ const editedGroups=()=>groupsOf().filter(g=>g.list.some(f=>Object.prototype.hasOwnProperty.call(sb.edits||{},ek(f)))).map(g=>g.name).join('・');
  /* 欄と図の部品を同じ鍵（`data-k`）で結ぶ。光らせるのは`is-on`の1つ。 */
  function light(box,k){
   box.querySelectorAll('.sb-fig [data-k].is-on,.sb-row.is-on').forEach(e=>e.classList.remove('is-on'));
@@ -104,19 +116,23 @@
  const paintFig=box=>{const fig=box.querySelector('.sb-fig'),on=(box.querySelector('.sb-fig [data-k].is-on')||{}).dataset;
   if(fig){fig.innerHTML=WL.standardFigs.figOf(sb.sel,valueOf)||'';if(on)light(box,on.k)}};
  function wireDetail(box){
+  /* 打つたびに控え（足元の「変更 N件」）と図、欄を離れたら札（設定／既定）と左の数を描き直す。 */
+  K().bindEdits(box,sb,()=>paintKeep());
   box.querySelectorAll('.sb-rows [data-k]').forEach(el=>{
-   el.onchange=()=>save(el.dataset.k,el.value);
-   el.oninput=()=>paintFig(box);
+   el.addEventListener('input',()=>paintFig(box));
    el.onfocus=()=>light(box,el.dataset.k);
    el.closest('.sb-row').onmouseenter=()=>light(box,el.dataset.k);
   });
   box.querySelector('.sb-rows').onmouseleave=()=>{const a=document.activeElement;light(box,a&&a.dataset&&box.contains(a)?a.dataset.k:'')};
   const fig=box.querySelector('.sb-fig');
   if(fig)fig.onmouseover=ev=>{const t=ev.target.closest('[data-k]');if(t)light(box,t.dataset.k)};
-  box.querySelectorAll('[data-undo]').forEach(b=>{b.onclick=()=>save(b.dataset.undo,'')});
-  const gd=box.querySelector('#sbGuide');
-  if(gd)gd.onclick=()=>WL.bladeGuide.open({equipment:sb.equipment,seed:{thickness:1.2,originalWidth:1130,
-   lots:[{name:'見本',w:50,n:22,parent:'見本'}],headLot:''}});
+  box.querySelectorAll('[data-undo]').forEach(b=>{b.onclick=()=>{
+   const f=fields().find(x=>x.k===b.dataset.undo);if(!f)return;
+   K().edit(sb,ek(f),'',storedText(f));paintKeep();
+  }});
+ }
+ function openGuide(){
+  WL.bladeGuide.open({equipment:sb.equipment,seed:{thickness:1.2,originalWidth:1130,lots:[{name:'見本',w:50,n:22,parent:'見本'}],headLot:''}});
  }
  /* 描き直しても焦点は同じ欄へ（Tabで次の欄へ移った人の手を止めない）。 */
  function paintKeep(){
@@ -125,25 +141,21 @@
   const el=k&&document.querySelector(`#masterMaintList .sb-rows [data-k="${CSS.escape(k)}"]`);
   if(el){el.focus();try{el.select&&el.select()}catch(_e){WL.quiet.note('選べない欄は焦点だけ戻す',_e)}}
  }
- async function save(k,value){
-  const f=fields().find(x=>x.k===k);if(!f)return;
-  const key=keyOf(f);
-  const ok=await K().guarded(sb,async uid=>{
-   const r=await K().post('/api/bladeset-standard-master',Object.assign(
-    {equipment:sb.equipment,user_id:uid,[key]:value},sb.row?{id:sb.row.id}:{}));
-   if(!sb.row)sb.row={id:r.id};
-  },'保存できませんでした');
-  if(!ok)return void load(true);
-  /* 控えを直して塗り直す（読み直さない＝打っている途中の欄を奪わない）。選択欄の呼び名は真偽へ。 */
-  sb.row[key]=value===''?null:(f.type==='number'?+value:(typeof sb.defaults[key]==='boolean'?value===(f.options||[])[0]:value));
-  paintKeep();
+ /* 足元の保存: 控えの欄を1回で書く（渡した鍵だけを書く口・§9.212 ②）。空＝既定値へ戻す。 */
+ async function save(){
+  const body={};
+  fields().forEach(f=>{if(Object.prototype.hasOwnProperty.call(sb.edits||{},ek(f)))body[keyOf(f)]=sb.edits[ek(f)]});
+  if(!Object.keys(body).length)return;
+  await K().saveEdits(sb,async uid=>{
+   await K().post('/api/bladeset-standard-master',Object.assign({equipment:sb.equipment,user_id:uid},body,sb.row?{id:sb.row.id}:{}));
+  },{done:`${sb.equipment} の刃組基準値を保存しました`,reload:()=>load(true)});
  }
  async function resetAll(){
   if(!sb.row)return;
   if(!await confirmModal({title:'すべて既定へ戻す',eyebrow:'刃組基準値',
-    bodyHtml:`<p class="confirm-modal-message">${esc(sb.equipment)} の登録（変更 ${changedCount()}項目）を消し、すべて既定値に戻します。元に戻せません。</p>`,
+    bodyHtml:`<p class="confirm-modal-message">${esc(sb.equipment)} の登録（設定 ${changedCount()}項目）を消し、すべて既定値に戻します。元に戻せません。</p>`,
     confirmLabel:'既定へ戻す',cancelLabel:'やめる'}))return;
-  if(await K().guarded(sb,async()=>{await K().post('/api/bladeset-standard-master/delete',{id:sb.row.id})},'戻せませんでした'))await load(true);
+  if(await K().guarded(sb,async()=>{await K().post('/api/bladeset-standard-master/delete',{id:sb.row.id})},'戻せませんでした')){sb.edits={};await load(true)}
  }
  async function load(force){
   if(!document.getElementById('masterMaintList'))return;
@@ -155,6 +167,6 @@
    render();
   });
  }
- WL.mm.registerSpecial('standard-board',{load});
+ WL.mm.registerSpecial('standard-board',{load,dirty:()=>K().editCount(sb)>0});
  WL.standardBoard={state:sb,load};
 })();

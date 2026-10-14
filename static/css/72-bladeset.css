@@ -874,31 +874,30 @@ body.bs-mode .bs-shell{display:flex}
 /* 潤滑リングはゴムリングの群の中の1列（§9.472 の続き）。印の紫で「種類が違う」ことを言う。 */
 .bs-g .bs-lubeh .bs-lubedot{margin-inline-end:.2em}
 
-/* ---------- 刃組のマスタの盤（§9.529、利用者の指示「すっきり統一感が欲しい」） ----------
-   刃・ゴムリング・刃選択・保持方式が**同じ頭・同じ2ペイン・同じ判定表**を使う（`board-kit.js`・
-   `rule-table.js`）。値はトークンだけ。状態は色だけで言わず、必ず字（札・1行の文）を添える。
-     頭   … 設備 ｜ いまの状態 ｜ 操作（右寄せ）、その下に説明の1行
-     本文 … 左＝一覧（選ぶ・`--bk-list-w`）／右＝選んだ1つの詳細カード */
-.bk-head{display:flex;align-items:center;gap:var(--space-3);min-height:var(--ctl-h)}
-.bk-eq{display:inline-flex;align-items:center;gap:var(--space-2);font-size:var(--fs-sm)}
-.bk-eq s{text-decoration:none;color:var(--muted);font-weight:var(--fw-strong)}
-.bk-eq select{height:var(--ctl-h-sm);min-width:var(--w-md)}
-.bk-state{font-size:var(--fs-sm);color:var(--ink-2)}
-.bk-state.is-warn{color:var(--warn-fg);font-weight:var(--fw-strong)}
-.bk-acts{margin-inline-start:auto;display:flex;align-items:center;gap:var(--space-2)}
-.bk-hint{margin:var(--space-2) 0 0;font-size:var(--fs-sm);line-height:1.6;color:var(--muted)}
-.bk-hint b{color:var(--ink-2)}
-.bk-pane{--bk-list-w:18rem;display:grid;grid-template-columns:var(--bk-list-w) minmax(0,1fr);gap:var(--space-3);align-items:start}
-/* 一覧: まとまりを全部縦に。選んだ1つは左の線と地で（字は太字のまま・色だけにしない＝`aria-selected`）。 */
-.bk-list{position:sticky;top:0;display:flex;flex-direction:column;gap:var(--space-2);
- border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);padding:var(--space-2)}
+/* ---------- 刃組のマスタの盤（§9.529 → §9.603、利用者の指示「すっきり統一感が欲しい」「もったり」） ----------
+   7画面が**ほかのマスタと同じ型**（`board-kit.js`）: 頭は`WL.mm`の頭（用途・ⓘ・状態の札・主の操作・⋯）、
+   本文は 対象の札の行（設備）→ 本文（ここだけが送る）→ 足元（保存の1つ）。面は枠で囲まず罫線1本、選んだ行は
+   淡い地＋左の帯（§9.602 と同じ）。値はトークンだけ。状態は色だけで言わず、必ず字（札・1行の文）を添える。 */
+/* 骨組み: 器（一覧）は外へ送らない（`is-fill`）。足元は本文の外＝器の下端——送っても行を隠さず、下に行がのぞかない。 */
+#masterMaintList>.bk-bar{flex:none;margin:0 0 var(--space-3)}
+#masterMaintList>.bk-top{flex:none;margin:0 0 var(--space-3)}
+#masterMaintList>.bk-top[hidden]{display:none}
+.bk-body{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable}
+/* まだ下に行があるときは下端を薄く消す（行が線で切れるだけだと「ここまで」と読まれる）。 */
+.bk-body.is-more{mask-image:linear-gradient(to bottom,var(--ink) calc(100% - var(--space-6)),transparent)}
+#masterMaintList>.bk-foot{padding-inline:0}
+/* 打って変えた欄（保存していない）。足元の「変更 N件」と同じ物を指す——字の色は変えず、欄の左の帯で言う。 */
+.bk-body .is-edited:is(input,select){box-shadow:inset var(--bar-w) 0 0 var(--warn)}
+.bk-pane{--bk-list-w:18rem;display:grid;grid-template-columns:var(--bk-list-w) minmax(0,1fr);gap:var(--space-5);align-items:start}
+/* 一覧: まとまりを全部縦に。選んだ1つは左の帯と淡い地で（字は太字のまま・色だけにしない＝`aria-selected`）。 */
+.bk-list{position:sticky;top:0;display:flex;flex-direction:column;gap:var(--space-2);padding:0 var(--space-3) 0 0;border-right:1px solid var(--line)}
 .bk-items{display:flex;flex-direction:column;gap:2px}
 .bk-none{margin:0;padding:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
 .bk-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--space-2);
- width:100%;padding:var(--space-1) var(--space-2);border:1px solid transparent;border-radius:var(--radius-sm);
+ width:100%;padding:var(--space-1) var(--space-2);border:0;border-radius:var(--radius-sm);
  background:transparent;font:inherit;text-align:left;color:var(--ink);cursor:pointer}
 .bk-item:hover{background:var(--pale)}
-.bk-item.is-on{background:var(--pale);border-color:var(--teal);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
+.bk-item.is-on{background:var(--pale);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 .bk-item.is-near .bk-mark{box-shadow:0 0 0 2px var(--warn-fg);border-radius:var(--radius-round)}
 .bk-item.is-hard .bk-mark{box-shadow:0 0 0 2px var(--danger);border-radius:var(--radius-round)}
 .bk-mark{display:inline-flex}
@@ -913,24 +912,17 @@ body.bs-mode .bs-shell{display:flex}
 .bk-tag.is-teal{border-color:var(--teal);color:var(--teal-dark)}
 .bk-tag.is-warn{border-color:var(--warn-fg);color:var(--warn-fg);background:var(--warn-bg)}
 .bk-tag.is-violet{border-color:var(--look-violet);color:var(--look-violet-dark);background:var(--look-violet-pale)}
-.bk-add{height:var(--ctl-h-sm);border:1px dashed var(--line-strong);border-radius:var(--radius-sm);background:transparent;
- font:inherit;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--teal-dark);cursor:pointer}
-.bk-add:hover{background:var(--pale);border-color:var(--teal)}
-/* 詳細カード: 頭（札＋名前＋何に効くか）→ 欄の段 → 表 → 足元（主役は左・消すは右端に離す）。 */
-.bk-card{border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);
- padding:var(--space-3) var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+/* 詳細: 頭（札＋名前＋何に効くか＋⋯）→ 欄の段 → 表。枠で囲まない（一覧とのあいだは一覧の右の罫線1本）。 */
+.bk-card{display:flex;flex-direction:column;gap:var(--space-3)}
 .bk-card-h{display:flex;align-items:center;gap:var(--space-3)}
 .bk-card-t{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .bk-card-t h3{margin:0;font-size:var(--fs-lg)}
 .bk-card-t small{font-size:var(--fs-sm);color:var(--muted)}
-.bk-card-f{display:flex;align-items:center;gap:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
-.bk-gap{flex:1}
-.bk-danger{color:var(--danger)}
 /* 欄の段: ラベルは上・値は下（1段に横並び）。読み取り専用の値は枠を付けない（§CLAUDE 10）。 */
 .bk-fields{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4)}
 .bk-field{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
 .bk-field>s{text-decoration:none;color:var(--muted);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
-.bk-field>span{display:inline-flex;align-items:center;gap:var(--space-1);min-height:var(--ctl-h-sm)}
+.bk-field>span{display:inline-flex;align-items:center;gap:var(--space-2);min-height:var(--ctl-h-sm)}
 .bk-field u{text-decoration:none;color:var(--muted)}
 .bk-field input[type=number]{width:6.5em}
 .bk-field input,.bk-field select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
@@ -938,30 +930,31 @@ body.bs-mode .bs-shell{display:flex}
 .bk-mini{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
 .bk-mini s{text-decoration:none;color:var(--muted)}
 .bk-mini select{height:var(--ctl-h-sm)}
-/* 2択の札（1つの枠を割った形・§9.247）。選ばれた札の濃さは 90-state.css の束ね規則が持つ。 */
-.bk-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
-.bk-seg button{border:0;border-inline-start:1px solid var(--line);border-radius:0;background:var(--surface);
- height:var(--ctl-h-sm);padding:0 var(--space-3);font:inherit;font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
-.bk-seg button:first-child{border-inline-start:0}
-.bk-seg button:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
-.bk-seg button:disabled{cursor:default}
+/* 2〜4択はほかのマスタと同じ`.mm-seg`（選んだ札は塗り・90-state.css）。打って変えた札は欄と同じ左の帯。 */
+.bk-seg>button.is-edited{box-shadow:inset var(--bar-w) 0 0 var(--warn)}
 /* 中身の表（刃厚ごと・幅ごと）。数は右揃え・単位は薄く。 */
 .bk-table{border-collapse:collapse;font-size:var(--tbl-fs);align-self:flex-start}
 .bk-table th,.bk-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);text-align:left;white-space:nowrap}
 .bk-table thead th{color:var(--muted);font-weight:var(--fw-ui);font-size:var(--fs-sm)}
 .bk-table tbody th{text-align:right;min-width:5em;font-variant-numeric:tabular-nums}
-.bk-table u{text-decoration:none;color:var(--muted);margin-left:2px;font-weight:var(--fw-body)}
+.bk-table u{text-decoration:none;color:var(--muted);margin-left:var(--space-1);font-weight:var(--fw-body)}
 .bk-table input{width:6em;height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box;text-align:right}
 .bk-table input[type=date]{width:9.5em;text-align:left}
 .bk-table tr.is-off th,.bk-table tr.is-off td{color:var(--muted)}
 .bk-sum th,.bk-sum td{border-bottom:0}
 .bk-low{color:var(--warn-fg);font-size:var(--fs-sm)}
+/* 行を消す × は乗せた行（と鍵盤の焦点）だけ（§9.602 と同じ・行ごとの危ない操作を常に並べない）。 */
 .bk-x{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1)}
+.bk-table tbody tr .bk-x{opacity:0}
+.bk-table tbody tr:hover .bk-x,.bk-table tbody tr .bk-x:focus-visible{opacity:1}
+.bk-use{text-align:center}
+/* 詳細の頭の ⋯（そのセット・その色を消す）。 */
+.bk-more{margin-left:auto}
 /* 高さを決めた欄は**上下の余白を持たない**（§9.531・利用者の指摘「文字が見切れています」）。高さのトークン
    （`--ctl-h-sm`＝字1行＋余白×2）は枠線を数えないので、素の余白7px＋枠線1px×2を引くと字の席が1行より
    2px狭くなり、Windows の字（Yu Gothic UI）は下が切れた。余白を0にすれば字は欄の真ん中に来る。
    刃組の盤の欄はすべてここを通す（盤ごとに書かない）。 */
-:is(.bk-eq,.bk-field,.bk-table,.bk-mini,.sb-row,.rt,.rb-name) :is(input:not([type=checkbox],[type=radio],[type=color]),select){padding-block:0}
+:is(.bk-field,.bk-table,.bk-mini,.sb-row,.rt,.rb-name) :is(input:not([type=checkbox],[type=radio],[type=color]),select){padding-block:0}
 
 /* 刃のセットの札（A〜Z）。地はカテゴリ（通常刃＝墨・専用刃＝teal）、研磨中は斜線（字の札も出る）。 */
 .bb-tile{display:inline-grid;place-items:center;width:1.9em;height:1.9em;border-radius:var(--radius-sm);
@@ -974,8 +967,10 @@ body.bs-mode .bs-shell{display:flex}
    L1＝刃厚のまとまりの見出し（`.bb-grp-h`）／L2＝1項目（タイル`.bb-card`・行`.bb-row`）／L3＝詳細カード。
    輪・棒の長さ＝使用限界径までの残り。色は残りの段（ok＝teal・near＝橙・out＝濃い橙）で、札が字でも言う。 */
 .bb-ov{display:flex;flex-direction:column;gap:var(--space-2);margin-bottom:var(--space-3)}
-.bb-legend{margin:0;font-size:var(--fs-sm);color:var(--muted);line-height:1.6}
-.bb-key{display:inline-block;width:.8em;height:.8em;border-radius:var(--radius-xs);vertical-align:-1px;margin:0 var(--space-1) 0 var(--space-2)}
+.bb-legend{margin:0;display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-1) var(--space-4);font-size:var(--fs-sm);color:var(--ink-2)}
+.bb-leg-k{color:var(--muted)}
+.bb-leg{display:inline-flex;align-items:center;gap:var(--space-1)}
+.bb-key{display:inline-block;width:.8em;height:.8em;border-radius:var(--radius-xs)}
 .bb-key.is-near{background:var(--warn)}
 .bb-key.is-out{background:var(--warn-fg)}
 .bb-grp{display:flex;flex-direction:column;gap:var(--space-1)}
@@ -985,9 +980,9 @@ body.bs-mode .bs-shell{display:flex}
 .bb-grp-t b{color:var(--ink-2)}
 .bb-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:var(--space-2)}
 .bb-card{display:flex;flex-direction:column;align-items:center;gap:var(--space-1);padding:var(--space-2);
- border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);font-size:var(--fs-sm);cursor:pointer}
+ border:0;border-radius:var(--radius-sm);background:none;font-size:var(--fs-sm);cursor:pointer}
 .bb-card:hover{background:var(--pale);transform:translateY(-1px)}
-.bb-card.is-on{border-color:var(--teal);box-shadow:0 0 0 2px var(--teal-soft);background:var(--pale)}
+.bb-card.is-on{background:var(--pale);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 .bb-card.is-off{opacity:var(--op-disabled)}
 .bb-card-h{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap;justify-content:center}
 .bb-card-h .bb-tile{width:1.6em;height:1.6em;font-size:var(--fs-sm)}
@@ -1005,6 +1000,11 @@ body.bs-mode .bs-shell{display:flex}
 .bb-dn-s{font-size:var(--fs-tiny);fill:var(--muted);text-anchor:middle}
 .bb-dn-b{font-size:var(--fs-title);font-weight:var(--fw-strong);fill:var(--ink);text-anchor:middle}
 .bb-detail:empty{display:none}
+/* タイルの見せ方の詳細は右（§9.603）。タイルは狭い器に合わせて詰める。狭い窓では下へ回る。 */
+.bb-dock{display:grid;grid-template-columns:minmax(0,1fr) minmax(36rem,46%);gap:0 var(--space-5);align-items:start}
+.bb-dock>.bb-detail{position:sticky;top:0;padding-left:var(--space-4);border-left:1px solid var(--line)}
+.bb-dock .bb-tiles{grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr))}
+@media screen and (max-width:1100px){.bb-dock{grid-template-columns:minmax(0,1fr)}.bb-dock>.bb-detail{position:static;padding-left:0;border-left:0}}
 /* 刃厚ごとの一覧（B-9）: 一覧の行に棒と字を1行で入れるので一覧を広く取る。 */
 .bk-pane.bb-tree{--bk-list-w:30rem}
 .bb-row .bk-tx small{display:flex;align-items:center;gap:var(--space-1);white-space:nowrap}
@@ -1040,6 +1040,18 @@ body.bs-mode .bs-shell{display:flex}
 .rb-chip.is-sm{height:auto;padding:1px var(--space-1)}
 .rb-free{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
 .rb-free s{text-decoration:none;color:var(--muted)}
+/* 輪の寸法の図（§9.603）は欄の右（重ねない）。寸法線と名前だけ・外径／内径の欄に入ると同じ寸法が青緑。 */
+.rb-fieldrow{display:flex;align-items:center;gap:var(--space-6)}
+.rb-fieldrow>.bk-fields{flex:0 1 auto}
+.rb-fig{margin:0;flex:none}
+.rb-fig.is-none{display:none}
+.rb-fig .rb-ri{fill:var(--surface);stroke:var(--line-strong)}
+.rb-fig .rb-ext{stroke:var(--line-strong);stroke-dasharray:2 2}
+.rb-fig .rb-dim line{stroke:var(--ink-2)}
+.rb-fig .rb-dim text{font-size:var(--fs-sm);fill:var(--ink-2)}
+.rb-fig .rb-dim.is-hot line{stroke:var(--teal);stroke-width:2}
+.rb-fig .rb-dim.is-hot text{fill:var(--teal-ink);font-weight:var(--fw-strong)}
+.rb-fig circle.is-hot{stroke:var(--teal);stroke-width:2.5}
 .rb-check:empty{display:none}
 .rb-check p{margin:0;font-size:var(--fs-sm);line-height:1.6}
 .rb-check .rb-sw{width:.9em;height:.9em;vertical-align:-1px;margin:0 2px}
@@ -1056,28 +1068,16 @@ body.bs-mode .bs-shell{display:flex}
 .rt-h{display:flex;align-items:center;gap:var(--space-2)}
 .rt-h h3{margin:0;font-size:var(--fs-title)}
 .rt-state{font-size:var(--fs-sm);color:var(--muted)}
-.rt-state.is-dirty{color:var(--warn-fg);font-weight:var(--fw-strong)}
-.rt-acts{margin-inline-start:auto;display:flex;align-items:center;gap:var(--space-2)}
 /* 列を足す・決まりを足すは**表の中の、足される場所**に置く（§9.574・H1）。点線の札＝まだ無い物の置き場。 */
 .rt-ghost{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px dashed var(--teal);border-radius:var(--radius-sm);
  background:var(--teal-tint);color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;cursor:pointer}
 .rt-ghost:hover,.rt-ghost:focus-visible{border-style:solid;background:var(--teal-soft)}
 .rt-table .rt-addc{width:1%}
 .rt-addr th,.rt-addr td{background:var(--surface)}
-/* 空の表の道しるべ（いまの段だけ濃く、後の段は薄い番号）。 */
-.rt-empty td{padding:var(--space-3) var(--space-3) var(--space-2);white-space:normal;background:var(--surface)}
-.rt-steps{margin:0;padding:0;list-style:none;counter-reset:rt-step;display:flex;flex-direction:column;gap:var(--space-2)}
-.rt-steps li{counter-increment:rt-step;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);
- padding-left:calc(22px + var(--space-2));position:relative;color:var(--muted)}
-.rt-steps li::before{content:counter(rt-step);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:var(--radius-round);
- display:grid;place-items:center;background:var(--line-mid);color:var(--surface);font-size:var(--fs-sm);font-weight:var(--fw-strong)}
-.rt-steps li.is-now{color:var(--ink)}
-.rt-steps li.is-now::before{background:var(--teal)}
-.rt-steps small{font-size:var(--fs-sm);color:var(--muted)}
-.rt-chips{flex-basis:100%;display:flex;flex-wrap:wrap;gap:var(--space-1)}
-.rt-chip{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--teal);border-radius:var(--radius-sm);
- background:var(--teal-tint);color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
-.rt-chip:hover,.rt-chip:focus-visible{background:var(--teal-soft)}
+/* 空の表の道しるべは1行（§9.603）: 何が無いか＋次にすること。 */
+.rt-empty td{padding:var(--space-2) var(--space-3);white-space:normal;background:var(--surface)}
+.rt-empty-l{margin:0;font-size:var(--fs-sm);color:var(--muted)}
+.rt-empty-l b{color:var(--teal-ink)}
 /* 列を足す面（`.wl-menu`の値を宣言し直す・§9.449）。項目は「名前＋その下に何の値か」。 */
 /* 高さは**ボタンの下に収まる量**（60vh だと下に入らず上へ返り、ボタンを覆って頭が切れた・実測）。探す欄は上に残す。 */
 .wl-menu.rt-colmenu{--menu-w:340px;--menu-w-max:400px;--menu-max-h:min(420px,50vh);--menu-item-pad:var(--space-1) var(--space-2)}
@@ -1088,9 +1088,7 @@ body.bs-mode .bs-shell{display:flex}
 .rt-colmenu button small{display:block;font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2);white-space:normal}
 .rt-colmenu .rt-cm-g[hidden],.rt-colmenu button[hidden],.rt-cm-none[hidden]{display:none}
 .rt-cm-none{margin:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
-.rt-lead{margin:0;font-size:var(--fs-sm);color:var(--muted);line-height:1.6}
-.rt-lead b{color:var(--ink-2)}
-.rt-wrap{overflow:auto;max-width:100%;border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg)}
+.rt-wrap{overflow:auto;max-width:100%;border-top:1px solid var(--line)}
 .rt-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
 .rt-table th,.rt-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
  text-align:left;vertical-align:middle;white-space:nowrap}
@@ -1220,10 +1218,19 @@ body.bs-mode .bs-shell{display:flex}
 .rt-shadow li{padding:3px var(--space-2);border-radius:var(--radius-sm);background:var(--warn-bg);color:var(--warn-fg)}
 .rt-eff .rt-then{margin:var(--space-2) 0}
 .rt-ok{color:var(--ink-2)}
-/* 刃選択の「この作業なら」の帯（2つの表の当たりを1行で）。 */
-.bp-try{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3);
- padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-2);
- font-size:var(--fs-base-sm)}
+/* 判定の流れの1行（§9.603・刃選択・保持方式）: ① 保持方式 → ② 刃のカテゴリ → ③ 刃厚。押せない形（地も枠も無い）で、
+   この画面の表は青緑の丸と字。右は刃選択の「この作業なら」（2つの表の当たり）・保持方式は答えの使われ先。 */
+.bk-flow{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-4);font-size:var(--fs-sm);color:var(--ink-2)}
+.bk-flow-steps{display:inline-flex;align-items:center;gap:var(--space-2)}
+.bk-flow-step{display:inline-flex;align-items:center;gap:var(--space-1)}
+.bk-flow-step i{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);border:1px solid var(--line-strong);
+ font-style:normal;font-size:var(--fs-sm);color:var(--muted)}
+.bk-flow-step.is-mine{color:var(--teal-ink);font-weight:var(--fw-ui)}
+.bk-flow-step.is-mine i{border-color:var(--teal);background:var(--teal);color:var(--surface)}
+.bk-flow-arr{color:var(--muted)}
+.bk-flow-k{color:var(--muted)}
+/* 刃選択の「この作業なら」（2つの表の当たりを1行で・流れの右）。 */
+.bp-try{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);flex:1;min-width:0;font-size:var(--fs-sm)}
 .bp-try b{color:var(--teal-dark)}
 .bp-try small{color:var(--muted);font-size:var(--fs-micro);margin-left:2px}
 .bp-try .is-idle{color:var(--muted);font-size:var(--fs-sm)}
@@ -1232,12 +1239,14 @@ body.bs-mode .bs-shell{display:flex}
 /* ---------- スペーサー・フィンガーの在庫表（§9.531 `stock-board.js`） ----------
    行の形は2つの盤で同じ（寸法｜保有｜用途｜状態｜候補に使う｜消す）。足す行は表の足元。 */
 .bk-stockcard{align-items:flex-start}
+/* スペーサー: 表（左）と3つの札の列（右・表の右の空きを使う）。札の列は送っても見える（sticky）。 */
+.bk-spgrid{display:grid;grid-template-columns:max-content minmax(17rem,22rem);gap:0 var(--space-6);align-items:start}
+.bk-spside{position:sticky;top:0;display:flex;flex-direction:column;gap:var(--space-3);padding-left:var(--space-4);border-left:1px solid var(--line)}
+.bk-spside .bk-legend{margin:0}
 .bk-stock td .bk-tag{white-space:nowrap}
 .bk-stock input[type=text]{width:var(--w-md);text-align:left}
 .bk-stock .bk-new th,.bk-stock .bk-new td{border-bottom:0;padding-top:var(--space-2)}
 .bk-table .bk-use input{width:auto;height:auto}
-.bk-use{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer;white-space:nowrap}
-.bk-stock tr.is-off .bk-use{color:var(--muted)}
 .bk-sum small{color:var(--muted);font-size:var(--fs-sm)}
 .bk-stock td.bk-calc{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted);font-size:var(--fs-sm)}
 .bk-stock td.bk-calc b{color:var(--ink);font-size:var(--fs-base-sm)}
@@ -1245,17 +1254,22 @@ body.bs-mode .bs-shell{display:flex}
 /* ---------- スペーサーの在庫の見通し（§9.540 `spacer-outlook.js`、利用者の選択 E-11＋E-14） ----------
    札3つ（乗せる＝浮く図／押す＝表と入れ替え）。内訳の色は3つ: 稼働中の台車（濃い灰）／組み替える台車（淡い灰）／棚（緑）。
    端数のマスは濃さ＝作れる区間の数（`--k`）、赤は作れないマスだけ。 */
-.bk-svband{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2);margin:0 0 var(--space-2)}
-.bk-sv{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;gap:2px var(--space-3);align-items:center;
- text-align:left;font:inherit;color:inherit;cursor:pointer;padding:var(--space-2) var(--space-3);
- border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);transition:transform .12s,background .12s}
-.bk-sv:hover{background:var(--pale);transform:translateY(-1px)}
-.bk-sv.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 calc(var(--bar-w) * -1) 0 var(--teal)}
-.bk-sv s{grid-column:1;text-decoration:none;font-size:var(--fs-sm);color:var(--muted)}
-.bk-sv b{grid-column:1;font-size:var(--fs-lg);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-svband{display:flex;flex-direction:column}
+.bk-sv-cap{margin:0;padding:0 0 var(--space-2);border-bottom:1px solid var(--line);font-size:var(--fs-sm);color:var(--muted)}
+.bk-sv{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-1);text-align:left;font:inherit;color:inherit;cursor:pointer;
+ padding:var(--space-3) 0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none}
+.bk-sv:last-child{border-bottom:0}
+.bk-sv:hover{background:var(--pale)}
+.bk-sv s{text-decoration:none;font-size:var(--fs-sm);color:var(--muted)}
+.bk-sv.is-on s{color:var(--teal-ink);font-weight:var(--fw-ui)}
+/* 1つ選ぶ丸（§9.598 の「1つ選ぶ＝丸」）。選んだ札は塗った丸。 */
+.bk-sv-dot{display:inline-block;width:12px;height:12px;margin-right:var(--space-1);vertical-align:-1px;border:1px solid var(--line-strong);
+ border-radius:var(--radius-round);background:var(--surface)}
+.bk-sv.is-on .bk-sv-dot{border-color:var(--teal);box-shadow:inset 0 0 0 3px var(--surface);background:var(--teal)}
+.bk-sv b{font-size:var(--fs-lg);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bk-sv b small{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--muted)}
 .bk-sv b.is-warn{color:var(--look-red-dark)}
-.bk-sv-mini{grid-column:2;grid-row:1 / span 2;width:132px}
+.bk-sv-mini{width:132px}
 .bk-split{display:flex;width:100%;min-width:96px;height:12px;background:var(--surface-2);border-radius:var(--radius-xs);overflow:hidden}
 .bk-split i,.bk-lenbar i{display:block;height:100%}
 .bk-split .is-busy,.bk-lenbar .is-busy,.bk-hist .is-busy,.bk-key.is-busy{background:var(--look-slate)}
@@ -1321,7 +1335,7 @@ body.bs-mode .bs-shell{display:flex}
  background:var(--pale);color:var(--teal-dark);font-style:normal;font-weight:var(--fw-strong);font-size:var(--fs-base-sm)}
 .bk-item.is-on .sb-ico{background:var(--teal);color:var(--surface)}
 .sb-card .bk-card-h{align-items:flex-start}
-.sb-fig{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2);padding:var(--space-2)}
+.sb-fig{padding:var(--space-2) 0}
 .sb-fig:empty{display:none}
 .sb-rows{display:flex;flex-direction:column}
 .sb-row.is-on{background:var(--pale);box-shadow:inset var(--bar-w) 0 0 var(--teal)}
@@ -1370,8 +1384,6 @@ body.bs-mode .bs-shell{display:flex}
 .sb-s{display:inline-flex;align-items:center;gap:var(--space-1)}
 .sb-def{color:var(--muted);font-size:var(--fs-sm)}
 .sb-undo{font-size:var(--fs-sm)}
-.sb-h{grid-column:2/-1;font-size:var(--fs-sm);color:var(--muted);line-height:1.5;
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sb-row:is(:focus-within,:hover) .sb-h{white-space:normal}
+.sb-h{grid-column:2/-1;font-size:var(--fs-sm);color:var(--muted);line-height:1.5}
 .sb-h b{color:var(--ink-2)}
 }

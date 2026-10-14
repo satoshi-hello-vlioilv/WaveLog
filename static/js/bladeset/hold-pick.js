@@ -27,9 +27,9 @@
   key:'hold',label:'保持方式',answerHead:'保持方式',
   host:()=>document.querySelector('#masterMaintList [data-table="hold"]'),
   fields:()=>hs.fields,groups:()=>hs.groups,sourceCols:()=>hs.sourceCols,samples:()=>hs.samples,
-  probe:hs.probe,
+  probe:hs.probe,onChange:()=>K().paintFoot(),
   seedNote:'空——どの作業も既定の行（ゴムリング）',
-  lead:'板を保持する方式を決める<b>最初の表</b>です。ここの答え（板押さえ方式・フィンガー材質）は「刃選択」の表で条件に使えます。',
+  lead:'上から順に見て、最初に当たった行の方式で板を保持します。同じ行のセルはすべて満たしたときだけ当たり、空欄のセルは「問わない」。セルに入ると書き方と値の候補が出ます。',
   answers:()=>outChoices(),answerOf:r=>`${r.hold}|${matOf(r)}`,answerLabel:outLabel,
   /* 答えの地図の色は刃組図と同じ（§9.535）: フィンガーは材質の色、ゴムリングは青、一体型は水色。 */
   answerTone:r=>isFingerHold(r.hold)?`var(--bs-fig-${WL.bladeSet.fingerTone(matOf(r))})`:r.hold===hs.methods[2]?'var(--rs-cyan)':'var(--look-blue)',
@@ -38,17 +38,15 @@
   rowOut:r=>({hold:r.hold,material:matOf(r)}),
   endpoint:'/api/bladeset/hold-pick',payload:()=>({equipment:hs.equipment}),reload:()=>load(true),
  });
- function renderHead(){
-  K().renderHead(hs,{id:'hpEq',
-   hint:'<b>上から順に見て、最初に当たった行</b>の方式で板を保持します。同じ行のセルはすべて満たしたときだけ当たり、<b>空欄のセルは「問わない」</b>。セルに入ると書き方と値の候補が出ます。',
-   leaveOk:()=>K().leave(table.dirty,'保持方式'),
-   onEquipment:()=>load(true)});
- }
+ function renderHead(){K().head(hs.loaded?K().ruleActs([table]):{})}
+ /* 骨組み（対象の札の行・流れの1行・表・足元）。表の描き直しは表の`render()`だけ（器は作り直さない）。 */
  function render(){
   renderHead();
-  const box=document.getElementById('masterMaintList');if(!box||!hs.loaded)return;
-  box.innerHTML='<section class="rt" data-table="hold"></section>';
-  table.render();
+  if(!hs.loaded)return;
+  const body=K().frame(hs,Object.assign({key:'holdPick',label:'保持方式',onEquipment:()=>load(true),
+   top:K().flowHtml([0],'<span class="bk-flow-k">ここの答え（板押さえ方式・フィンガー材質）は「刃選択」の表で条件に使えます</span>'),
+   body:'<section class="rt" data-table="hold"></section>'},K().ruleFoot([table],()=>load(true))));
+  if(body)table.render();
  }
 
  async function load(force){
@@ -64,6 +62,6 @@
   });
  }
 
- WL.mm.registerSpecial('hold-pick',{load});
+ WL.mm.registerSpecial('hold-pick',{load,dirty:()=>table.dirty});
  WL.holdPick={state:hs,table,load};
 })();

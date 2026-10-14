@@ -3,9 +3,9 @@
 
    「E-11とE-14の複合でお願いします。」「クリックでE-11、マウスオーバーでE-14タイプでお願いします。」
 
-   盤の頭の下に**3つの札**（次の刃組で使える／作れる端数／使えるぶんの長さ）を並べる。
+   表の右の列に**3つの札**（次の刃組で使える／作れる端数／使えるぶんの長さ）を縦に並べる（§9.603）。
      マウスを乗せる（焦点を当てる）… その図が浮いて出る（E-14・表は動かない・`WL.popMenu`の1つ）
-     押す                          … その図を表と入れ替えて全幅で開く（E-11・札がタブを兼ねる）
+     押す                          … その図を表と入れ替えて開く（E-11・札がタブを兼ねる）
    いま開いている札には浮く図を出さない（同じ図を2か所に出さない・§CLAUDE 8）。
 
    数はすべて`WL.bladeSet.spacerOutlook()`の答え（刃組ガイダンスと同じ台車の載り方と積み方）。
@@ -25,8 +25,11 @@
   +`<i class="is-car" style="width:${pc(r.onCar,max)}%"></i><i class="is-shelf" style="width:${pc(r.shelf,max)}%"></i></span>`;
  const recWord=r=>r?`${esc(r.carriage)}${r.at?`・${esc(String(r.at).slice(5,10).replace('-','/'))}の記録`:''}`:'';
  /* 凡例。記録が無いときは「みなし」を字で言う（出どころ・§CLAUDE 6）。 */
- function legend(o){
-  if(!o.busy)return '<p class="bk-legend">刃組の記録がまだ無いので、保有を<b>ぜんぶ次の刃組で使える</b>とみなしています（台車に載っている数は記録から数えます）。</p>';
+ /* `short`＝札の列の下（1行・続きは ⓘ・§9.603）。浮く図・開いた図では全文。 */
+ const NO_REC='刃組の記録がまだ無いので、保有をぜんぶ次の刃組で使えるとみなしています（台車に載っている数は記録から数えます）。';
+ function legend(o,short){
+  if(!o.busy)return short?`<p class="bk-legend">刃組の記録なし——保有をぜんぶ使えるとみなす${WL.mm.tipHtml(NO_REC)}</p>`
+   :'<p class="bk-legend">刃組の記録がまだ無いので、保有を<b>ぜんぶ次の刃組で使える</b>とみなしています（台車に載っている数は記録から数えます）。</p>';
   return `<p class="bk-legend"><span class="bk-key is-busy"></span>稼働中の台車（${recWord(o.busy)}）に載っている＝外せない`
    +`<span class="bk-key is-car"></span>組み替える台車（${o.onCar?recWord(o.onCar):esc(o.carriage)+'・記録なし'}）に載っている＝そのまま使える`
    +`<span class="bk-key is-shelf"></span>棚にある</p>`;
@@ -63,9 +66,12 @@
              mini:`<span class="bk-split" aria-hidden="true"><i class="is-shelf" style="width:${pc(L.free,L.total)}%"></i><i class="is-busy" style="width:${pc(L.total-L.free,L.total)}%"></i></span>`})
   }[k]();
   return `<button type="button" role="tab" class="bk-sv${on?' is-on':''}" data-sv="${k}" aria-selected="${on}">`
-   +`<s>${VIEW_WORD[k]}</s><b${body.warn?' class="is-warn"':''}>${body.v}</b><span class="bk-sv-mini">${body.mini}</span></button>`;
+   +`<s><i class="bk-sv-dot" aria-hidden="true"></i>${VIEW_WORD[k]}</s><b${body.warn?' class="is-warn"':''}>${body.v}</b><span class="bk-sv-mini">${body.mini}</span></button>`;
  }
- const bandHtml=(o,view)=>`<div class="bk-svband" role="tablist" aria-label="スペーサーの在庫の見通し">${VIEWS.map(k=>cardHtml(k,o,view)).join('')}</div>`;
+ /* 札の列（§9.603 で表の右の縦の列へ）。札は「左に何を出すか」を1つ選ぶ物なので、頭にそう書き、印は1つ選ぶ丸
+    （選んだ札は塗った丸＋青緑の字）。3つは同じ形——選択中を左の帯で言うと、一覧の選んだ行と同じ形に読まれた。 */
+ const bandHtml=(o,view)=>`<div class="bk-svband" role="tablist" aria-label="スペーサーの在庫の見通し">`
+  +`<p class="bk-sv-cap">左に出すもの（押して切り替え）</p>${VIEWS.map(k=>cardHtml(k,o,view)).join('')}</div>`;
 
  /* ---------- 浮く図（E-14）・全幅（E-11） ---------- */
  function tablePeek(o){
