@@ -116,12 +116,12 @@ run('test_opchoice: 選択肢の値マスタの階層化と6マスタの統合�
    const b=[...document.querySelectorAll('[data-oc-group]')].find(x=>x.dataset.ocGroup===g);
    if(b)b.click();
   },G);
-  await W.until(page,g=>document.querySelector('#ocGroupName')?.value===g,G,{ms:8000,what:'選んだまとまりが開く'});
+  await W.until(page,g=>document.querySelector('.oc-values-head h3')?.textContent===g,G,{ms:8000,what:'選んだまとまりが開く'});
   await idle();
   /* **行は読むだけ**（§9.222 ⑥）。編集は汎用モーダル1枚に寄せたので、
      行の中には入力欄が無い——値は先頭のセルの文字で見る。 */
   const picked=await page.evaluate(()=>({
-    name:document.querySelector('#ocGroupName')?.value,
+    name:document.querySelector('.oc-values-head h3')?.textContent,
     rows:[...document.querySelectorAll('.oc-row[data-oc-id]')]
       .map(r=>(r.querySelector('.oc-cell')||{}).textContent||'')}));
   rec('まとまりを選ぶとその中の値だけが出る',
@@ -201,7 +201,7 @@ run('test_opchoice: 選択肢の値マスタの階層化と6マスタの統合�
    const b=[...document.querySelectorAll('[data-oc-group]')].find(x=>x.dataset.ocGroup===g);
    if(b)b.click();
   },MANY);
-  await W.until(page,g=>document.querySelector('#ocGroupName')?.value===g,MANY,{ms:8000,what:'値の多いまとまりが開く'});
+  await W.until(page,g=>document.querySelector('.oc-values-head h3')?.textContent===g,MANY,{ms:8000,what:'値の多いまとまりが開く'});
   await idle();
   const fill=await page.evaluate(()=>{
    const q=s=>document.querySelector(s);
@@ -268,18 +268,21 @@ run('test_opchoice: 選択肢の値マスタの階層化と6マスタの統合�
   await page.setViewportSize({width:1700,height:1000});
   await paint();
 
-  /* §9.222 ⑥: 行を押すと汎用モーダルが開き、設備はタグ入力になる。 */
+  /* §9.602: 行を押すと右の詳細（汎用の表と同じ部品・窓で覆わない）が開き、設備はタグ入力になる。 */
   await page.click('.oc-row[data-oc-id]');
-  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !!m&&!m.hidden},null,{ms:8000,what:'汎用モーダルが開く'});
+  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !!m&&!m.hidden},null,{ms:8000,what:'右の詳細が開く'});
   await idle();
   const editor=await page.evaluate(()=>{
    const m=document.getElementById('maintEditorModal');
-   return {開いた:!!m&&!m.hidden,
+   return {開いた:!!m&&!m.hidden,右の詳細:!!m&&m.classList.contains('is-docked'),
+     行の印:!!document.querySelector('.oc-row.is-on[data-oc-id]'),
+     題:(document.getElementById('maintEditorTitle')||{}).textContent||'',
      欄:[...document.querySelectorAll('#maintEditorForm [data-field]')].map(e=>e.dataset.field),
      設備タグ:!!document.querySelector('#maintEditorForm [data-tagfield="equipment"]'),
      サジェスト:!!document.querySelector('#maintEditorForm [data-equipment-search]')};
   });
-  rec('行を押すと汎用モーダルが開く',editor.開いた===true,JSON.stringify(editor.欄));
+  rec('行を押すと右の詳細が開く（窓で覆わない・押した行に印）',editor.開いた===true&&editor.右の詳細&&editor.行の印,JSON.stringify(editor));
+  rec('詳細の題は値（まとまり名ではない）',/^値\d+$/.test(editor.題.trim()),editor.題);
   rec('よみ・出す・表示順も同じ窓で決められる',
       ['reading','enabledText','order'].every(k=>editor.欄.includes(k)),JSON.stringify(editor.欄));
   rec('出る設備は直接入力ではなくタグ＋サジェスト',

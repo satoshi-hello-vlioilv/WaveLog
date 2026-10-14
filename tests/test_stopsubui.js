@@ -386,28 +386,34 @@ H.run('test_stopsubui: 設備停止マスタの画面（§9.397）',
      nw.save==='追加'&&nw.off&&nw.tabsOff==='subs,rules'&&nw.cat===TAG+'待ち'&&nw.picked===0&&nw.focus==='name',JSON.stringify(nw));
  await pick(idA);
 
- // ---- ⑥ 時間の画面（札＋スライダーの見本） ------------------------------
+ // ---- ⑥ 時間の画面（1本の目盛り: 点＝選べる時間・帯＝スライダーの範囲・§9.602） ----
  await openTab('stopMinutes');
  await page.waitForSelector('.smn-wrap',{timeout:15000});
  await idle();
  await page.fill('#smnNew','7');
  await page.click('#smnAdd');
- await page.waitForFunction(()=>[...document.querySelectorAll('.smn-chip b')].some(b=>/7/.test(b.textContent)),
+ await page.waitForFunction(()=>[...document.querySelectorAll('.smn-tick[data-smn-min]')].some(t=>t.dataset.smnMin==='7'),
    null,{timeout:10000});
  const mn=await page.evaluate(()=>{
-  const chips=[...document.querySelectorAll('.smn-chip b')].map(b=>b.textContent.trim());
-  const r=document.querySelector('.smn-range input[type=range]');
-  return {chips,min:r&&+r.min,max:r&&+r.max,step:r&&+r.step,disabled:!!(r&&r.disabled)};
+  const ticks=[...document.querySelectorAll('.smn-tick[data-smn-min]')].map(t=>+t.dataset.smnMin);
+  const ru=document.querySelector('.smn-ruler'),bd=document.querySelector('.smn-band');
+  const R=ru&&ru.getBoundingClientRect(),B=bd&&bd.getBoundingClientRect();
+  const max=Math.max(...ticks);
+  /* 帯の両端を目盛りの値へ読み戻す（帯の左端＝最小・右端＝最大）。 */
+  const at=x=>R?Math.round((x-R.left)/R.width*max):null;
+  return {chips:ticks,min:B?at(B.left):null,max:B?at(B.right):null,
+   sliders:document.querySelectorAll('.smn-wrap input[type=range]').length,
+   del:document.querySelectorAll('.smn-tick [data-smn-del]').length};
  });
  const vals=await page.evaluate(async()=>{
   const j=await (await fetch('/api/schedule/stop-minutes-master')).json();
   return (j.items||[]).map(x=>Number(x.minutes));
  });
- rec('選択肢を足せる（札が増える）',mn.chips.length===vals.length&&vals.includes(7),
-     `${mn.chips.length}札 / ${vals.length}件`);
- rec('スライダーの範囲は選択肢の最小〜最大',
+ rec('選択肢を足せる（目盛りの点が増える）',mn.chips.length===vals.length&&vals.includes(7),
+     `${mn.chips.length}点 / ${vals.length}件`);
+ rec('帯（スライダーの範囲）は選択肢の最小〜最大',
      mn.min===Math.min(...vals)&&mn.max===Math.max(...vals),`${mn.min}〜${mn.max} / ${vals.join(',')}`);
- rec('見本のスライダーは動かせない（押せるのに効かない物を置かない）',mn.disabled);
+ rec('目盛りは見るだけ（動かない見本のスライダーを置かない）・点ごとに消す道がある',mn.sliders===0&&mn.del===vals.length,JSON.stringify(mn));
 
  // ---- ⑦ どちらの画面も横にはみ出さない ---------------------------------
  const fitM=await page.evaluate(()=>{

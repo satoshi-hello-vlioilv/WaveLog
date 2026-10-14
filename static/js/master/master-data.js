@@ -4814,10 +4814,8 @@
     出して「ここまで動かせる」を先に見せる（§9.163: 答えるのはサーバー）。
     ============================================================ */
  const smnState={items:[],slider:null};
- function smnSay(text,bad){
-  const el=$('#smnState');if(!el)return;
-  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
- }
+ /* 結果は頭の知らせ（§9.602。前は帯の中の`#smnState`）。 */
+ function smnSay(text,bad){WL.mm.headSay(text,bad)}
  async function loadStopMinutesMaint(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
@@ -4831,41 +4829,41 @@
    list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message||String(e))}</div>`;
   }
  }
+ /* 盤の型（§9.602）: 選択肢の札の並びとスライダーの見本（2枚の面）をやめ、**1本の目盛り**で両方を言う——点＝選べる時間、
+    帯＝スライダーで細かく直せる範囲（両端は選択肢そのもの）。字は点の上、近すぎる点（目盛りの3%未満）の字は線の下へ。
+    消すのは点の字に乗せると出る ×、足すのは目盛りの下の欄。 */
+ function smnRulerHtml(items,sl){
+  const mins=items.map(r=>Number(r.minutes)).filter(n=>Number.isFinite(n)&&n>0).sort((a,b)=>a-b);
+  if(!mins.length)return '<p class="mm-empty">選択肢がまだありません。下の欄から足せます。</p>';
+  const max=Math.max(...mins,sl?sl.max:0)||1;
+  const pos=v=>`${(v/max*100).toFixed(2)}%`;
+  let lastUp=-Infinity;
+  const ticks=items.slice().sort((a,b)=>Number(a.minutes)-Number(b.minutes)).map(r=>{
+   const v=Number(r.minutes),up=(v-lastUp)/max>=0.03;if(up)lastUp=v;
+   const label=WL.duration.text(v);
+   return `<span class="smn-tick${up?'':' is-low'}" style="left:${pos(v)}" data-smn-min="${v}"><i aria-hidden="true"></i>`
+    +`<b>${esc(label)}<button type="button" data-smn-del="${r.id}" title="「${esc(label)}」を選択肢から消します" aria-label="「${esc(label)}」を消す">×</button></b></span>`;
+  }).join('');
+  return `<div class="smn-ruler" role="img" aria-label="選べる時間（点）とスライダーの範囲（帯）">`
+   +(sl?`<span class="smn-band" style="left:${pos(sl.min)};width:calc(${pos(sl.max)} - ${pos(sl.min)})"></span>`:'')
+   +ticks+`<span class="smn-axis">0</span></div>`;
+ }
  function renderStopMinutes(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   list.classList.remove('is-fill');
   list.parentElement&&list.parentElement.classList.remove('is-fill');
   const items=smnState.items||[];
   const sl=smnState.slider;
-  form.innerHTML=`<div class="op-bar">`
-   +`<span class="op-bar-note">作業スケジュールへ設備停止を入れるときに`
-   +`<b>選ばせる時間</b>です。<b>全設備で共通</b>。</span>`
-   +`<span class="op-bar-state" id="smnState"></span></div>`;
+  /* 帯（`.op-bar`）は持たない（§9.602）: 用途は頭の1行、説明は ⓘ。 */
+  form.innerHTML='';form.hidden=true;
+  const key=sl?`点＝選べる時間　帯＝スライダーで細かく直せる範囲 ${WL.duration.text(sl.min)}〜${WL.duration.text(sl.max)}（${sl.step}分刻み）`
+   :'点＝選べる時間（選択肢が1件以下のあいだは、スライダーは出しません——動かせる幅がありません）';
   list.innerHTML=`<div class="smn-wrap">
-    <div class="smn-card">
-     <div class="smn-card-head"><b>選択肢</b><span class="smn-count">${items.length}件</span>
-      <small>予定の登録画面には、この並び（分の小さい順）でそのまま出ます。</small></div>
-     <div class="smn-chips">${items.map(r=>
-       `<span class="smn-chip"><b>${esc(WL.duration.text(Number(r.minutes)))}</b>`
-       +`<button type="button" data-smn-del="${r.id}" title="この選択肢を消します">×</button></span>`).join('')
-       ||'<p class="mm-empty">選択肢がまだありません。下の欄から足せます。</p>'}</div>
-     <div class="smn-add">
-      <input type="text" id="smnNew" placeholder="分（例: 45）" autocomplete="off" inputmode="decimal">
-      <button type="button" id="smnAdd" class="mm-btn-primary">選択肢を追加</button>
-     </div>
-    </div>
-    <div class="smn-card">
-     <div class="smn-card-head"><b>スライダーの範囲</b>
-      <small>選択肢から選んだあと、登録の画面でこの範囲だけ細かく直せます。</small></div>
-     ${sl?`<div class="smn-preview">
-       <div class="smn-range"><span>${esc(WL.duration.text(sl.min))}</span>
-        <input type="range" min="${sl.min}" max="${sl.max}" step="${sl.step}" value="${sl.min}" disabled aria-label="スライダーの範囲の見本">
-        <span>${esc(WL.duration.text(sl.max))}</span></div>
-       <p class="smn-note"><b>${esc(WL.duration.text(sl.min))}</b> 〜 <b>${esc(WL.duration.text(sl.max))}</b>を
-        <b>${sl.step}分きざみ</b>で動かせます。両端は<b>上の選択肢そのもの</b>なので、
-        もっと長い時間まで動かしたいときは、その時間を選択肢に足してください。</p>
-      </div>`
-      :`<p class="mm-empty">選択肢が1件以下のあいだは、スライダーは出しません（動かせる幅がありません）。</p>`}
+    <p class="smn-ruler-k">${esc(key)}<span class="smn-count">${items.length}件</span></p>
+    ${smnRulerHtml(items,sl)}
+    <div class="smn-add"><span class="smn-add-k">選べる時間を足す</span>
+     <input type="text" id="smnNew" placeholder="分（例: 45）" autocomplete="off" inputmode="decimal" aria-label="足す時間（分）">
+     <button type="button" id="smnAdd" class="mm-btn-ghost">＋ 足す</button>
     </div>
    </div>`;
   bindStopMinutes();

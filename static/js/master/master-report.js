@@ -1730,11 +1730,10 @@
     既定の書き下ろしも紙の割りも`report-dashboard.js`にしか無い。ここで
     数え直すと、マスタと紙で違う答えが出る。
     ============================================================ */
- let rlyState={papers:[],picked:null,info:null,q:'',loading:false,err:''};
- function rlySay(text,bad){
-  const el=$('#rlyState');if(!el)return;
-  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
- }
+ /* `sel`＝右の詳細で見ている塊の鍵、`draft`＝詳細で直している途中の値（{shown,span,rows}・保存で書く・§9.602）。 */
+ let rlyState={papers:[],picked:null,info:null,q:'',loading:false,err:'',sel:'',draft:null};
+ /* 結果は頭の知らせ（§9.602。前は帯の中の`#rlyState`）。 */
+ function rlySay(text,bad){WL.mm.headSay(text,bad)}
  const RLY_COMMON='';                      /* 空＝設備の分からないロットの紙 */
  const rlyLabel=eq=>String(eq||'')||'共通（設備の分からないロット）';
  /* **閲覧モードでは触らせない**（§9.169と同じ作法）。列レイアウトマスタの
@@ -1807,6 +1806,29 @@
   }
   renderReportLayout();
  }
+ /* 右の詳細で見ている塊（無ければ先頭）と、直している途中の値を重ねた値。 */
+ function rlySelBlock(info){
+  const bs=(info&&info.blocks)||[];
+  if(!bs.some(b=>b.key===rlyState.sel)){rlyState.sel=(bs[0]||{}).key||'';rlyState.draft=null}
+  return bs.find(b=>b.key===rlyState.sel)||null;
+ }
+ function rlyDraftOf(b){return Object.assign({shown:!!b.shown,span:b.span,rows:b.rows||0},rlyState.draft||{})}
+ function rlyDirty(){
+  const b=rlySelBlock(rlyState.info);if(!b||!rlyState.draft)return false;
+  const d=rlyDraftOf(b);
+  return d.shown!==!!b.shown||d.span!==b.span||d.rows!==(b.rows||0);
+ }
+ const rlyRowsWord=(info,n)=>n?`${n}/${info.pageRows}段`:'中身なり';
+ /* 選ぶ欄の選択肢。**いまの値が選択肢に無いときは、その値を1つ足す**——足さないと欄が先頭の選択肢に落ち、
+    行（20/48段）と詳細（中身なり）が食い違う（紙で組み換えた値・紙の割りを変えたあとの値で起きる）。
+    欄の字（`text`）はここで決める: 選択肢は「名前（数/割り）」、足したいまの値は**行と同じ字に「（いまの値）」**だけ——
+    前は「20/48・いまの値（20/48）」と同じ値を2回言っていた（§9.602・入れたあとの採点）。`word`は行と同じ字の作り方。 */
+ function rlyChoices(list,cur,unit,word){
+  const cs=(list||[]).map(c=>({...c,text:`${c.label}（${c.v}/${unit}）`}));
+  if(cur&&!cs.some(c=>c.v===cur))cs.push({v:cur,text:`${word(cur)}（いまの値）`});
+  return cs.sort((a,b)=>a.v-b.v);
+ }
+ const rlySpanWord=(info,v)=>{const c=(info.spans||[]).find(x=>x.v===v);return c?c.label:`${v}/${info.grid}`};
  function renderReportLayout(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   /* **器の高さを中まで届ける**（§9.222 ⑤）。印を外すのは`loadMaintInner()`の
@@ -1814,161 +1836,174 @@
   list.classList.add('is-fill');
   list.parentElement&&list.parentElement.classList.add('is-fill');
   const info=rlyState.info||{};
-  form.innerHTML=`<div class="op-bar">`
-   +`<span class="op-bar-note">左が<b>設備ごとの紙</b>、右がその紙に載る<b>塊</b>です。`
-   +`塊そのもの（名前・種別・載せる項目）は<b>帳票ブロック</b>が持ちます。</span>`
-   +`<button type="button" id="rlyArrange" class="mm-btn-primary sm"${rlyEditable()?'':' disabled'}`
-   +` title="${rlyEditable()?'見本のロットでこの設備の紙を開き、置き場所を掴んで動かせる状態にします（実データは要りません）':esc(RLY_READONLY)}">紙で組み換える</button>`
-   +`<button type="button" id="rlyGotoBlocks" class="mm-btn-ghost sm"`
-   +` title="塊そのもの（名前・種別・載せる項目）を直す帳票ブロックマスタへ移ります">帳票ブロックを開く</button>`
-   +`<span class="op-bar-state" id="rlyState"></span></div>`;
-  list.innerHTML=`<div class="rly-edit">${rlyPaperPaneHtml()}${rlyBlockPaneHtml(info)}</div>`;
+  const ed=rlyEditable();
+  /* 帯（`.op-bar`）は持たない（§9.602）: 説明は ⓘ、主の操作は頭の「紙で組み換える」、帳票ブロックを開く・既定に戻すは ⋯、
+     紙（設備）は主役の上の対象の札の行。 */
+  form.innerHTML='';form.hidden=true;
+  WL.mm.setHeadActs({primary:{id:'rlyArrange',label:'紙で組み換える',plus:false,
+    title:ed?'見本のロットでこの設備の紙を開き、置き場所を掴んで動かせる状態にします（実データは要りません）':RLY_READONLY,
+    onClick:()=>WL.mm.afterLeave(()=>rlyArrange())},
+   more:[{label:'帳票ブロックを開く',note:'塊そのもの（名前・種別・載せる項目）を直す',data:{rlyMore:'blocks'},
+     onClick:()=>WL.mm.afterLeave(()=>document.querySelector('#masterMaintNav [data-master="reportBlock"]')?.click())}]
+    /* 消える操作は既定から変えた紙だけ（既定のままの紙で押しても何も起きないので出さない・§4）。 */
+    .concat(ed&&info.saved?[{label:'既定に戻す…',note:`${rlyLabel(rlyState.picked)}の紙の設定を消して既定へ（塊そのものは消えません）`,
+      danger:true,data:{rlyMore:'reset'},onClick:()=>rlyReset()}]:[])});
+  const ar=$('#rlyArrange');if(ar)ar.disabled=!ed;
+  const papers=rlyState.papers||[];
+  rlySelBlock(info);   // 選んだ塊を先に決める（表の行の印と右の詳細が同じ塊を指す）
+  list.innerHTML=WL.mm.scopeBarHtml({label:'対象',cur:rlyState.picked,
+    items:papers.map(p=>({v:p.equipment,label:p.equipment?(p.equipment+(p.gone?'（設備マスタに無し）':'')):'共通',
+     n:p.saved?'設定あり':null,
+     title:`${p.label}／${p.saved?`${p.blocks}塊を配置${p.hiddenCount?`／外し ${p.hiddenCount}`:''}`:'既定のまま'}${p.gone?'／設備マスタにはもうありません（設定だけが残っています）':''}`}))})
+   +`<div class="rly-edit">${rlyBlockPaneHtml(info)}${rlyDetailHtml(info)}</div>`;
   bindReportLayout();
   if(rlyState.err)rlySay('配置を読めませんでした: '+rlyState.err,true);
  }
- function rlyPaperPaneHtml(){
-  const q=String(rlyState.q||'').trim().toLowerCase();
-  const all=rlyState.papers||[];
-  const hit=q?all.filter(p=>p.label.toLowerCase().includes(q)):all;
-  const kept=all.filter(p=>p.saved).length;
-  return `<div class="rly-papers">
-    <div class="rly-papers-head">
-     <b>設備ごとの紙</b><span class="oc-count">${all.length}件（設定あり ${kept}件）</span>
-     <input type="search" id="rlySearch" value="${esc(rlyState.q||'')}" placeholder="設備名で絞る" autocomplete="off">
-    </div>
-    <div class="rly-paper-list">${hit.map(p=>{
-      const on=p.equipment===rlyState.picked;
-      const state=p.saved?`${p.blocks}塊を配置${p.hiddenCount?`／外し ${p.hiddenCount}`:''}`:'既定のまま';
-      return `<button type="button" class="rly-paper${on?' is-on':''}" data-rly-paper="${esc(p.equipment)}"
-        title="${esc(p.label)}／${esc(state)}${p.gone?'／設備マスタにはもうありません（設定だけが残っています）':''}">
-       <b>${esc(p.label)}</b>
-       <span class="rly-paper-sub">
-        <span class="rly-paper-meta">${esc(state)}</span>
-        ${p.gone?'<span class="rly-paper-gone">設備マスタに無し</span>':''}
-       </span>
-      </button>`}).join('')
-      ||`<p class="mm-empty">${q?'絞り込みに当たる設備がありません。':'設備がまだ登録されていません。'}</p>`}</div>
-   </div>`;
- }
  function rlyBlockPaneHtml(info){
-  if(!info||!info.blocks)return `<div class="rly-blocks"><p class="mm-empty">左で<b>設備</b>を選ぶと、その紙に載る塊が出ます。</p></div>`;
+  if(!info||!info.blocks)return `<div class="rly-blocks"><p class="mm-empty">上で<b>紙</b>を選ぶと、その紙に載る塊が出ます。</p></div>`;
   const shown=info.blocks.filter(b=>b.shown).length;
-  const spans=info.spans||[],rowChoices=info.rowChoices||[];
   const ro=rlyEditable()?'':' disabled';
+  /* 全行で同じ列（高さ・置き場所）は表から外し、表の上に「全行で同じ」の1行（§9.599 の型）。違う行があるときだけ列にする。 */
+  const bs=info.blocks;
+  const sameRows=bs.length>0&&bs.every(b=>(b.rows||0)===(bs[0].rows||0));
+  const autoPos=bs.every(b=>!(b.col&&b.row));
+  const same=[sameRows?`<span class="mm-same-i"><b>高さ</b>${esc(rlyRowsWord(info,bs[0]&&bs[0].rows))}</span>`:'',
+   autoPos?'<span class="mm-same-i"><b>置き場所</b>自動（紙で組み換えるで決める）</span>':''].filter(Boolean);
   const head=`<div class="rly-blocks-head">
     <b>${esc(rlyLabel(info.equipment))}の紙</b>
     <span class="oc-count">塊 ${info.blocks.length}件（出す ${shown}／出さない ${info.blocks.length-shown}）</span>
     <span class="rly-grid">紙の割り
-     <span class="rly-grid-pick" role="group" aria-label="紙の列数">${(info.gridChoices||[]).map(n=>
+     <span class="mm-seg" role="group" aria-label="紙の列数">${(info.gridChoices||[]).map(n=>
        `<button type="button" data-rly-cols="${n}" class="${n===info.grid?'is-on':''}"${ro} title="紙を横${n}マスに割ります">${n}列</button>`).join('')}</span>
-     <span class="rly-grid-pick" role="group" aria-label="紙の段数">${(info.pageRowChoices||[]).map(n=>
+     <span class="mm-seg" role="group" aria-label="紙の段数">${(info.pageRowChoices||[]).map(n=>
        `<button type="button" data-rly-rows="${n}" class="${n===info.pageRows?'is-on':''}"${ro} title="紙を縦${n}段に割ります">${n}段</button>`).join('')}</span>
     </span>
-    <button type="button" id="rlyReset" class="mm-btn-ghost sm danger"${(info.saved&&rlyEditable())?'':' disabled'}
-      title="${!rlyEditable()?esc(RLY_READONLY)
-        :(info.saved?'この設備の配置を消して、登録順・登録幅・全部出す（既定）へ戻します'
-        :'まだこの設備の配置は保存されていません（いまも既定のままです）')}">既定に戻す</button>
    </div>`;
-  const rows=info.blocks.map(b=>{
+  const rows=bs.map((b,i)=>{
    const pos=b.col&&b.row?`${b.col}列 ${b.row}段`:'自動';
    const origin=b.user?'自作の塊':(b.id?'既定の塊':'既定の塊（マスタ未登録）');
-   /* **既定と違うところを言う**（§9.254 ③／§2）——幅と高さは帳票ブロックが
-      既定を持ち、この紙が上書きする。どちらで直すのかを思い出させないため、
+   /* **既定と違うところを言う**（§9.254 ③／§2）——幅と高さは帳票ブロックが既定を持ち、この紙が上書きする。
       **違うときだけ**「既定 X → いま Y」と書く（同じときは何も足さない）。 */
-   const rowsWord=n=>n?`${n}/${info.pageRows}段`:'中身なり';
    const diff=[];
    if(b.defSpan&&b.span!==b.defSpan)diff.push(`幅 既定${b.defSpan}→${b.span}`);
-   if(b.rows!==b.defRows)diff.push(`高さ 既定${rowsWord(b.defRows)}→${rowsWord(b.rows)}`);
-   return `<div class="rly-row${b.shown?'':' is-off'}" data-rly-key="${esc(b.key)}">
+   if(b.rows!==b.defRows)diff.push(`高さ 既定${rlyRowsWord(info,b.defRows)}→${rlyRowsWord(info,b.rows)}`);
+   /* 行は字と帯（押す物を並べない・§9.602）。直すのは行を押して開く右の詳細。 */
+   return `<div class="rly-row${b.shown?'':' is-off'}${b.key===rlyState.sel?' is-on':''}" data-rly-key="${esc(b.key)}" role="row" tabindex="0"
+     title="押すと右の詳細でこの塊を直せます">
      <span class="rly-cell rly-name" title="${esc(b.key)}">
-      <b>${esc(b.label)}</b>
+      <b><i class="rly-no">${i+1}</i>${esc(b.label)}</b>
       <small>${esc(origin)}${b.kind?'・'+esc(b.kind):''}${b.fields?`・${b.fields}項目`:''}${
        diff.length?`<i class="rly-diff" title="帳票ブロックが持つ既定と違います。既定へ戻すには同じ値を選び直してください">${esc(diff.join('・'))}</i>`:''}</small></span>
-     <span class="rly-cell rly-vis">
-      <button type="button" class="rly-tgl${b.shown?' is-on':''}" data-rly-vis="${esc(b.key)}"
-        aria-pressed="${b.shown?'true':'false'}"${ro}
-        title="${ro?esc(RLY_READONLY):(b.shown?'この紙から外します（設定は残ります）':'この紙へ出します')}">${b.shown?'出す':'出さない'}</button></span>
-     <span class="rly-cell rly-pick">
-      <select data-rly-span="${esc(b.key)}" aria-label="${esc(b.label)}の幅"${ro}
-        title="${ro?esc(RLY_READONLY):`紙の横${info.grid}マスのうち何マスを使うかです`}">${spans.map(c=>
-        `<option value="${c.v}"${c.v===b.span?' selected':''}>幅 ${esc(c.label)}（${c.v}/${info.grid}）</option>`).join('')}</select></span>
-     <span class="rly-cell rly-pick">
-      <select data-rly-rows-of="${esc(b.key)}" aria-label="${esc(b.label)}の高さ"${ro}
-        title="${ro?esc(RLY_READONLY):`紙の縦${info.pageRows}段のうち何段を使うかです。「中身なり」は描いてから測って合わせます`}">
-       <option value="0"${b.rows?'':' selected'}>高さ 中身なり</option>${rowChoices.map(c=>
-        `<option value="${c.v}"${c.v===b.rows?' selected':''}>高さ ${esc(c.label)}（${c.v}/${info.pageRows}）</option>`).join('')}</select></span>
-     <span class="rly-cell rly-pos" title="置き場所は「紙で組み換える」で決めます">${esc(pos)}</span>
-     <span class="rly-cell rly-act">
-      ${b.id?`<button type="button" class="mm-btn-ghost sm" data-rly-edit="${b.id}"
-        title="この塊そのもの（名前・種別・載せる項目）を帳票ブロックマスタで直します">中身を直す</button>`
-       :`<em class="mm-blank" title="この塊はアプリがもともと持っているもので、帳票ブロックマスタにまだ行がありません">—</em>`}</span>
+     <span class="rly-cell rly-vis">${b.shown?'出す':'出さない'}</span>
+     <span class="rly-cell rly-wid" title="紙の横${info.grid}マスのうち${b.span}マス"><span class="rly-wbar"><i style="width:${Math.min(100,b.span/(info.grid||1)*100).toFixed(1)}%"></i></span>${esc(rlySpanWord(info,b.span))}</span>
+     ${sameRows?'':`<span class="rly-cell">${esc(rlyRowsWord(info,b.rows))}</span>`}
+     ${autoPos?'':`<span class="rly-cell rly-pos" title="置き場所は「紙で組み換える」で決めます">${esc(pos)}</span>`}
     </div>`;
   }).join('');
   return `<div class="rly-blocks">
     ${head}
-    <div class="rly-table" role="table">
+    ${same.length?`<div class="mm-same"><span class="mm-same-k">全行で同じ</span>${same.join('')}</div>`:''}
+    <div class="rly-table${sameRows?'':' has-rows'}${autoPos?'':' has-pos'}" role="table">
      <div class="rly-row is-head" role="row">
-      <span>塊</span><span>紙に出す</span><span>幅</span><span>高さ</span><span>置き場所</span><span></span>
+      <span>塊</span><span>紙に出す</span><span>幅</span>${sameRows?'':'<span>高さ</span>'}${autoPos?'':'<span>置き場所</span>'}
      </div>
-     <div class="rly-table-scroll">${rows||'<p class="mm-empty">この設備の紙に載る塊がありません。</p>'}</div>
+     <div class="rly-table-scroll">${rows||'<p class="mm-empty">この紙に載る塊がありません。</p>'}</div>
     </div>
-    <p class="rly-note">${rlyEditable()?'':`<b>${esc(RLY_READONLY)}</b> `}置き場所（何列目・何段目）は<b>紙で組み換える</b>から、見本のロットで実際の紙を見ながら決めます。
-     ここで決めた幅・高さ・出す/出さないは<b>この設備の紙だけ</b>に効きます（塊そのものの既定は帳票ブロックが持ちます）。</p>
+    ${rlyEditable()?'':`<p class="rly-note"><b>${esc(RLY_READONLY)}</b></p>`}
    </div>`;
+ }
+ /* 右の詳細（§9.602）: 上に紙の上の並びの縮図（出す塊を並び順・幅のとおりに流す・選んだ塊は青緑）、下に選んだ塊の欄と足元の保存。 */
+ function rlyDetailHtml(info){
+  const b=rlySelBlock(info);
+  if(!b)return '';
+  const ro=rlyEditable()?'':' disabled';
+  const d=rlyDraftOf(b);
+  const bs=info.blocks||[],on=bs.map((x,i)=>({x,i})).filter(o=>o.x.key===b.key?d.shown:o.x.shown);
+  const autoPos=bs.every(x=>!(x.col&&x.row));
+  const mini=`<div class="rly-mini"><div class="rly-mini-k">紙の上の並び（${info.grid}列）</div>
+    <div class="rly-mini-paper" style="--rly-g:${info.grid}">${on.map(o=>{
+      const sp=o.x.key===b.key?d.span:o.x.span;
+      return `<span class="rly-mini-blk${o.x.key===b.key?' is-on':''}" style="grid-column:span ${Math.max(1,Math.min(info.grid,sp))}" title="${o.i+1}. ${esc(o.x.label)}">${o.i+1}</span>`}).join('')}</div>
+    ${autoPos?'':'<small class="rly-mini-note">置き場所は紙で決めた位置です（この図は並びと幅だけ）。</small>'}</div>`;
+  const pos=b.col&&b.row?`${b.col}列 ${b.row}段`:'自動（紙で組み換えるで決める）';
+  return `<aside class="rly-detail" aria-label="選んだ塊">
+    ${mini}
+    <div class="mm-dhead"><div><div class="mm-dhead-line"><small>塊</small><h3>${esc(b.label)}</h3></div></div>
+     ${b.id?`<button type="button" id="rlyBlockMore" class="mm-btn-ghost mm-hd-more" aria-haspopup="menu" aria-expanded="false" aria-label="この塊の操作" title="中身を直す（帳票ブロック）"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`:''}</div>
+    <div class="rly-dform">
+     <div class="rly-dline"><span>紙に出す</span><span class="mm-seg" role="group" aria-label="紙に出す">
+      <button type="button" data-rly-d-shown="1" class="${d.shown?'is-on':''}"${ro}>出す</button><button type="button" data-rly-d-shown="0" class="${d.shown?'':'is-on'}"${ro}>出さない</button></span></div>
+     <label class="rly-dline"><span>幅</span><select data-rly-d-span${ro} title="紙の横${info.grid}マスのうち何マスを使うかです">${rlyChoices(info.spans,d.span,info.grid,v=>`${v}/${info.grid}`).map(c=>
+       `<option value="${c.v}"${c.v===d.span?' selected':''}>${esc(c.text)}</option>`).join('')}</select></label>
+     <label class="rly-dline"><span>高さ</span><select data-rly-d-rows${ro} title="紙の縦${info.pageRows}段のうち何段を使うかです。「中身なり」は描いてから測って合わせます">
+      <option value="0"${d.rows?'':' selected'}>中身なり</option>${rlyChoices(info.rowChoices,d.rows,info.pageRows,v=>rlyRowsWord(info,v)).map(c=>
+       `<option value="${c.v}"${c.v===d.rows?' selected':''}>${esc(c.text)}</option>`).join('')}</select></label>
+     <div class="rly-dline"><span>置き場所</span><span class="rly-ro">${esc(pos)}</span></div>
+    </div>
+    <div class="pc-save rly-foot"><span class="mm-form-hint pc-dirty"></span>
+     <button type="button" class="mm-btn-ghost" id="rlyCancel">キャンセル</button><button type="button" class="mm-btn-primary" id="rlySave">保存</button></div>
+   </aside>`;
  }
  function bindReportLayout(){
   const list=$('#masterMaintList');if(!list)return;
-  const se=$('#rlySearch');
-  if(se)se.oninput=()=>{
-   /* **入力中に器を作り直さない**（§9.117）——1文字ごとにカーソルが飛ぶ。
-      作り直すのは左の一覧だけ。 */
-   rlyState.q=se.value;
-   const pane=list.querySelector('.rly-papers');
-   if(!pane){renderReportLayout();return}
-   const keep=se.selectionStart;
-   pane.outerHTML=rlyPaperPaneHtml();
-   bindReportLayout();
-   const el=$('#rlySearch');
-   if(el){el.focus();try{el.setSelectionRange(keep,keep)}catch(_){WL.quiet.note('カーソル位置を戻せない（値は入っている）',_)}}
-  };
-  list.querySelectorAll('[data-rly-paper]').forEach(b=>b.onclick=()=>rlyPick(b.dataset.rlyPaper));
-  list.querySelectorAll('[data-rly-vis]').forEach(b=>b.onclick=()=>{
-   const k=b.dataset.rlyVis,on=b.classList.contains('is-on');
-   rlyWrite(()=>WL.reportLayout.setShown(rlyState.picked,k,!on),
-     on?`「${k}」を紙から外しました。`:`「${k}」を紙へ出しました。`);
-  });
-  list.querySelectorAll('select[data-rly-span]').forEach(el=>el.onchange=()=>{
-   const k=el.dataset.rlySpan;
-   rlyWrite(()=>WL.reportLayout.setSpan(rlyState.picked,k,Number(el.value)),`「${k}」の幅を変えました。`);
-  });
-  list.querySelectorAll('select[data-rly-rows-of]').forEach(el=>el.onchange=()=>{
-   const k=el.dataset.rlyRowsOf;
-   rlyWrite(()=>WL.reportLayout.setRows(rlyState.picked,k,Number(el.value)),`「${k}」の高さを変えました。`);
+  /* 紙を替える・塊を選び直す前に、詳細で直している途中の値を聞く（黙って捨てない・§9.598）。 */
+  WL.mm.wireScopeBar(list,v=>WL.mm.afterLeave(()=>rlyPick(v)));
+  list.querySelectorAll('.rly-row[data-rly-key]').forEach(r=>{
+   const pick=()=>{if(r.dataset.rlyKey===rlyState.sel)return;WL.mm.afterLeave(()=>{rlyState.sel=r.dataset.rlyKey;rlyState.draft=null;renderReportLayout()})};
+   r.onclick=pick;
+   r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick()}};
   });
   list.querySelectorAll('[data-rly-cols]').forEach(b=>b.onclick=()=>
    rlyWrite(()=>WL.reportLayout.setGrid(rlyState.picked,Number(b.dataset.rlyCols),null),'紙の列数を変えました。'));
   list.querySelectorAll('[data-rly-rows]').forEach(b=>b.onclick=()=>
    rlyWrite(()=>WL.reportLayout.setGrid(rlyState.picked,null,Number(b.dataset.rlyRows)),'紙の段数を変えました。'));
-  list.querySelectorAll('[data-rly-edit]').forEach(b=>b.onclick=()=>rlyEditBlock(b.dataset.rlyEdit));
-  const rs=$('#rlyReset');
-  if(rs)rs.onclick=async()=>{
-   /* **消える操作は1回だけ確かめる**（§CLAUDE 5）。 */
-   if(!await confirmModal(`${rlyLabel(rlyState.picked)}の紙の設定（並び・幅・高さ・出す/出さない・紙の割り）を消して、既定に戻しますか？\n塊そのもの（帳票ブロック）は消えません。`))return;
-   rlyWrite(()=>WL.reportLayout.reset(rlyState.picked),'既定に戻しました。');
+  /* 詳細の欄: 打った値は保存まで手元（`draft`）。表の行と縮図はその場で描き直す（保存の前に紙での見え方が分かる）。 */
+  const setDraft=(patch,focus)=>{
+   rlyState.draft=Object.assign({},rlyState.draft||{},patch);
+   renderReportLayout();
+   if(focus){const el=list.querySelector(focus);if(el)el.focus()}
   };
-  const ar=$('#rlyArrange');
-  if(ar)ar.onclick=async()=>{
-   rlySay('見本のロットで紙を開いています…');
-   try{await WL.reportLayout.arrange(rlyState.picked,{returnTo:'layout'})}
-   catch(e){rlySay('紙を開けませんでした: '+(e.message||String(e)),true)}
+  list.querySelectorAll('[data-rly-d-shown]').forEach(b=>b.onclick=()=>setDraft({shown:b.dataset.rlyDShown==='1'},`[data-rly-d-shown="${b.dataset.rlyDShown}"]`));
+  const sp=list.querySelector('select[data-rly-d-span]');if(sp)sp.onchange=()=>setDraft({span:Number(sp.value)},'select[data-rly-d-span]');
+  const rw=list.querySelector('select[data-rly-d-rows]');if(rw)rw.onchange=()=>setDraft({rows:Number(rw.value)},'select[data-rly-d-rows]');
+  const cancel=$('#rlyCancel'),save=$('#rlySave');
+  WL.mm.paintFootState(list.querySelector('.rly-foot .pc-dirty'),[cancel,save],false,rlyEditable()&&rlyDirty());
+  if(cancel)cancel.onclick=()=>{rlyState.draft=null;renderReportLayout()};
+  if(save)save.onclick=()=>rlySaveDraft();
+  const more=$('#rlyBlockMore');
+  if(more)more.onclick=()=>{
+   const b=rlySelBlock(rlyState.info);if(!b||!b.id)return;
+   WL.mm.openActMenu(more,[{label:'中身を直す（帳票ブロック）',note:'名前・種別・載せる項目',data:{rlyEdit:b.id},
+    onClick:()=>WL.mm.afterLeave(()=>rlyEditBlock(b.id))}],'この塊の操作');
   };
-  const gb=$('#rlyGotoBlocks');
-  if(gb)gb.onclick=()=>document.querySelector('#masterMaintNav [data-master="reportBlock"]')?.click();
+ }
+ /* 詳細の保存: 変えた欄だけを書く（出す・幅・高さの順）。 */
+ async function rlySaveDraft(){
+  const b=rlySelBlock(rlyState.info);if(!b||!rlyDirty())return;
+  const d=rlyDraftOf(b),k=b.key,eq=rlyState.picked;
+  await rlyWrite(async()=>{
+   if(d.shown!==!!b.shown)await WL.reportLayout.setShown(eq,k,d.shown);
+   if(d.span!==b.span)await WL.reportLayout.setSpan(eq,k,d.span);
+   if(d.rows!==(b.rows||0))await WL.reportLayout.setRows(eq,k,d.rows);
+   rlyState.draft=null;
+  },`「${b.label}」を保存しました。`);
+ }
+ async function rlyReset(){
+  /* **消える操作は1回だけ確かめる**（§CLAUDE 5）。 */
+  if(!await confirmModal({title:'既定に戻す',danger:true,confirmLabel:'既定に戻す',
+    message:`${rlyLabel(rlyState.picked)}の紙の設定（並び・幅・高さ・出す/出さない・紙の割り）を消して、既定に戻しますか？\n塊そのもの（帳票ブロック）は消えません。`}))return;
+  rlyState.draft=null;
+  rlyWrite(()=>WL.reportLayout.reset(rlyState.picked),'既定に戻しました。');
+ }
+ async function rlyArrange(){
+  rlySay('見本のロットで紙を開いています…');
+  try{await WL.reportLayout.arrange(rlyState.picked,{returnTo:'layout'})}
+  catch(e){rlySay('紙を開けませんでした: '+(e.message||String(e)),true)}
  }
  async function rlyPick(eq){
   const v=String(eq||'');
   if(rlyState.picked===v&&rlyState.info)return;
-  rlyState.picked=v;
+  rlyState.picked=v;rlyState.sel='';rlyState.draft=null;
   rlySay('読み込んでいます…');
   try{rlyState.info=await WL.reportLayout.info(v);rlyState.err=''}
   catch(e){rlyState.err=e.message||String(e)}
@@ -2027,6 +2062,6 @@
 
 
  /* 盤の登録簿へ名乗る（§9.324 R3）。 */
- WL.mm.registerSpecial('report-layout',{load:loadReportLayoutMaint,onEditorClose:renderReportLayout});
+ WL.mm.registerSpecial('report-layout',{load:loadReportLayoutMaint,onEditorClose:renderReportLayout,dirty:()=>rlyDirty()});
  Object.assign(WL.mm,{RB_PAGE_ROWS,bindFieldBuilders,forgetReportCaches,rbAsideHtml,rbBindAside});
 })();

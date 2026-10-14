@@ -39,7 +39,7 @@ run('test_mmswitch: マスタ管理のタブを切り替えても前のタブの
   await inFlight(/\/api\/operation-item-master/);
   /* **汎用の一覧を持つタブ**を選ぶこと（見るのは「追加が押せる一覧が出るか」）。
      設備停止マスタは§9.397で専用画面（3ペイン）になったので、ここでは使わない
-     ——`.op-bar`を持つ専用画面なので「前のタブの盤が残っている」と誤判定する。
+     ——専用画面なので「前のタブの盤が残っている」と誤判定する。
      刃マスタも§9.529で専用の盤（2ペイン）になり「追加」を持たないので使わない（§9.537 で気づいた・
      それ以来この節は必ず落ちていた）。ロールマスタは汎用の一覧のまま。 */
   const moved=await page.evaluate(()=>{
@@ -65,7 +65,8 @@ run('test_mmswitch: マスタ管理のタブを切り替えても前のタブの
   const st=await page.evaluate(()=>({
    見出し:(document.querySelector('#masterMaintTitle,.mm-title')||{}).textContent||'',
    追加:!!document.getElementById('masterMaintAdd'),
-   前の盤:!!document.querySelector('#masterMaintForm #opEqPick, #masterMaintForm .op-bar'),
+   /* 盤の目印は盤の上の切り替え（§9.602。前は帯`.op-bar`と設備の欄`#opEqPick`）。 */
+   前の盤:!!document.querySelector('#masterMaintList .op-boardbar, #masterMaintList .op-edit'),
   }));
   rec('見出しは切り替えた先のマスタ',/ロール/.test(st.見出し),st.見出し||'なし');
   rec('前のタブの盤が残っていない',!st.前の盤,JSON.stringify(st));
@@ -76,7 +77,7 @@ run('test_mmswitch: マスタ管理のタブを切り替えても前のタブの
   // 遅い盤へ戻れること（負けたほうが描き直す作りで、戻る道を塞いでいないか）。
   await page.evaluate(()=>{const b=document.querySelector('[data-master="opItem"]');if(b)b.click()});
   await idle(600,8000);
-  const back=await page.evaluate(()=>!!document.querySelector('#masterMaintForm #opEqPick, #masterMaintForm .op-bar'));
+  const back=await page.evaluate(()=>!!document.querySelector('#masterMaintList .op-boardbar'));
   rec('遅い盤のタブへ戻れる',back);
 
   /* ---- 汎用の一覧どうしでも同じこと ----

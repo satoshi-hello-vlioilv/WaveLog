@@ -19,16 +19,16 @@ CLAUDE.md の「画面を作るときの基準」（15項目）と、それをWa
 | 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 84 |
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](api.md) | 23 |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](master-server.md) | 37 |
-| マスタ管理の画面・盤・編集モーダル | [master-ui.md](master-ui.md) | 69 |
+| マスタ管理の画面・盤・編集モーダル | [master-ui.md](master-ui.md) | 77 |
 | `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 166 |
 | 測定画面・操業データ項目・公差・条の設計 | [measure.md](measure.md) | 105 |
 | 刃組ガイダンス（`blade-*.js`）・部材・刃選択 | [bladeset.md](bladeset.md) | 259 |
 | 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 115 |
 | `print-core.js`・帳票ブロック・用紙と余白 | [report.md](report.md) | 100 |
-| `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 56 |
-| 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 74 |
+| `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 58 |
+| 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 75 |
 | テストを書く・回す・後片付け | [testing.md](testing.md) | 64 |
 | どの束にも入らないもの | [misc.md](misc.md) | 19 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **1247件**（`ui-principles.md` は節で数える）。
+規則は合わせて **1258件**（`ui-principles.md` は節で数える）。

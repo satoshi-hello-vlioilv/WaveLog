@@ -11,7 +11,7 @@
    因子の呼び名もサーバー（`FACTOR_LABELS`）。
    ============================================================ */
 (function(){
- const {requireMaintUser,setMaintLoading}=WL.mm;
+ const {requireMaintUser,setMaintLoading,tipHtml}=WL.mm;
  const st={equipment:'',configured:true,model:null,points:[],summary:null,labels:{},lot:'',sel:null};
  const BASIS={equipment:'この設備の実績',pooled:'全設備の実績（この設備の実績が20件に足りない間）'};
  const nameOf=k=>(st.labels[k]||{}).label||k,unitOf=k=>(st.labels[k]||{}).unit||'';
@@ -29,7 +29,8 @@
   if(!st.equipment&&opts.length)st.equipment=opts[0].name;
   renderForm();
   if(!st.equipment){list.innerHTML='<div class="mm-empty">設備マスタが未登録です。先に「設備」タブで登録してください。</div>';return}
-  list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  list.innerHTML=scopeHtml()+'<div class="mm-empty">読み込んでいます…</div>';
+  wireScope(list);
   try{
    const r=await api('/api/schedule/load-factors?equipment='+encodeURIComponent(st.equipment));
    st.configured=!!(r&&r.configured);st.model=st.configured?r.model:null;
@@ -38,17 +39,17 @@
    renderList();
   }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
+ /* 盤の型（§9.602）: 帯（設備の欄・説明の1行・再計算）は持たない——説明は頭の ⓘ、再計算は ⋯、設備は主役の上の対象の札の行。 */
  function renderForm(){
   const form=$('#masterMaintForm');if(!form)return;
-  const opts=WL.records.equipmentMasterState.items||[];
-  form.innerHTML=`<div class="mm-cd-toolbar">
-    <div class="mm-cd-dbtabs"><select id="mmLfEquipment" aria-label="設備">${opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===st.equipment?' selected':''}>${esc(eq.name)}</option>`).join('')||'<option value="">設備マスタが未登録です</option>'}</select></div>
-    <p class="mm-form-hint lf-lead">見積は<b>基準時間 × 因子ごとの係数</b>です。左の図で当たり具合を見て、右の図で係数を直します（直した係数は予定の見積にすぐ効きます）。</p>
-    <div class="mm-cd-actions"><button type="button" id="mmLfRecalc" class="mm-btn-ghost sm" title="完了した実績から係数を作り直します">再計算</button></div></div>`;
-  form.onsubmit=ev=>ev.preventDefault();
-  $('#mmLfEquipment').onchange=e=>{st.equipment=e.target.value;st.lot='';st.sel=null;loadLoadFactorMaint(false)};
-  $('#mmLfRecalc').onclick=recalc;
+  form.innerHTML='';form.hidden=true;
+  WL.mm.setHeadActs({more:[{label:'再計算',note:'完了した実績から係数を作り直します',data:{lfMore:'recalc'},onClick:recalc}]});
  }
+ function scopeHtml(){
+  const opts=WL.records.equipmentMasterState.items||[];
+  return WL.mm.scopeBarHtml({label:'対象',cur:st.equipment,items:opts.map(eq=>({v:eq.name,label:eq.name}))});
+ }
+ function wireScope(list){WL.mm.wireScopeBar(list,v=>{st.equipment=v;st.lot='';st.sel=null;loadLoadFactorMaint(false)})}
  async function recalc(){
   const uid=requireMaintUser();if(uid===null)return;
   try{
@@ -64,10 +65,12 @@
  function renderList(){
   const list=$('#masterMaintList');if(!list)return;
   if(!st.configured){list.innerHTML='<div class="mm-empty">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';return}
-  if(!st.model){list.innerHTML='<div class="mm-empty">この設備の完了実績がまだ無く、係数を作れません。完了した実績（開始と終了の時刻つき）がたまると作ります。</div>';return}
-  list.innerHTML=`${kpiHtml()}<div class="lf-grid"><section class="lf-col"><div class="lf-box" id="lfPlot">${plotHtml()}</div><div class="lf-box" id="lfWf">${wfHtml()}</div></section>`
-   +`<section class="lf-col"><div class="lf-box" id="lfForest">${forestHtml()}</div><div class="lf-box" id="lfEdit">${editHtml()}</div></section></div>`;
-  wire(list);
+  if(!st.model){list.innerHTML=scopeHtml()+'<div class="mm-empty">この設備の完了実績がまだ無く、係数を作れません。完了した実績（開始と終了の時刻つき）がたまると作ります。</div>';wireScope(list);return}
+  /* 「1ロットの積み上げ」「係数を直す」は、点・係数を選ぶまでは案内の1行（面を空のまま取らない・§9.602）。 */
+  const hint=(id,on)=>`lf-box${on?'':' is-hint'}" id="${id}`;
+  list.innerHTML=`${scopeHtml()}${kpiHtml()}<div class="lf-grid"><section class="lf-col"><div class="lf-box" id="lfPlot">${plotHtml()}</div><div class="${hint('lfWf',st.points.some(p=>p.lot===st.lot))}">${wfHtml()}</div></section>`
+   +`<section class="lf-col"><div class="lf-box" id="lfForest">${forestHtml()}</div><div class="${hint('lfEdit',!!st.sel)}">${editHtml()}</div></section></div>`;
+  wireScope(list);wire(list);WL.popMenu.tips(list);
  }
  function kpiHtml(){
   const m=st.model,s=st.summary,base=ovOf('BASE','');
@@ -138,7 +141,8 @@
  /* 係数の図の物差し（対数・×1 が基準）。描くのも、打った値の◆を置くのもこの1つ。 */
  function forestScale(){
   const vals=(st.model.factors||[]).map(f=>f.value).concat(((st.model.overrides||[]).filter(o=>o.factor!=='BASE')).map(o=>o.coefficient),[.8,1.25]);
-  const lo=Math.log(Math.min(...vals)*.92),hi=Math.log(Math.max(...vals)*1.08),W=520,L=170,R=70;
+  /* 右の余白`R`は値の字（「×1.144 少ない」「×1.0 → ×1.25」）が入る幅（§9.602。70 では右端で切れていた）。 */
+  const lo=Math.log(Math.min(...vals)*.92),hi=Math.log(Math.max(...vals)*1.08),W=560,L=170,R=112;
   return {lo,hi,W,R,L,X:v=>L+(Math.log(Math.max(v,1e-6))-lo)/(hi-lo)*(W-L-R)};
  }
  /* 水準の並び: 数の水準は小さい順（「〜a」が先・「a〜b」「a」は a で比べる）、字の水準は件数の多い順。 */
@@ -159,7 +163,7 @@
   [.8,1,1.25,1.5].filter(v=>Math.log(v)>lo&&Math.log(v)<hi).forEach(v=>{s+=`<text class="lf-t" x="${X(v)}" y="${H-8}" text-anchor="middle">${v===1?'×1（基準）':'×'+v}</text>`});
   rows.forEach((r,i)=>{s+=forestRow(r,i,{X,W,R,rh})});
   s+=`<text class="lf-dt" data-lf-draft-t text-anchor="end"></text>`;
-  return `<h4>係数の効き目 <small>×1 の線より右＝長くかかる・左＝短い。横棒は確からしさ（件数が少ないほど長い）。◆＝手動上書き。押すと下で直せる</small></h4>${s}</svg>`;
+  return `<h4>係数の効き目 ${tipHtml('×1 の線より右＝長くかかる・左＝短い。横棒は確からしさ（件数が少ないほど長い）。◆＝手動上書き。行を押すと下で直せる。')}</h4>${s}</svg>`;
  }
  function forestRow(r,i,{X,W,R,rh}){
   const y=12+i*rh,m=st.model;

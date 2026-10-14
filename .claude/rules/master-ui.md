@@ -1,4 +1,4 @@
-# マスタ管理の画面（69件）
+# マスタ管理の画面（77件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,14 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 操業データ項目の盤は上の切り替え（`.op-boardseg`）で1枚ずつ出す。盤は全部描いて伏せ、掴んだカード・群を札へ運ぶとその盤が開く。足すのはいま見ている盤 | `test_mmboard.js`・`test_oppad.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 群の道具（幅・名前・畳む）は群の ⋯ の1つ。畳むかは帯が名乗る（`data-op-fold-on`・並びの保存が読む）。必須の数は頭の状態の札 | `test_mmboard.js`・`test_opui.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 記録した値の配置の保存は足元（離れる前・候補の設備を変える前に聞く）。候補を絞る設備は候補の頭（「対象」と言わない） | `test_reclayout.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 選択肢の値は行を押すと右の詳細（定義の`dock:true`・`editorDocks()`）。まとまりの頭の ⋯ と「使っている項目→まとまり→値」の流れの図 | `test_opchoice.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 汎用の欄の2〜4択は型`seg`（`.mm-seg`）。空欄もすべての設備の欄は定義の`blankAll`（「すべての設備｜設備で絞る」） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 選択肢の親子は親→矢印→子の木。親は頭の「＋ 親子をつくる ▾」で選び、新しい親の箱はまとまりを選んでいるときだけ | `test_choicelinkui.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 帳票レイアウトの紙は対象の札、塊は行を押して右の詳細（紙の上の並びの縮図＋欄＋足元の保存）。いまの値が選択肢に無ければ足す（`rlyChoices()`） | `test_rlmaster.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 設備停止の時間は1本の目盛り（点＝選べる時間・帯＝スライダーの範囲・消すのは字に乗せると出る ×） | `test_stopsubui.js`・`test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 設定型の6画面は共通設定と同じ骨組み（頭の下に全幅の状態の図→左の段→段の足元）。組むのは`mountSetPage()`の1箇所 | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 設定型の表は`fillSetList()`（短い値の列は`fit`で中身なり）。行に操作のボタンを置かない（行を押す・行のメニュー・窓の ⋯） | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 説明は定義の`hint`（ⓘ）、範囲は`scope`（灰の札「この端末だけ」）。主役の前に説明の帯・件数の帯を置かない | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
@@ -60,7 +68,7 @@
 | 器`#masterMaintForm`へは名前のある関数1つで受け手を付け、その回の値は器から読む（印の下で描画を閉じ込めない） | `test_setpage.js` | [§9.522](../../docs/decisions/9.522.md) |
 | 【§9.531で盤へ移した】刃組基準値は専用の盤（節ごと・既定値の薄字・離れたら保存）。汎用の窓の`formLayout`等は持たない | `test_partboards.js` | [§9.463](../../docs/decisions/9.463.md)・[§9.531](../../docs/decisions/9.531.md) |
 | 段の札の一言は**見えている欄だけ**から作る（伏せた欄を数えない。判定は`[hidden]`） | `test_setpage.js` | [§9.433](../../docs/decisions/9.433.md) |
-| 設備停止の内訳は「左＝停止内容（分類ごと）／右＝内訳」の2ペイン。時間は札＋スライダーの見本 | `test_stopsubui.js` | [§9.389](../../docs/decisions/9.389.md) |
+| 設備停止の内訳は「左＝停止内容（分類ごと）／右＝内訳」の2ペイン。【§9.602で目盛りに改めた】時間は札＋スライダーの見本 | `test_stopsubui.js` | [§9.389](../../docs/decisions/9.389.md) |
 | 【§9.590で木＋段に改めた】設備停止マスタは**1枚の3ペイン**（左＝分類／中＝停止内容／右＝内訳）。タブを分けない | `test_stopsubui.js`・`test_master.js` | [§9.397](../../docs/decisions/9.397.md) |
 | 他へ統合した定義は消さずに`navHidden`で伏せる（APIとCRUDの見張りは残す） | `test_crudroutes.py`・`test_master.js` | [§9.397](../../docs/decisions/9.397.md) |
 | `COVERED_BY`の行き先は**実在するタブ**を指す（伏せたタブを指さない） | `test_rawmaster.py` | [§9.397](../../docs/decisions/9.397.md) |

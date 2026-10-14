@@ -37,14 +37,14 @@ run('test_choicelinkui: 選択肢の親子（リンクマスタ）の盤（§9.3
   一覧の枚数:document.querySelectorAll('.cl-list').length,
   選んでいる:[...document.querySelectorAll('.cl-item.is-pick')].map(x=>x.dataset.clName),
   箱:[...document.querySelectorAll('.cl-box[data-cl-parent]')].map(x=>({
-    親:x.querySelector('.cl-box-head b').textContent,
+    親:x.querySelector('.cl-node.is-parent b').textContent,
     仮:x.classList.contains('is-pending'),
     仮の字:(x.querySelector('.cl-box-pending')||{}).textContent||'',
     子:[...x.querySelectorAll('.cl-chip b')].map(y=>y.textContent),
     足す:(x.querySelector('.cl-add')||{}).textContent||''})),
   新しい親:(document.querySelector('.cl-box-new .cl-add')||{}).textContent
     ||(document.querySelector('.cl-box-new .cl-hint')||{}).textContent||'',
-  帯:(document.getElementById('clState')||{}).textContent||'',
+  帯:(document.getElementById('masterMaintSay')||{}).textContent||'',
   役:[...document.querySelectorAll('.cl-item')].filter(x=>x.querySelector('.cl-item-role'))
      .map(x=>x.dataset.clName+':'+x.querySelector('.cl-item-role').textContent),
  }));
@@ -58,7 +58,7 @@ run('test_choicelinkui: 選択肢の親子（リンクマスタ）の盤（§9.3
  const press=async(sel,until,ask)=>{
   await page.evaluate(s=>{const el=document.querySelector(s);if(!el)throw Error('無い: '+s);el.click()},sel);
   if(ask)await require('./lib/wait.js').answerConfirm(page);
-  await page.waitForFunction(t=>((document.getElementById('clState')||{}).textContent||'').includes(t),
+  await page.waitForFunction(t=>((document.getElementById('masterMaintSay')||{}).textContent||'').includes(t),
     until,{timeout:15000});
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  };
@@ -101,6 +101,16 @@ run('test_choicelinkui: 選択肢の親子（リンクマスタ）の盤（§9.3
   rec('③ 木のほうが入れ物より広い（面積は頻度×重要度）',
       !!w&&w.木>w.入れ物,JSON.stringify(w&&{木:Math.round(w.木),入れ物:Math.round(w.入れ物)}));
 
+  /* ---- 3-b) 頭の「＋ 親子をつくる ▾」で親を選べる（§9.602）。選んでいないうちは新しい親の破線の箱を出さない ---- */
+  const quiet=await page.evaluate(()=>!document.querySelector('.cl-box-new'));
+  rec('③-b まとまりを選んでいないうちは新しい親の箱を出さない（木だけ）',quiet,'');
+  await page.click('#clCreate');
+  await page.click(`#mmActMenu [data-cl-parent="${P}"]`);
+  await page.waitForFunction(p=>!!document.querySelector(`.cl-box.is-pending[data-cl-parent="${p}"]`),P,{timeout:8000});
+  rec('③-c 頭のメニューで選んだまとまりが仮の親の木になる',true,'');
+  await page.click('#clNewCancel');
+  await page.waitForFunction(()=>!document.querySelector('.cl-box.is-pending'),null,{timeout:8000});
+
   /* ---- 4)(5) 押す道で張れる。仮の親は「まだ保存していません」 ---- */
   await tap(P);
   s=await look();
@@ -142,7 +152,7 @@ run('test_choicelinkui: 選択肢の親子（リンクマスタ）の盤（§9.3
      捨てられても素通りする**。掴む前の字を控え、字が**変わって**「結びました」になるまで
      待つ。通しで1回だけ15秒で切れた（単独・近傍7本では再現せず）ので、切れたときは
      帯の字をそのまま出して、次に落ちたときに何が起きたか読めるようにする（§9.352 追補）。 */
-  const beforeDrag=await page.evaluate(()=>(document.getElementById('clState')||{}).textContent||'');
+  const beforeDrag=await page.evaluate(()=>(document.getElementById('masterMaintSay')||{}).textContent||'');
   const drag=await page.evaluate(([src,par])=>{
    const el=[...document.querySelectorAll('.cl-item')].find(x=>x.dataset.clName===src);
    const box=[...document.querySelectorAll('.cl-box[data-cl-parent]')].find(x=>x.dataset.clParent===par);
@@ -154,12 +164,12 @@ run('test_choicelinkui: 選択肢の親子（リンクマスタ）の盤（§9.3
    b2.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}));
    return 'ok';
   },[D,P]);
-  const dragSaid=await page.waitForFunction(b=>{const t=(document.getElementById('clState')||{}).textContent||'';
+  const dragSaid=await page.waitForFunction(b=>{const t=(document.getElementById('masterMaintSay')||{}).textContent||'';
     return t!==b&&/結びました|できません|ません。|失敗/.test(t)?t:false},beforeDrag,{timeout:30000})
     .then(h=>h.jsonValue()).catch(()=>null);
   rec('⑥-a 落とし込みのあと帯の字が変わる（保存中→結びました）',
       !!dragSaid&&/結びました/.test(dragSaid),
-      dragSaid===null?'30秒で変わらず: '+JSON.stringify(await page.evaluate(()=>(document.getElementById('clState')||{}).textContent||'')):String(dragSaid));
+      dragSaid===null?'30秒で変わらず: '+JSON.stringify(await page.evaluate(()=>(document.getElementById('masterMaintSay')||{}).textContent||'')):String(dragSaid));
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   s=await look();
   const two=await links();

@@ -1070,10 +1070,15 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
             跳ねないように・§9.227 ②）。専用の画面（共通設定・データ接続など）は
             自前で欄を組み立てるので、断るのはサーバーだけ——**先に読める形で
             言う**のがこの帯の役目（§4）。 -->
-       <span class="mm-mode-chip" id="masterMaintLevel" hidden></span></div>
+       <span class="mm-mode-chip" id="masterMaintLevel" hidden></span>
+       <!-- 盤の状態の札（§9.602）: 画面ぜんたいの状態を1語で（例: 必須 3/3）。中身は`WL.mm.setHeadState()`の1つ。 -->
+       <span class="mm-mode-chip mm-hd-state" id="masterMaintState" hidden></span></div>
        <p class="mm-hd-lead" id="masterMaintLead" hidden></p></div>
       <!-- 束ねた見出しの開閉（§9.241 ①）は一覧の札の行の右へ移した（§9.599・`listBar()`）。頭の行に置くと、
            一覧を持たない画面（テーブル生データ）へ移っても前の画面の「すべて開く」が残っていた。 -->
+      <!-- いま起きたこと（保存しました・保存できませんでした）を字で返す1か所（§9.602・`WL.mm.headSay()`）。
+           盤ごとに帯の中へ置いていた知らせ（#opLayoutState など6つ）をここへまとめた。 -->
+      <span class="mm-hd-say" id="masterMaintSay" role="status" aria-live="polite"></span>
       <div class="mm-hd-acts" id="masterMaintActs"></div>
      </div>
      <form class="mm-form" id="masterMaintForm"></form>

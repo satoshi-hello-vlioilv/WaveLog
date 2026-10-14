@@ -1,4 +1,4 @@
-# 画面の土台（56件）
+# 画面の土台（58件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 盤の画面は帯を持たない。対象は`scopeBarHtml()`の札の行・結果は`headSay()`・状態は`setHeadState()`（どれも`WL.mm`） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
+| 1つだけ選ぶ2〜4択は`.mm-seg`の1つ（1枚の枠を割った形・選んだ札は青緑の塗り。紺の切り替えを作らない） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
 | 頭の副の操作は`setHeadActs({more})`の ⋯ のメニュー（主の操作は1つ・`plus:false`で「＋」を外す） | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 専用の画面の窓の ⋯ は`WL.mm.editorMore()`が名乗る（閉じたら持ち越さない）。窓の中のメニューの Esc はメニューだけ閉じる | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 「戻る」の前に画面が聞ける（`registerView({beforeLeave})`・断られたら留まる）。保存していない変更を黙って捨てない | `test_mmpane.js` | [§9.598](../../docs/decisions/9.598.md) |

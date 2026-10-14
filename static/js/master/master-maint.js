@@ -576,6 +576,40 @@
   }
  }
  function quietHeadAct(on){const b=$('#masterMaintActs .mm-hd-primary');if(b)b.classList.toggle('is-quiet',!!on)}
+ /* ---------- 盤の型（§9.602）: 頭の状態の札・頭の知らせ・対象の札の行 ----------
+    盤の画面（操業データ項目・記録した値の配置・選択肢の値・親子・帳票レイアウト・換算係数・設備停止の時間）は、頭と主役の
+    あいだに帯（`.op-bar`）を持たない。帯が持っていた4つは置き場を分けた——説明は ⓘ（定義の`hint`）、追加は頭の主の操作、
+    「いま何を触っているか」は主役の上の対象の札の行、保存の結果は頭の知らせ。どれもここの1つで、画面は名乗るだけ。 */
+ /* 画面ぜんたいの状態を1語で（例: 必須 3/3）。`tone`＝ok（青緑）／warn（橙）／空（灰）。`null`で伏せる。 */
+ function setHeadState(o){
+  const el=$('#masterMaintState');if(!el)return;
+  el.hidden=!o;el.className='mm-mode-chip mm-hd-state'+(o&&o.tone?' is-'+o.tone:'');
+  el.textContent=o?o.text:'';
+  if(o&&o.title)el.title=o.title;else el.removeAttribute('title');
+ }
+ /* いま起きたこと（保存しました／保存できませんでした: 理由）。全文は title（字が長いと頭の行で省略になる）。 */
+ function headSay(text,bad){
+  const el=$('#masterMaintSay');if(!el)return;
+  el.textContent=text||'';el.title=text||'';el.classList.toggle('is-bad',!!bad);
+ }
+ /* 対象の札の行（§9.602）: いま触っている対象（共通／設備・紙）を札で並べ、いまの対象を下線で言う。ステップ2の札の行
+    （`.mm-lbar`・§9.599）と同じ部品で、頭の右の選ぶ欄にしない——選べる対象が全部見え、いまの対象を探さずに読める。
+    `items`＝`[{v,label,n,tone,title}]`（`n`は札の小札・`tone:'warn'`は橙）。`note`は行の右の短い一言（効く範囲など）。 */
+ function scopeBarHtml(o){
+  const badge=it=>it.n!=null&&it.n!==''?`<i class="mm-ltab-b${it.tone?' is-'+esc(it.tone):''}">${esc(it.n)}</i>`:'';
+  return `<div class="mm-lbar mm-scopebar"><div class="mm-ltabs" role="tablist" aria-label="${esc(o.label||'対象')}">`
+   +`<span class="mm-scopebar-k" aria-hidden="true">${esc(o.label||'対象')}</span>`
+   +(o.items||[]).map(it=>{const on=String(it.v)===String(o.cur);
+     return `<button type="button" role="tab" class="mm-ltab${on?' is-on':''}" aria-selected="${on}" data-mm-scope="${esc(it.v)}"`
+      +`${it.title?` title="${esc(it.title)}"`:''}>${esc(it.label)}${badge(it)}</button>`}).join('')
+   +`</div><div class="mm-lbar-r"><span class="mm-lbar-note">${esc(o.note||'')}</span></div></div>`;
+ }
+ /* 札を押したら`onPick(値)`。いまの対象をもう一度押しても何もしない（読み直さない）。 */
+ function wireScopeBar(root,onPick){
+  (root||document).querySelectorAll('.mm-scopebar [data-mm-scope]').forEach(b=>{
+   b.onclick=()=>{if(b.classList.contains('is-on'))return;onPick(b.dataset.mmScope)};
+  });
+ }
  function hintSectionsHtml(def){
   const secs=(def&&def.hintMore)||[];
   if(!secs.length)return '';
@@ -1072,7 +1106,7 @@
       （実測: 使える機能3枚で3段、入力内容9枚で9段・高さ560px）。
       器を728pxまで広げれば3列で収まる。 */
    'choice-card':'full','span-grid':'md','rows-pick':'md','tag-set':'full',
-   'check-set':'full'};
+   'check-set':'full','seg':'md'};
  function mmFieldSize(f){
   if(f.size)return f.size;
   const t=String(f.type||'text');
@@ -1172,9 +1206,17 @@
     // 補足文はマスタごとに意味が違う(権限の対象か/停止内容の対象か)ので
     // def側からf.tagHintで渡す。未指定はアクセス権限マスタの従来文言。
     const tagHint=f.tagHint!==undefined?f.tagHint:'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
-    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1">${fieldLabelHtml(f)}
-     <div class="mm-tagfield-inner">
-      <label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>
+    /* **空欄もすべての設備**を意味する欄（定義の`blankAll`・選択肢の値の「出る設備」）は、チェックの1つでなく
+       「すべての設備｜設備で絞る」の切り替え（§9.602）——空欄の行で「すべての設備」のチェックが外れて見え、
+       一覧の字（すべての設備）と食い違っていた。絞るを押したときだけ設備の欄を出す。 */
+    const scopeAll=!!f.blankAll&&(isAll||!selected.size);
+    const scope=f.blankAll?`<div class="mm-seg mm-tag-scope" role="group" aria-label="${esc(f.label)}">`
+      +[['all','すべての設備'],['pick','設備で絞る']].map(([v,t])=>{const on=(v==='all')===scopeAll;
+        return `<button type="button" class="${on?'is-on':''}" data-equipment-scope="${f.k}" data-v="${v}" aria-pressed="${on?'true':'false'}">${t}</button>`}).join('')
+      +`</div><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''} hidden>`:'';
+    return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1">${fieldLabelHtml(f)}${scope}
+     <div class="mm-tagfield-inner"${scopeAll?' hidden':''}>
+      ${f.blankAll?'':`<label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>`}
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
@@ -1203,6 +1245,18 @@
        マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
     return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`
       +fieldHintHtml(f)+`</label>`;
+   },
+   /* 1つだけ選ぶ2〜4択（§9.602）: 1枚の枠を割った切り替え（`.mm-seg`・盤の画面の「出す｜出さない」と同じ部品）。
+      開かずに全部の選択肢が見え、押した札が値になる。値は隠した欄が持つ（`mmSetHidden()`・札の配線は`bindSegFields()`）。
+      いまの値が選択肢に無ければ札を1つ足す（黙って先頭へ落とさない・§9.204）。 */
+   'seg':(f,val)=>{
+    const base=selectOptionsOf(f).map(String);
+    const opts=val&&!base.includes(val)?[...base,val]:base;
+    const cur=opts.includes(val)?val:String(opts[0]??'');
+    const btns=opts.map(o=>`<button type="button" class="${o===cur?'is-on':''}" data-seg="${esc(f.k)}" data-seg-v="${esc(o)}"`
+      +` aria-pressed="${o===cur?'true':'false'}">${esc(o||f.blank||'（指定なし）')}</button>`).join('');
+    return `<div class="mm-field">${fieldLabelHtml(f)}<div class="mm-seg" role="group" aria-label="${esc(f.label)}">${btns}</div>`
+      +`<input type="hidden" data-field="${f.k}" value="${esc(cur)}">${fieldHintHtml(f)}</div>`;
    },
    /* 別マスタ連動の選択欄(§5.3.1)。選ぶだけで済むのが基本で、無い値は
       「＋ 新しく追加」から入力する。保存時に相手のマスタへも登録される。 */
@@ -1913,7 +1967,8 @@
     窓（中央）に残すのは、広さの要る組み立て（`field-builder`）・紙の見本を並べる窓（`asideHtml`）・専用の画面が
     自分で使う窓だけ。**答えは`editorDocks()`の1箇所**。 */
  function editorDocks(def){
-  return defUsesEditorModal(def)&&!def.special&&typeof def.asideHtml!=='function'
+  /* 専用の画面でも、行を押して1行を直す画面は名乗れば右の詳細（`dock:true`・選択肢の値・§9.602）。 */
+  return defUsesEditorModal(def)&&(!def.special||def.dock===true)&&typeof def.asideHtml!=='function'
    &&!def.fields.some(f=>f.type==='field-builder');
  }
  let paneSnap=null;   // 開いたときの値（`collectMaintBody()`の写し）。変更の有無はこれと比べる
@@ -2181,6 +2236,20 @@
   el.value=String(value);
   el.dispatchEvent(new Event('change',{bubbles:true}));
  }
+ /* 分割の切り替えの欄（`seg`・§9.602）。押した札だけ塗り、値は隠した欄へ（変更の知らせも`mmSetHidden()`が出す）。 */
+ function bindSegFields(form){
+  form.querySelectorAll('[data-seg]').forEach(b=>{
+   if(b.dataset.segWired)return;
+   b.dataset.segWired='1';
+   b.onclick=()=>{
+    const k=b.dataset.seg;
+    form.querySelectorAll(`[data-seg="${CSS.escape(k)}"]`).forEach(x=>{
+     const on=x===b;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+    });
+    mmSetHidden(form,k,b.dataset.segV);
+   };
+  });
+ }
  function bindChoiceCards(form){
   form.querySelectorAll('[data-card]').forEach(b=>{
    if(b.dataset.cardWired)return;
@@ -2314,7 +2383,7 @@
   });
  }
  function bindInputHelpers(form){
-  bindChoiceCards(form);bindCheckSets(form);bindSteppers(form);
+  bindChoiceCards(form);bindSegFields(form);bindCheckSets(form);bindSteppers(form);
   bindNumberFields(form);
   bindDateFields(form);
   bindComboFields(form);
@@ -2633,7 +2702,8 @@
    /* 「すべての設備」を選んでいるあいだは個別選択を触らせない。両方が
       効いているように見えると、どちらが保存されるのか分からなくなる。 */
    const all=field.querySelector(`[data-equipment-all="${fk}"]`);
-   if(all){
+   const scopes=field.querySelectorAll(`[data-equipment-scope="${fk}"]`);
+   if(all&&!scopes.length){
     const syncAll=()=>{
      box.classList.toggle('is-disabled',all.checked);
      search.disabled=all.checked;
@@ -2641,6 +2711,21 @@
     };
     all.addEventListener('change',syncAll);
     syncAll();
+   }
+   /* 「すべての設備｜設備で絞る」（`blankAll`の欄・§9.602）。すべてに戻すと選んだ設備を外し、開いたときの「すべて」の
+      書き方（空欄／`*`）へ戻す——開いて触っただけで保存する値が変わらない。 */
+   if(scopes.length){
+    const inner=field.querySelector('.mm-tagfield-inner');
+    const allAtOpen=!!(all&&all.checked);
+    const setScope=pick=>{
+     scopes.forEach(b=>{const on=(b.dataset.v==='pick')===pick;b.classList.toggle('is-on',on);b.setAttribute('aria-pressed',on?'true':'false')});
+     if(inner)inner.hidden=!pick;
+     if(pick){if(all)all.checked=false}
+     else{selectedNames().forEach(n=>setChecked(n,false));renderTags();suggest.hidden=true;if(all)all.checked=allAtOpen}
+     if(all)all.dispatchEvent(new Event('change',{bubbles:true}));
+     if(pick)search.focus();
+    };
+    scopes.forEach(b=>{b.onclick=()=>setScope(b.dataset.v==='pick')});
    }
    renderTags();
   });
@@ -3427,7 +3512,7 @@
  /* 器（頭の操作・上の帯・一覧）をどのマスタにも属さない形へ戻す。専用の画面は器に印や頭の操作を足していくので、
     タブを移るたび（と、遅れて届いた前のタブが器を上書きしたあと）にここを通す。 */
  function resetMaintShell(){
-  setHeadActs(null);
+  setHeadActs(null);setHeadState(null);headSay('');
   const f=$('#masterMaintForm');
   /* 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。タブを移ったら必ず外す
      (付いたままだと他のマスタで上部フォームが伸び縮みして一覧の高さが安定しない)。 */
@@ -3556,6 +3641,6 @@
     こちらが黙って閉じていた）。 */
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{listBar,barKept,editorMore,markHits:mmMarkHits,cellText,cellHtml,setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{listBar,barKept,editorMore,setHeadState,headSay,scopeBarHtml,wireScopeBar,markHits:mmMarkHits,cellText,cellHtml,setHeadActs,quietHeadAct,headTextOf,paneMayLeave,afterLeave,openActMenu,inlineFields,paintFootState,CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,tipHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();

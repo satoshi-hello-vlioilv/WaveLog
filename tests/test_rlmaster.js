@@ -60,24 +60,33 @@ run('test_rlmaster: 帳票レイアウトマスタ（§9.254 ③、利用者の�
 
   await page.click('#masterMaintNav [data-master="reportLayout"]');
   await page.waitForSelector('.rly-edit',{timeout:20000});
-  await page.waitForSelector('[data-rly-paper]',{timeout:20000});
+  await page.waitForSelector('#masterMaintList .mm-scopebar [data-mm-scope]',{timeout:20000});
+  /* 紙（設備）は主役の上の対象の札（§9.602。前は左の一覧`[data-rly-paper]`）。 */
+  const pickPaper=async eq=>{
+   await page.click(`#masterMaintList .mm-scopebar [data-mm-scope="${eq}"]`).catch(()=>{});
+   await page.waitForFunction(e=>{
+    const h=document.querySelector('.rly-blocks-head');
+    return !!h&&h.textContent.indexOf(e)>=0;
+   },eq,{timeout:20000});
+  };
+  const saveDetail=async re=>{
+   await page.click('#rlySave');
+   await page.waitForFunction(r=>new RegExp(r).test((document.getElementById('masterMaintSay')||{}).textContent||''),re,{timeout:20000});
+  };
 
-  /* ---- 2) 左＝紙（親）／右＝塊（子） ---- */
+  /* ---- 2) 上＝紙（親）の札／左＝その紙に載る塊（子）の表／右＝選んだ塊の詳細 ---- */
   const panes=await page.evaluate(()=>{
-   const l=document.querySelector('.rly-papers'),r=document.querySelector('.rly-blocks');
+   const l=document.querySelector('.rly-blocks'),r=document.querySelector('.rly-detail');
    const rl=l&&l.getBoundingClientRect(),rr=r&&r.getBoundingClientRect();
-   return {papers:document.querySelectorAll('[data-rly-paper]').length,
+   return {papers:document.querySelectorAll('#masterMaintList .mm-scopebar [data-mm-scope]').length,
            leftIsLeft:!!rl&&!!rr&&rl.left<rr.left,
-           insideEdit:!!(l&&l.closest('.rly-edit'))&&!!(r&&r.closest('.rly-edit'))};
+           insideEdit:!!(l&&l.closest('.rly-edit'))&&!!(r&&r.closest('.rly-edit')),
+           band:!!document.querySelector('#masterMaintForm .op-bar')};
   });
-  rec('左＝設備ごとの紙／右＝その紙に載る塊の2ペイン',
-      panes.papers>=1&&panes.leftIsLeft&&panes.insideEdit,JSON.stringify(panes));
+  rec('上＝紙の札／左＝塊の表／右＝選んだ塊の詳細（帯は持たない）',
+      panes.papers>=1&&panes.leftIsLeft&&panes.insideEdit&&!panes.band,JSON.stringify(panes));
 
-  await page.click(`[data-rly-paper="${EQ}"]`);
-  await page.waitForFunction(eq=>{
-   const h=document.querySelector('.rly-blocks-head');
-   return !!h&&h.textContent.indexOf(eq)>=0;
-  },EQ,{timeout:20000});
+  await pickPaper(EQ);
   const rows0=await page.evaluate(()=>[...document.querySelectorAll('.rly-row[data-rly-key]')]
     .map(r=>r.dataset.rlyKey));
   rec('選んだ設備の紙に載る塊が並ぶ',rows0.length>=5,String(rows0.length)+'件');
@@ -93,60 +102,75 @@ run('test_rlmaster: 帳票レイアウトマスタ（§9.254 ③、利用者の�
       JSON.stringify(grids.cols)===JSON.stringify(grids.infoCols)
       &&JSON.stringify(grids.rows)===JSON.stringify(grids.infoRows),JSON.stringify(grids));
 
-  /* ---- 3) 出す/出さない が保存される ---- */
+  /* ---- 3) 出す/出さない が保存される（右の詳細で直して足元の保存・§9.602） ---- */
   const key=rows0[0];
   const before=await layout();
-  await page.click(`[data-rly-vis="${key.replace(/"/g,'\\"')}"]`);
-  await page.waitForFunction(()=>/外しました|出しました|保存できません/.test(
-    (document.getElementById('rlyState')||{}).textContent||''),null,{timeout:20000});
+  const sel0=await page.evaluate(()=>(document.querySelector('.rly-row.is-on')||{dataset:{}}).dataset.rlyKey||'');
+  rec('最初は先頭の塊を選んでいる（表の行の印と右の詳細が同じ塊）',sel0===key,JSON.stringify({sel0,key}));
+  await page.click('[data-rly-d-shown="0"]');
+  const dirty=await page.evaluate(()=>({st:(document.querySelector('.rly-foot .pc-dirty')||{}).textContent||'',
+   save:!(document.getElementById('rlySave')||{}).disabled,
+   mini:document.querySelectorAll('.rly-mini-blk').length,shown:document.querySelectorAll('.rly-row:not(.is-off)[data-rly-key]').length}));
+  rec('詳細で変えると足元が「変更あり」と言い、保存が押せる',/変更あり/.test(dirty.st)&&dirty.save,JSON.stringify(dirty));
+  await saveDetail('保存しました|保存できません');
   const afterHide=await layout();
   rec('「出さない」にするとサーバーへ残る（並びも書き下ろす）',
       (afterHide.hidden||[]).includes(key)&&(afterHide.order||[]).length>0
       &&(before.order||[]).length===0,
       JSON.stringify({key,hidden:(afterHide.hidden||[]).length,order:(afterHide.order||[]).length}));
   const shownText=await page.evaluate(k=>{
-   const b=document.querySelector(`[data-rly-vis="${k.replace(/"/g,'\\"')}"]`);
+   const r=[...document.querySelectorAll('.rly-row[data-rly-key]')].find(x=>x.dataset.rlyKey===k);
+   const b=r&&r.querySelector('.rly-vis');
    return b?b.textContent.trim():'';
   },key);
   rec('いまの状態を色だけでなく文字で言う',shownText==='出さない',shownText);
 
   /* ---- 4) 幅・高さが保存される ---- */
-  const spanPick=await page.evaluate(k=>{
-   const el=document.querySelector(`select[data-rly-span="${k.replace(/"/g,'\\"')}"]`);
+  const spanPick=await page.evaluate(()=>{
+   const el=document.querySelector('select[data-rly-d-span]');
    if(!el)return null;
    const vals=[...el.options].map(o=>o.value);
    return {cur:el.value,next:vals.find(v=>v!==el.value)||''};
-  },key);
-  await page.selectOption(`select[data-rly-span="${key.replace(/"/g,'\\"')}"]`,spanPick.next);
-  await page.waitForFunction(()=>/幅を変えました|保存できません/.test(
-    (document.getElementById('rlyState')||{}).textContent||''),null,{timeout:20000});
+  });
+  await page.selectOption('select[data-rly-d-span]',spanPick.next);
+  await saveDetail('保存しました|保存できません');
   const afterSpan=await layout();
   rec('幅を変えるとサーバーへ残る',
       Object.prototype.hasOwnProperty.call(afterSpan.widths||{},key),
       JSON.stringify({key,w:(afterSpan.widths||{})[key],pick:spanPick}));
 
-  const rowPick=await page.evaluate(k=>{
-   const el=document.querySelector(`select[data-rly-rows-of="${k.replace(/"/g,'\\"')}"]`);
+  const rowPick=await page.evaluate(()=>{
+   const el=document.querySelector('select[data-rly-d-rows]');
    if(!el)return null;
    const vals=[...el.options].map(o=>o.value).filter(v=>v!=='0');
    return {cur:el.value,next:vals[vals.length-1]||''};
-  },key);
-  await page.selectOption(`select[data-rly-rows-of="${key.replace(/"/g,'\\"')}"]`,rowPick.next);
-  await page.waitForFunction(()=>/高さを変えました|保存できません/.test(
-    (document.getElementById('rlyState')||{}).textContent||''),null,{timeout:20000});
+  });
+  await page.selectOption('select[data-rly-d-rows]',rowPick.next);
+  await saveDetail('保存しました|保存できません');
   const afterRows=await layout();
+  /* 行と詳細が同じ値を言う（いまの値が選択肢に無くても欄が先頭へ落ちない・§9.602 で見つけた食い違い）。 */
+  const agree=await page.evaluate(k=>{
+   const r=[...document.querySelectorAll('.rly-row[data-rly-key]')].find(x=>x.dataset.rlyKey===k);
+   const el=document.querySelector('select[data-rly-d-rows]');
+   return {row:r?r.textContent.replace(/\s+/g,' '):'',sel:el?el.value:''};
+  },key);
+  rec('高さは表の行と右の詳細が同じ値を言う',agree.sel===rowPick.next&&agree.row.indexOf(`${rowPick.next}/`)>=0,JSON.stringify(agree));
   rec('高さを変えるとサーバーへ残る',
       Object.prototype.hasOwnProperty.call(afterRows.widths||{},'行数:'+key),
       JSON.stringify({key,v:(afterRows.widths||{})['行数:'+key],pick:rowPick}));
 
-  /* ---- 5) 「中身を直す」で子（帳票ブロック）の編集窓が開く ---- */
-  const named=await page.evaluate(()=>{
-   const r=[...document.querySelectorAll('.rly-row[data-rly-key]')].find(x=>x.querySelector('[data-rly-edit]'));
-   return r?{key:r.dataset.rlyKey,id:r.querySelector('[data-rly-edit]').dataset.rlyEdit}:null;
-  });
+  /* ---- 5) 「中身を直す」で子（帳票ブロック）の編集窓が開く（右の詳細の ⋯・§9.602） ---- */
+  const named=await page.evaluate(async eq=>{
+   const info=await WL.reportLayout.info(eq);
+   const b=(info.blocks||[]).find(x=>x.id);
+   return b?{key:b.key,id:String(b.id)}:null;
+  },EQ);
   rec('既定の塊にも「中身を直す」が出る（帳票ブロックの行と結んである）',!!named,JSON.stringify(named));
   if(named){
-   await page.click(`[data-rly-edit="${named.id}"]`);
+   await page.evaluate(k=>{const r=[...document.querySelectorAll('.rly-row[data-rly-key]')].find(x=>x.dataset.rlyKey===k);if(r)r.click()},named.key);
+   await page.waitForSelector('#rlyBlockMore',{timeout:8000});
+   await page.click('#rlyBlockMore');
+   await page.click(`#mmActMenu [data-rly-edit="${named.id}"]`);
    await page.waitForSelector('#maintEditorModal .mm-editor-dialog.is-builder',{state:'visible',timeout:25000});
    const title=await page.evaluate(()=>(document.getElementById('maintEditorTitle')||{}).textContent||'');
    rec('子の編集窓がその塊の名前で開く（どれを開いたのか分かる）',
@@ -171,11 +195,7 @@ run('test_rlmaster: 帳票レイアウトマスタ（§9.254 ③、利用者の�
   }
 
   /* ---- 8) 「紙で組み換える」→ 見本のロットで組み換えモード → 戻る ---- */
-  await page.click(`[data-rly-paper="${EQ}"]`);
-  await page.waitForFunction(eq=>{
-   const h=document.querySelector('.rly-blocks-head');
-   return !!h&&h.textContent.indexOf(eq)>=0;
-  },EQ,{timeout:20000});
+  await pickPaper(EQ);
   await page.click('#rlyArrange');
   await page.waitForFunction(()=>document.body.classList.contains('rp-mode'),null,{timeout:30000});
   await page.waitForFunction(()=>document.body.classList.contains('rp-arranging'),null,{timeout:30000});
@@ -193,17 +213,16 @@ run('test_rlmaster: 帳票レイアウトマスタ（§9.254 ③、利用者の�
   const backTab=await page.evaluate(()=>(document.querySelector('#masterMaintNav [data-master].active')||{}).dataset.master);
   rec('戻ると帳票レイアウトのタブへ帰る',backTab==='reportLayout',String(backTab));
 
-  /* ---- 9) 既定に戻す ---- */
-  await page.click(`[data-rly-paper="${EQ}"]`);
-  await page.waitForFunction(eq=>{
-   const h=document.querySelector('.rly-blocks-head');
-   return !!h&&h.textContent.indexOf(eq)>=0;
-  },EQ,{timeout:20000});
-  await page.click('#rlyReset');
+  /* ---- 9) 既定に戻す（頭の ⋯・既定から変えた紙だけ・§9.602） ---- */
+  await pickPaper(EQ);
+  const tagged=await page.evaluate(eq=>{const b=document.querySelector(`#masterMaintList .mm-scopebar [data-mm-scope="${eq}"]`);return b?b.textContent:''},EQ);
+  rec('既定から変えた紙の札は「設定あり」と言う',/設定あり/.test(tagged),tagged);
+  await page.click('#masterMaintMore');
+  await page.click('#mmActMenu [data-rly-more="reset"]');
   /* 消える操作なので1回確かめる。素の`confirm()`ではなくなった（§9.342）。 */
   await require('./lib/wait.js').answerConfirm(page);
   await page.waitForFunction(()=>/既定に戻しました|保存できません/.test(
-    (document.getElementById('rlyState')||{}).textContent||''),null,{timeout:20000});
+    (document.getElementById('masterMaintSay')||{}).textContent||''),null,{timeout:20000});
   const cleared=await layout();
   rec('「既定に戻す」で設定が消える',
       (cleared.order||[]).length===0&&(cleared.hidden||[]).length===0
@@ -229,10 +248,13 @@ run('test_rlmaster: 帳票レイアウトマスタ（§9.254 ③、利用者の�
   },null,{timeout:20000}).catch(()=>{});
   const view=await page.evaluate(()=>({
    arrange:!!(document.getElementById('rlyArrange')||{}).disabled,
-   toggles:[...document.querySelectorAll('[data-rly-vis]')].every(b=>b.disabled),
-   selects:[...document.querySelectorAll('.rly-pick>select')].every(b=>b.disabled),
-   reset:!!(document.getElementById('rlyReset')||{}).disabled,
+   toggles:[...document.querySelectorAll('[data-rly-d-shown]')].every(b=>b.disabled),
+   selects:[...document.querySelectorAll('.rly-dline select')].every(b=>b.disabled),
    why:(document.querySelector('.rly-note')||{}).textContent||''}));
+  /* 消す操作（既定に戻す）は閲覧モードでは ⋯ に出さない（押しても何も起きない物を置かない・§4）。 */
+  await page.click('#masterMaintMore');
+  view.reset=await page.evaluate(()=>!document.querySelector('#mmActMenu [data-rly-more="reset"]'));
+  await page.keyboard.press('Escape');
   rec('閲覧モードでは押せなくして理由を書く',
       view.arrange&&view.toggles&&view.selects&&view.reset&&/閲覧モード/.test(view.why),
       JSON.stringify(view).slice(0,220));
