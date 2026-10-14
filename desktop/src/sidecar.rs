@@ -53,6 +53,8 @@ pub struct Sidecar {
     next: AtomicU64,
     alive: Arc<AtomicBool>,
     child: Mutex<Child>,
+    /// 止めた印（`shutdown()`は1回だけ。止めるのは`Supervisor::stop()`と`Drop`の両方から来る）
+    stopped: AtomicBool,
     /// 準備できたときの知らせ（版・指紋・Python の場所・起動にかかった秒）
     pub ready: Value,
 }
@@ -143,6 +145,7 @@ impl Sidecar {
             next: AtomicU64::new(1),
             alive,
             child: Mutex::new(child),
+            stopped: AtomicBool::new(false),
             ready,
         })
     }
@@ -198,11 +201,16 @@ impl Sidecar {
     }
 }
 
-impl Drop for Sidecar {
-    /// 入力を閉じて自分で終わる（片付けてから）のを待ち、終わらなければ止める。
+impl Sidecar {
+    /// 止める（1回だけ）: 入力を閉じて自分で終わる（片付けてから）のを待ち、終わらなければ止める。
     /// **本物の Python が終わるまで**見る（§9.571）——入口（`WindowsApps\python.exe`）だけを見て止めると、本物が残って
     /// `program`を掴み、版の入れ替えが断られる。
-    fn drop(&mut self) {
+    /// **写し（`Arc`）の数を問わずに止める**（§9.600）——窓を閉じた瞬間に途中の問い合わせが写しを持っていると、
+    /// `Drop`が後回しになり、窓が先に終わって入口と本物が残った（CI の windows・入口役が残る）。
+    pub fn shutdown(&self) {
+        if self.stopped.swap(true, Ordering::SeqCst) {
+            return;
+        }
         if let Ok(mut w) = self.stdin.lock() {
             drop(w.take()); // 出し切ってから閉じる
         }
@@ -225,6 +233,12 @@ impl Drop for Sidecar {
             crate::proc::kill(p);
             let _ = crate::proc::wait_gone(p, KILL_WAIT);
         }
+    }
+}
+
+impl Drop for Sidecar {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }
 
@@ -298,8 +312,50 @@ impl Supervisor {
         Ok(s)
     }
 
-    /// 終わるとき: 中身を捨てる（入力を閉じる → Python が自分で終わる）。
+    /// 終わるとき: 中身を止める（入力を閉じる → Python が自分で終わる。終わらなければ止める）。
+    /// 途中の問い合わせが写しを持っていても、ここで止める（写しの側は`Died`を受け取る・§9.600）。
     pub fn stop(&self) {
-        self.current.lock().unwrap().take();
+        let cur = self.current.lock().unwrap().take();
+        if let Some(s) = cur {
+            s.shutdown();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 本物の program/sidecar.py の代わり: 「準備できた」を言い、入力が閉じるまで待って終わるだけの Python。
+    const FAKE_SIDECAR: &str = "import json, os, sys\n\
+        sys.stdout.buffer.write((json.dumps({'id': 0, 'event': 'ready', 'protocol': 1, 'pid': os.getpid(), 'len': 0}) + '\\n').encode())\n\
+        sys.stdout.buffer.flush()\n\
+        sys.stdin.buffer.read()\n";
+
+    fn fake_program(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("wl-sidecar-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("sidecar.py"), FAKE_SIDECAR).unwrap();
+        d
+    }
+
+    fn py() -> Python {
+        Python { exe: PathBuf::from(if cfg!(windows) { "python" } else { "python3" }), args: Vec::new() }
+    }
+
+    #[test]
+    fn stop_ends_python_even_while_a_request_holds_it() {
+        // 窓を閉じた瞬間に問い合わせが途中だと、その問い合わせが写し（Arc）を持っている。
+        // stop() が写しを1つ捨てるだけだと Drop が後回しになり、窓が先に終わって Python が残った（CI の windows・入口役が残る）
+        let dir = fake_program("stop");
+        let sup = Supervisor::new(py(), dir.clone(), dir.join("logs"), Arc::new(|_: &Value| {}));
+        let held = sup.get().expect("偽の中身を起こせる"); // 途中の問い合わせが持つ写し
+        let pid = held.pids().0;
+        assert!(crate::proc::alive(pid), "起こした物が動いている");
+        sup.stop();
+        assert!(crate::proc::wait_gone(pid, Duration::from_secs(3)), "写しが残っていても、止めたら Python は終わる");
+        assert!(!sup.is_running(), "止めた後は動いていないと答える");
+        drop(held); // 2回目の後始末は何もしない（止めた物をもう一度止めない）
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

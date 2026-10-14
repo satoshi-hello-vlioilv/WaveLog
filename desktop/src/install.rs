@@ -219,7 +219,11 @@ mod tests {
         let v: Value = serde_json::from_slice(&fs::read(app.join("config").join(SEED)).unwrap()).unwrap();
         assert_eq!(v["master_db_path"], r"\\srv\Records\master.sqlite3", "共有のマスタの置き場を写しへ");
         assert!(v.get("db_dir").is_none(), "その PC の物（db_dir）は渡さない");
-        assert_eq!(fs::read_to_string(app.join("config/local.json")).unwrap(), r#"{"master_db_path":"mine"}"#, "local.json は書かない（書き手は Python）");
+        assert_eq!(
+            fs::read_to_string(app.join("config/local.json")).unwrap(),
+            r#"{"master_db_path":"mine"}"#,
+            "local.json は書かない（書き手は Python）"
+        );
         let mirror: Value = serde_json::from_slice(&fs::read(app.join("config").join(update::MIRROR)).unwrap()).unwrap();
         assert_eq!(mirror[update::CONFIG_KEY], share.display().to_string(), "既定でない置き場から入れたら控える");
         assert_eq!(mirror["from"], "install", "入れた元の印（Python が共有の設定の空で消さない・§9.561）");

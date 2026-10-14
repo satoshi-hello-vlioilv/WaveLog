@@ -1,4 +1,4 @@
-# 起動・停止・監視（74件）
+# 起動・停止・監視（75件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | 起動の画面が見せる段は4つで、顔ぶれは`boot_status.PHASES`の1箇所（覆いはテンプレートが回して描く・窓の起動画面は同じ鍵と言葉の写し）。技術の言葉を出さない | `test_boot.py`・`test_bootui.js` | [§9.580](../../docs/decisions/9.580.md) |
 | 窓の起動画面と覆いは同じ分割カード。窓の細かな字（Python の場所など）は段の title にだけ残し、進み具合は「アプリを起こす」が済んだ時点で60%（覆いが引き継ぐ値） | `test_bootui.js` | [§9.580](../../docs/decisions/9.580.md) |
+| 窓が終わるときの止め方は`Sidecar::shutdown()`の1箇所（1回だけ）。`stop()`は写し（`Arc`）の数を問わずその場で止める | — | [§9.600](../../docs/decisions/9.600.md) |
 | Python を止めるときは本物（起動の合図の`pid`）が終わるまで待つ。入口（別名）だけを見ない | `test_appupdate.py` | [§9.571](../../docs/decisions/9.571.md) |
 | 版の確かめ（`update::peek()`）は Python の起動と同時に進める。違えば Python を止めて（写しを手放してから）`apply()`、起こし直す | `test_appupdate.py` | [§9.561](../../docs/decisions/9.561.md) |
 | 終わる入口は×だけ。閉じる前に聞くのは`close.rs`の`Gate`（名乗った画面だけ・2秒で閉じる） | `test_appquit.js` | [§9.556](../../docs/decisions/9.556.md) |

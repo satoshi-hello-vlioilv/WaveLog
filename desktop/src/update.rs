@@ -203,7 +203,11 @@ fn rename_patiently(from: &Path, to: &Path) -> std::io::Result<u32> {
 /// 入れ替えを断られた理由。**誰が掴んでいるか**を Windows に聞いて添える（§9.571・推して埋めない）。
 fn busy_message(name: &str, cur: &Path, e: &std::io::Error) -> String {
     let who = crate::proc::holders(&crate::proc::files_under(cur, 500));
-    let who = if who.is_empty() { "掴んでいるプロセスは分かりませんでした".to_string() } else { format!("掴んでいるプロセス: {}", who.join("・")) };
+    let who = if who.is_empty() {
+        "掴んでいるプロセスは分かりませんでした".to_string()
+    } else {
+        format!("掴んでいるプロセス: {}", who.join("・"))
+    };
     format!("入れ替えられません（{name} が使用中・{}秒待ちました・{who}）: {e}", BUSY_WAIT.as_secs())
 }
 
