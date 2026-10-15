@@ -16,6 +16,8 @@ from ...repositories.master_repo import (
  QUERY_JOIN_MULTI,
  QUERY_JOIN_FINISH_WHEN,
  QUERY_JOIN_FINISH_WHEN_SUMMARY,
+ QUERY_JOIN_TAKE,
+ QUERY_JOIN_TAKE_SUMMARY,
  ensure_query_join_table,
  query_joins,
  query_join_save,
@@ -41,6 +43,8 @@ def _join_payload(x):
          'finishColumn':x.get('finishColumn'),
          # 送られなければ None＝今の値のまま（§9.595。古い画面が消さない）。
          'startColumn':x.get('startColumn'),'finishWhen':x.get('finishWhen'),
+         # 持ち帰る値(§9.605)。送られなければ None＝今の値のまま。
+         'take':x.get('take'),
          'useInSchedule':True if sched is None else bool(sched),
          'order':x.get('order'),'enabled':x.get('enabled')}
 
@@ -49,7 +53,7 @@ _JOIN_BODY={'columns': any_, 'enabled': any_, 'finishColumn': any_, 'keys': any_
             'kind': any_, 'left': any_, 'leftTable': any_, 'multi': any_, 'name': any_,
             'order': any_, 'prefix': any_, 'purpose': any_, 'right': any_,
             'rightTable': any_, 'useInSchedule': any_,
-            'startColumn': any_, 'finishWhen': any_}
+            'startColumn': any_, 'finishWhen': any_, 'take': any_}
 
 @bp.get('/api/query-join-master')
 @api_guard('クエリ結合マスタ読込失敗')
@@ -62,6 +66,8 @@ def query_join_master_list():
   with connect(path,False) as c:
    ensure_query_join_table(c)
    items=query_joins(c,include_disabled=True)
+ # いつまでも効かない行（§9.605）は一覧の行で名指す（仕掛一覧ではエラーにしない）。
+ for d in items:d['issue']=query_join.definition_issue(d)
  # 選べる相手は**データ接続に登録済みのものだけ**(§9.193、利用者の指示)。
  # 画面が別に一覧を作ると、消したデータソースが選択肢に残る。
  sources=[{'key':k,'label':v.get('label') or k,'purpose':v.get('purpose') or '',
@@ -84,6 +90,10 @@ def query_join_master_list():
                 purposes=query_join.PURPOSES,purposeDefault=query_join.PURPOSE_LIST,
                 finishWhens=[{'key':k,'label':v,'summary':QUERY_JOIN_FINISH_WHEN_SUMMARY.get(k,'')}
                              for k,v in QUERY_JOIN_FINISH_WHEN],
+                # 完了突合が予定へ持ち帰る値(§9.605)。語彙と札の中身はここ（画面へ写さない）。
+                takes=[{'key':k,'label':v,'summary':QUERY_JOIN_TAKE_SUMMARY.get(k,'')} for k,v in QUERY_JOIN_TAKE],
+                # 設備ごとのファイルのデータ（一覧の結合の相手にできない・§9.595）。
+                patternSources=[k for k,v in _DBS.items() if v.get('pattern')],
                 builtinEnabled=query_join.builtin_quality_enabled(),
                 builtin=_b(builtin))
 
@@ -151,7 +161,7 @@ def _finish_trial(d):
 def query_join_master_probe():
  """保存する前に、いまのデータで実際に当ててみる。**読むだけ**。"""
  from ... import query_join
- from ...repositories.master_repo import normalize_join_keys, normalize_join_columns, finish_when_of
+ from ...repositories.master_repo import normalize_join_keys, normalize_join_columns, finish_when_of, take_of
  x=body(dict(_JOIN_BODY,id=any_))
  # 用途の読み取りは`purpose_of()`の1箇所（知らない値は「一覧に列を足す」）。
  purpose=query_join.purpose_of({'purpose':x.get('purpose')})['key']
@@ -165,6 +175,7 @@ def query_join_master_probe():
     'purpose':purpose,'finishColumn':str(x.get('finishColumn') or ''),
     'startColumn':str(x.get('startColumn') or ''),
     'finishWhen':finish_when_of(x.get('finishWhen')),
+    'take':take_of(x.get('take'),normalize_join_columns(x.get('columns'))),
     'active':True}
  if not d['keys']:
   return jsonify(ok=True,result={'ok':False,'reason':'突合キーを1組入れると、ここで結果を確かめられます。',

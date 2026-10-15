@@ -240,8 +240,9 @@ def main():
         json.dumps({'state': hit and hit.get('state'),
                     'reason': (hit or {}).get('missingReason')}, ensure_ascii=False)[:200])
     src = (hit or {}).get('actualSource') or {}
-    rec('取り込む列だけが、接頭辞つきで持ち帰られる',
-        set(src.keys()) == {'実績_前工程実績_設備名', '実績_前工程実績_数量'}
+    # 作業時間に使う列（ここでは完了日時の列）は選ばなくても必ず残す（§9.605・外せない）。
+    rec('取り込む列（＋作業時間に使う列）だけが、接頭辞つきで持ち帰られる',
+        set(src.keys()) == {'実績_前工程実績_設備名', '実績_前工程実績_数量', '実績_前工程実績_作業終了_日時'}
         and src.get('実績_前工程実績_設備名') == '前工程2号',
         json.dumps(src, ensure_ascii=False)[:180])
     rec('完了日時は「指定した列」から（時刻まで入っている列も読める）',

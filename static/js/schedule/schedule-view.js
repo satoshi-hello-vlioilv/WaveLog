@@ -7403,10 +7403,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   }else{
    timeText=showStart?fmtTimeRange(showStart,showEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
    timeTitle=showStart?`${useActual?'実績 ':''}${fmtDateTime(showStart)} 〜 ${fmtDateTime(showEnd)}`:'';
-   /* 手で入れた時刻（§9.514）は**出どころを言う**——測定データの実績と見分けられるように。 */
-   if(e.actual&&e.actual.source==='手入力')
-    timeTitle=`手入力 ${timeTitle.replace(/^実績 /,'')}（${e.actual.endFrom==='見積'?'終わりは見積':'開始・終了とも手入力'}${
-     e.actual.by?`・${e.actual.by}`:''}）\n右クリック「実際の時刻を直す」で直せます。`;
+   /* 手で入れた時刻（§9.514）・自動で入れた時刻（§9.588・§9.605）は**出どころを言う**（測定の実績と見分ける・右クリックで直せる）。 */
+   if(e.actual&&e.actual.manual)
+    timeTitle=`${e.actual.source} ${timeTitle.replace(/^実績 /,'')}（${scManualFromText(e.actual)}${
+     e.actual.by&&!/^auto:/.test(e.actual.by)?`・${e.actual.by}`:''}）\n右クリック「実際の時刻を直す」で直せます。`;
   }
   const shiftText=e.shift||'-';
   const relText=e.ongoing
@@ -7629,9 +7629,15 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const canTimes=!!e.timesNeeded;
   const timesOk=canTimes&&timesEditable();
   const catShown=timelineColumnKeys().includes('__cat__');   // 状態の字の置き場（§9.518）
-  const canFixTimes=!!(e.actual&&e.actual.source==='手入力');
+  const canFixTimes=!!(e.actual&&e.actual.manual);
   const manualTimes=canFixTimes;
   return {canDrag,detailHtml,canDelete,canStart,startState,canLock,recordId,canReport,canResume,canDeleteHistory,canTimes,timesOk,catShown,canFixTimes,manualTimes};
+ }
+ /* 時刻の決め方の字（§9.514・§9.588・§9.605）。鍵は`[手入力実績JSON]`の`endFrom`（サーバーの語彙）。 */
+ function scManualFromText(a){
+  if(a.endFrom==='前のロットの終わり〜開始')return '前のロットの終わり〜後ろのロットの開始を見積の比で分けた時刻';
+  if(a.source!=='手入力')return a.endFrom==='見積'?'後ろのロットの開始から見積ぶん遡った時刻':a.endFrom;
+  return a.endFrom==='見積'?'終わりは見積':'開始・終了とも手入力';
  }
  function entryNonWork(e){
   /* 作業以外の行（設備停止・コメント・枠）は**題名だけ**（§9.294 ①）。

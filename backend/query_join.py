@@ -40,6 +40,7 @@ from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cfg, cfg_for, cols, co
                         no_pattern_file_text, path_config_value, pattern_files, qi, tables)
 from .logging_setup import app_logger
 from . import source_capability
+from .repositories.master_repo import take_of
 from .quiet import quiet
 
 # 相手を引くときのIN句の単位（パラメータ数の上限対策。品質データ結合と同じ）。
@@ -191,6 +192,21 @@ def all_definitions(include_disabled=False):
   return []
 
 
+def definition_issue(d):
+ """この定義が**いつまでも効かない**理由（空＝効く）。答えはここ1箇所（§9.605）。
+
+ 一覧に列を足す結合の相手が設備ごとのファイル（`実績_{設備}.sqlite3`・§9.595）だと、1つの表として
+ 開けないので1行も足せない。完了突合で使うデータなので、直し方（用途を「完了突合」へ）まで言う。
+ 仕掛一覧はこの行を当てず（毎回のエラーを出さない）、クエリ結合の一覧がこの字で名指す。"""
+ if str((d or {}).get('purpose') or '') != PURPOSE_LIST:
+  return ''
+ key = str((d or {}).get('right') or '')
+ if (DBS.get(key) or {}).get('pattern'):
+  return (f'相手の「{_right_label(d)}」は設備ごとのファイルなので、一覧に列を足せません。'
+          '作業スケジュールのロットを完了にするなら、用途を「完了突合」にしてください。')
+ return ''
+
+
 def definitions_for(db_key, table, include_builtin=True, for_schedule=False):
  """この一覧（データソース＋表）に効く結合を、当てる順に返す。
 
@@ -215,6 +231,10 @@ def definitions_for(db_key, table, include_builtin=True, for_schedule=False):
   if str(d.get('purpose') or '') != PURPOSE_LIST:
    continue
   if for_schedule and not d.get('useInSchedule', True):
+   continue
+  # 相手が設備ごとのファイル（§9.595）の行は一覧に足せない（1つの表ではない）。**仕掛一覧で
+  # 「結合できません」と言い続けない**——直す場所はクエリ結合の行（`definition_issue()`が名指す・§9.605）。
+  if definition_issue(d):
    continue
   lt = str(d.get('leftTable') or '')
   if lt and table and lt != table:
@@ -267,17 +287,33 @@ def take_columns(d, row):
     """当たった行から**持ち帰る値**を選ぶ（§9.365、利用者の指示「結合後に、
     どのデータを使えるようにするか…も選べるように」）。
 
-    `columns`が空なら相手の全列（選び直さずに済むほうが普通）。`prefix`が
-    あれば必ず付ける——付いたり付かなかったりすると、列名が鍵の設定
-    （列レイアウトマスタ）がその都度はずれる（§9.193と同じ理由）。"""
-    want = list((d or {}).get('columns') or [])
+    選び方は`take_of()`の1箇所（§9.605）: `times`＝開始・終了の列だけ／`some`＝選んだ列と開始・終了の列
+    （作業時間に使う列は外せない）／`all`＝相手の全列。`prefix`があれば必ず付ける——付いたり付かなかったり
+    すると、列名が鍵の設定（列レイアウトマスタ）がその都度はずれる（§9.193と同じ理由）。"""
+    want = _take_names(d)
     pref = str((d or {}).get('prefix') or '')
     out = {}
     for name, v in (row or {}).items():
-        if (want and name not in want) or name == _EQUIP_TAG:
+        if (want is not None and norm_name(name) not in want) or name == _EQUIP_TAG:
             continue
         out[(pref + name) if pref else name] = v
     return out
+
+
+def _time_columns(d):
+    """作業時間に使う列（開始・終了）。選ばれていなければ入れない。"""
+    return [c for c in ((d or {}).get('startColumn'), (d or {}).get('finishColumn')) if str(c or '').strip()]
+
+
+def _take_names(d):
+    """持ち帰る列の名前（正規化した集合）。None＝全列。"""
+    d = d or {}
+    cols = list(d.get('columns') or [])
+    take = take_of(d.get('take'), cols)
+    if take == 'all':
+        return None
+    names = _time_columns(d) + (cols if take == 'some' else [])
+    return {norm_name(n) for n in names}
 
 
 def _time_of(row, col):
@@ -343,7 +379,10 @@ def finish_column_names(defs=None):
  out = []
  for d in (defs if defs is not None else finish_definitions()):
   pref = str(d.get('prefix') or '')
-  for c in (d.get('columns') or []):
+  if take_of(d.get('take'), d.get('columns')) == 'all':
+   continue
+  # 開始・終了の列はいつも持ち帰る（§9.605）。
+  for c in _time_columns(d) + [c for c in (d.get('columns') or []) if c not in _time_columns(d)]:
    name = (pref + c) if pref else c
    if name not in out:
     out.append(name)
@@ -928,6 +967,11 @@ def _probe_tally(out, d, rows, cs, hit):
    out['sample'] = {'equipment': r.get(_EQUIP_TAG, ''), 'keys': [str(r.get(h) or '') for h in hit],
                     'startAt': st, 'endAt': en, 'minutes': mins}
  pairs = _added_names(d, cs, [], set(hit))
+ # 完了突合は「予定へ残す値」（§9.605）で選ぶ。見本も同じ答え（`take_columns`）から作る。
+ want = _take_names(d) if str(d.get('purpose') or '') == PURPOSE_FINISH else None
+ if want is not None:
+  pref = str(d.get('prefix') or '')
+  pairs = [(c, (pref + c) if pref else c) for c in cs if norm_name(c) in want]
  out['addedColumnNames'] = [n for _src, n in pairs]
  out['addedColumns'] = len(out['addedColumnNames'])
  shown = out['addedColumnNames'][:4]

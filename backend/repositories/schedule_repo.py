@@ -209,6 +209,17 @@ def plan_equipments_unsaved_actual(c_share):
              f"AND ([状態] IS NULL OR [状態] NOT IN ('完了','取消'))",['作業'])
  return [str(r[0]) for r in cur.fetchall() if str(r[0] or '').strip()]
 
+def plan_equipments_untimed_stops(c_share):
+ """時刻の無い設備停止がある設備（§9.605 裏の見回りが上の設備停止へ時刻を入れる先）。取り消した行は数えない。"""
+ if PLAN_TABLE not in tables(c_share):return []
+ if PLAN_MANUAL_TIMES_COLUMN not in set(cols(c_share,PLAN_TABLE)):return []
+ cur=c_share.cursor()
+ cur.execute(f'SELECT DISTINCT [設備名] FROM [作業予定] WHERE [種別]=? '
+             f'AND ([有効] IS NULL OR [有効]<>0) AND [{PLAN_PARENT_COLUMN}] IS NULL '
+             f"AND ([{PLAN_MANUAL_TIMES_COLUMN}] IS NULL OR Trim([{PLAN_MANUAL_TIMES_COLUMN}])='') "
+             f"AND ([状態] IS NULL OR [状態]<>'取消')",['設備停止'])
+ return [str(r[0]) for r in cur.fetchall() if str(r[0] or '').strip()]
+
 def _next_plan_order(c_share,equipment):
  cur=c_share.cursor()
  cur.execute('SELECT Max([表示順]) FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
@@ -559,17 +570,19 @@ def plan_update(c_share,plan_id,uid,pc='',**fields):
 # 実際の時刻を手で入れてよい種別（§9.514）。作業（仕掛から消えたロット）と設備停止だけ。
 PLAN_MANUAL_TIMES_KINDS=('作業','設備停止')
 
-def plan_set_manual_times(c_share,plan_id,uid,payload,pc=''):
+def plan_set_manual_times(c_share,plan_id,uid,payload,pc='',keep=False):
  """手で入れた実際の時刻を書き、**完了を確定する**（§9.514）。
 
  登録＝「この行は終わった」と人が言ったこと。**状態も完了にする**——あとで仕掛に同じ
  ロットが戻っても、人が確かめた完了を黙って予定へ戻さない。判定（時刻が読めるか・
- 終わりが始まりより前でないか）は呼ぶ側（`schedule_calc.manual_payload()`）が済ませてある。"""
+ 終わりが始まりより前でないか）は呼ぶ側（`schedule_calc.manual_payload()`）が済ませてある。
+ `keep=True`は自動で入れるとき（§9.605）——**時刻が既にある行は書かない**（人が入れた時刻が正）・取り消した行も書かない。"""
  ensure_plan_table(c_share)
  cur=c_share.cursor()
- cur.execute('SELECT [予定ID],[種別] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ cur.execute(f'SELECT [予定ID],[種別],[{PLAN_MANUAL_TIMES_COLUMN}],[状態] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
  row=cur.fetchone()
  if not row:raise ValueError('指定の予定が見つかりません。')
+ if keep and (str(row[2] or '').strip() or str(row[3] or '')=='取消'):return 0
  if str(row[1] or '') not in PLAN_MANUAL_TIMES_KINDS:
   raise ValueError('実際の時刻を入れられるのは作業と設備停止だけです。')
  cur.execute(f'UPDATE [作業予定] SET [{PLAN_MANUAL_TIMES_COLUMN}]=?,[状態]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',

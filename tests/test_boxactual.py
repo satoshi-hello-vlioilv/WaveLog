@@ -275,6 +275,55 @@ try:
         cap['files'] == ['LS4', 'LS5'] and not cap['features']['list']['ok'] and cap['features']['finish']['ok'],
         json.dumps(cap, ensure_ascii=False)[:240])
 
+    # ---- 10. 予定へ残す値・一覧の結合との整合（§9.605） ----------------------
+    actual_match.forget()
+    query_join.finish_definitions = lambda: [dict(DEF, take='times')]
+    pt = run_plan(*plan(3, 'L3', 'C3', 'B3'))
+    rec('「開始・終了の時刻だけ」なら予定へ残す値は2列だけ（相手の列は6）',
+        sorted((pt['actualSource'] or {}).keys()) == sorted([START, END]) and pt['manual'] is not None,
+        json.dumps(pt['actualSource'], ensure_ascii=False))
+    query_join.finish_definitions = lambda: [dict(DEF, take='some', columns=['BOX実績_重量'])]
+    ps = run_plan(*plan(3, 'L3', 'C3', 'B3'))
+    rec('「選んだ列も残す」は選んだ列に作業時間の2列をいつも足す（外せない）',
+        sorted((ps['actualSource'] or {}).keys()) == sorted([START, END, 'BOX実績_重量']),
+        json.dumps(ps['actualSource'], ensure_ascii=False))
+    query_join.finish_definitions = lambda: [dict(DEF)]
+    rec('残す値の名前は内容欄の候補になる（「すべて」は当たった行から拾う）',
+        query_join.finish_column_names([dict(DEF, take='times')]) == [START, END]
+        and query_join.finish_column_names([dict(DEF, take='some', columns=['BOX実績_重量'], prefix='実績_')])
+        == ['実績_' + START, '実績_' + END, '実績_BOX実績_重量'] and query_join.finish_column_names([dict(DEF)]) == [])
+    pv = query_join.probe_finish(dict(DEF, take='times'))
+    rec('下見の「残す値の見本」も選んだ値に従う（時刻だけなら2列）',
+        pv['addedColumnNames'] == [START, END] and all(set(ex) <= {START, END} for ex in pv['examples']),
+        json.dumps(pv['addedColumnNames'], ensure_ascii=False))
+    LIST_BAD = dict(DEF, id=-2, name='実績を一覧へ（網）', purpose='')
+    saved_all = query_join.all_definitions
+    query_join.all_definitions = lambda include_disabled=False: [dict(DEF), LIST_BAD]
+    try:
+        defs = query_join.definitions_for(WK, '', include_builtin=False)
+        rec('仕掛一覧は完了突合の行も、相手が設備ごとのファイルの「一覧に足す」行も当てない（結合できないと言い続けない）',
+            defs == [], json.dumps([d['name'] for d in defs], ensure_ascii=False))
+        why = query_join.definition_issue(LIST_BAD)
+        rec('その行はクエリ結合の一覧で名指す（設備ごとのファイル・用途を完了突合へ）',
+            '設備ごとのファイル' in why and '完了突合' in why and query_join.definition_issue(dict(DEF)) == '', why)
+    finally:
+        query_join.all_definitions = saved_all
+    with db_access.connect(TMP / 'master2.sqlite3', False) as c2:
+        j2 = master_repo.query_join_save(c2, dict(DEF, name='残す値', take='times', columns=['BOX実績_重量'],
+                                                 enabled='有効'), 'tests')
+        def row2():
+            return [d for d in master_repo.query_joins(c2, include_disabled=True) if d['id'] == j2][0]
+        r1 = row2()
+        rec('「時刻だけ」で保存すると列の並びは持たない', r1['take'] == 'times' and r1['columns'] == [], json.dumps(r1, ensure_ascii=False)[:160])
+        master_repo.query_join_save(c2, {k: v for k, v in dict(r1, enabled='有効').items() if k != 'take'}, 'tests', jid=j2)
+        rec('送らなかった「残す値」は消えない（古い画面の保存）', row2()['take'] == 'times')
+        master_repo.query_join_save(c2, dict(r1, take='some', columns=[], enabled='有効'), 'tests', jid=j2)
+        rec('「選んだ列も残す」で列を1つも選ばなければ「時刻だけ」として保存する', row2()['take'] == 'times')
+        master_repo.query_join_save(c2, dict(r1, take='some', columns=['BOX実績_重量'], enabled='有効'), 'tests', jid=j2)
+        rec('「選んだ列も残す」は列の並びを持つ', row2()['take'] == 'some' and row2()['columns'] == ['BOX実績_重量'])
+        master_repo.query_join_save(c2, dict(row2(), purpose='', enabled='有効'), 'tests', jid=j2)
+        rec('完了突合でない行は「残す値」を持たない（すべて）', row2()['take'] == 'all')
+
     # ---- 物差し --------------------------------------------------------------
     with_actual = [p1, p3, p5, p7]
     timed = [p for p in with_actual if p['state'] == '完了' and p.get('manual')]

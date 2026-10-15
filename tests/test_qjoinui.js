@@ -480,8 +480,34 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   rec('右の「いまの設定」の札を押すと、その欄が光って焦点が移る',
       await page.evaluate(()=>{const to=document.querySelector('[data-qj-jump-to="span"]');
        return !!to&&to.classList.contains('is-flash')&&to.contains(document.activeElement)}));
-  rec('完了突合では④が「何を持ち帰るか」になる',
-      fin.secs.some(t=>t.includes('何を持ち帰るか')),JSON.stringify(fin.secs));
+  rec('完了突合では④が「予定へ何を残すか」になる',
+      fin.secs.some(t=>t.includes('予定へ何を残すか')),JSON.stringify(fin.secs));
+  /* §9.605: 突き合わせる相手は作業スケジュールの予定（仕掛へ列を足すのではない）。④は予定へ残す値の3択で、
+     既定は「開始・終了の時刻だけ」。「選んだ列も残す」では作業時間の2列は鍵の札で外せない。欄に入ると右の図の同じ節が光る。 */
+  await page.evaluate(()=>{for(const k of ['startColumn','finishColumn']){const s=document.querySelector(`[data-qj-field="${k}"]`);
+   const o=[...s.options].filter(o=>o.value)[k==='startColumn'?0:1];if(o){s.value=o.value;s.dispatchEvent(new Event('change',{bubbles:true}))}}});
+  await page.waitForFunction(()=>(document.querySelector('[data-qj-field="finishColumn"]')||{}).value,{timeout:10000});
+  const take=await page.evaluate(()=>({
+   leftTag:(document.querySelector('[data-qj-pane="left"] .qj-pane-tag')||{}).textContent||'',
+   cards:[...document.querySelectorAll('.qj-takes .qj-take b')].map(b=>b.textContent.trim()),
+   on:(document.querySelector('.qj-takes .qj-take.is-on b')||{}).textContent||'',
+   fig:[...document.querySelectorAll('.qj-fig .qj-fig-node')].map(n=>n.dataset.qjNode),
+   off:(document.querySelector('.qj-fig')||{}).textContent||''}));
+  rec('§9.605: ③の左は「作業スケジュールの予定」・右の図が「仕掛の一覧には足しません」と1回言う',
+      take.leftTag.includes('作業スケジュールの予定')&&/仕掛の一覧には足しません/.test(take.off)
+      &&take.fig.join(',')===',keys,when,span,take',JSON.stringify(take));
+  rec('§9.605: ④は3択（時刻だけ／選んだ列も残す／すべて）・新しい完了突合の既定は時刻だけ',
+      take.cards.length===3&&take.on==='開始・終了の時刻だけ',JSON.stringify(take.cards)+' / '+take.on);
+  await page.evaluate(()=>{const r=document.querySelector('[name="qjTake"][value="some"]');r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForSelector('.qj-col-lock',{timeout:10000});
+  const lock=await page.evaluate(()=>({n:document.querySelectorAll('.qj-col-lock').length,
+   jump:[...document.querySelectorAll('.qj-col-lock')].every(b=>b.dataset.qjJump==='span'),
+   checks:document.querySelectorAll('.qj-cols [data-qj-col]').length}));
+  rec('§9.605: 「選んだ列も残す」では作業時間の2列が鍵の札（外せない・押すと②へ）・残りの列は選べる',
+      lock.n===2&&lock.jump&&lock.checks>0,JSON.stringify(lock));
+  await page.focus('[name="qjTake"][value="some"]');
+  rec('§9.605: 欄に入ると右の図の同じ節が光る（④→「予定へ残す」）',
+      await page.evaluate(()=>[...document.querySelectorAll('.qj-fig-node.is-lit')].map(n=>n.dataset.qjNode).join(',')==='take'));
   rec('完了突合では「完了時刻にする列」を相手の列から選べる',
       fin.finish&&fin.opts>1,JSON.stringify({欄:fin.finish,候補:fin.opts}));
   rec('完了突合には「作業スケジュールでも使う」を出さない（予定のための設定なので常に効く）',

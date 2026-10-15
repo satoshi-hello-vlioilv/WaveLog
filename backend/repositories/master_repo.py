@@ -2682,7 +2682,9 @@ QUERY_JOIN_PURPOSES=(QUERY_JOIN_PURPOSE_LIST,QUERY_JOIN_PURPOSE_FINISH)
 _QUERY_JOIN_EXTRA_COLUMNS=(('結合方法','TEXT'),('用途','TEXT'),
                            ('完了日時列','TEXT'),('スケジュール除外','INTEGER'),
                            # 完了突合の開始日時と「いつ完了にするか」(§9.595)。
-                           ('開始日時列','TEXT'),('完了の条件','TEXT'))
+                           ('開始日時列','TEXT'),('完了の条件','TEXT'),
+                           # 完了突合が予定へ持ち帰る値(§9.605)。空＝取り込む列の選び方のまま（今までどおり）。
+                           ('持ち帰る値','TEXT'))
 # 完了突合を**いつ完了にするか**(§9.595、利用者の指示「実績に当たったら」)。
 # 保存値は鍵、空＝`gone`（今までどおり「仕掛から消えて、相手に当たったら」）。
 # `hit`は仕掛に残っていても相手に当たった時点で完了（実績が先に届く運用のため）。
@@ -2695,6 +2697,22 @@ QUERY_JOIN_FINISH_WHEN_DEFAULT='gone'
 def finish_when_of(raw):
  v=str(raw or '').strip()
  return v if v in dict(QUERY_JOIN_FINISH_WHEN) else QUERY_JOIN_FINISH_WHEN_DEFAULT
+# 完了突合が**予定へ持ち帰る値**(§9.605、利用者の指示「完了突合せ自体は開始終了時刻をスケジュールに取り込みますが、
+# 仕掛情報にデータの結合する処理ではないので…選ばないという選択肢(もしくは自動処理に使う項目はチェックを外せない)」)。
+# `times`＝開始・終了の列だけ／`some`＝選んだ列（開始・終了の列はいつも入る）／`all`＝実績の全列。
+# 保存値は`times`だけを持ち、`some`と`all`は今までどおり[取り込む列JSON]が空かどうかで言う（古い行の意味を変えない）。
+QUERY_JOIN_TAKE=(('times','開始・終了の時刻だけ'),('some','選んだ列も残す'),('all','実績の列をすべて'))
+QUERY_JOIN_TAKE_SUMMARY={
+ 'times':'作業時間に使う2列だけ',
+ 'some':'内容欄に出す列も選ぶ',
+ 'all':'実績の行を丸ごと残す'}
+def take_of(raw,columns=None):
+ """持ち帰る値の鍵（`times`／`some`／`all`）。答えはここ1箇所（保存・読む・下見が同じ）。"""
+ v=str(raw or '').strip()
+ if v in dict(QUERY_JOIN_TAKE):
+  if v=='some' and not columns:return 'times'
+  return v
+ return 'some' if columns else 'all'
 # 読むときに必ずある列。**後から足した列は`_QUERY_JOIN_EXTRA_COLUMNS`で、
 # 実際にある列だけをSELECTする**——読み取り専用で開く経路があるのでここでは
 # ALTER TABLEできず、古い表もそのまま読めなければならない。
@@ -2778,6 +2796,8 @@ def _join_row(d):
          'finishColumn':str(d.get('完了日時列') or '').strip()[:120],
          'startColumn':str(d.get('開始日時列') or '').strip()[:120],
          'finishWhen':finish_when_of(d.get('完了の条件')),
+         'take':(take_of(d.get('持ち帰る値'),_json_list(d.get('取り込む列JSON')))
+                 if purpose==QUERY_JOIN_PURPOSE_FINISH else 'all'),
          # **保存されているのは「使わない」側**(§9.132)。空＝使う。
          'useInSchedule':not bool(d.get('スケジュール除外')),
          'multi':multi if multi in QUERY_JOIN_MULTI else 'first',
@@ -2828,22 +2848,27 @@ def query_join_save(c,data,uid,jid=None):
  # 網は送らないので、送らなかっただけで設定が消えないようにする（§9.392と同じ作法）。
  start_col=(data or {}).get('startColumn')
  finish_when=(data or {}).get('finishWhen')
- if (start_col is None or finish_when is None) and jid is not None:
+ take=(data or {}).get('take')
+ if (start_col is None or finish_when is None or take is None) and jid is not None:
   # 列は冒頭の`ensure_query_join_table()`が足してある。
-  row=c.execute('SELECT [開始日時列],[完了の条件] FROM [クエリ結合マスタ] WHERE [結合ID]=?',
+  row=c.execute('SELECT [開始日時列],[完了の条件],[持ち帰る値] FROM [クエリ結合マスタ] WHERE [結合ID]=?',
                 [int(jid)]).fetchone()
   if row:
    if start_col is None:start_col=row[0]
    if finish_when is None:finish_when=row[1]
+   if take is None:take=row[2]
  start_col=str(start_col or '').strip()[:120]
  finish_when=finish_when_of(finish_when)
  if purpose==QUERY_JOIN_PURPOSE_FINISH:
   # 完了突合は「当たったら完了にする」1通りしか無いので、結合の仕方は既定へ寄せる
   # (押せるのに効かない設定を残さない。§4)。
   kind=QUERY_JOIN_KIND_DEFAULT
+  # 持ち帰る値(§9.605)。「時刻だけ」と「すべて」は列の並びを持たない（選び直したときに前の選択が残らない）。
+  take=take_of(take,columns) if take is not None else take_of('',columns)
+  if take!='some':columns=[]
  else:
   # 完了突合でない行には効かない設定を残さない（押せるのに効かない設定・§4）。
-  finish_col='';start_col='';finish_when=QUERY_JOIN_FINISH_WHEN_DEFAULT
+  finish_col='';start_col='';finish_when=QUERY_JOIN_FINISH_WHEN_DEFAULT;take='all'
  # **保存するのは「使わない」側**(§9.132)。渡されなければ「使う」。
  excluded=0 if (data or {}).get('useInSchedule',True) else 1
  cur=c.cursor()
@@ -2859,21 +2884,22 @@ def query_join_save(c,data,uid,jid=None):
        int((data or {}).get('order') or 0),
        0 if str((data or {}).get('enabled') or '').strip()=='無効' else -1,
        kind,purpose,finish_col,excluded,start_col,
-       '' if finish_when==QUERY_JOIN_FINISH_WHEN_DEFAULT else finish_when,uid]
+       '' if finish_when==QUERY_JOIN_FINISH_WHEN_DEFAULT else finish_when,
+       take if take in ('times','some') else '',uid]
  if jid is not None:
   cur.execute('SELECT [結合ID] FROM [クエリ結合マスタ] WHERE [結合ID]=?',[int(jid)])
   if not cur.fetchone():raise ValueError('指定の結合が見つかりません。')
   cur.execute('UPDATE [クエリ結合マスタ] SET [結合名]=?,[対象データソース]=?,[対象テーブル]=?,'
               '[相手データソース]=?,[相手テーブル]=?,[突合キーJSON]=?,[取り込む列JSON]=?,'
               '[接頭辞]=?,[複数一致]=?,[表示順]=?,[有効]=?,[結合方法]=?,[用途]=?,[完了日時列]=?,'
-              '[スケジュール除外]=?,[開始日時列]=?,[完了の条件]=?,[更新者ID]=?,[更新日時]=Now() '
+              '[スケジュール除外]=?,[開始日時列]=?,[完了の条件]=?,[持ち帰る値]=?,[更新者ID]=?,[更新日時]=Now() '
               'WHERE [結合ID]=?',vals+[int(jid)])
   c.commit();return int(jid)
  cur.execute('INSERT INTO [クエリ結合マスタ] ([結合名],[対象データソース],[対象テーブル],'
              '[相手データソース],[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],'
              '[複数一致],[表示順],[有効],[結合方法],[用途],[完了日時列],[スケジュール除外],'
-             '[開始日時列],[完了の条件],[更新者ID],[登録者ID],[登録日時],[更新日時]) '
-             'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',vals+[uid])
+             '[開始日時列],[完了の条件],[持ち帰る値],[更新者ID],[登録者ID],[登録日時],[更新日時]) '
+             'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',vals+[uid])
  c.commit()
  return int(cur.lastrowid)
 
@@ -2956,7 +2982,8 @@ def migrate_box_actual_join(c,work_key,actual_key):
    'columns':[],'prefix':'','multi':'first','kind':QUERY_JOIN_KIND_DEFAULT,
    'purpose':QUERY_JOIN_PURPOSE_FINISH,
    'finishColumn':BOX_ACTUAL_FINISH_COLUMN,'startColumn':BOX_ACTUAL_START_COLUMN,
-   'finishWhen':'hit','useInSchedule':True,'order':0,'enabled':'有効'},'migrate:box-actual')
+   # 持ち帰るのは作業時間に使う2つの列だけ（§9.605。仕掛の一覧へ何も足さない）。
+   'finishWhen':'hit','take':'times','useInSchedule':True,'order':0,'enabled':'有効'},'migrate:box-actual')
  set_path_config(c,BOX_ACTUAL_JOIN_KEY,'done','migrate:box-actual')
  return made
 

@@ -67,9 +67,21 @@ def _payload(e):
 
 
 def pending(result):
-    """まだ残していない、当たった行。"""
+    """まだ残していない、当たった行。持ち帰る値が空（「開始・終了の時刻だけ」で列を選んでいない・§9.605）でも残す
+    ——実績のデータが消えたあとも「完了」を言えるように。"""
     return [e for e in (result.get('entries') or [])
-            if e.get('actualSource') and not e.get('actualSourceSaved') and e.get('id') is not None]
+            if e.get('actualSource') is not None and not e.get('actualSourceSaved') and e.get('id') is not None]
+
+
+def pending_stops(result):
+    """完了したロットより上の設備停止で、時刻をまだ残していない行（§9.605・`schedule_calc._settle_stop_times()`）。
+    控え（`stopTimesToSave`）は**応答へ出さない**ので、ここで外す。戻り値: [(予定ID, 残す形)]。"""
+    out = []
+    for e in result.get('entries') or []:
+        pay = e.pop('stopTimesToSave', None)
+        if pay and e.get('id') is not None:
+            out.append((e['id'], pay))
+    return out
 
 
 def writable():
@@ -93,7 +105,8 @@ def persist(result, uid, pc):
     ・保存できたぶんは、いま返す応答の中でも「保存済み」に直す——同じ画面が
       「未保存」と言い続けるのは、次に開くまで直らない嘘になる。"""
     pend = pending(result)
-    if not pend or writable():
+    stops = pending_stops(result)
+    if not (pend or stops) or writable():
         return ''
 
     def fn(c):
@@ -101,12 +114,17 @@ def persist(result, uid, pc):
         for e in pend:
             if sr.plan_set_actual_json(c, e['id'], json.dumps(_payload(e), ensure_ascii=False), uid, pc):
                 n += 1
+        # 上の設備停止の時刻（§9.605）。**人が入れた時刻は上書きしない**（`keep`）。
+        for pid, pay in stops:
+            n += sr.plan_set_manual_times(c, pid, uid, pay, pc=pc, keep=True)
         return {'saved': n}
     try:
         schedule_sync.with_write(uid, pc, uid, fn)
     except Exception as e:
         app_logger().warning('実績の写しを保存できませんでした: %s', e)
-        return f'実績で確認できた{len(pend)}件を予定へ保存できませんでした（{e}）。次に開いたときにもう一度試します。'
+        what = '・'.join(w for w in ((f'実績で確認できた{len(pend)}件' if pend else ''),
+                                     (f'設備停止{len(stops)}件の時刻' if stops else '')) if w)
+        return f'{what}を予定へ保存できませんでした（{e}）。次に開いたときにもう一度試します。'
     for e in pend:
         e['actualSourceSaved'] = True
     return ''
@@ -134,7 +152,9 @@ def sweep_once():
     results = []
     c = connect(local_path, False, 'sqlite')
     try:
-        for equip in sr.plan_equipments_unsaved_actual(c):
+        # 実績の写しをまだ持たない設備と、時刻の無い設備停止がある設備（§9.605）。
+        equips = list(dict.fromkeys(sr.plan_equipments_unsaved_actual(c) + sr.plan_equipments_untimed_stops(c)))
+        for equip in equips:
             out['equipments'] += 1
             try:
                 results.append(schedule_calc.expand_plan(c, equip))
@@ -145,7 +165,7 @@ def sweep_once():
         c.close()
     # 書くのは読み終えてから（読みの接続を開いたまま書込のサイクルへ入らない）。
     for result in results:
-        n = len(pending(result))
+        n = len(pending(result)) + sum(1 for e in result.get('entries') or [] if e.get('stopTimesToSave'))
         note = persist(result, SWEEP_USER, pc)
         if note:
             out['error'] = note
