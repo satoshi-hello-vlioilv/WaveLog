@@ -1476,8 +1476,10 @@ th.col-sorted:hover{background:#c7e7ea}
 .an-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-1)}
 .an-card-head b{font-size:var(--fs);font-weight:var(--fw-strong);color:var(--ink)}
 .an-card-head small{font-size:var(--fs-badge);color:var(--muted);white-space:nowrap}
-.an-pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-1)}
-.an-slot{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+/* MIN と MAX は**数の幅のまま**並べ、横に入らなければ MAX を下の段へ（§9.608）。2つに割った枠へ
+   押し込むと、桁の多い値（1000.000）が隣の数へ食い込みカードの縁を越えていた（実測 20〜32px）。 */
+.an-pair{display:flex;flex-wrap:wrap;gap:var(--gap-tight) var(--space-2)}
+.an-slot{display:flex;flex-direction:column;align-items:flex-start;flex:1 0 auto;min-width:0}
 .an-slot i{font-style:normal;font-size:var(--fs-badge);font-weight:var(--fw-ui);color:var(--muted);letter-spacing:.04em}
 .an-slot b{font-size:var(--fs-lg);font-weight:var(--fw-strong);color:var(--ink);
  font-variant-numeric:tabular-nums;line-height:1.15}

@@ -1526,10 +1526,16 @@ function compactToleranceScale(kind,values,count){
 }
 /* 図の行を**実際の表に合わせる**。測るのは見出し1行と本文1行だけ（40行を
    測らない）——どの行も同じ高さなので、頭の高さと1行の高さが分かれば足りる。 */
-function alignToleranceChart(){
+/* 図の行の高さは**表の大きさが変わるたびに測り直す**（§9.608）。描いたその場で1回だけ測ると、
+   窓を伏せたまま描いた（保存した測定を開き直す）・表示サイズを変えた・器に合わせて表を縮めた、の
+   どれでも表だけが動いて図がずれる（実測 最大34px）。見張りは表の1つの`ResizeObserver`。 */
+const mxAlignWatch=typeof ResizeObserver==='function'?new ResizeObserver(()=>alignToleranceChart(false)):null;
+function alignToleranceChart(watch=true){
+ if(watch&&mxAlignWatch)mxAlignWatch.disconnect();
  /* 表ごとに、その表の図をそろえる（板厚・板幅は2組・§9.607）。 */
  document.querySelectorAll('#measurementGrid [data-grid-key]').forEach(block=>{
   const chart=block.querySelector('.accurate-numberline'),tbl=block.querySelector('.measure-matrix');
+  if(watch&&mxAlignWatch&&tbl)mxAlignWatch.observe(tbl);
   if(!chart||!tbl)return;
   const head=tbl.querySelector('thead tr'),row=tbl.querySelector('tbody tr');
   if(!head||!row)return;
