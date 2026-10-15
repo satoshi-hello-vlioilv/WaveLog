@@ -776,6 +776,30 @@ function holdRepeat(btn,fn){
  btn.addEventListener('contextmenu',e=>{if(t)e.preventDefault()});   // 指で長押ししたときのメニューを出さない
  btn.addEventListener('click',e=>{e.preventDefault();if(e.detail===0)fn()});
 }
+/* Enter で次の入力欄へ（Shift+Enter で前へ・§9.606、利用者の指示「入力項目の移動をENTERキーでも」）。
+   器（`root`）に1つ付けるだけ。**Enter を自分で使う欄からは奪わない**——先に`preventDefault`した欄（測定表の欄の
+   「次の条」・候補の器の「選ぶ」）、日本語の変換中（確定の Enter）、複数行の欄、ボタン、浮いた面の中は素通り。
+   進む先は器の中の**見えていて打てる入力欄**を文書の順に（ボタンは飛ばす）。値の整え（丸め・上下限）は
+   焦点が離れる`blur`／`change`がそのまま受ける（欄を離れるのと同じ道）。測定器の受信欄は`data-enter-own`で外す
+   （自動転送の Enter で焦点を奪うと、続きの転送が行き場を失う・§9.122）。 */
+const ENTER_MOVE_FIELDS='input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=file]),select,textarea';
+function enterMoves(root){
+ if(!root||root.dataset.wlEnterMove)return;
+ root.dataset.wlEnterMove='1';
+ const shown=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden'};
+ const usable=e=>!e.disabled&&!e.readOnly&&e.tabIndex>=0&&!e.closest('[hidden],.wl-menu')&&shown(e);
+ root.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'||e.defaultPrevented||e.isComposing||e.keyCode===229||e.altKey||e.ctrlKey||e.metaKey)return;
+  const el=e.target;
+  /* `data-enter-own`＝Enter を自分の意味で受ける欄（測定器の受信欄＝転送の区切り・測定表の欄＝次の条）。
+     `preventDefault`だけに頼らない——取り消せない Enter（`cancelable`の無い合成の知らせ）では効かず、焦点を奪っていた。 */
+  if(!el.matches||!el.matches(ENTER_MOVE_FIELDS)||el.matches('textarea,[data-enter-own]')||el.closest('.wl-menu'))return;
+  const list=[...root.querySelectorAll(ENTER_MOVE_FIELDS)].filter(x=>x===el||usable(x));
+  const next=list[list.indexOf(el)+(e.shiftKey?-1:1)];
+  e.preventDefault();
+  if(next){next.focus();if(next.select&&next.matches('input'))next.select()}
+ });
+}
 /* ---------- データソースの役割(§9.87) ----------
    「どれが作業対象の一覧(仕掛)で、どれが品質データか」は
    **データソースマスタの[役割]が決める**。以前は 'SIKALOTNOW' という
@@ -2330,6 +2354,7 @@ function noteMeasureDevice(key,device){
  if(!MEASURE_DEVICE_DIGITS[device])return;      /* 桁を持つ器だけ覚える */
  m.settings=m.settings||{};
  m.settings.deviceOf=Object.assign({},m.settings.deviceOf,{[key]:device});
+ m.settings.deviceLast=key;   /* 最後に判定した器の量（板厚・板幅の札が読む・§9.607） */
 }
 function measurementDigits(key,device){
  const base=key==='thickness'?3:key==='width'?2:null;
@@ -3236,7 +3261,7 @@ Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalD
    ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
    ============================================================ */
 window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
-WL.base={normalizedLot,whereName,durationMs,onTyped,holdRepeat,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+WL.base={normalizedLot,whereName,durationMs,onTyped,holdRepeat,enterMoves,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
  LENGTH_SLOTS,
  /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
     `measureDirty` は外からも倒す（`records-store` が保存し終えて false に

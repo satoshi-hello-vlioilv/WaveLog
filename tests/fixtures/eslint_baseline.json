@@ -5,14 +5,11 @@
  "static/js/list/list-columns.js": {
   "no-unused-vars": 1
  },
- "static/js/master/master-data.js": {
-  "no-unused-vars": 1
- },
  "static/js/master/master-maint.js": {
   "no-unused-vars": 3
  },
  "static/js/master/master-opdata.js": {
-  "no-unused-vars": 2
+  "no-unused-vars": 1
  },
  "static/js/master/master-report.js": {
   "no-unused-vars": 1

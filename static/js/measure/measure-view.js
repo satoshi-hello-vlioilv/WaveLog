@@ -17,6 +17,12 @@ WL.measureItem={
     時点で今の名前へ寄せる。板幅が条ごと・板厚が丈ごとなので、旧名は
     「条ごと」側＝板幅として開く。 */
  LEGACY:'板厚/板幅',
+ /* **板厚と板幅は1つの項目**（§9.607、利用者の選択「A の表＋F の振り分け」）。§9.138 で2つへ分けたのは進捗が合算で読めず
+    画面が二重だったから——いまは**1つの項目が2つの測定値（`keysOf()`）を持ち**、表は鍵ごとに上下に重ね（列＝丈位置をそろえる）、
+    進捗も鍵ごとに別々に言う。測定器は値を振り分ける（マイクロメータ→板厚・ノギス／コンベックス→板幅・`deviceTarget()`）。
+    前の名前（`板厚`・`板幅`・`板厚/板幅`）は`normalize()`がこの名前へ寄せる。 */
+ DIM:'板厚・板幅',
+ DIM_KEYS:['thickness','width'],
  /* **「母材」と「丈毎」は別々の項目**（§9.391、利用者の指示「母材と丈毎を
     入力内容の項目が一緒になっていますが、ボタンを分けて1枚のカードに
     配置するように変更してください」）。§9.160で1つにまとめていたが、
@@ -47,7 +53,7 @@ WL.measureItem={
     設備ごとに項目を伏せられるようになると（§9.392）、**伏せた項目を
     条件に選べなくなる**——マスタは全部の語彙を見て決めるものなので、
     画面に出ている顔ぶれとは別に持つ。 */
- ALL:['全長','寸法・外観','板厚','板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'],
+ ALL:['全長','寸法・外観','板厚・板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'],
  LEGACY_MATERIAL:['母材','母材/丈毎','母材・揃い/肉厚/長さ'],
  LEGACY_PIECE:['丈毎','揃い/肉厚/長さ'],
  /* **画面の階層はここ1箇所**（§9.396）。左のラベル列＝群（もの）、右の
@@ -62,7 +68,7 @@ WL.measureItem={
   {group:'母材',units:[{unit:'コイル1本ごと',items:['全長']}]},
   {group:'製品',units:[
    {unit:'丈ごと',items:['寸法・外観']},
-   {unit:'丈位置 × 条ごと',items:['板厚','板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス']}]},
+   {unit:'丈位置 × 条ごと',items:['板厚・板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス']}]},
  ],
  /* 2行チップの2行目（その面で入れる欄の顔ぶれ）。**名前だけでは中身が
     分からない2つ**にだけ持たせる——条の7つは名前がそのまま量なので書くことが
@@ -82,8 +88,14 @@ WL.measureItem={
   '揃い/肉厚/長さ':'piece',板厚:'thickness',板幅:'width',
   ラテラルボー:'lateral',バリ:'burr',
   テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
+ /* 測定値の鍵 → 項目名（`lateral`→`ラテラルボー`）。`KEYS`を逆に引く（最初に当たる名前＝今の綴り）。
+    欄の判定はこの名前で基準を引く（§9.606）——「いま選んでいる項目」で引くと、描き直しの途中に別の項目の
+    公差で判定され、戻ってきたときにラテラルボーが NG になっていた（利用者の報告）。 */
+ typeOfKey(key){return Object.keys(this.KEYS).find(k=>this.KEYS[k]===key)||''},
+ /* その項目が持つ測定値の鍵（表を描く順）。**答えはここだけ**——板厚・板幅は2つ、ほかは1つ（§9.607）。 */
+ keysOf(type){const t=this.normalize(type??this.current());return t===this.DIM?this.DIM_KEYS.slice():[this.KEYS[t]].filter(Boolean)},
  normalize(type){const t=String(type??'');
-  if(t===this.LEGACY)return '板幅';
+  if(t===this.LEGACY||t==='板厚'||t==='板幅')return this.DIM;
   if(this.LEGACY_MATERIAL.indexOf(t)>=0)return this.MATERIAL;
   return this.LEGACY_PIECE.indexOf(t)>=0?this.PIECE:t;},
  /* 母材の面（ロットに1つ）か。 */
@@ -94,7 +106,7 @@ WL.measureItem={
     ひとまとめに聞きたいところだけが使う（入力欄の保護・案内の札）。 */
  isMaterial(type){const t=type??this.current();return this.isMother(t)||this.isPiece(t)},
  /* 板厚・板幅か（＝製造/オーダー公差を選べる寸法系か）。 */
- isDimensional(type){const t=String(type??'');return t==='板厚'||t==='板幅'||t===this.LEGACY},
+ isDimensional(type){const t=String(type??'');return t===this.DIM||t==='板厚'||t==='板幅'||t===this.LEGACY},
  /* ---------- 「公差」と「基準」を言い分ける（§9.242 ⑤、利用者の指示） ----------
     「板厚、板幅は公差ですが、ラテラルボーやバリ、テレスコープ、巻ズレ、
      フラットネスなどは公差ではなく『基準』なので名称を変更し違和感の
@@ -113,7 +125,13 @@ WL.measureItem={
  limitWordOf(detail,type){return (detail&&detail.single)?'基準':this.limitWord(type)},
  current(){return (typeof $==='function'&&$('#measureType')?.value)||S.measure?.settings?.measureType||''},
  /* 公差・基準値をどちらの寸法で引くか。 */
- kindOf(type){return this.normalize(type??this.current())==='板厚'?'thickness':'width'},
+ /* 前の名前（`板厚`・`板幅`）は**名前の鍵**で答える（欄の判定が`typeOfKey()`で渡す）。板厚・板幅はいまの段（`dimKey`）。 */
+ kindOf(type){const t=String(type??this.current());
+  if(t==='板厚')return 'thickness';
+  if(t==='板幅'||t===this.LEGACY)return 'width';
+  return this.normalize(t)===this.DIM?this.dimKey():'width'},
+ /* 板厚・板幅のいまの段（カーソルのいる表）。既定は板厚（測る順の先）。 */
+ dimKey(){const k=S.measure?.settings?.dimKey;return this.DIM_KEYS.includes(k)?k:'thickness'},
  /* 1丈位置あたりの枠の数と呼び名。**板厚だけは条ごとではなく丈ごとに3点**
     （エッジOS・中央CL・エッジDS）で、条数が40でも枠は3つしかない。 */
  slotCount(key,count){return key==='thickness'?3:count},
@@ -929,7 +947,7 @@ $('#verticalCount')?.addEventListener('change',()=>{if(WL.measureItem.isPiece($(
 /* 設定系入力の変更はすべて未保存フラグを立てる(個別のonchangeを持つ要素は
    この後の個別割当が優先される。この行は必ず個別割当より先に実行すること)。 */
 document.querySelectorAll('.selectors input,.selectors select,.material-grid input').forEach(x=>x.onchange=markDirty);
-const AUTO_ONLY_MEASURE_TYPES={'板厚':1,'板幅':1,'バリ':1};
+const AUTO_ONLY_MEASURE_TYPES={'板厚・板幅':1,'板厚':1,'板幅':1,'バリ':1};
 const MANUAL_ONLY_MEASURE_TYPES={'ラテラルボー':1,'テレスコープ':1,'巻ずれ':1,'フラットネス':1};
 function syncInputModeLock(){
  if(!S.measure)return;
@@ -958,7 +976,7 @@ function syncInputModeLock(){
     ままになる（「自動」と出たまま手入力、が実際に作れる）。 */
  WL.measureInput.updateReceiveState(document.activeElement===$('#deviceInput'));
 }
-$('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();syncInputModeLock();$('#deviceInput').focus();markDirty()};
+$('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.dimKey='thickness';S.measure.settings.deviceLast=null;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();syncInputModeLock();$('#deviceInput').focus();markDirty()};
 /* 測定画面全体の再描画。旧実装は9層のラップ(モード表示→製品丈→検証→
    基本情報→公差セレクタ→コース→作業時間→タブ初期化)だったものを、
    実行順を保ったまま一本の関数へ整理した。 */
@@ -1176,14 +1194,30 @@ function showValidationMessage(result){
  message.textContent=`完了できません。未入力項目を確認してください: ${missingNames.slice(0,6).join('、')}${missingNames.length>6?' ほか':''}`;
  target.prepend(message);result.missing[0]?.el?.focus();
 }
+/* 1つの欄の判定（§9.606）。**答えはここ1箇所**——描いたとき・打つたび・丸めたとき・基準が後から届いたとき
+   （`rejudgeInputs()`）が同じ答えを読む。基準は**欄の項目**で引き（`typeOfKey`）、NG の札（`.judge-pill`）も
+   ここで付け外す——以前は札を描くときにしか作らず、正しい値へ打ち直しても NG が残っていた（利用者の報告）。
+   札を持つのは描いたときにいま測る列だった欄だけ（`.is-judged`・§9.137 の「印は公差外だけ」）。 */
 function judgeInput(el,key,value,index){
  el.classList.remove('ng','complete');
  if(key==='flatness'){
   if(String(el.value||'').trim()!=='')el.classList.add('complete');
   return;
  }
- const raw=String(el.value??'').trim(),tol=WL.measureInput.toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
+ const raw=String(el.value??'').trim(),num=Number(raw);
+ const tol=WL.measureInput.toleranceDetail(key==='thickness'?'thickness':'width',index,WL.measureItem.typeOfKey(key))?.range||null;
  if(raw!==''&&Number.isFinite(num)){el.classList.add('complete');if(tol&&(num<tol[0]||num>tol[1]))el.classList.add('ng')}
+ const wrap=el.closest('.strip-input-wrap.is-judged');
+ if(!wrap)return;
+ const ng=el.classList.contains('ng'),pill=wrap.querySelector('.judge-pill');
+ wrap.classList.toggle('has-judge',ng);
+ if(ng&&!pill)wrap.insertAdjacentHTML('beforeend','<span class="judge-pill ng">NG</span>');
+ else if(!ng&&pill)pill.remove();
+}
+/* 表を作り直さずに全部の欄を判定し直す（基準が後から届いたとき・§9.606）。打っている欄の焦点を動かさない。 */
+function rejudgeInputs(){
+ document.querySelectorAll('input[data-mkey]').forEach(el=>judgeInput(el,el.dataset.mkey,Number(el.value),+el.dataset.j));
+ updateValidationVisuals();
 }
 document.addEventListener('input',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
 document.addEventListener('change',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
@@ -1712,6 +1746,8 @@ function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.
    呼べる。載せ忘れは `no-undef` が教える——**ただし `typeof x` は教えない**
    （§9.355）。外から使う側は `typeof WL.measureView.x==='function'`。
    ============================================================ */
+/* 仕掛の完全な行が後から届いたら、判定と見出し（基準の札）を出し直す（§9.606・呼ぶのは lot-split.js）。 */
+WL.measureHooks.on('afterSourceRefresh',()=>{if(!S.measure)return;rejudgeInputs();updateMeasurementHeading()});
 WL.measureView={
  ensureMeasureShape,blankMeasure,blankProductRow,collect,
  renderMeasurement,renderProductPanel,renderQualityGradePanel,renderRecordedValues,
@@ -1719,7 +1755,7 @@ WL.measureView={
  renderCourseHierarchy,renderResidualCourseEverywhere,paintQualityInfo,
  refreshScheduleInfo,applyRightLayout,
  updateValidationVisuals,showValidationMessage,activeRequiredControls,
- judgeInput,judgeProductRow,
+ judgeInput,rejudgeInputs,judgeProductRow,
  updateCoilOptions,updateLengthOptions,updateMeasurementHeading,
  applyMaxStripsToInputs,syncInputModeLock,configureToleranceSelector,
  lockCounts,motherFieldLabel,PRODUCT_FILLED_KEYS,

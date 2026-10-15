@@ -142,7 +142,7 @@ pub fn mirror_seed(conf: &Path, from: &Path) -> Vec<String> {
 
 /// この PC へ配る版を写す（手順の2・中身が無いときだけ）。→ 使う program フォルダ。
 /// 写し方は更新と同じ（`update::check_and_apply()`＝写して sha256 を確かめ、項目ごとに置く・途中で失敗したら戻す）。
-pub fn run(app: &Path, from: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Result<PathBuf, String> {
+pub fn run(app: &Path, from: &Path, log: &dyn Fn(&str), progress: &dyn Fn(update::Step)) -> Result<PathBuf, String> {
     if installed(app) {
         return Ok(app.join("program"));
     }
@@ -162,7 +162,7 @@ pub fn run(app: &Path, from: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str))
 }
 
 /// 使う program フォルダを決める（`--install-from`のとき）。前に使ったフォルダが在ればそれ、無ければ`home_app()`へ写す。
-pub fn program_for(from: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Result<PathBuf, String> {
+pub fn program_for(from: &Path, log: &dyn Fn(&str), progress: &dyn Fn(update::Step)) -> Result<PathBuf, String> {
     if let Ok(p) = locate::program_dir() {
         // 前に入れた PC でも、共有の入口から起こされたら**Python を起こす前に**渡す設定を写す（§9.568。
         // 起動のたびの写し（`update::peek()`）は Python と並んで走るので、その回の起動に間に合わないことがある）

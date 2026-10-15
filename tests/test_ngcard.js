@@ -110,7 +110,7 @@ run('test_ngcard: 完了前の確認カードの強調と「NGが発生した」
   });
   rec('公差の材料を注ぎ込めた',seeded===true,String(seeded));
 
-  await setType('板幅');
+  await setType('板厚・板幅');
   const pWidth=await pill();
   rec('板幅では「公差」の言葉で言う',
       !!pWidth&&/公差/.test(pWidth.文)&&!/基準なし/.test(pWidth.文),JSON.stringify(pWidth));
@@ -228,8 +228,9 @@ run('test_ngcard: 完了前の確認カードの強調と「NGが発生した」
    const m=document.getElementById('appConfirmModal');
    return !!m&&m.hidden===false;
   },null,{timeout:5000});
+  /* 窓ぜんたいの字で見る——§9.604 から最初の1文（何回目か）は窓の題が持つ（本文だけ読むと題へ移った字を見落とす）。 */
   const ask=await page.evaluate(()=>
-    (document.getElementById('appConfirmBody')||{}).textContent||'');
+    (document.getElementById('appConfirmModal')||{}).textContent||'');
   rec('押す前に確認する（何回目かも言う）',/1回目/.test(ask)&&/15分/.test(ask),ask);
   await page.click('#appConfirmOk');
   await W.until(page,()=>{const m=document.getElementById('appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'確認の窓が閉じる'});

@@ -28,6 +28,7 @@
 from .master_repo import tables
 from .table_def import TableDef
 from ..quiet import quiet
+from ..db_access import path_config_rows, set_path_config
 
 ITEM_TABLE = '操業データ項目マスタ'
 CHOICE_TABLE = '操業データ選択肢マスタ'
@@ -60,7 +61,10 @@ INTEGER_TYPES = ('整数', '正の整数')
 PLACE_PREP = '準備'
 PLACE_INPUT = '入力内容'
 PLACE_MOTHER = '母材'
-PLACES = (PLACE_PREP, PLACE_INPUT, PLACE_MOTHER)
+# 品質情報の下（§9.606、利用者の指示「品質情報の下に入力できる欄を設けたい」）。左の「基本情報」の
+# 品質情報（品質データから写す・読むだけ）のすぐ下で、**人が書く**欄。①〜③のどの段でも見える。
+PLACE_QUALITY = '品質情報の下'
+PLACES = (PLACE_PREP, PLACE_INPUT, PLACE_MOTHER, PLACE_QUALITY)
 
 
 def normalize_place(v):
@@ -780,7 +784,8 @@ ITEM_SEEDS = (
     ('スリット', 'スリット 刃厚', '選択', 0, None, None, '刃厚', ''),
     ('スリット', 'スリット 刃セット', '選択', 0, None, None, '刃セット', ''),
     ('スリット', 'スリット 刃径', '正の数', 1, None, None, '', 'mm'),
-    ('スリット', 'スリット クリアランス', '正の数', 1, None, None, '', ''),
+    # **クリアランスは小数2桁**（0.13mm など。利用者の指示・§9.606）。1桁だと 0.13 が 0.1 で記録された。
+    ('スリット', 'スリット クリアランス', '正の数', 2, None, None, '', ''),
     # 利用者の一覧でここだけ「正の数」ではなく「数値」だった＝**マイナスも入る**。
     ('スリット', 'スリット 実ラップ', '数値', 1, None, None, '', ''),
     ('スリット', 'スリット R/F', '選択', 0, None, None, 'R/F', ''),
@@ -825,9 +830,9 @@ BUILTIN_SEEDS = (
     # **条を入力する測定項目を選んだときだけ開く**。板厚は丈ごとに3点
     # （OS/CL/DS）で条に紐づかないので入っていない（§9.214）。
     ('widthOrder', '条の入力', '条入力順', 6, False, PLACE_INPUT, True,
-     '板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
+     '板厚・板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
     ('widthDirection', '条の入力', '方向', 6, False, PLACE_INPUT, True,
-     '板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
+     '板厚・板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'),
     # --- §9.232（利用者の指示「測定画面の入力内容の母材の部分も汎用設定で
     #     作った形にしたいので、今の項目データを抜き出し、今の汎用設定で
     #     作りこみできるように必要な設定を追加してください」）---
@@ -1654,7 +1659,6 @@ def migrate_legacy_choice_masters(c):
     """1度だけ、6つのマスタを選択肢マスタへ写す。**目印はパス設定マスタ**
     （データソースの種まきと同じ作法）——「行が無ければ写す」にすると、
     利用者が全部消した瞬間に復活する消せないマスタになる。"""
-    from ..db_access import path_config_rows, set_path_config
     ensure_choice_table(c)
     if path_config_rows(c).get(_LEGACY_MIGRATED_KEY):
         return False
@@ -1842,7 +1846,7 @@ def choice_delete(c, choice_id, uid):
 # （§9.180の`作業予定`・`Web測定バックアップ`と同じ作法）。
 _ITEM_ADDED_COLUMNS = (
     ('組み込みキー', 'TEXT'),      # 画面が持っている入力欄の名前（自由項目は空）
-    ('置き場', 'TEXT'),            # 準備 / 入力内容
+    ('置き場', 'TEXT'),            # 準備 / 入力内容 / 母材 / 品質情報の下
     ('列幅', 'INTEGER'),           # カードの中の12マスグリッドで何マスぶんか
     ('群折りたたみ', 'INTEGER'),   # その群を畳んで出すか
     ('表示条件', 'TEXT'),          # 畳んだ群を自動で開く測定項目（カンマ区切り）
@@ -2173,7 +2177,6 @@ def seed_mother_builtins(c):
     先に立ち上がっている端末では**後から足した欄が一生入らない**。
     ここは**1度だけ**・**まだ無い鍵だけ**足す。
     """
-    from ..db_access import path_config_rows, set_path_config
     if path_config_rows(c).get(_MOTHER_SEEDED_KEY):
         return 0
     cur = c.cursor()
@@ -2225,6 +2228,34 @@ def seed_mother_builtins(c):
 # 設定を触っていない現場の見え方が黙って変わる（§9.132）。
 
 
+_QUALITY_NOTE_KEY = '__op_quality_note_seeded__'
+# 品質情報の下に最初から置く1欄（§9.606）。名前・型・幅はマスタで変えられ、消せば戻らない（印で1度だけ）。
+QUALITY_NOTE_SEED = ('品質', '品質メモ', '文字', 12)
+
+
+def seed_quality_note(c):
+    """品質情報の下の欄を1つ置く（**1度だけ**・その置き場にまだ1つも無いときだけ）。置いた数を返す。"""
+    if path_config_rows(c).get(_QUALITY_NOTE_KEY):
+        return 0
+    cur = c.cursor()
+    cur.execute(f'SELECT COUNT(*) FROM [{ITEM_TABLE}] WHERE [置き場]=?', [PLACE_QUALITY])
+    made = 0
+    if not (cur.fetchone() or [0])[0]:
+        cur.execute(f'SELECT MAX([表示順]) FROM [{ITEM_TABLE}]')
+        base = int((cur.fetchone() or [0])[0] or 0)
+        group, name, kind, span = QUALITY_NOTE_SEED
+        cur.execute(f'INSERT INTO [{ITEM_TABLE}] '
+                    '([設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
+                    '[選択肢名],[単位],[必須],[備考],[有効],[置き場],[列幅],'
+                    '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                    "VALUES (?,?,?,?,?,NULL,NULL,NULL,'','',0,'',-1,?,?,?,?,Now(),Now())",
+                    ['*', group, name, base + 10, kind, PLACE_QUALITY, span, 'migrate:quality', 'migrate:quality'])
+        made = 1
+        c.commit()
+    set_path_config(c, _QUALITY_NOTE_KEY, 'done', 'migrate:quality')
+    return made
+
+
 def ensure_item_table(c):
     names = tables(c)
     if ITEM_TABLE not in names:
@@ -2233,15 +2264,47 @@ def ensure_item_table(c):
         ITEM_DEF.create(c)
         _seed_items(c)
         _seed_builtins(c)
+        # 種はもう新しい値なので、改訂の印だけ立てる（後で利用者が選び直した値を改訂が上書きしない）。
+        revise_seeds(c)
+        seed_quality_note(c)
         return True
     _ensure_item_columns(c)
     _seed_builtins(c)
+    try:
+        revise_seeds(c)
+        seed_quality_note(c)
+    except Exception as _e:
+        quiet('種の値の改訂・品質メモの欄を当てられない（次に開いたときに当てる）', _e)
     # **後から足した組み込みの欄も入れる**（§9.232）。1度だけ・まだ無い鍵だけ。
     try:
         seed_mother_builtins(c)
     except Exception as _e:
         quiet('母材の組み込み欄を入れられない（次に開いたときに入る）',_e)
     return False
+
+
+# 種の値を後から改めたもの（§9.606）。(印の名前, 項目名, 列, 前の種の値, 新しい値)
+# **前の種の値のままの行だけ**を直し、パス設定マスタへ印を立てる（`seed_mother_builtins()`と同じ「1度だけ」の
+# 持ち方）——印があれば2回目は当たらず、利用者がこの後に選び直した値（1桁へ戻す等）を上書きしない。
+SEED_REVISIONS = (
+    ('slit_clearance_dec2', 'スリット クリアランス', '小数桁', 1, 2),
+)
+
+
+def revise_seeds(c):
+    """`SEED_REVISIONS`を当てる（印の無いものだけ）。直した行の数を返す。"""
+    done = path_config_rows(c)
+    cur, n = c.cursor(), 0
+    for mark, name, col, old, new in SEED_REVISIONS:
+        key = f'__op_seed_rev_{mark}__'
+        if done.get(key):
+            continue
+        cur.execute(f'UPDATE [{ITEM_TABLE}] SET [{col}]=?, [更新者ID]=?, [更新日時]=Now() '
+                    f'WHERE [項目名]=? AND [{col}]=?', [new, 'migrate:seed', name, old])
+        n += cur.rowcount or 0
+        c.commit()
+        set_path_config(c, key, 'done', 'migrate:seed')
+    return n
 
 
 def _seed_items(c):

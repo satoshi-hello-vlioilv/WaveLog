@@ -3420,8 +3420,22 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function lockedStartReason(e){
   const t=scState.strictTop||{};
   if(isStrictTop(e))return `いまは開始できません: ${t.reason||'作業中のロットがあります。'}`;
-  return `厳密モード: 開始できるのは一番上のロット${t.lotNo?`（${t.lotNo}）`:''}だけです。`
-   +'始めるときは、この行を一番上へ並べ替えてください。';
+  const head=`厳密モード: 開始できるのは一番上のロット${t.lotNo?`（${t.lotNo}）`:''}だけです。`;
+  /* 並べ替えできない端末に「並べ替えてください」と言わない（§9.606・できないことをさせない）。 */
+  return head+(scState.editable?'始めるときは、この行を一番上へ並べ替えてください。'
+   :`この端末は並べ替えできません（${reorderDeniedWhy()}）。並べ替えできる端末で一番上へ入れ替えるか、`
+    +'マスタ管理 > アクセス権限マスタで、この端末の「現場段取り」を可にし「対象設備」にこの設備を入れてください。');
+ }
+ /* この端末が**いま見ている設備で**並べ替えできない理由（並べ替えできるなら''）。字はここ1箇所
+    （鍵の付いた開始・掴んだときの断り・§9.606）。判定は`applyFieldReorderPermission()`の答え（`editable`）。 */
+ function reorderDeniedWhy(){
+  if(scState.editable)return '';
+  if(scState.fieldReorderGranted){
+   const label=WL.fieldReorderLabel?.(scState.fieldReorderTarget)||'';
+   return label?`現場段取りの対象設備は「${label}」で、${scState.equipment||'この設備'}は入っていません`
+    :'現場段取りは可ですが、対象設備が未設定です';
+  }
+  return ((window.accessMode&&accessMode.mode)||'edit')==='edit'?'現場段取りの権限がありません':'閲覧モードです';
  }
  function bindStartBtn(btn,e){
   if(!btn)return;
@@ -8449,7 +8463,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
   if(!e)return '';
   if(sessionBlocked())return sessionHolderMessage();
-  if(!scState.editable)return 'この画面では並べ替えできません（閲覧のみ）。';
+  if(!scState.editable)return `この端末は並べ替えできません（${reorderDeniedWhy()}）。`;
   if(e.__pending)return 'まだ保存が終わっていません。数秒待ってからもう一度どうぞ。';
   if(e.fixedStart)return '開始日時を固定した予定です。行の「固定」を外すと動かせます。';
   if(!e.reorderable)return `${e.kind||'この行'}は並べ替えできません（${e.state||'この状態'}のため）。`;

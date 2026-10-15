@@ -106,9 +106,11 @@ run('test_mcore: 測定の中核（測定器からの転送 → セル送り →
    h.value='4';h.dispatchEvent(new Event('change',{bubbles:true}));
   });
   await idle();
+  /* 板厚・板幅は1つの項目（§9.607）。板幅の段から始める（ノギスの転送を見る）。 */
   await page.evaluate(()=>{
    const s=document.querySelector('#measureType');
-   s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}));
+   s.value='板厚・板幅';s.dispatchEvent(new Event('change',{bubbles:true}));
+   S.measure.settings.dimKey='width';WL.measureInput.renderMeasureGrid();
   });
   await idle();
 
@@ -137,18 +139,23 @@ run('test_mcore: 測定の中核（測定器からの転送 → セル送り →
   rec('続けて送ると2条目へ入る',row[0]==='26.15'&&row[1]==='26.20',JSON.stringify(row));
   rec('2件目のあとも条が進む',st===2,'wStep='+st);
 
-  /* ---- 3) 板厚は別の入力内容なので、板幅のままでは受け取らない（§9.138） ----
-     板厚は**丈ごとに3点**（エッジOS・中央CL・エッジDS）、板幅は**条ごと**で
-     枠の数がまるで違うため、入力内容を分けた。分けた以上、受け取れる測定器も
-     項目ごとに決まる（バリ＝マイクロメータ、テレスコープ＝デプスゲージ と
-     同じ形）。**板幅のままマイクロメータを送っても、どこにも入らない。** */
+  /* ---- 3) 測定器が振り分ける（§9.607、利用者の選択「F の振り分け」） ----
+     板厚・板幅は1つの項目で、**マイクロメータの値は板厚の次の枠へ**入る（項目を切り替えない）。
+     §9.138 の「板幅のままマイクロメータを送っても入らない」は撤回した。受け取れないのは
+     板厚・板幅のどちらでもない器（デプスゲージ）だけ。 */
   await send('DT100+003.015');
   const th0=await page.evaluate(()=>(S.measure.measurements.thickness?.[0]||[]).slice(0,3));
   row=await widthRow();
-  rec('板幅のままマイクロメータを送っても板厚へは入らない',th0.every(v=>v===''),JSON.stringify(th0));
-  rec('受け取れない測定器では板幅も汚さない',row[0]==='26.15'&&row[1]==='26.20',JSON.stringify(row));
-  rec('受け取れない測定器では受信欄で合図を出す',
-      /device-error/.test(await page.evaluate(()=>document.querySelector('#deviceInput').className)));
+  rec('マイクロメータの転送は板厚の OS へ振り分ける',th0[0]==='3.015'&&th0[1]==='',JSON.stringify(th0));
+  rec('振り分けても板幅は汚さない',row[0]==='26.15'&&row[1]==='26.20'&&row[2]==='',JSON.stringify(row));
+  await send('DT120+003.000');
+  row=await widthRow();
+  rec('受け取れない測定器（デプスゲージ）では受信欄で合図を出し、どこも汚さない',
+      /device-error/.test(await page.evaluate(()=>document.querySelector('#deviceInput').className))
+      &&row[2]===''&&(await page.evaluate(()=>S.measure.measurements.thickness[0][1]))==='',JSON.stringify(row));
+  /* 手で打つ数字（器の印なし）はいまの段へ入る。板幅の段を選び直す。 */
+  await page.evaluate(()=>{S.measure.settings.dimKey='width';WL.measureInput.renderMeasureGrid()});
+  await idle();
 
   /* ---- 4) 測定器を通さない生の数値も受け付ける ---- */
   await send('27.5');
@@ -168,11 +175,12 @@ run('test_mcore: 測定の中核（測定器からの転送 → セル送り →
   /* ---- 6) ↑↓で条を移動できる（条数を超えたら巡回する） ---- */
   const before=await page.evaluate(()=>S.measure.settings.wStep);
   await page.keyboard.press('ArrowDown');
-  const down=await page.evaluate(()=>S.measure.settings.wStep);
+  const down=await page.evaluate(()=>S.measure.settings.dimKey==='thickness'?S.measure.settings.tStep:-1);
   await page.keyboard.press('ArrowUp');
-  const up=await page.evaluate(()=>S.measure.settings.wStep);
-  rec('↓で次の条へ、端まで行ったら先頭へ巡回する',before===3&&down===0,`${before}→${down}`);
-  rec('↑で前の条へ戻る',up===before,`${down}→${up}`);
+  const up=await page.evaluate(()=>S.measure.settings.dimKey==='width'?S.measure.settings.wStep:-1);
+  /* 板厚・板幅では、板幅の最後の条の次は板厚の OS（段をまたいで続く・§9.607）、↑で戻る。 */
+  rec('↓で次の枠へ、板幅の最後の条の次は板厚の OS',before===3&&down===0,`${before}→${down}`);
+  rec('↑で前の枠へ戻る',up===before,`${down}→${up}`);
 
   /* ---- 7) Ctrl系はフォーカスを奪わない ----
      ブラウザの既定ショートカットが割り込むと、転送の最後のTabを取りこぼす。
@@ -195,7 +203,7 @@ run('test_mcore: 測定の中核（測定器からの転送 → セル送り →
   /* ---- 9) 進捗が増える ---- */
   const prog=await page.evaluate(()=>{
    const chips=document.querySelector('#measureTypeChips')?.textContent||'';
-   const m=chips.match(/板幅(\d+)\/(\d+)/);
+   const m=chips.match(/板幅 (\d+)\/(\d+)/);
    return {分子:m?+m[1]:null,分母:m?+m[2]:null,生:chips.slice(0,60)};
   });
   rec('測定した項目の進捗が0より増える',prog.分子>0,JSON.stringify(prog));
@@ -205,33 +213,28 @@ run('test_mcore: 測定の中核（測定器からの転送 → セル送り →
      枠の数と呼び名は`WL.measureItem`が1箇所で答える。**条の番号のまま
      3行だけ出す**のでも、40行出すのでもない——板厚は丈ごとに中央1点と
      エッジ2点で、条とは別の数え方をする。 */
-  const setType=async v=>{
-   await page.evaluate(t=>{const s=document.querySelector('#measureType');
-     s.value=t;s.dispatchEvent(new Event('change',{bubbles:true}))},v);
-   await idle();
-  };
-  await setType('板厚');
-  /* 測定表は「丈位置×条」の1つの表（§9.136）なので、**行**が3つになる
+  /* 板厚・板幅は板厚の表（3行）と板幅の表を上下に重ねる（§9.607）。板厚の表は**行**が3つ
      （枠の数は 3行 × 丈位置の数）。 */
-  const tGrid=await page.evaluate(()=>({
-   行:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr').length,
-   名:[...document.querySelectorAll('#measurementGrid .measure-matrix tbody th')].map(x=>x.textContent),
-   丈の列:document.querySelectorAll('#measurementGrid .measure-matrix thead th button').length,
-   見出し:document.querySelector('#measurePanelTitle')?.textContent||'',
+  const tGrid=await page.evaluate(()=>{const t='#measurementGrid [data-grid-key="thickness"] .measure-matrix';return {
+   行:document.querySelectorAll(t+' tbody tr').length,
+   名:[...document.querySelectorAll(t+' tbody th')].map(x=>x.textContent),
+   表:document.querySelectorAll('#measurementGrid .measure-matrix').length,
    focus:document.activeElement?.id||'',
-  }));
-  rec('板厚は丈ごとに3点（OS/CL/DS）だけ描く',
-      tGrid.行===3&&JSON.stringify(tGrid.名)===JSON.stringify(['OS','CL','DS']),JSON.stringify(tGrid));
-  rec('板厚に切り替えても受信欄にフォーカスが載る',tGrid.focus==='deviceInput',JSON.stringify(tGrid));
-  await send('DT100+003.015');
+  }});
+  rec('板厚の表は丈ごとに3点（OS/CL/DS）だけ描く（板幅の表と2枚）',
+      tGrid.行===3&&JSON.stringify(tGrid.名)===JSON.stringify(['OS','CL','DS'])&&tGrid.表===2,JSON.stringify(tGrid));
+  rec('板厚・板幅でも受信欄にフォーカスが載る',tGrid.focus==='deviceInput',JSON.stringify(tGrid));
+  await send('DT100+003.020');
   const th1=await page.evaluate(()=>({
    値:(S.measure.measurements.thickness?.[0]||[]).slice(0,3),tStep:S.measure.settings.tStep}));
-  rec('板厚ではマイクロメータの転送がOSへ入る',th1.値[0]==='3.015',JSON.stringify(th1));
+  /* 上の↓↑で板厚の枠は OS へ戻っている（板幅の最後の条の次＝板厚の OS）。値は板厚のいまの枠へ入り、次の点へ進む。 */
+  rec('マイクロメータの値は板厚のいまの枠（OS）へ入る',th1.値[0]==='3.020',JSON.stringify(th1));
   rec('板厚は次の点（CL）へ進む',th1.tStep===1,JSON.stringify(th1));
   const wAfter=await widthRow();
   rec('板厚を入れても板幅は変わらない',wAfter[0]==='26.15'&&wAfter[1]==='26.20',JSON.stringify(wAfter));
-  /* この先の節は板幅の表を見るので戻す。 */
-  await setType('板幅');
+  /* この先の節は板幅の表を見るので板幅の段へ。 */
+  await page.evaluate(()=>{S.measure.settings.dimKey='width';WL.measureInput.renderMeasureGrid()});
+  await idle();
 
   /* ---- 10) 公差が無いときに、勝手にNGにしない ----
      このフィクスチャは公差を持たない(WL.measureInput.compactToleranceData が null)。

@@ -468,6 +468,10 @@
            &&WL.measureItem.isPiece($('#measureType')?.value))WL.measureView.renderProductPanel();
         /* 当て方は1箇所（measure-view.js）が持つ。ここは呼ぶだけ。 */
         if(WL.innerDiameter)WL.innerDiameter.apply(S.measure.source);
+        /* **後から届いた列（指示_ﾗﾃﾗﾙﾎﾞｰ など）で判定し直す**（§9.606）。一覧の行に指示の列が無いと、開いた
+           ときは「基準なし」で判定しないまま——届いた後も次の描き直しまで判定されず、別の画面から戻った
+           瞬間に NG が出て見えた（利用者の報告）。 */
+        WL.measureHooks.run('afterSourceRefresh');
       }
     }catch(e){console.warn('自ロットの完全データ取得に失敗しました',e)}
   }

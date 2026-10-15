@@ -1,4 +1,4 @@
-# マスタ（サーバー側）（37件）
+# マスタ（サーバー側）（38件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 現場段取りの対象設備も改名に追従する（`equipment_name_references()`）。画面の比べ方はサーバーと同じ NFKC＋大文字 | `test_fieldreorder.py`・`test_strictreorder.js` | [§9.606](../../docs/decisions/9.606.md) |
 | 専用の画面が持つ表は`COVERED_BY`へ（同じ呼び名を2つ出さない）。内部データの列の見せ方は`COLUMN_VIEWS`（対応表の`views`） | `test_mmlist.js` | [§9.599](../../docs/decisions/9.599.md) |
 | 設備停止の挿入条件は`設備停止挿入条件マスタ`（停止内容ごとの判定表）。列の群は`STOP_RULE_SETS`の1箇所、整えるのは`rule_cells.py` | `test_stoprule.py` | [§9.588](../../docs/decisions/9.588.md) |
 | 挿入条件の行は式（`[式]`・`[前.列]`／`[後.列]`）と組み立て（`[組立JSON]`）を持てる。式の行はセルの条件を持たない | `test_stoprule.py` | [§9.590](../../docs/decisions/9.590.md) |

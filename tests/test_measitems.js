@@ -76,8 +76,8 @@ H.run('test_measitems: 入力内容を設備ごとに出し分ける（§9.392�
   /* ---- 1) 語彙はサーバーが答える ---- */
   const m0=await master();
   const vocab=m0.measureItems||[];
-  rec('入力内容の語彙をサーバーが返す（9項目・呼び名・一言つき）',
-   vocab.length===9&&vocab.map(v=>v.key).join(',')==='全長,寸法・外観,板厚,板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'
+  rec('入力内容の語彙をサーバーが返す（8項目・呼び名・一言つき・板厚・板幅は1つ＝§9.607）',
+   vocab.length===8&&vocab.map(v=>v.key).join(',')==='全長,寸法・外観,板厚・板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'
    &&vocab.every(v=>v.label&&v.note),JSON.stringify(vocab.map(v=>v.key)));
   /* **画面のJSに綴りの一覧を書き写していないこと**（§9.163）。マスタ側の
      定義は`source.key`でサーバーの戻りを読むだけ、という作りを固定する。
@@ -186,8 +186,8 @@ H.run('test_measitems: 入力内容を設備ごとに出し分ける（§9.392�
            隠し:hid?hid.value:null,注記:note?note.textContent.trim():''};
   });
   const p0=await panel();
-  rec('編集の窓に入力内容の札が9枚出て、既定は全部「使う」',
-   !p0.無い&&p0.札.length===9&&p0.札.every(x=>x.on)&&p0.隠し===''
+  rec('編集の窓に入力内容の札が8枚出て、既定は全部「使う」',
+   !p0.無い&&p0.札.length===8&&p0.札.every(x=>x.on)&&p0.隠し===''
    &&/すべての入力内容/.test(p0.注記),JSON.stringify({数:p0.札&&p0.札.length,隠:p0.隠し,注:p0.注記}));
   await page.click('#maintEditorModal [data-checkset="disabledMeasureItems"][data-checkset-v="バリ"]');
   const p1=await panel();
@@ -245,7 +245,7 @@ H.run('test_measitems: 入力内容を設備ごとに出し分ける（§9.392�
   await openMeasure();
   const v1=await shown();
   rec('外した入力内容が選択肢から消える',
-   v1.選択肢.length===7&&!v1.選択肢.includes('テレスコープ')&&!v1.選択肢.includes('フラットネス'),
+   v1.選択肢.length===6&&!v1.選択肢.includes('テレスコープ')&&!v1.選択肢.includes('フラットネス'),
    JSON.stringify(v1.選択肢));
   rec('チップからも同じだけ消える（選択肢とチップで食い違わない）',
    v1.チップ.join(',')===v1.選択肢.join(','),JSON.stringify(v1.チップ));

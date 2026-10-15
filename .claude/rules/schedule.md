@@ -1,4 +1,4 @@
-# 作業スケジュール（117件）
+# 作業スケジュール（118件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 並べ替えできない理由は`reorderDeniedWhy()`の1箇所（鍵の開始の説明・掴んだときの断り）。できない端末に「並べ替えてください」と言わない | `test_strictreorder.js` | [§9.606](../../docs/decisions/9.606.md) |
 | ロットが完了したら上の設備停止へ時刻（`_settle_stop_times()`・開始と同じ分け方・出どころ「完了で自動」）。前のロットの終わりが分かるまで入れない | `test_donestops.py` | [§9.605](../../docs/decisions/9.605.md) |
 | 自動で入れる時刻は`plan_set_manual_times(keep=True)`（時刻のある行・取消は書かない）。書くのは`actual_keep.persist()` | `test_donestops.py` | [§9.605](../../docs/decisions/9.605.md) |
 | いまの予定で試すのは`actual_match.trial()`の1箇所（内訳は`TRIAL_KINDS`）。「2件以上は空にする」の定義は完了にしない | `test_boxactual.py` | [§9.596](../../docs/decisions/9.596.md) |

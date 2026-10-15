@@ -62,12 +62,12 @@
   try{localStorage.setItem(FOLD_KEY,JSON.stringify(Object.fromEntries(foldPref)))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  };
 
- const PLACE_PREP='準備',PLACE_INPUT='入力内容',PLACE_MOTHER='母材';
+ const PLACE_PREP='準備',PLACE_INPUT='入力内容',PLACE_MOTHER='母材',PLACE_QUALITY='品質情報の下';
  /* 置き場ごとの器（§9.232）。**1箇所が答える**——`layout()`と`hostOf()`が
-    別々に器を探すと、片方だけ直した状態が作れる。 */
+    別々に器を探すと、片方だけ直した状態が作れる。品質情報の下（§9.606）は左の基本情報の中。 */
  const PLACE_BOX={[PLACE_PREP]:'.selectors',[PLACE_INPUT]:'.selectors',
-                  [PLACE_MOTHER]:'.material-grid'};
- const PLACE_ORDER=[PLACE_PREP,PLACE_INPUT,PLACE_MOTHER];
+                  [PLACE_MOTHER]:'.material-grid',[PLACE_QUALITY]:'#qualityOpGrid'};
+ const PLACE_ORDER=[PLACE_PREP,PLACE_INPUT,PLACE_MOTHER,PLACE_QUALITY];
  function boxFor(place){return document.querySelector(PLACE_BOX[place]||'.selectors')}
 
  function equipmentNow(){

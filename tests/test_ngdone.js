@@ -40,7 +40,7 @@ run('test_ngdone: 公差外・基準外があっても測定を完了できる�
  const modal=()=>page.evaluate(()=>{
   const el=document.getElementById('appConfirmModal');
   if(!el||el.hidden)return null;
-  return {文:(document.getElementById('appConfirmBody')||{}).textContent||'',
+  return {文:el.textContent||'',
           数:document.querySelectorAll('#appConfirmModal:not([hidden])').length};
  });
  const answer=async yes=>{
@@ -87,7 +87,7 @@ run('test_ngdone: 公差外・基準外があっても測定を完了できる�
       （母材のままだと`.ng`のセルが1つも数に入らず、公差外だけの
       言い回しの道を一度も通らない）。 */
    const ty=document.getElementById('measureType');
-   if(ty){ty.value='板幅';ty.dispatchEvent(new Event('change',{bubbles:true}))}
+   if(ty){ty.value='板厚・板幅';ty.dispatchEvent(new Event('change',{bubbles:true}))}
    /* 誰が測ったかは埋める——ここは止まったままが正しいので、別の節で試す。 */
    ['operator','inspector'].forEach(id=>{
     const el=document.getElementById(id);
@@ -130,7 +130,7 @@ run('test_ngdone: 公差外・基準外があっても測定を完了できる�
   rec('押す前に確認が出る（アプリの窓で1つだけ）',
       !!ask&&ask.数===1&&native===0,JSON.stringify(ask)+' native='+native);
   rec('確認に件数と項目が読める',
-      !!ask&&/公差・基準の外/.test(ask.文)&&/板幅 公差外 1件/.test(ask.文),
+      !!ask&&/公差・基準の外/.test(ask.文)&&/板厚・板幅 公差外 1件/.test(ask.文),
       (ask&&ask.文||'').replace(/\s+/g,' ').slice(0,110));
   rec('記録に残ることも書いてある（黙って通さない）',
       !!ask&&/記録に残ります/.test(ask.文),'');
@@ -147,7 +147,7 @@ run('test_ngdone: 公差外・基準外があっても測定を完了できる�
   const done=await recordNow(lotId);
   rec('公差外があっても完了できる',!!done&&done.状態==='完了',JSON.stringify(done&&done.状態));
   rec('公差外のまま完了したことが記録に残る',
-      !!(done&&done.印&&done.印.total>0&&(done.印.items||[]).some(x=>x.name==='板幅')),
+      !!(done&&done.印&&done.印.total>0&&(done.印.items||[]).some(x=>x.name==='板厚・板幅')),
       JSON.stringify(done&&done.印));
 
   /* ---- 4b. 記録した印は、あとから読める場所がある（§9.319-A） ----

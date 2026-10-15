@@ -109,12 +109,14 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
     ほかの設定:[...document.querySelectorAll('.selectors>label')]
       .filter(x=>x.id!=='measureTypeGroup'&&x.id!=='lengthPosGroup'
                  &&x.getBoundingClientRect().height>0).length,
-    件数の文字:[...document.querySelectorAll('#measureTypeGroup .type-chip-state')]
-      .map(x=>x.textContent.trim()).filter(Boolean).length,
+    /* 板厚・板幅は数を2行目へ鍵ごとに出す（「板厚 0/3・板幅 0/8」・§9.607）。どちらかに数があれば付いている。 */
+    件数の文字:[...document.querySelectorAll('#measureTypeGroup .type-chip')]
+      .filter(c=>((c.querySelector('.type-chip-state')||{}).textContent||'').trim()
+        ||/\d+\/\d+/.test((c.querySelector('.tc-sub')||{}).textContent||'')).length,
     /* 丈位置は**測定表の列見出し**が兼ねる（§9.136）。一覧は②から降ろした。 */
-    丈が見える:[...document.querySelectorAll('#measurementGrid .measure-matrix thead th[class]')]
+    丈が見える:[...document.querySelectorAll('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix thead th[class]')]
       .filter(x=>x.getBoundingClientRect().width>0).length>0,
-    丈の列:document.querySelectorAll('#measurementGrid .measure-matrix thead th button').length,
+    丈の列:document.querySelectorAll('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix thead th button').length,
     丈の選択肢:lp?lp.options.length:0,
     一覧を出していない:!(document.getElementById('lengthPosGroup')?.getBoundingClientRect().height>0),
    };
@@ -136,8 +138,8 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
       ref2a.length===1&&ref2a.includes('basic')&&split2,
       JSON.stringify(ref2a)+' split='+split2);
   /* 板厚と板幅は枠の数がまるで違うので別々の項目にした（§9.138）＝9項目。 */
-  /* 項目は9つ（§9.391で「母材」と「丈毎」を2つに分けた）。 */
-  rec('②に入力内容の一覧（9項目）が出る',items.一覧===9,JSON.stringify(items));
+  /* 項目は9つ（§9.391で「母材」と「丈毎」を2つに分けた）→8つ（§9.607で板厚と板幅を1つの項目へ戻した・表は2段）。 */
+  rec('②に入力内容の一覧（8項目）が出る',items.一覧===8,JSON.stringify(items));
   rec('②では1回決めるだけの設定を出さない',items.ほかの設定===0,JSON.stringify(items));
   /* **語彙（`WL.measureItem.ALL`）と画面の選択肢は同じ**（§9.391）。
      マスタの「開く条件」は語彙のほうを読むので、片方だけ足すと
@@ -147,7 +149,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    選択肢:[...document.querySelectorAll('#measureType option')].map(o=>o.text.trim()),
   }));
   rec('入力内容の語彙と画面の選択肢が一致する（§9.391）',
-      vocab.語彙.join('/')===vocab.選択肢.join('/')&&vocab.語彙.length===9,
+      vocab.語彙.join('/')===vocab.選択肢.join('/')&&vocab.語彙.length===8,
       JSON.stringify(vocab));
   /* **丈位置は②に出す（§9.125）。** `PageUp/PageDown`で動かせるのに、
      以前はどの段にも出ておらず「いま何丈目か」は`#stepStatus`の文でしか
@@ -159,7 +161,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
   /* **同じものを選ぶ道具を2つ置かない**（§9.129）。列見出しが選択を兼ねる
      ので、一覧（リストボックス）は②から降ろした。 */
   rec('丈位置の一覧は②に出さない',items.一覧を出していない===true,JSON.stringify(items));
-  rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===9,JSON.stringify(items));
+  rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===8,JSON.stringify(items));
   /* 測定表は本体のいちばん広いカード。骨子（§9.137）で`2×3`＝**本体の半分**
      と決めたので、しきい値も半分ちょうどで見る（以前は3列＝3/4だった）。
      丈位置×条の1つの表（§9.136）は最大10列×40行なので2マス幅で足りる。 */
@@ -174,17 +176,17 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      いた。1条のロットでも39行の空欄が並ぶ。**探す対象を増やさない。**
      **条は1列で40行まで。2段に折らない**（§9.136）——横は丈位置が使う。 */
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
-    s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
+    s.value='板厚・板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
   await idle();
   const rowsFor=async n=>{
    await page.evaluate(v=>{const h=document.querySelector('#horizontalCount');
      h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
    await idle();
    return page.evaluate(()=>({
-    行:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr').length,
+    行:document.querySelectorAll('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix tbody tr').length,
     /* 条の列は**1本だけ**。丈位置の列はこれとは別（横に並ぶ）。 */
-    条の列:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr:first-child th').length,
-    灰色の行:document.querySelectorAll('#measurementGrid .measure-matrix tr.inactive').length}));
+    条の列:document.querySelectorAll('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix tbody tr:first-child th').length,
+    灰色の行:document.querySelectorAll('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix tr.inactive').length}));
   };
   const r1=await rowsFor(1),r6=await rowsFor(6),r24=await rowsFor(24),r40=await rowsFor(40);
   rec('1条なら1行しか描かない',r1.行===1&&r1.条の列===1,JSON.stringify(r1));
@@ -205,18 +207,18 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    await idle();
    return page.evaluate(()=>{
     const r=e=>e?e.getBoundingClientRect():null;
-    const cols=[...document.querySelectorAll('#measurementGrid .compact-other .measure-matrix')];
-    const body=document.querySelector('#measurementGrid .compact-other .matrix-body');
-    const tol=body&&body.querySelector('.compact-tolerance-side');
-    const rows=[...document.querySelectorAll('#measurementGrid .compact-other .measure-matrix tbody th')];
+    const cols=[...document.querySelectorAll('#measurementGrid section[data-grid-key="width"].compact-other .measure-matrix')];
+    const body=document.querySelector('#measurementGrid section[data-grid-key="width"].compact-other .matrix-body');
+    const tol=body&&body.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .compact-tolerance-side');
+    const rows=[...document.querySelectorAll('#measurementGrid section[data-grid-key="width"].compact-other .measure-matrix tbody th')];
     const cr=cols.map(x=>r(x)),br=r(body),tr=r(tol);
-    const lay=document.querySelector('#measurementGrid .compact-other .mx-scroll');
+    const lay=document.querySelector('#measurementGrid section[data-grid-key="width"].compact-other .mx-scroll');
     const lr=r(lay);
-    return {列:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr:first-child th').length,
+    return {列:document.querySelectorAll('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix tbody tr:first-child th').length,
       /* **列の数だけでは足りない。** CSSが2列ぶんの場所を取ったままだと
          DOMは1つでも幅は半分になる（実際にそれを見逃した）。 */
       入力表の幅:cr.length?Math.round(cr[0].width):0,
-      セルの幅:(()=>{const c=document.querySelector('#measurementGrid .measure-matrix tbody td');
+      セルの幅:(()=>{const c=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix tbody td');
         return c?Math.round(c.getBoundingClientRect().width):0})(),
       器の幅:lr?Math.round(lr.width):0,
       表の高さ:cr.length?Math.round(cr[0].height):0,
@@ -274,7 +276,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
   await paint();
   rec('公差の材料を注ぎ込めた(測定表)',lcSetup===true,String(lcSetup));
   const lc=()=>page.evaluate(()=>{
-   const sec=document.querySelector('#measurementGrid .measure-matrix');
+   const sec=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix');
    if(!sec)return{出ている:false};
    const heads=[...sec.querySelectorAll('thead th')];
    const rows=[...sec.querySelectorAll('tbody tr')];
@@ -306,7 +308,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
       JSON.stringify(lc1.公差外の値));
   /* 見出しを押したらその丈位置へ移る（見えた値へすぐ行ける）。 */
   await page.evaluate(()=>{
-   const b=[...document.querySelectorAll('#measurementGrid .measure-matrix thead th button')];
+   const b=[...document.querySelectorAll('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix thead th button')];
    b[1].click();
   });
   await idle();
@@ -341,7 +343,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
   rec('その理由は上部帯には出さない（ロット情報を押し出さない）（§9.233 ③）',
       !/母材|手入力/.test(m2.理由||''),m2.理由||'(空)');
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
-    s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
+    s.value='板厚・板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
   await idle();
   const m2b=await seen();
   rec('測定器を使う項目に変えたら理由は消える',
@@ -355,7 +357,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      消して受け付けたままにすると、打っている最中に項目が飛ぶ事故が残る。 */
   const noKeys=async()=>{
    await page.evaluate(()=>{const s=document.querySelector('#measureType');
-     s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
+     s.value='板厚・板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
    await idle();
    const before=await page.evaluate(()=>({
      項目:document.querySelector('#measureType').value,
@@ -748,7 +750,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
   rec('描かれていない丈位置の公差外も数える',
       !inject.skip&&inject.集計.total===2
       &&inject.集計.items.length===1
-      &&inject.集計.items[0].name==='板幅'
+      &&inject.集計.items[0].name==='板厚・板幅'
       &&inject.集計.items[0].hits.every(h=>h.length===1),
       JSON.stringify(inject.集計||{}));
   /* **項目ごとに公差を引き直す。** ラッパー(`measure-worklog.js`/
@@ -782,7 +784,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    NGセル:document.querySelectorAll('#measurementGrid input.ng').length,
   }));
   rec('「見に行く」で②の該当項目・該当丈へ行く',
-      jumped.段==='測定'&&jumped.項目==='板幅'&&jumped.丈==='1(尾)',
+      jumped.段==='測定'&&jumped.項目==='板厚・板幅'&&jumped.丈==='1(尾)',
       JSON.stringify(jumped));
   rec('飛んだ先で公差外のセルに印が付いている',jumped.NGセル>0,JSON.stringify(jumped));
 
@@ -793,7 +795,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    return WL.measureReview.outOfTolerance();
   });
   rec('公差が引けない項目は「判定していない」に回す',
-      unj.total===0&&unj.unjudged.includes('板幅'),JSON.stringify(unj));
+      unj.total===0&&unj.unjudged.includes('板厚・板幅'),JSON.stringify(unj));
   await go('3');
   const c3=await check();
   rec('判定していない項目を画面にも出す',
@@ -1026,7 +1028,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      1つだけ見ると、そのとき選ばれていた項目しか網に掛からない
      （最初はそうなっており、板厚の3点入力と備考欄を取りこぼした）。 */
   await go('2');
-  for(const t of ['板幅',MATERIAL,PIECE]){
+  for(const t of ['板厚・板幅',MATERIAL,PIECE]){
    await setType(t);
    const over=await wideBoxes(SLACK);
    rec(`②「${t}」に中身より${SLACK}px以上広い欄が無い`,over.length===0,over.join(' / '));
@@ -1216,7 +1218,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      最中に見る値なので、空いた3列目へ出す。**測定表の列はいちばん広いまま**
      （面積は頻度×重要度。§9.123の判断は変えない）。 */
   await go('2');
-  await setType('板幅');
+  await setType('板厚・板幅');
   const ref2=await page.evaluate(()=>{
    const rc=s=>{const el=document.querySelector(s);if(!el)return 0;
      const r=el.getBoundingClientRect();
@@ -2042,7 +2044,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      外れた瞬間に転送を1件も受けなくなる。
      見るのは**板幅**——ラテラルボーは`MANUAL_ONLY_MEASURE_TYPES`で手動固定
      （受信の帯そのものを出さない）ので、あちらで自動転送は確かめられない。 */
-  await setType('板幅');
+  await setType('板厚・板幅');
   const autoFocus=await page.evaluate(async()=>{
    const c=document.querySelector('[data-mkey="width"][data-i="0"][data-j="1"]');
    c.click();await new Promise(r=>setTimeout(r,400));
@@ -2066,7 +2068,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      測定待ち」の**4本**が積まれ、23条ほどしか一度に出せなかった。
      ================================================================== */
   await go('2');
-  await setType('板幅');
+  await setType('板厚・板幅');
   const headRead=()=>page.evaluate(()=>{
    const h=document.querySelector('.editor-head');
    const r=h.getBoundingClientRect();
@@ -2115,7 +2117,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
   rec('受信の状態・自動手動の切替が見出しの中にある',bar.帯&&bar.切替&&/自動|手動/.test(bar.モード),
       JSON.stringify({帯:bar.帯,切替:bar.切替,モード:bar.モード}));
   rec('項目名と進捗も見出しへ寄せた（表の上の帯を廃止）',
-      bar.項目==='板幅'&&!!bar.状態&&bar.旧見出し===false,JSON.stringify(bar));
+      bar.項目==='板厚・板幅'&&!!bar.状態&&bar.旧見出し===false,JSON.stringify(bar));
   rec('公差の器も同じ段にある',bar.公差の器===true,String(bar.公差の器));
   rec('見出し4本ぶん（実測130px級）を1本へ詰めた',bar.高さ<=34,`${bar.高さ}px`);
   /* ---- 凡例（待ち・入力中・完了・異常）は廃止（§9.210 ①、利用者の指示） ---- */
@@ -2152,7 +2154,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      ——受信欄はこの中にあり、寸法ゼロだとフォーカスを保持できない・§9.122）。 */
   await setType('ラテラルボー');
   const manualBar=await headRead();
-  await setType('板幅');
+  await setType('板厚・板幅');
   const autoBar=await headRead();
   rec('手入力だけの項目でも同じ位置にバッジが出る（§9.210 ③）',
       manualBar.帯が見える===true&&manualBar.モード==='手動'
@@ -2169,7 +2171,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    const vis=el=>!!el&&el.getBoundingClientRect().height>0&&(el.textContent||'').trim()!=='';
    return{facts:!!document.getElementById('toleranceFacts'),
           summary:vis(document.getElementById('toleranceSummary')),
-          side:vis(document.querySelector('.compact-tolerance-side'))};
+          side:vis(document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .compact-tolerance-side'))};
   });
   rec('公差の内訳の3行帯は廃止した（§9.234 ③）',tolWhere.facts===false,JSON.stringify(tolWhere));
   rec('公差の値を言う場所は1つだけ（§9.129）',
@@ -2180,7 +2182,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      **足りないときだけ**縮めること。入っているのに縮めると、8条のロットで
      1行が19pxになって狙って押せなくなる（§9.146で一度そうなっている）。 */
   const fitOff=await page.evaluate(()=>{
-   const t=document.querySelector('.measure-matrix');
+   const t=document.querySelector('#measurementGrid section[data-grid-key="width"] .measure-matrix');
    return{fitted:t.classList.contains('mx-fitted'),
           行:Math.round(t.tBodies[0].rows[0].getBoundingClientRect().height)};
   });
@@ -2192,13 +2194,32 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
     h.value='40';h.dispatchEvent(new Event('change',{bubbles:true}))});
   await go('2');
   await page.evaluate(()=>new Promise(r=>setTimeout(r,900)));
+  /* 板厚・板幅は2段の表（§9.607）。板厚の段（3点×丈＝実測151px）のぶん板幅の器が狭く、
+     900pxの高さでは40条が下限15pxでも入らない（実測 器549px／要る660px）。ここで見るのは
+     **板厚の表は全部見えたまま、板幅の表だけが自分の中で送れる**こと（画面ごとは送らない）。 */
+  const dimFit=await page.evaluate(()=>{
+   const tb=document.querySelector('#measurementGrid section[data-grid-key="thickness"] .matrix-body');
+   const wb=document.querySelector('#measurementGrid section[data-grid-key="width"] .matrix-body');
+   const g=document.getElementById('measurementGrid');
+   return{板厚の表が切れない:!!tb&&tb.scrollHeight<=tb.clientHeight+1,
+     板幅は器の中で送る:!!wb&&getComputedStyle(wb).overflowY!=='visible',
+     画面は送らない:g.scrollHeight<=g.clientHeight+1};
+  });
+  rec('板厚・板幅の40条: 板厚の表は切れず、板幅の表だけが器の中で送れる（§9.607）',
+      dimFit.板厚の表が切れない&&dimFit.板幅は器の中で送る&&dimFit.画面は送らない,JSON.stringify(dimFit));
+  /* 縮める仕組みそのものは**1枚の表の項目**で見る（ラテラルボー＝条ごと・丈位置ごと）。 */
+  await setType('ラテラルボー');
+  await page.evaluate(()=>new Promise(r=>setTimeout(r,900)));
   const fitOn=await page.evaluate(()=>{
-   const body=document.querySelector('#measurementGrid .matrix-body');
-   const t=document.querySelector('.measure-matrix');
+   const body=document.querySelector('#measurementGrid section[data-grid-key] .matrix-body');
+   const t=document.querySelector('#measurementGrid section[data-grid-key] .measure-matrix');
    return{fitted:t.classList.contains('mx-fitted'),
      行:Math.round(t.tBodies[0].rows[0].getBoundingClientRect().height),
      行数:t.tBodies[0].rows.length,
-     縦スクロール:body.scrollHeight>body.clientHeight+1};
+     縦スクロール:body.scrollHeight>body.clientHeight+1,
+     /* 落ちたときに読む寸法（器の内・中身・表・決めた行の高さ） */
+     器:[body.clientHeight,body.scrollHeight,Math.round(t.getBoundingClientRect().height),
+       t.style.getPropertyValue('--mx-rowh')]};
   });
   rec('40条でも縦スクロールを出さずに全部出す（§9.209 ③）',
       fitOn.行数===40&&fitOn.fitted===true&&fitOn.縦スクロール===false,JSON.stringify(fitOn));
@@ -2216,8 +2237,8 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    await go('2');
    await page.evaluate(()=>new Promise(r=>setTimeout(r,700)));
    return page.evaluate(()=>{
-    const body=document.querySelector('#measurementGrid .matrix-body');
-    const t=document.querySelector('.measure-matrix');
+    const body=document.querySelector('#measurementGrid section[data-grid-key] .matrix-body');
+    const t=document.querySelector('#measurementGrid section[data-grid-key] .measure-matrix');
     const head=t.tHead.rows[0].getBoundingClientRect().height;
     const row=t.tBodies[0].rows[0];
     const inp=row.querySelector('input');
@@ -2462,7 +2483,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    Object.assign(src,{'板幅公差_製造_ﾌﾟﾗｽ':0.5,'板幅公差_製造_ﾏｲﾅｽ':0.5,
      '板幅公差_ｵｰﾀﾞｰ_ﾌﾟﾗｽ':0.8,'板幅公差_ｵｰﾀﾞｰ_ﾏｲﾅｽ':0.8});
    const mt=document.getElementById('measureType'),bkType=mt.value;
-   mt.value='板幅';mt.dispatchEvent(new Event('change',{bubbles:true}));
+   mt.value='板厚・板幅';mt.dispatchEvent(new Event('change',{bubbles:true}));
    if(typeof WL.measureView.configureToleranceSelector==='function')WL.measureView.configureToleranceSelector();
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const box=document.querySelector('.tolerance-source-control'),
@@ -2763,7 +2784,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
    });
   };
   const hFlat=await headOf('フラットネス');
-  const hWidth=await headOf('板幅');
+  const hWidth=await headOf('板厚・板幅');
   rec('前提: 見出しの器がある（フラットネス・板幅とも）',
       !!(hFlat&&hWidth),JSON.stringify({flat:hFlat,width:hWidth}));
   rec('フラットネスの見出しが板幅と同じ高さに収まる（§9.233 ④）',
@@ -2808,7 +2829,7 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
       Object.values(ctxBar.切れ).every(v=>v!==null&&v<=1),
       JSON.stringify(ctxBar.切れ));
   await page.evaluate(()=>{const el=document.getElementById('measureType');
-    if(el){el.value='板幅';el.dispatchEvent(new Event('change',{bubbles:true}))}});
+    if(el){el.value='板厚・板幅';el.dispatchEvent(new Event('change',{bubbles:true}))}});
   await idle();
   rec('測定器を使う項目では案内を出さない（§9.233 ③）',
       await page.evaluate(()=>{const n=document.getElementById('materialManualNote');
