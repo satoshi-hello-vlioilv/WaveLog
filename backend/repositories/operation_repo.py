@@ -2234,6 +2234,8 @@ def ensure_item_table(c):
         ITEM_DEF.create(c)
         _seed_items(c)
         _seed_builtins(c)
+        # 種はもう新しい値なので、改訂の印だけ立てる（後で利用者が選び直した値を改訂が上書きしない）。
+        revise_seeds(c)
         return True
     _ensure_item_columns(c)
     _seed_builtins(c)
@@ -2249,25 +2251,28 @@ def ensure_item_table(c):
     return False
 
 
-# 種の値を後から改めたもの（§9.606）。(項目名, 列, 前の種の値, 新しい値, 改めた日)
-# **前の種の値のまま・改めた日より前に更新された行だけ**を直す。区切りは「改めた日」そのもの
-# （未来の日にしない）——直した行も、この後に利用者が選び直した行（1桁へ戻す等）も更新日時が
-# 区切りより新しくなるので、2回目は当たらない（1回きり・人の選んだ値を上書きしない）。
+# 種の値を後から改めたもの（§9.606）。(印の名前, 項目名, 列, 前の種の値, 新しい値)
+# **前の種の値のままの行だけ**を直し、パス設定マスタへ印を立てる（`seed_mother_builtins()`と同じ「1度だけ」の
+# 持ち方）——印があれば2回目は当たらず、利用者がこの後に選び直した値（1桁へ戻す等）を上書きしない。
 SEED_REVISIONS = (
-    ('スリット クリアランス', '小数桁', 1, 2, '2026-10-15'),
+    ('slit_clearance_dec2', 'スリット クリアランス', '小数桁', 1, 2),
 )
 
 
 def revise_seeds(c):
-    """`SEED_REVISIONS`を当てる。直した行の数を返す。"""
+    """`SEED_REVISIONS`を当てる（印の無いものだけ）。直した行の数を返す。"""
+    from ..db_access import path_config_rows, set_path_config
+    done = path_config_rows(c)
     cur, n = c.cursor(), 0
-    for name, col, old, new, before in SEED_REVISIONS:
+    for mark, name, col, old, new in SEED_REVISIONS:
+        key = f'__op_seed_rev_{mark}__'
+        if done.get(key):
+            continue
         cur.execute(f'UPDATE [{ITEM_TABLE}] SET [{col}]=?, [更新者ID]=?, [更新日時]=Now() '
-                    f'WHERE [項目名]=? AND [{col}]=? AND ([更新日時] IS NULL OR [更新日時]<?)',
-                    [new, 'migrate:seed', name, old, before])
+                    f'WHERE [項目名]=? AND [{col}]=?', [new, 'migrate:seed', name, old])
         n += cur.rowcount or 0
-    if n:
         c.commit()
+        set_path_config(c, key, 'done', 'migrate:seed')
     return n
 
 
