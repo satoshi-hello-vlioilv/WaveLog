@@ -147,7 +147,14 @@ def install(app):
    app_update.remember_soon()
   except Exception as _e:
    quiet('更新の置き場の控えを書けない（窓は前の控えか既定を読む）',_e)
-  return jsonify(ok=True,version=notice)
+  # 推奨の更新の知らせ（§9.609）。配る版に推奨の札があり、この PC が違う版なら答えに載せる。
+  # 裏で1分に1回読み直した値を返すだけ（ここは共有を読みに行かない）。
+  update=None
+  try:
+   update=app_update.notice_soon()
+  except Exception as _e:
+   quiet('推奨の更新の知らせを読めない（知らせは前のまま）',_e)
+  return jsonify(ok=True,version=notice,update=update)
 
  @app.post('/api/shutdown')
  def shutdown():

@@ -17,6 +17,8 @@
      途中で終わった書きかけは**1時間より古い物だけ**片付ける（別の PC がいま置いている物を消さない）
   11. 版を消す（§9.584）: **配っている版は消せない**・消している間に配る版に選ばれたら戻す・
      消し切れない残りは一覧に出さず次の片付けで消す
+  12. 推奨の更新の札（§9.609）: 置いてある版だけに付く・一言は短く切る・一覧に載る・外せる・版を消すと札も消える。
+     知らせ（`notice_of()`）は配る版に札があり、この PC が違う版のときだけ・開発の作業ツリーでは出さない
 """
 import hashlib
 import io
@@ -414,6 +416,39 @@ left = [d for d in (base11 / 'versions').iterdir() if d.name.endswith(app_update
 rec('消し切れなくても版は一覧から外れ、理由を言う',
     r.get('ok') and r.get('notes') and '9.20.0' not in [v['version'] for v in app_update.versions(base11)] and len(left) == 1, str(r))
 rec('消しかけは次の片付けで消える（いま作った物でも）', app_update.sweep_partial(base11) == 1 and not left[0].exists())
+
+# ---- 12) 推奨の更新の札と知らせ（§9.609） ----
+base12 = Path(tempfile.mkdtemp()) / 'share'
+for v in ('9.30.0', '9.31.0'):
+    app_update.publish_zip(make_zip(v), v + '.zip', 'tester', base12)
+app_update.set_release('9.31.0', 'tester', base12)
+rec('札が無い置き場では、どの版にも札が無い', all(v['recommend'] is None for v in app_update.versions(base12)))
+r = app_update.set_recommend('9.99.0', True, 'x', 't', base12)
+rec('置いていない版には札を付けられない', not r.get('ok') and '置き場にありません' in r.get('error', ''), str(r))
+r = app_update.set_recommend('9.31.0', True, '公差の図の\nずれを直しました' + 'あ' * 200, 'tester', base12)
+mark = {v['version']: v['recommend'] for v in app_update.versions(base12)}['9.31.0']
+rec('札を付けると一覧に載る（一言・付けた日時・人）', r.get('ok') and mark and mark['setBy'] == 'tester' and mark['setAt'], str(mark))
+rec('一言は改行を空白にし、決めた字数で切る', mark and '\n' not in mark['note'] and len(mark['note']) == app_update.NOTE_MAX, repr((mark or {}).get('note', ''))[:60])
+rec('札は配る版を決める release.json とは別のファイル（窓の読む物を変えない）',
+    'recommend' not in json.loads((base12 / app_update.RELEASE).read_text(encoding='utf-8')) and (base12 / app_update.RECOMMEND).is_file())
+rel = app_update.release(base12)
+marks = app_update.recommendations(base12)
+n = app_update.notice_of(rel, marks, '9.30.0')
+rec('配る版に札があり、この PC が古い版なら知らせる（版・この PC・一言・向き）',
+    n and n['release'] == '9.31.0' and n['mine'] == '9.30.0' and n['note'] == mark['note'] and n['direction'] == 'up', str(n))
+rec('この PC が配る版と同じなら知らせない', app_update.notice_of(rel, marks, '9.31.0') is None)
+rec('開発の作業ツリーでは知らせない（開き直してもそろわない）', app_update.notice_of(rel, marks, '9.30.0', dev=True) is None)
+rec('札が無い版を配っているなら知らせない', app_update.notice_of({'version': '9.30.0'}, marks, '9.29.0') is None)
+rec('配る版を前の版へ戻した推奨なら、向きは down', (app_update.notice_of({'version': '9.31.0'}, marks, '9.32.0') or {}).get('direction') == 'down')
+rec('配る版が決まっていなければ知らせない', app_update.notice_of(None, marks, '9.30.0') is None)
+r = app_update.set_recommend('9.31.0', False, '', 'tester', base12)
+rec('札を外すと一覧からも知らせからも消える', r.get('ok') and app_update.recommendations(base12) == {}
+    and app_update.notice_of(rel, app_update.recommendations(base12), '9.30.0') is None, str(r))
+app_update.set_recommend('9.30.0', True, '前の版', 't', base12)
+r = app_update.delete_version('9.30.0', base12)
+rec('版を消すと、その版の札も消える', r.get('ok') and '9.30.0' not in app_update.recommendations(base12), str(app_update.recommendations(base12)))
+(base12 / app_update.RECOMMEND).write_text('{壊れた', encoding='utf-8')
+rec('札のファイルが壊れていても一覧は開く（札が無いとして読む）', app_update.recommendations(base12) == {} and len(app_update.versions(base12)) == 1)
 
 ok = sum(1 for _, x in R if x)
 print(f'\n== {ok}/{len(R)} PASS ==')

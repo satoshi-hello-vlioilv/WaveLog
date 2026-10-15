@@ -10,6 +10,8 @@
 置き場（`update_dir()`）の中身:
   versions/<版>/          … 版ごとの中身（`PAYLOAD`の項目だけ）と`manifest.json`（全ファイルの大きさと sha256）
   release.json            … **配る版**（全PCが起動時にそろえる版・前の版も控える）
+  recommend.json          … **推奨の更新の札**（版ごと・一言つき・§9.609）。配る版に札があると、古い版で使っている PC に
+                            「開き直して更新」を控えめに知らせる（`notice_of()`）。窓は読まない（書くのも読むのも Python）
 
 役目の分け方:
   ・ここ（Python）… ZIP を検めて版を置く・配る版を決める・状態を答える（メンテナンス者の画面）
@@ -60,6 +62,12 @@ PAYLOAD = ('backend', 'static', 'templates', 'program', 'README.md')
 REQUIRED = ('backend/changelog_data.py', 'program/sidecar.py', 'program/WaveLog.exe')
 MANIFEST = 'manifest.json'
 RELEASE = 'release.json'
+# 推奨の更新の札（§9.609、利用者の指示「配布する版に推奨アップデートの札を付けられるように」）。版の属性なので
+# 版ごとに持つ（配る版を戻して選び直しても札は残る）。一言は知らせにそのまま出すので短く切る。
+RECOMMEND = 'recommend.json'
+NOTE_MAX = 80
+# 知らせ（`notice_soon()`）を読み直す間隔。ハートビート（15秒）ごとに共有を読みに行かない——裏で1分に1回。
+NOTICE_SEC = 60
 VERSIONS = 'versions'
 # **配る入口**（§9.559、利用者の指示「初回に配布する際に、ショートカット(アドレス)だけ渡す」）。配る版を決めると、
 # その版の exe を置き場の直下へ写す。新しい PC にはこの exe へのアドレスだけを渡し、初回の起動で窓（`desktop/src/install.rs`）が
@@ -377,6 +385,7 @@ def versions(base=None):
     """置いてある版（新しい順）。manifest の無いフォルダ（書きかけ・手で置いた物）は数えない。"""
     base = Path(base or update_dir())
     out = []
+    marks = recommendations(base)
     try:
         dirs = [d for d in (base / VERSIONS).iterdir() if d.is_dir() and not d.name.startswith('.')]
     except OSError as _e:
@@ -388,7 +397,8 @@ def versions(base=None):
             continue
         out.append({'version': d.name, 'placedAt': m.get('placedAt', ''), 'placedBy': m.get('placedBy', ''),
                     'source': m.get('source', ''), 'commit': str(m.get('commit') or '')[:7],
-                    'files': len(m.get('files') or []), 'bytes': m.get('bytes', 0)})
+                    'files': len(m.get('files') or []), 'bytes': m.get('bytes', 0),
+                    'recommend': marks.get(d.name)})
     return sorted(out, key=lambda v: version_key(v['version']), reverse=True)
 
 
@@ -401,6 +411,89 @@ def release(base=None):
     """配る版（`release.json`）。決めていなければ None。"""
     r = _read_json(Path(base or update_dir()) / RELEASE)
     return r if isinstance(r, dict) and r.get('version') else None
+
+
+def recommendations(base=None):
+    """推奨の更新の札（`recommend.json`）→ {版: {note, setAt, setBy}}。無い・読めなければ空（札が無い）。"""
+    path = Path(base or update_dir()) / RECOMMEND
+    doc = _read_json(path) if path.exists() else None   # 無いのは「札が無い」（読めない理由を記録しない）
+    if not isinstance(doc, dict):
+        return {}
+    return {str(k): v for k, v in doc.items() if isinstance(v, dict) and _SAFE_VERSION.match(str(k))}
+
+
+def set_recommend(version, on, note='', uid='', base=None):
+    """版に推奨の更新の札を付ける／外す（§9.609）。**置いてある版だけ**。書くのは途中のファイル→名前を変える。
+    一言は知らせにそのまま出す（`NOTE_MAX`字で切る・改行は空白へ）。"""
+    base = Path(base or update_dir())
+    if version not in {v['version'] for v in versions(base)}:
+        return {'ok': False, 'error': '版 %s は置き場にありません。' % version}
+    marks = recommendations(base)
+    if on:
+        text = ' '.join(str(note or '').split())[:NOTE_MAX]
+        marks[version] = {'note': text, 'setAt': time.strftime('%Y-%m-%d %H:%M'), 'setBy': uid or ''}
+    else:
+        marks.pop(version, None)
+    why = _write_marks(base, marks)
+    if why:
+        return {'ok': False, 'error': why}
+    return {'ok': True, 'version': version, 'recommend': marks.get(version)}
+
+
+def _write_marks(base, marks):
+    """札を書く（途中のファイル→名前を変える）。→ 書けなかった理由（書けたら空）。"""
+    try:
+        _replace_file(json.dumps(marks, ensure_ascii=False, indent=1).encode('utf-8'), Path(base) / RECOMMEND)
+    except OSError as e:
+        return '推奨の札を書けません（%s）: %s' % (base, e)
+    _NOTICE['at'] = 0.0                           # 次のハートビートで読み直す（この PC の知らせもすぐ変わる）
+    return ''
+
+
+def dev_tree():
+    """開発の作業ツリーか（窓の`update::peek()`と同じ見分け方: `.git`がある・`WAVELOG_UPDATE_FORCE`で上書き）。
+    開発の作業ツリーは起動しても配る版へそろえないので、「開き直して更新」とは言わない。"""
+    return (APP_ROOT / '.git').exists() and not os.environ.get('WAVELOG_UPDATE_FORCE')
+
+
+def notice_of(rel, marks, mine, dev=False):
+    """使っている PC へ出す推奨の更新の知らせ（§9.609）。**答えはここ1箇所**（画面は出すだけ）。
+    出すのは、配る版に推奨の札があり、この PC の版がそれと違うときだけ（戻した版の推奨なら向きは down）。
+    開発の作業ツリーでは出さない（開き直してもそろわない）。→ 出さないなら None。"""
+    if dev or not rel or not rel.get('version'):
+        return None
+    want = str(rel['version'])
+    mark = (marks or {}).get(want)
+    if not isinstance(mark, dict) or want == str(mine or ''):
+        return None
+    return {'release': want, 'mine': str(mine or ''), 'note': str(mark.get('note') or ''),
+            'setAt': str(mark.get('setAt') or rel.get('setAt') or ''),
+            'direction': 'down' if version_key(want) < version_key(mine) else 'up'}
+
+
+_NOTICE = {'at': 0.0, 'value': None, 'busy': False}
+
+
+def _refresh_notice():
+    try:
+        base = update_dir()
+        ok, _why = reachable(base)
+        if ok:                                    # 届かない間は前の答えのまま（消えたり出たりしない）
+            _NOTICE['value'] = notice_of(release(base), recommendations(base), APP_VERSION, dev_tree())
+    except Exception as _e:
+        quiet('推奨の更新の知らせを読めない（前の答えのまま）', _e)
+    finally:
+        _NOTICE['busy'] = False
+
+
+def notice_soon():
+    """ハートビートから呼ぶ。裏で数えてある答えを返し、`NOTICE_SEC`より古ければ裏で読み直す（ここは待たない）。"""
+    now = time.time()
+    if now - _NOTICE['at'] >= NOTICE_SEC and not _NOTICE['busy']:
+        _NOTICE['at'] = now
+        _NOTICE['busy'] = True
+        threading.Thread(target=_refresh_notice, name='update-notice', daemon=True).start()
+    return _NOTICE['value']
 
 
 def _replace_file(src_bytes_or_path, dst):
@@ -525,6 +618,12 @@ def delete_version(version, base=None):
                     '置き場の %s を %s へ名前を戻してください。' % (version, base, e, gone.name, version)}
         return {'ok': False, 'error': '版 %s は消している間に別の PC で配る版に選ばれたので、消すのをやめました。' % version}
     notes = []
+    marks = recommendations(base)
+    if version in marks:                          # 消した版の札は残さない（置き直したら付け直す）
+        marks.pop(version)
+        why = _write_marks(base, marks)
+        if why:
+            notes.append(why)
     try:
         shutil.rmtree(gone)
     except OSError as e:
