@@ -30,7 +30,8 @@ run('test_lateraljudge: ラテラルボーの基準判定が揺れない（§9.6
  rec('前提: 予定から測定画面を開ける',started);
  if(!started)return;
  await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:20000});
- await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
+ await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000})
+  .catch(e=>console.log('保存の覆いが消えるのを待てなかった（続ける）: '+e.message));
  /* 窓（手入力の注意など）が開いていたら閉じる（§9.394 の網と同じ） */
  const closeModal=()=>page.evaluate(()=>{const m=document.getElementById('appConfirmModal');
   if(m&&!m.hidden){const b=document.getElementById('appConfirmOk')||document.getElementById('closeAppConfirm');if(b)b.click()}});

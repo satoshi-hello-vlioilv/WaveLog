@@ -28,6 +28,7 @@
 from .master_repo import tables
 from .table_def import TableDef
 from ..quiet import quiet
+from ..db_access import path_config_rows, set_path_config
 
 ITEM_TABLE = '操業データ項目マスタ'
 CHOICE_TABLE = '操業データ選択肢マスタ'
@@ -1658,7 +1659,6 @@ def migrate_legacy_choice_masters(c):
     """1度だけ、6つのマスタを選択肢マスタへ写す。**目印はパス設定マスタ**
     （データソースの種まきと同じ作法）——「行が無ければ写す」にすると、
     利用者が全部消した瞬間に復活する消せないマスタになる。"""
-    from ..db_access import path_config_rows, set_path_config
     ensure_choice_table(c)
     if path_config_rows(c).get(_LEGACY_MIGRATED_KEY):
         return False
@@ -2177,7 +2177,6 @@ def seed_mother_builtins(c):
     先に立ち上がっている端末では**後から足した欄が一生入らない**。
     ここは**1度だけ**・**まだ無い鍵だけ**足す。
     """
-    from ..db_access import path_config_rows, set_path_config
     if path_config_rows(c).get(_MOTHER_SEEDED_KEY):
         return 0
     cur = c.cursor()
@@ -2236,7 +2235,6 @@ QUALITY_NOTE_SEED = ('品質', '品質メモ', '文字', 12)
 
 def seed_quality_note(c):
     """品質情報の下の欄を1つ置く（**1度だけ**・その置き場にまだ1つも無いときだけ）。置いた数を返す。"""
-    from ..db_access import path_config_rows, set_path_config
     if path_config_rows(c).get(_QUALITY_NOTE_KEY):
         return 0
     cur = c.cursor()
@@ -2295,7 +2293,6 @@ SEED_REVISIONS = (
 
 def revise_seeds(c):
     """`SEED_REVISIONS`を当てる（印の無いものだけ）。直した行の数を返す。"""
-    from ..db_access import path_config_rows, set_path_config
     done = path_config_rows(c)
     cur, n = c.cursor(), 0
     for mark, name, col, old, new in SEED_REVISIONS:

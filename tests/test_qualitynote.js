@@ -34,8 +34,10 @@ run('test_qualitynote: 品質情報の下に人が書く欄（§9.606）', async
  rec('前提: 予定から測定画面を開ける',started);
  if(!started)return;
  await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:20000});
- await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
- await W.until(page,()=>!!document.querySelector('#qualityOpGrid input,#qualityOpGrid select'),null,{ms:8000,what:'品質情報の下の欄が並ぶ'}).catch(()=>{});
+ await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000})
+  .catch(e=>console.log('保存の覆いが消えるのを待てなかった（続ける）: '+e.message));
+ await W.until(page,()=>!!document.querySelector('#qualityOpGrid input,#qualityOpGrid select'),null,{ms:8000,what:'品質情報の下の欄が並ぶ'})
+  .catch(e=>console.log('品質情報の下の欄を待てなかった（Q1 が数える）: '+e.message));
  const closeModal=()=>page.evaluate(()=>{const m=document.getElementById('appConfirmModal');
   if(m&&!m.hidden){const b=document.getElementById('appConfirmOk')||document.getElementById('closeAppConfirm');if(b)b.click()}});
  const look=()=>page.evaluate(()=>{

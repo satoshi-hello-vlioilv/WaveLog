@@ -30,7 +30,8 @@ run('test_entermove: 測定画面の入力欄は Enter でも次へ進む（§9.
  rec('前提: 予定から測定画面を開ける',started);
  if(!started)return;
  await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:20000});
- await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
+ await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000})
+  .catch(e=>console.log('保存の覆いが消えるのを待てなかった（続ける）: '+e.message));
  const closeModal=()=>page.evaluate(()=>{const m=document.getElementById('appConfirmModal');
   if(m&&!m.hidden){const b=document.getElementById('appConfirmOk')||document.getElementById('closeAppConfirm');if(b)b.click()}});
  /* 見えている入力欄（表の欄・受信欄・ボタン類を除く）に印を振って返す */
