@@ -1283,6 +1283,14 @@ th.col-sorted:hover{background:#c7e7ea}
   padding:var(--space-2);line-height:var(--lh);
 }
 .quality-info-block.qi-has textarea{border-left-color:#c0504d;color:var(--ink)}
+/* 品質情報の下の人が書く欄（§9.606）。器は母材の面と同じ12マスのグリッド（マス数は JS が`--op-cols`で入れる）。
+   読むだけの品質情報（上の地の落ちた面）と違い、ここは入力欄なので枠を持つ——欄の形そのものが「書ける」と言う。
+   中身の無い設備（項目を置いていない）では器ごと出さない。 */
+.quality-op-grid{display:grid;grid-template-columns:repeat(var(--op-cols,12),minmax(0,1fr));gap:var(--gap-inline);
+  margin-top:var(--space-2);align-items:start;flex:0 0 auto}
+.quality-op-grid:not(:has(>label:not(.op-off))){display:none}
+/* 群が1つだけなら群の見出しは出さない——すぐ上の「品質情報」が何の欄かを言っている（「品質」の見出しが重なって見えた）。 */
+.quality-op-grid>b.prep-head:only-of-type{display:none}
 /* ---------- 5. 左ペイン ---------- */
 .tabs{display:flex}
 .tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:var(--ink-2);box-shadow:none}
@@ -2375,24 +2383,24 @@ th.col-sorted:hover{background:#c7e7ea}
   align-items:start}
 /* 群の見出し（`layout()`が置く）。①準備の見出しと同じ形にそろえる
    ——同じ仕組みで並ぶものが画面ごとに違う見え方だと、揃っていないと読まれる。 */
-.material-grid>.prep-head{display:flex;align-items:baseline;gap:var(--space-2);
+.material-grid>.prep-head,.quality-op-grid>.prep-head{display:flex;align-items:baseline;gap:var(--space-2);
   grid-column:1/-1;min-height:var(--ctl-h-xs);margin:var(--space-1) 0 0;
   padding:var(--space-1) 0 0;border:0;border-top:1px dashed var(--line-soft);
   background:transparent;color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);text-align:left}
-.material-grid>.prep-head[data-opfirst]{margin-top:0;padding-top:0;border-top:0}
+.material-grid>.prep-head[data-opfirst],.quality-op-grid>.prep-head[data-opfirst]{margin-top:0;padding-top:0;border-top:0}
 /* 外した欄・空きのカード（§9.228 ②）。`.selectors`と同じ扱い。 */
-.material-grid>.op-off{display:none}
+.material-grid>.op-off,.quality-op-grid>.op-off{display:none}
 /* 項目名は折り返してよい。「屑幅（両耳合計）」のような長い名前を nowrap で
    1行に押し込んでいたため、既定サイズですら枠から3px溢れ(特大では28px)、
    しかもスクロールできる先祖が無いので**読めないまま切れていた**。
    名前の行は1frにして余った高さを使い、入力欄は各セルの下端で揃える
    (どれか1つが2行になっても、同じ段の入力欄の高さは揃う)。
    高さは表示サイズへ追随させる(36px固定だと特大で名前だけが大きくなる)。 */
-.material-grid label{display:grid;grid-template-rows:1fr var(--opf-h,var(--ctl-h-sm));align-items:end;font-size:var(--fs-sm);line-height:1.25}
+.material-grid label,.quality-op-grid label{display:grid;grid-template-rows:1fr var(--opf-h,var(--ctl-h-sm));align-items:end;font-size:var(--fs-sm);line-height:1.25}
 /* 単位を**欄の上**へ出すときは段を1つ増やす（`.dense-controls label`と
    同じ約束・§9.221 ⑦）。足さないと単位の行が入力欄の段を取り、欄が
    高さの決まっていない段へ落ちる。 */
-.material-grid label[data-opunit^="外上"]{grid-template-rows:1fr auto var(--opf-h,var(--ctl-h-sm))}
+.material-grid label[data-opunit^="外上"],.quality-op-grid label[data-opunit^="外上"]{grid-template-rows:1fr auto var(--opf-h,var(--ctl-h-sm))}
 /* 母材の数値欄は3桁ほど。器の1マス(346px)へ伸ばさない（§9.130）。
    幅は規格から選ぶ（§9.131）。 */
 .material-grid input{width:100%;height:var(--opf-h,var(--ctl-h-sm))}

@@ -136,8 +136,11 @@ run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①
      入力内容の母材の部分も汎用設定で作った形にしたい」）。**枚数は
      サーバーの`PLACES`と同じ数**——増やしたのに盤が出ないと、行はあるのに
      触れない置き場ができる。 */
-  rec('置き場ごとにボードが出る（準備・入力内容・母材）',
-      board.枚数===3&&board.置き場.join('/')==='準備/入力内容/母材',JSON.stringify(board.置き場));
+  /* 顔ぶれは文字列で固定しない（§9.389）——サーバーの`places`と同じ並びか（§9.606 で「品質情報の下」が4枚目）。 */
+  const srvPlaces=await page.evaluate(async()=>((await (await fetch('/api/operation-item-master')).json()).places||[]));
+  rec('置き場ごとにボードが出る（サーバーの置き場と同じ並び）',
+      srvPlaces.length>=3&&board.枚数===srvPlaces.length&&board.置き場.join('/')===srvPlaces.join('/'),
+      JSON.stringify({盤:board.置き場,サーバー:srvPlaces}));
   /* §9.218 ②: 6マス（選べるのは1/2/3/6の4通り）では「1列と2列の間」が
      作れなかった。12マスにして刻みを細かくする。 */
   rec('測定画面と同じ12マスのグリッド',board.列.every(n=>n===12),JSON.stringify(board.列));
