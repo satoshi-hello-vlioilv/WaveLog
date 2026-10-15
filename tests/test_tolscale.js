@@ -567,9 +567,10 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
   await page.fill('#appPromptInput','abc');
   await page.click('#appConfirmOk');
   await page.waitForSelector('#appConfirmModal:not([hidden]) #appConfirmOk',{timeout:8000});
+  /* 窓ぜんたいの字で見る——§9.604 から最初の1文（使えません）は窓の題が持つ。 */
   await page.waitForFunction(()=>/使えません/.test(
-    (document.getElementById('appConfirmBody')||{}).textContent||''),null,{timeout:8000});
-  const ng=await page.evaluate(()=>(document.getElementById('appConfirmBody')||{}).textContent||'');
+    (document.getElementById('appConfirmModal')||{}).textContent||''),null,{timeout:8000});
+  const ng=await page.evaluate(()=>(document.getElementById('appConfirmModal')||{}).textContent||'');
   rec('数にならない値は理由を書いて断る（0にしない）',
       /使えません/.test(ng)&&/0より大きい数/.test(ng),ng.slice(0,60));
   await page.click('#appConfirmOk');

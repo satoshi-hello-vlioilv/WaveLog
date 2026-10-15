@@ -228,8 +228,9 @@ run('test_ngcard: 完了前の確認カードの強調と「NGが発生した」
    const m=document.getElementById('appConfirmModal');
    return !!m&&m.hidden===false;
   },null,{timeout:5000});
+  /* 窓ぜんたいの字で見る——§9.604 から最初の1文（何回目か）は窓の題が持つ（本文だけ読むと題へ移った字を見落とす）。 */
   const ask=await page.evaluate(()=>
-    (document.getElementById('appConfirmBody')||{}).textContent||'');
+    (document.getElementById('appConfirmModal')||{}).textContent||'');
   rec('押す前に確認する（何回目かも言う）',/1回目/.test(ask)&&/15分/.test(ask),ask);
   await page.click('#appConfirmOk');
   await W.until(page,()=>{const m=document.getElementById('appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'確認の窓が閉じる'});

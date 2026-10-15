@@ -82,6 +82,10 @@ WL.measureItem={
   '揃い/肉厚/長さ':'piece',板厚:'thickness',板幅:'width',
   ラテラルボー:'lateral',バリ:'burr',
   テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
+ /* 測定値の鍵 → 項目名（`lateral`→`ラテラルボー`）。`KEYS`を逆に引く（最初に当たる名前＝今の綴り）。
+    欄の判定はこの名前で基準を引く（§9.606）——「いま選んでいる項目」で引くと、描き直しの途中に別の項目の
+    公差で判定され、戻ってきたときにラテラルボーが NG になっていた（利用者の報告）。 */
+ typeOfKey(key){return Object.keys(this.KEYS).find(k=>this.KEYS[k]===key)||''},
  normalize(type){const t=String(type??'');
   if(t===this.LEGACY)return '板幅';
   if(this.LEGACY_MATERIAL.indexOf(t)>=0)return this.MATERIAL;
@@ -1176,14 +1180,30 @@ function showValidationMessage(result){
  message.textContent=`完了できません。未入力項目を確認してください: ${missingNames.slice(0,6).join('、')}${missingNames.length>6?' ほか':''}`;
  target.prepend(message);result.missing[0]?.el?.focus();
 }
+/* 1つの欄の判定（§9.606）。**答えはここ1箇所**——描いたとき・打つたび・丸めたとき・基準が後から届いたとき
+   （`rejudgeInputs()`）が同じ答えを読む。基準は**欄の項目**で引き（`typeOfKey`）、NG の札（`.judge-pill`）も
+   ここで付け外す——以前は札を描くときにしか作らず、正しい値へ打ち直しても NG が残っていた（利用者の報告）。
+   札を持つのは描いたときにいま測る列だった欄だけ（`.is-judged`・§9.137 の「印は公差外だけ」）。 */
 function judgeInput(el,key,value,index){
  el.classList.remove('ng','complete');
  if(key==='flatness'){
   if(String(el.value||'').trim()!=='')el.classList.add('complete');
   return;
  }
- const raw=String(el.value??'').trim(),tol=WL.measureInput.toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
+ const raw=String(el.value??'').trim(),num=Number(raw);
+ const tol=WL.measureInput.toleranceDetail(key==='thickness'?'thickness':'width',index,WL.measureItem.typeOfKey(key))?.range||null;
  if(raw!==''&&Number.isFinite(num)){el.classList.add('complete');if(tol&&(num<tol[0]||num>tol[1]))el.classList.add('ng')}
+ const wrap=el.closest('.strip-input-wrap.is-judged');
+ if(!wrap)return;
+ const ng=el.classList.contains('ng'),pill=wrap.querySelector('.judge-pill');
+ wrap.classList.toggle('has-judge',ng);
+ if(ng&&!pill)wrap.insertAdjacentHTML('beforeend','<span class="judge-pill ng">NG</span>');
+ else if(!ng&&pill)pill.remove();
+}
+/* 表を作り直さずに全部の欄を判定し直す（基準が後から届いたとき・§9.606）。打っている欄の焦点を動かさない。 */
+function rejudgeInputs(){
+ document.querySelectorAll('input[data-mkey]').forEach(el=>judgeInput(el,el.dataset.mkey,Number(el.value),+el.dataset.j));
+ updateValidationVisuals();
 }
 document.addEventListener('input',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
 document.addEventListener('change',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
@@ -1712,6 +1732,8 @@ function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.
    呼べる。載せ忘れは `no-undef` が教える——**ただし `typeof x` は教えない**
    （§9.355）。外から使う側は `typeof WL.measureView.x==='function'`。
    ============================================================ */
+/* 仕掛の完全な行が後から届いたら、判定と見出し（基準の札）を出し直す（§9.606・呼ぶのは lot-split.js）。 */
+WL.measureHooks.on('afterSourceRefresh',()=>{if(!S.measure)return;rejudgeInputs();updateMeasurementHeading()});
 WL.measureView={
  ensureMeasureShape,blankMeasure,blankProductRow,collect,
  renderMeasurement,renderProductPanel,renderQualityGradePanel,renderRecordedValues,
@@ -1719,7 +1741,7 @@ WL.measureView={
  renderCourseHierarchy,renderResidualCourseEverywhere,paintQualityInfo,
  refreshScheduleInfo,applyRightLayout,
  updateValidationVisuals,showValidationMessage,activeRequiredControls,
- judgeInput,judgeProductRow,
+ judgeInput,rejudgeInputs,judgeProductRow,
  updateCoilOptions,updateLengthOptions,updateMeasurementHeading,
  applyMaxStripsToInputs,syncInputModeLock,configureToleranceSelector,
  lockCounts,motherFieldLabel,PRODUCT_FILLED_KEYS,

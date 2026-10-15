@@ -536,7 +536,7 @@ function bindMeasureInputsCore(){
 }
 function toleranceInfoFor(key,index,value){
  if(key==='flatness'){const v=String(value||'').trim();return v===''?{tol:null,state:'wait',pos:50}:{tol:null,state:v==='〇'?'ok':'ng',pos:50}}
- const tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(value);if(!tol||!Number.isFinite(num))return{tol,state:'wait',pos:50};const low=tol[0],high=tol[1],span=Math.max(Math.abs(high-low),.000001),viewLow=low-span*.25,viewHigh=high+span*.25,pos=Math.max(0,Math.min(100,(viewHigh-num)/(viewHigh-viewLow)*100));return{tol,state:num<low||num>high?'ng':'ok',pos}}
+ const tol=toleranceDetail(key==='thickness'?'thickness':'width',index,WL.measureItem.typeOfKey(key))?.range||null,num=Number(value);if(!tol||!Number.isFinite(num))return{tol,state:'wait',pos:50};const low=tol[0],high=tol[1],span=Math.max(Math.abs(high-low),.000001),viewLow=low-span*.25,viewHigh=high+span*.25,pos=Math.max(0,Math.min(100,(viewHigh-num)/(viewHigh-viewLow)*100));return{tol,state:num<low||num>high?'ng':'ok',pos}}
 /* 印は**公差外だけ**（§9.137の②の約束「セル背景で公差内の位置を示す案は
    却下。公差外の赤だけ」）。全セルに「OK」を添えると、24条×5丈で120個の
    OKが並んで**読むべき赤が埋もれる**うえ、印は入力欄の上に重なるので
@@ -545,7 +545,7 @@ function toleranceInfoFor(key,index,value){
 function makeMeasureInputV29(key,i,j,value,active=true){
  const ng=active&&value!==''&&toleranceInfoFor(key,j,value).state==='ng';
  const pill=ng?'<span class="judge-pill ng">NG</span>':'';
- return `<div class="strip-input-wrap${ng?' has-judge':''}">${makeMeasureInput(key,i,j,value)}${pill}</div>`;
+ return `<div class="strip-input-wrap${active?' is-judged':''}${ng?' has-judge':''}">${makeMeasureInput(key,i,j,value)}${pill}</div>`;
 }
 /* 入力欄の保護。自動転送中はセルを読み取り専用にする(母材・フラットネスは常時手入力可)。 */
 function applyInputProtection(){

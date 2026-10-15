@@ -213,7 +213,7 @@ G['マスタ'] = ['test_master', 'test_mmshell', 'test_mmpane', 'test_mmlist', '
                'test_equse',
                # §9.588: 設備停止の挿入条件の盤（設備停止マスタの下の全幅の節）
                'test_stoprulemaster']
-G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
+G['測定'] = ['test_course', 'test_tolscale', 'test_lateraljudge', 'test_defect', 'test_share', 'test_flows',
              # §9.392: 設備ごとに使う入力内容（選択肢とチップから伏せる）
              'test_measitems',
              # §9.286 ⑥: 未入力・未選択の配色と、増やした色
