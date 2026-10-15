@@ -178,7 +178,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_srcsync',
                      'test_scsession', 'test_scwho',
                      # §9.588: 厳密モード（一番上からだけ開始）と足りない設備停止（黄色の帯・自動で入れる）
-                     'test_strictmode', 'test_stoprules']
+                     'test_strictmode', 'test_strictreorder', 'test_stoprules']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
 # §9.248 ⑥: 見せる範囲を「実施した設備」で絞る（データ一覧・実績データ）
@@ -247,7 +247,7 @@ G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmi
              'test_recsplit',
              # §9.317: 読み取り専用のデータソースは写しから読む（cfg()を通す）
              'test_srcread']
-G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname',
+G['権限'] = ['test_modeguard', 'test_fieldreorder', 'test_strictreorder', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname',
              # §9.272: 権限区分（開発者/メンテナンス者/一般ユーザー）と接続の管理
              'test_presence', 'test_presenceui',
              # §9.322: 設備作業者とマスタ編集の段（上限・自分の行・書込ガード）。
@@ -571,7 +571,7 @@ RULES = [
                                'test_scsync', 'test_datasource', 'test_cleanup')),
     # 権限区分・マスタ編集の判定もここが持つ（§9.272/§9.322）ので「権限」ごと。
     ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart', 'test_boxactual')),
-    ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
+    ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore', 'test_seedrevise')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）

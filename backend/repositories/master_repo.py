@@ -529,6 +529,10 @@ def equipment_name_references():
   # オペレータが選択肢に出てこなくなる」**——VER2.44.0で一度直した不具合
   # (CHANGELOG参照)を、置き場所を変えたことで再発させることになる。
   (op.CHOICE_TABLE,'対象設備','list'),
+  # アクセス権限マスタの現場段取りの対象設備（§9.606）。**足し忘れると改名した設備で、段取り可の端末が
+  # 黙って並べ替えできなくなる**（厳密モードでは一番上へ入れ替えられず、開始も押せない・利用者の報告）。
+  # 書式は設備停止と同じカンマ区切り＋'*'（`field_reorder_equipment_list`）。
+  ('アクセス権限マスタ','現場段取り対象設備','list'),
  )
 
 def rename_equipment_references(c,old_name,new_name):

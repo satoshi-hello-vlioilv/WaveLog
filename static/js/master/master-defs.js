@@ -724,7 +724,7 @@
          /* 段の値は印（●◐○—・凡例つき・§9.598）。字は title が持つ（`mark:'level'`・`MM_LEVEL`の1箇所）。 */
          {k:'masterEdit',label:'マスタ編集',grow:1,format:'masterEdit',mark:'level'},
          {k:'columnEdit',label:'表示列の編集',grow:1,mark:'level'},
-         {k:'canEdit',label:'編集可否',grow:1,mark:'level'},{k:'canSchedule',label:'スケジュール',grow:1,mark:'level'},{k:'canFieldReorder',label:'現場段取り',grow:1,mark:'level'},{k:'fieldReorderEquipment',label:'対象設備',grow:2,format:'equipmentTarget'}],
+         {k:'canEdit',label:'編集可否',grow:1,mark:'level'},{k:'canSchedule',label:'スケジュール',grow:1,mark:'level'},{k:'canFieldReorder',label:'現場段取り',grow:1,mark:'level',format:'fieldReorder'},{k:'fieldReorderEquipment',label:'対象設備',grow:2,format:'equipmentTarget'}],
    /* ---------- 長い説明は畳んで階層にする（§9.276 ④、利用者の指示） ----------
       「説明文長すぎてわかりにくくて読みにくいので、タブやアコーディオンなど
        使ってわかりやすく階層化しながらコンパクトに表示・説明する方法も」

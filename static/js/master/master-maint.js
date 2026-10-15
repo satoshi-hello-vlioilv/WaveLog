@@ -798,6 +798,14 @@
    const stored=v.trim()||'編集可';
    return (eff&&eff!==stored)?`${stored} → ${eff}（区分の上限）`:stored;
   }
+  /* 現場段取りは**効いている答え**で言う（§9.606）。「可」でも編集可否が閲覧のみ・対象設備が未設定なら効かない
+     ——「可」の印だけが並ぶと、段取り可にしたのに並べ替えできない理由が一覧から読めなかった（利用者の報告）。
+     答えはサーバーの`permission_capabilities()`（行の`caps`）。 */
+  if(col.format==='fieldReorder'){
+   const cap=((col.row&&col.row.caps)||[]).find(c=>c.key==='field:reorder');
+   if(v.trim()!=='可'||!cap||cap.state!=='no')return v;
+   return `可 → 効いていない（${col.row.canEdit==='閲覧のみ'?'編集可否が閲覧のみ':'対象設備が未設定'}）`;
+  }
   /* 1ロットあたり標準時間(§9.114)。**未設定を「0分」に見せない**——
      空欄は「登録していない＝全体の暫定既定値を使う」であって0分ではない。 */
   if(col.format==='standardMinutes')return v.trim()===''?'120分（既定）':`${v}分`;

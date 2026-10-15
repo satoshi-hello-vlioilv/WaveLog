@@ -780,7 +780,8 @@ ITEM_SEEDS = (
     ('スリット', 'スリット 刃厚', '選択', 0, None, None, '刃厚', ''),
     ('スリット', 'スリット 刃セット', '選択', 0, None, None, '刃セット', ''),
     ('スリット', 'スリット 刃径', '正の数', 1, None, None, '', 'mm'),
-    ('スリット', 'スリット クリアランス', '正の数', 1, None, None, '', ''),
+    # **クリアランスは小数2桁**（0.13mm など。利用者の指示・§9.606）。1桁だと 0.13 が 0.1 で記録された。
+    ('スリット', 'スリット クリアランス', '正の数', 2, None, None, '', ''),
     # 利用者の一覧でここだけ「正の数」ではなく「数値」だった＝**マイナスも入る**。
     ('スリット', 'スリット 実ラップ', '数値', 1, None, None, '', ''),
     ('スリット', 'スリット R/F', '選択', 0, None, None, 'R/F', ''),
@@ -2236,12 +2237,38 @@ def ensure_item_table(c):
         return True
     _ensure_item_columns(c)
     _seed_builtins(c)
+    try:
+        revise_seeds(c)
+    except Exception as _e:
+        quiet('種の値の改訂を当てられない（次に開いたときに当てる）', _e)
     # **後から足した組み込みの欄も入れる**（§9.232）。1度だけ・まだ無い鍵だけ。
     try:
         seed_mother_builtins(c)
     except Exception as _e:
         quiet('母材の組み込み欄を入れられない（次に開いたときに入る）',_e)
     return False
+
+
+# 種の値を後から改めたもの（§9.606）。(項目名, 列, 前の種の値, 新しい値, 改めた日)
+# **前の種の値のまま・改めた日より前に更新された行だけ**を直す。区切りは「改めた日」そのもの
+# （未来の日にしない）——直した行も、この後に利用者が選び直した行（1桁へ戻す等）も更新日時が
+# 区切りより新しくなるので、2回目は当たらない（1回きり・人の選んだ値を上書きしない）。
+SEED_REVISIONS = (
+    ('スリット クリアランス', '小数桁', 1, 2, '2026-10-15'),
+)
+
+
+def revise_seeds(c):
+    """`SEED_REVISIONS`を当てる。直した行の数を返す。"""
+    cur, n = c.cursor(), 0
+    for name, col, old, new, before in SEED_REVISIONS:
+        cur.execute(f'UPDATE [{ITEM_TABLE}] SET [{col}]=?, [更新者ID]=?, [更新日時]=Now() '
+                    f'WHERE [項目名]=? AND [{col}]=? AND ([更新日時] IS NULL OR [更新日時]<?)',
+                    [new, 'migrate:seed', name, old, before])
+        n += cur.rowcount or 0
+    if n:
+        c.commit()
+    return n
 
 
 def _seed_items(c):

@@ -70,7 +70,7 @@ test_presence test_printcore test_pyflakes test_pywarn test_quietlint \
 test_recmirror test_recsplit test_routesplit test_savechip \
 test_scsnapread test_scwatch test_shortcut test_sortpipe test_storage \
 test_tabledef test_workdate test_waitlint test_importlint test_funclen test_stopsub test_schedhist \
-test_portdep test_terminalstore test_tscheck test_strictstart test_stoprule test_listtools test_boxactual test_donestops"
+test_portdep test_terminalstore test_tscheck test_strictstart test_stoprule test_listtools test_boxactual test_donestops test_fieldreorder test_seedrevise"
 # **`test_tablequery`は1段目に入れない**（§9.369）。サーバーは要らないが
 # **仕掛の実データが要る**——まっさらな取得では読み込み先が既定の共有パス
 # （`\\Nlmsrvngy03\...`）に落ちるので必ず落ちる。1段目の約束は
@@ -539,7 +539,7 @@ for t in test_stopcat test_stopsubui test_workable test_wkbg test_mcore test_bur
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
-         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_stopflow test_stoppos test_scscrap test_scsubtotal test_sccolpanel test_schistui test_sctimes test_sctimesedit test_scwarm test_scundecided test_scwatchui test_sccomment test_scframe test_scrowstyle test_schistory test_scbar test_scsave test_scwho test_scmodecols test_wipgone test_lotcopy test_scfail test_feedback test_scdragscroll test_srcsync test_plandup test_defectlink test_appquit test_strictmode test_stoprules test_stoprulemaster; do run $NODE $t.js; done
+         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_stopflow test_stoppos test_scscrap test_scsubtotal test_sccolpanel test_schistui test_sctimes test_sctimesedit test_scwarm test_scundecided test_scwatchui test_sccomment test_scframe test_scrowstyle test_schistory test_scbar test_scsave test_scwho test_scmodecols test_wipgone test_lotcopy test_scfail test_feedback test_scdragscroll test_srcsync test_plandup test_defectlink test_appquit test_strictmode test_strictreorder test_stoprules test_stoprulemaster; do run $NODE $t.js; done
 
 echo "--- スケジュール (scheduleモード固定) ---"
 mode schedule

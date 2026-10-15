@@ -72,13 +72,16 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   if(s===EQUIPMENT_ALL)return [EQUIPMENT_ALL];
   return s.replace(/、/g,',').split(',').map(x=>x.trim()).filter(Boolean);
  }
+ const eqKey=v=>String(v||'').normalize('NFKC').trim().toUpperCase();
  function fieldReorderAllowsAll(stored){return fieldReorderTargets(stored)[0]===EQUIPMENT_ALL}
  function fieldReorderAllows(stored,equipment){
   const list=fieldReorderTargets(stored);
   if(!list.length)return false;
   if(list[0]===EQUIPMENT_ALL)return true;
-  const t=String(equipment||'').trim().toUpperCase();
-  return !!t&&list.some(x=>x.trim().toUpperCase()===t);
+  /* 綴りの畳み方はサーバーの`normalize_equipment_name`と同じ（NFKC＋大文字・§9.606）。畳まずに比べると
+     「ＬＳ４」と「LS4」で画面だけが「できない」と言い、掴めない行ができていた（12組のうち5組）。 */
+  const t=eqKey(equipment);
+  return !!t&&list.some(x=>eqKey(x)===t);
  }
  function fieldReorderLabel(stored){
   const list=fieldReorderTargets(stored);
