@@ -111,6 +111,9 @@ pub fn install(src: &Path, dst: &Path) -> Result<bool, String> {
 
 /// 前の窓が終わるのを待たせる引数（更新で exe が変わり、新しい exe で開き直すとき・§9.555）。
 pub const AFTER_ARG: &str = "--after-pid";
+/// 更新を済ませて開き直した窓へ、済んだ更新（前の版・新しい版）を渡す（§9.606）。新しい窓の起動画面は「済んだ更新」から
+/// 続ける——渡さないと 0% の「確かめています」からやり直して見えた（利用者の指示「手戻りがあるような動き」）。
+pub const UPDATED_ARG: &str = "--updated";
 
 /// 起動のはじめ: 版ごとの写しへ渡すなら渡して true（呼ぶ側はすぐ終わる）。そのまま動くなら false。
 /// **渡せなかったら、そのまま動く**（窓が出ないより、共有から動くほうがまし）。理由は記録に残す。
@@ -119,9 +122,16 @@ pub fn handoff(program: &Path, log: &dyn Fn(&str)) -> bool {
 }
 
 /// 更新で exe が変わったとき: 新しい版の写しへ渡し、**この窓が終わるのを待ってから**開いてもらう
-/// （先に開くと「1つだけ起動」の仕組みがこの窓を前に出して、新しい窓が閉じてしまう）。
-pub fn relaunch(program: &Path, log: &dyn Fn(&str)) -> bool {
-    handoff_with(program, &[AFTER_ARG.into(), std::process::id().to_string()], log)
+/// （先に開くと「1つだけ起動」の仕組みがこの窓を前に出して、新しい窓が閉じてしまう）。済んだ更新（`from`→`to`）も渡す。
+pub fn relaunch(program: &Path, from: &str, to: &str, log: &dyn Fn(&str)) -> bool {
+    handoff_with(program, &[AFTER_ARG.into(), std::process::id().to_string(), UPDATED_ARG.into(), from.into(), to.into()], log)
+}
+
+/// `--updated <前の版> <新しい版>` が付いていれば、その2つ。
+pub fn updated_from_args() -> Option<(String, String)> {
+    let args: Vec<String> = std::env::args().collect();
+    let i = args.iter().position(|a| a == UPDATED_ARG)?;
+    Some((args.get(i + 1)?.clone(), args.get(i + 2)?.clone()))
 }
 
 /// `--after-pid <pid>` が付いていれば、その窓が終わるまで待つ（長くても `limit`）。

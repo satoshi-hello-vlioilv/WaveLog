@@ -31,6 +31,25 @@ pub const REACH: Duration = Duration::from_secs(3);
 /// 手元の作業場所（`<アプリ>\.update`）。
 pub const WORK: &str = ".update";
 
+/// 入れ替えの進み具合（起動画面へ・§9.606）。字は起動画面（`desktop/splash`）が1箇所で決める。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Step {
+    /// 写して確かめた数（全部で `total`）
+    Copy { done: usize, total: usize },
+    /// 入れ替えている
+    Swap,
+}
+
+/// 版の向き（§9.606・利用者の指示「版を戻すときと版をアップデートするときでメッセージを変えたり」）。
+/// 配る版が手元より新しければ "up"、古ければ "down"。数で比べる（`2.10.0` は `2.9.0` より新しい）。読めない字は "up"。
+pub fn direction(have: &str, want: &str) -> &'static str {
+    let parse = |v: &str| v.split('.').map(|p| p.parse::<u64>()).collect::<Result<Vec<_>, _>>();
+    match (parse(have), parse(want)) {
+        (Ok(h), Ok(w)) if w < h => "down",
+        _ => "up",
+    }
+}
+
 /// 何が起きたか（起動画面と記録が言う）。
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
@@ -144,7 +163,7 @@ fn sha256_of(p: &Path) -> std::io::Result<String> {
 }
 
 /// 版のフォルダを `stage` へ写し、manifest どおりか（大きさ・sha256）を全部確かめる。戻り値は入れ替える項目。
-pub fn stage(src: &Path, stage: &Path, progress: &dyn Fn(&str)) -> Result<Vec<String>, String> {
+pub fn stage(src: &Path, stage: &Path, progress: &dyn Fn(Step)) -> Result<Vec<String>, String> {
     let man: Value = serde_json::from_slice(
         &std::fs::read(src.join("manifest.json")).map_err(|e| format!("版の目録（manifest.json）を読めません: {e}"))?,
     )
@@ -172,8 +191,8 @@ pub fn stage(src: &Path, stage: &Path, progress: &dyn Fn(&str)) -> Result<Vec<St
         if Some(size) != f["size"].as_u64() || Some(sum.as_str()) != f["sha256"].as_str() {
             return Err(format!("写した物が目録と合いません（{rel}）。置き場の版が壊れているか、写す途中で切れました"));
         }
-        if i % 25 == 0 {
-            progress(&format!("写しています {}/{total}", i + 1));
+        if i % 25 == 0 || i + 1 == total {
+            progress(Step::Copy { done: i + 1, total });
         }
     }
     Ok(payload)
@@ -293,8 +312,7 @@ pub fn peek(app_root: &Path) -> Peek {
 }
 
 /// 配る版へそろえる（`peek()`が Differs と答えたとき・**Python が止まっているときに**呼ぶ）。
-pub fn apply(app_root: &Path, dir: &Path, have: &str, want: &str, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Outcome {
-    progress(&format!("{have} → {want} にそろえています"));
+pub fn apply(app_root: &Path, dir: &Path, have: &str, want: &str, log: &dyn Fn(&str), progress: &dyn Fn(Step)) -> Outcome {
     let work = app_root.join(WORK);
     let stage_dir = work.join(format!("{want}.stage"));
     let old = work.join(format!("{}.old", if safe_version(have) { have } else { "unknown" }));
@@ -306,7 +324,7 @@ pub fn apply(app_root: &Path, dir: &Path, have: &str, want: &str, log: &dyn Fn(&
             return Outcome::Failed(e);
         }
     };
-    progress("入れ替えています");
+    progress(Step::Swap);
     match swap(app_root, &stage_dir, &old, &payload) {
         Ok(0) => {}
         Ok(n) => log(&format!("UPDATE 使用中で {n} 回待ってから入れ替えました（{}ms ごと）", BUSY_STEP.as_millis())),
@@ -327,7 +345,7 @@ pub fn apply(app_root: &Path, dir: &Path, have: &str, want: &str, log: &dyn Fn(&
 }
 
 /// 配る版を読み、違えばそろえる（`peek()`→`apply()`を続けて・初回のインストールと網が使う）。
-pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&str)) -> Outcome {
+pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(Step)) -> Outcome {
     match peek(app_root) {
         Peek::Same(v) => Outcome::UpToDate(v),
         Peek::Skip(why) => Outcome::Skipped(why),
@@ -340,6 +358,16 @@ pub fn check_and_apply(app_root: &Path, log: &dyn Fn(&str), progress: &dyn Fn(&s
 pub(crate) mod tests {
     use super::*;
     use std::fs;
+
+    /// 版の向きは数で比べる（§9.606・起動画面が「新しい版へ更新」「前の版へ戻す」を言い分ける）。
+    #[test]
+    fn direction_compares_numbers() {
+        assert_eq!(direction("2.497.0", "2.498.0"), "up");
+        assert_eq!(direction("2.498.0", "2.497.0"), "down");
+        assert_eq!(direction("2.9.0", "2.10.0"), "up", "字ではなく数で比べる");
+        assert_eq!(direction("2.10.0", "2.9.0"), "down");
+        assert_eq!(direction("", "2.498.0"), "up", "手元の版が読めなければ更新と言う");
+    }
 
     #[test]
     fn missing_folder_is_not_an_undecided_release() {

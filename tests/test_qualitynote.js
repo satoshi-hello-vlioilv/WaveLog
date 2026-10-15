@@ -64,6 +64,17 @@ run('test_qualitynote: 品質情報の下に人が書く欄（§9.606）', async
   rec('Q3. 打った値は操業データとして記録に入る',v==='端部に軽微な擦れあり',String(v));
   await h.click();await h.fill('');await page.keyboard.press('Tab');
  }
+ if(process.env.WAVELOG_SHOT){
+  /* 板厚・板幅の今の画面（§9.606 の7案の比べるページ用）。利用者の PC とフル HD の大きさで。 */
+  for(const [w,hh] of [[1728,1152],[1536,864]]){
+   await page.setViewportSize({width:w,height:hh});
+   await page.evaluate(()=>WL.measureSteps.go('2'));await idle();await closeModal();
+   for(const t of ['板厚','板幅']){
+    await page.evaluate(v=>{const el=document.getElementById('measureType');el.value=v;el.dispatchEvent(new Event('change',{bubbles:true}))},t);
+    await idle();await closeModal();await shot(`${t==='板厚'?'thick':'width'}-${w}`);
+   }
+  }
+ }
  const places=await page.evaluate(async()=>((await (await fetch('/api/operation-item-master')).json()).places||[]));
  rec('Q5. マスタの置き場に「品質情報の下」がある',places.includes('品質情報の下'),JSON.stringify(places));
 });

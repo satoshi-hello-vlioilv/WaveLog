@@ -233,7 +233,7 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_lateraljudge', 'test_enterm
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density', 'test_smalltext',
                'test_uiux', 'test_headbar', 'test_uisize', 'test_bootui',
                'test_gridhead']
-G['起動'] = ['test_boot', 'test_bootui', 'test_planstrip', 'test_bootflash', 'test_assetcache',
+G['起動'] = ['test_boot', 'test_bootui', 'test_splashorder', 'test_planstrip', 'test_bootflash', 'test_assetcache',
              # §9.318・§9.496: ほかのプログラムが読むファイルの置き場の判定
              'test_faststart', 'test_browserdir',
              # §9.410: デスクトップの起動ショートカットとアイコン（入口を作る側）

@@ -9,7 +9,7 @@
   **同じ分割カード・同じ4段・同じ色・同じ地**（§9.580）——窓から覆いへ切り替わっても、左のブランドと右の段の
   並びがそのまま続いて見える。トークンと地の指定は写してあり、段の名前は backend/boot_status.py の PHASES と同じ
   （tests/test_boot.py が一致を見張る）。窓（Rust）は splash.step(id, state, detail) / splash.fail(title, detail) を呼ぶ。
-  窓の段（update・python・backend・open）は見せる段へ寄せる: update→版をそろえる／python・backend→アプリを起こす／
+  窓の段（update・python・backend・open）は見せる段へ寄せる: update→版をそろえる（上げる／戻すは見出しが言う・§9.606）／python・backend→アプリを起こす／
   open→画面を組み立てる。窓の段の細かな字（Python の場所など）は段の title に残し、画面には「いま」と注意だけ出す。
 -->
 <style>
@@ -19,6 +19,7 @@
   --ink:#17272d; --ink-2:#3a565d; --muted:#60747b;
   --warn:#f5a30a; --warn-fg:#7a2f00; --warn-bg:#fff0d6;
   --danger:#a32424; --danger-bg:#fdeaea;
+  --on-fill:#fff; --radius-sm:8px;
  }
  *{box-sizing:border-box}
  html,body{height:100%}
@@ -49,6 +50,19 @@
  @keyframes ripple{0%{width:34px;height:34px;opacity:0}4%{opacity:.32}30%{opacity:.15}100%{width:1080px;height:1080px;opacity:0}}
  .body{display:grid;align-content:center;gap:16px;padding:40px 32px;color:var(--ink);max-height:94vh;overflow:auto}
  .body h2{margin:0;font-size:20px;font-weight:700}
+ /* 見出しと版の行（§9.606）。更新の途中だけ見出しの左に向きの印を出し、版の行は印の右（見出しの字の左端）にそろえる。
+    版の行は最初から1行ぶんの高さを取っておく（出入りで下の段が跳ねない）。 */
+ /* 列は段の一覧と同じ（印 22px＋12px）——見出しの字・版の行・段の名前の左端が1本にそろう。印は地を持たない字の印
+    （押せる丸に見せない）。 */
+ .head{display:grid;grid-template-columns:22px 1fr;column-gap:12px;align-items:center}
+ .head h2,.head .verline{grid-column:2}
+ .tdir{grid-row:1;grid-column:1;justify-self:center;font-size:20px;font-weight:700;line-height:1;color:var(--teal-ink)}
+ body[data-update=down] .tdir{color:var(--ink-2)}
+ .verline{margin:4px 0 0;min-height:22px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+ .vchip{padding:0 8px;border-radius:var(--radius-sm);border:1px solid var(--line);font-weight:600;white-space:nowrap}
+ .vchip small{margin-right:4px;font-size:12px;font-weight:600;color:var(--muted)}
+ .vchip.to{background:var(--teal);border-color:var(--teal);color:var(--on-fill)}
+ body[data-update=down] .vchip.to{background:var(--ink-2);border-color:var(--ink-2)}
  ol{list-style:none;margin:0;padding:0;display:grid;gap:12px}
  li{display:grid;grid-template-columns:22px 1fr;column-gap:12px;align-items:center;color:var(--muted)}
  li b{font-weight:600}
@@ -86,9 +100,10 @@
     <div><h1>測定伝送システム</h1><p>測定・作業予定・帳票をひとつに</p></div>
     <small>デスクトップ版</small></div>
   <div class="body">
-    <h2 id="title">起動しています</h2>
+    <div class="head"><span class="tdir" id="tdir" aria-hidden="true"></span><h2 id="title">起動しています</h2>
+      <p class="verline" id="verline" data-splash-say></p></div>
     <ol>
-      <li class="now" id="p-update"><span class="mark"></span><b>版をそろえる</b><span class="d">最新の版か確かめています</span></li>
+      <li class="now" id="p-update"><span class="mark"></span><b>版をそろえる</b><span class="d">配る版と同じか確かめています</span></li>
       <li class="wait" id="p-app"><span class="mark"></span><b>アプリを起こす</b><span class="d">データの置き場につないでいます</span></li>
       <li class="wait" id="p-screen"><span class="mark"></span><b>画面を組み立てる</b><span class="d">一覧と権限を読み込んでいます</span></li>
       <li class="wait" id="p-ready"><span class="mark"></span><b>準備完了</b><span class="d">まもなく開きます</span></li>
@@ -113,8 +128,9 @@
   const SAY = { update: true, python: false, backend: false, open: true };
   const ORDER = ["update", "app", "screen", "ready"];
   /* 済んだ段までの進み具合。覆い（#appBoot）は中身の起動の6段を済みとして60%から引き継ぐので、
-     「アプリを起こす」が済んだ時点で60%にそろえる（切り替わっても棒が戻らない）。 */
+     「アプリを起こす」が済んだ時点で60%にそろえる（切り替わっても棒が戻らない）。版の段の中（写している間）は 2〜19%。 */
   const PCT = { update: 20, app: 60 };
+  const UPDATE_PCT = 40;   /* 版を写して入れ替えるときの版の段の取り分（写すぶん長い・§9.606） */
   /* よくある理由 → 次にすること（理由の文から見分ける。当てはまらなければ理由だけ出す） */
   const HINTS = [
     [/No module named '?flask/i, "Python に Flask が入っていません。ネットにつながる状態で開き直すと自動で入れます。つながらない PC では、コマンドプロンプトで python -m pip install flask を実行してから開き直してください。"],
@@ -126,24 +142,89 @@
     [/秒たっても準備できません/, "PC が混んでいるか、共有フォルダへの接続で止まっています。少し待ってから開き直してください。"],
   ];
   const row = (k) => $("#p-" + k);
+  /* ---------- 段は順に1つずつ（§9.606、利用者の指示「同時に2つぐるぐる・手戻りに見える動きを、秩序の見える表示に」） ----------
+     窓は版の確かめと Python の起動を**同時に**進める（§9.561）。来た順に塗ると、済んだ段が回り直し・2つの段が同時に回り・
+     帯が下がっていた。ここでは**いまの段（cur）だけを塗り**、後の段の知らせは控えて（pending）、前の段が済んだら当てる。
+     済んだ段へ後から来た知らせは塗らない（title にだけ残す）。帯は下げない。 */
+  let cur = 0, pct = 0, after = null;          /* after: 更新を済ませた（新しい版で起こす）ときの字 */
+  const pending = {};
+  const paintPct = (p) => { pct = Math.max(pct, Math.round(p)); $("#bar").style.setProperty("--pct", pct + "%"); $("#pct").textContent = pct + "%"; };
+  function paintRow(k, state, detail, say) {
+    const li = row(k);
+    if (li.className !== "warn" || state === "bad") li.className = state;
+    if (detail) { li.title = detail; if (say || /^(warn|bad)$/.test(state)) li.querySelector(".d").textContent = detail; }
+  }
+  /* 段 k を済ませて次の段へ。控えていた知らせがあれば当て、それも済んでいればさらに進む。 */
+  function finish(k, state, detail, say) {
+    paintRow(k, state, detail, say);
+    paintPct(PCT[k] || 0);
+    cur = ORDER.indexOf(k) + 1;
+    const nk = ORDER[cur]; if (!nk) return;
+    const nli = row(nk); nli.className = "now";
+    if (nk === "app" && after) nli.querySelector(".d").textContent = after;
+    const p = pending[nk]; delete pending[nk];
+    if (p) take(p.id, p.state, p.detail);
+  }
+  function take(id, state, detail) {
+    const k = PHASE[id]; const i = ORDER.indexOf(k); if (i < 0) return;
+    if (i > cur && state === "bad") return paintRow(k, "bad", detail, SAY[id]);   /* 失敗は待たせず、その段に出す */
+    if (i > cur) { if (!(pending[k] && pending[k].done)) pending[k] = { id, state, detail, done: state === "ok" && LAST[id] }; return; }
+    if (i < cur) { if (detail) row(k).title = detail; return; }
+    if (state === "ok" && LAST[id]) return finish(k, "ok", detail, SAY[id]);
+    paintRow(k, state === "ok" ? "now" : state, detail, SAY[id]);
+  }
+  /* ---------- 版の段（§9.606）: 確かめる → 同じ／新しい版へ更新する／前の版へ戻す ----------
+     窓は版の段だけ形のある知らせ（phase・前後の版・向き・写した数）で送る。字はここ1箇所が決める。
+     5案×2回を別の採点者が採点して選んだ形（r2・96点）: **向きは見出しだけが言う**（丸い ↑／↓ の印＋字。戻すときは印と
+     新しい版の札が灰）、見出しの下の版の行は**最初から高さを取っておく**（行が出入りして段が跳ねない）、段の名前は向きと
+     関係のない「版をそろえる」、写した数は帯の右の1箇所（% と2つの数を並べない）。 */
+  const WORD = { up: { title: "新しい版へ更新しています", icon: "↑", done: "更新しました", fail: "更新できませんでした" },
+                 down: { title: "前の版へ戻しています", icon: "↓", done: "戻しました", fail: "戻せませんでした" } };
+  const DOING = { found: "準備しています", copy: "ファイルを写しています", swap: "入れ替えています", relaunch: "新しい窓で開き直します…" };
+  const chips = (v) => '<span class="vchip"><small>いま</small>' + esc(v.have) + '</span><span aria-hidden="true">→</span><span class="vchip to">' + esc(v.want) + "</span>";
+  function head(v) {                               /* 見出し（向き）と版の行。更新の途中だけ向きを言う */
+    const w = WORD[v.dir] || WORD.up, busy = !!DOING[v.phase] && !!v.dir;
+    document.body.dataset.update = busy ? v.dir : "";
+    $("#tdir").textContent = busy ? w.icon : "";
+    $("#title").textContent = busy ? w.title : "起動しています";
+    if (busy) $("#verline").innerHTML = chips(v);
+  }
+  function version(v) {
+    const k = "update", w = WORD[v.dir] || WORD.up;
+    if (ORDER.indexOf(k) < cur) return;           /* 済んだ版の段へ後から来た答え（開き直した窓の確かめ）は塗らない */
+    head(v);
+    switch (v.phase) {
+      case "check": return paintRow(k, "now", "配る版と同じか確かめています", true);
+      case "install": return paintRow(k, "now", "初めての起動です。共有の置き場からこの PC へアプリを写しています" + (v.total ? " " + v.done + "/" + v.total : ""), true);
+      case "same": $("#verline").textContent = v.have ? "いまの版 " + v.have : "";
+        return finish(k, "ok", "配る版と同じです", true);
+      case "skip": return finish(k, "ok", "確かめませんでした（" + v.why + "）。いまの版で起動します", true);
+      case "bad": return finish(k, "warn", "版を確かめられませんでした（" + v.why + "）。いまの版で起動します", true);
+      case "found": delete pending.app;           /* 止める前の Python の知らせを新しい版の起動へ持ち越さない */
+        PCT.update = UPDATE_PCT;                   /* 写すぶん長くかかるので、版の段に帯の 0〜40% を配る */
+        paintPct(2); return paintRow(k, "now", DOING.found, true);
+      case "copy": paintPct(2 + (UPDATE_PCT - 4) * Math.min(1, (v.done || 0) / (v.total || 1)));
+        /* 写した数は段の説明に（帯の右は全体の % のまま・帯と字の物差しを1つにする）。 */
+        return paintRow(k, "now", DOING.copy + " " + v.done + "/" + v.total, true);
+      case "swap": paintPct(UPDATE_PCT - 2); return paintRow(k, "now", DOING.swap, true);
+      case "relaunch": paintPct(UPDATE_PCT - 1); return paintRow(k, "now", v.want + " へ" + w.done + "。" + DOING.relaunch, true);
+      case "done":
+        if (v.want) { after = "新しい版 " + v.want + " で起こしています"; $("#verline").textContent = "いまの版 " + v.want + "（" + v.have + " から" + w.done.replace("しました", "") + "）"; }
+        return finish(k, "ok", v.want ? v.want + " へ" + w.done + (v.relaunched ? "（窓も新しくなりました）" : "") : "この PC へ入れました", true);
+      case "fail":
+        return finish(k, "warn", (v.want ? w.fail : "そろえられませんでした") + "（" + v.why + "）。いまの版" + (v.have ? " " + v.have : "") + " で起動します", true);
+    }
+  }
   window.splash = {
-    step(id, state, detail) {
-      const k = PHASE[id]; const li = k && row(k); if (!li) return;
-      /* 前の段はまだ「いま」「まだ」なら済みにする（注意・失敗は残す）。 */
-      ORDER.slice(0, ORDER.indexOf(k)).forEach((p) => { const r = row(p); if (/^(now|wait)$/.test(r.className)) r.className = "ok"; });
-      const done = state === "ok" && LAST[id];
-      if (li.className !== "warn" || state === "bad") li.className = state === "ok" && !done ? "now" : state;
-      if (detail) { li.title = detail; if (SAY[id] || /^(warn|bad)$/.test(state)) li.querySelector(".d").textContent = detail; }
-      const next = row(ORDER[ORDER.indexOf(k) + 1]);
-      if (done && next && next.classList.contains("wait")) next.className = "now";
-      const p = PCT[done ? k : ORDER[ORDER.indexOf(k) - 1]] || 0;
-      $("#bar").style.setProperty("--pct", p + "%"); $("#pct").textContent = p + "%";
-    },
+    step: take,
+    version,
     fail(title, detail) {
       clearInterval(timer);
       $("#elapsed").textContent = "経過 " + sec() + " 秒";
       $("#title").textContent = title;
-      document.querySelectorAll("li.now").forEach((li) => (li.className = "bad"));
+      /* 止まった段だけ ×。後の段の失敗（Python が見つからない等）が先に来たら、回っていた前の段は「まだ」へ戻さず止める。 */
+      const failed = document.querySelector("li.bad");
+      document.querySelectorAll("li.now").forEach((li) => (li.className = failed ? "wait" : "bad"));
       const hint = HINTS.find(([re]) => re.test(detail));
       const box = $("#fail");
       box.innerHTML = (hint ? "<b>次にすること</b><div>" + hint[1] + "</div>" : "<b>直したら、この窓を閉じて起動アイコンから開き直してください。</b>") + "<b>理由</b><pre>" + esc(detail) + "</pre>";

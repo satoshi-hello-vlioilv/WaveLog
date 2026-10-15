@@ -96,6 +96,10 @@ impl Splash {
     fn step(&self, app: &AppHandle, id: &str, state: &str, detail: &str) {
         self.say(app, format!("splash.step(...{})", json!([id, state, detail])));
     }
+    /// 版の段の知らせ（§9.606）。字は起動画面が決める（ここは何が起きたかを形で渡すだけ）。
+    fn version(&self, app: &AppHandle, v: serde_json::Value) {
+        self.say(app, format!("splash.version({v})"));
+    }
     fn fail(&self, app: &AppHandle, title: &str, detail: &str) {
         log(&format!("FAIL {title}: {}", detail.replace('\n', " / ")));
         self.say(app, format!("splash.fail(...{})", json!([title, detail])));
@@ -300,14 +304,28 @@ fn cleanup_old_copies() {
 
 /// 版の確かめ（共有の置き場・最大3秒）を裏で始める（§9.561、利用者の承認「起動の順番…同時に進める改善は、進めてよい」）。
 /// 前は確かめ終わってから Python を起こしていた（起動＝確かめ＋Python の起動）。いまは同時に進め、起動＝長いほうになる。
-fn peek_in_background(root: &Path) -> mpsc::Receiver<(update::Peek, Duration)> {
+/// **答えはその場で起動画面へ言う**（§9.606）——Python の起動を待ってから言うと、確かめが済んでいるのに版の段が回り続けた。
+fn peek_in_background(app: &AppHandle, root: &Path, splash: &Arc<Splash>) -> mpsc::Receiver<(update::Peek, Duration)> {
     let (tx, rx) = mpsc::channel();
-    let (root, t0) = (root.to_path_buf(), Instant::now());
+    let (app, root, splash, t0) = (app.clone(), root.to_path_buf(), splash.clone(), Instant::now());
     std::thread::spawn(move || {
         let p = update::peek(&root);
+        splash.version(&app, peek_word(&p));
         let _ = tx.send((p, t0.elapsed()));
     });
     rx
+}
+
+/// 確かめた答えを起動画面の知らせへ（§9.606）。違えば「上げる／戻す」の向きも付ける。
+fn peek_word(p: &update::Peek) -> serde_json::Value {
+    match p {
+        update::Peek::Same(v) => json!({"phase": "same", "have": v}),
+        update::Peek::Skip(why) => json!({"phase": "skip", "why": why}),
+        update::Peek::Bad(why) => json!({"phase": "bad", "why": why}),
+        update::Peek::Differs { have, want, .. } => {
+            json!({"phase": "found", "have": have, "want": want, "dir": update::direction(have, want)})
+        }
+    }
 }
 
 /// 確かめた答えに従う。配る版と違えば**Python を止めてから**入れ替え、起こし直す（動いている Python のファイルを入れ替えない）。
@@ -321,18 +339,14 @@ fn settle_update(
     splash: &Arc<Splash>,
 ) -> Option<Result<Arc<sidecar::Sidecar>, String>> {
     let (have, want, dir) = match peek {
-        update::Peek::Same(v) => {
-            splash.step(app, "update", "ok", &format!("版 {v}（配る版と同じ）"));
-            return Some(started);
-        }
+        // 同じ・確かめない・字が違う: 起動画面へは確かめた糸がもう言った（`peek_in_background`）。ここは記録だけ
+        update::Peek::Same(_) => return Some(started),
         update::Peek::Skip(why) => {
             log(&format!("UPDATE 確かめませんでした: {why}"));
-            splash.step(app, "update", "ok", &format!("確かめませんでした（{why}）。いまの版で起動します"));
             return Some(started);
         }
         update::Peek::Bad(why) => {
             log(&format!("UPDATE そろえられませんでした: {why}"));
-            splash.step(app, "update", "warn", &format!("そろえられませんでした（{why}）。いまの版で起動します"));
             return Some(started);
         }
         update::Peek::Differs { have, want, dir } => (have, want, dir),
@@ -340,16 +354,23 @@ fn settle_update(
     // 持っている写し（Arc）を先に手放す——残すと Supervisor が手放しても Python が終わらず、ファイルを掴んだまま入れ替えに当たる
     drop(started);
     sup.stop();
-    let (a, s) = (app.clone(), splash.clone());
-    let progress = move |t: &str| s.step(&a, "update", "now", t);
+    let way = update::direction(&have, &want);
+    let (a, s, h, w) = (app.clone(), splash.clone(), have.clone(), want.clone());
+    let progress = move |st: update::Step| {
+        let v = match st {
+            update::Step::Copy { done, total } => json!({"phase": "copy", "have": h, "want": w, "dir": way, "done": done, "total": total}),
+            update::Step::Swap => json!({"phase": "swap", "have": h, "want": w, "dir": way}),
+        };
+        s.version(&a, v);
+    };
     match update::apply(root, &dir, &have, &want, &log, &progress) {
         update::Outcome::Applied { from, to, exe_changed } => {
-            splash.step(app, "update", "ok", &format!("{from} → {to} にそろえました"));
-            if exe_changed && launch::relaunch(&root.join("program"), &log) {
-                splash.step(app, "open", "now", "窓も新しくなったので、開き直しています…");
+            if exe_changed && launch::relaunch(&root.join("program"), &from, &to, &log) {
+                splash.version(app, json!({"phase": "relaunch", "have": from, "want": to, "dir": way}));
                 app.exit(0);
                 return None;
             }
+            splash.version(app, json!({"phase": "done", "have": from, "want": to, "dir": way}));
         }
         other => {
             let why = match other {
@@ -357,7 +378,7 @@ fn settle_update(
                 _ => String::new(),
             };
             log(&format!("UPDATE そろえられませんでした: {why}"));
-            splash.step(app, "update", "warn", &format!("そろえられませんでした（{why}）。いまの版で起動します"));
+            splash.version(app, json!({"phase": "fail", "have": have, "want": want, "dir": way, "why": why}));
         }
     }
     splash.step(app, "backend", "now", "新しい版の中身を読み込んでいます…");
@@ -367,11 +388,16 @@ fn settle_update(
 /// 初回のインストール（§9.559）。この PC にアプリが在ればそれを使い、無ければ`%USERPROFILE%\WaveLog`へ配る版を写す。
 /// 進み具合は起動画面の段「版をそろえる」に出す（写すのは更新と同じ道）。
 fn first_install(app: &AppHandle, from: &Path, splash: &Arc<Splash>) -> Result<std::path::PathBuf, String> {
-    splash.step(app, "update", "now", &format!("初めての起動です。共有の置き場（{}）からこの PC へアプリを写しています…", from.display()));
+    log(&format!("INSTALL 共有の置き場から: {}", from.display()));
+    splash.version(app, json!({"phase": "install"}));
     let (a, s) = (app.clone(), splash.clone());
-    let progress = move |t: &str| s.step(&a, "update", "now", &format!("初めての起動: {t}"));
+    let progress = move |st: update::Step| {
+        if let update::Step::Copy { done, total } = st {
+            s.version(&a, json!({"phase": "install", "done": done, "total": total}));
+        }
+    };
     let program = install::program_for(from, &log, &progress)?;
-    splash.step(app, "update", "ok", &format!("この PC のアプリ: {}", program.parent().unwrap_or(&program).display()));
+    log(&format!("INSTALL この PC のアプリ: {}", program.parent().unwrap_or(&program).display()));
     Ok(program)
 }
 
@@ -390,8 +416,13 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>, fr
     };
     // 配る版の確かめ（§9.555）は裏で始め、そのあいだに中身（Python）を起こす（§9.561）。入れ替えるのは Python を止めてから
     let root = program.parent().unwrap_or(&program).to_path_buf();
-    splash.step(&app, "update", "now", "共有の置き場で、配る版を確かめています…");
-    let peeked = peek_in_background(&root);
+    // 更新を済ませて開き直した窓は「済んだ更新」から続ける（§9.606・0% の「確かめています」からやり直して見せない）
+    match launch::updated_from_args() {
+        Some((from, to)) => splash
+            .version(&app, json!({"phase": "done", "have": from, "want": to, "dir": update::direction(&from, &to), "relaunched": true})),
+        None => splash.version(&app, json!({"phase": "check"})),
+    }
+    let peeked = peek_in_background(&app, &root, &splash);
     // 入口（ショートカットの行き先）をこの版にそろえる。中身（Python）がショートカットを付け替える前に置く（§9.554）
     launch::refresh_entry(&log);
     let py = match locate::python() {
