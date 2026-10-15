@@ -791,7 +791,8 @@ function enterMoves(root){
  root.addEventListener('keydown',e=>{
   if(e.key!=='Enter'||e.defaultPrevented||e.isComposing||e.keyCode===229||e.altKey||e.ctrlKey||e.metaKey)return;
   const el=e.target;
-  /* `data-enter-own`＝Enter を自分の意味で受ける欄（測定器の受信欄は転送の区切りに Enter が来る）。 */
+  /* `data-enter-own`＝Enter を自分の意味で受ける欄（測定器の受信欄＝転送の区切り・測定表の欄＝次の条）。
+     `preventDefault`だけに頼らない——取り消せない Enter（`cancelable`の無い合成の知らせ）では効かず、焦点を奪っていた。 */
   if(!el.matches||!el.matches(ENTER_MOVE_FIELDS)||el.matches('textarea,[data-enter-own]')||el.closest('.wl-menu'))return;
   const list=[...root.querySelectorAll(ENTER_MOVE_FIELDS)].filter(x=>x===el||usable(x));
   const next=list[list.indexOf(el)+(e.shiftKey?-1:1)];

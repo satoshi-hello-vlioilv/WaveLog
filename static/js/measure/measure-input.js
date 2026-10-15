@@ -483,7 +483,7 @@ document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{document.quer
 function makeMeasureInput(key,i,j,value){value=WL.base.fixedMeasurementValue(key,value);const mode=key==='flatness'?'text':'decimal';
  /* 読み上げ名も枠の呼び名から作る。板厚は「1条」ではなく「OS/CL/DS」。 */
  const aria=key==='thickness'?(WL.measureItem.slotLabels('thickness')[j]||String(j+1)):`${j+1}条`;
- return `<input data-mkey="${key}" data-i="${i}" data-j="${j}" value="${esc(value)}" inputmode="${mode}" aria-label="${esc(aria)}">`}
+ return `<input data-mkey="${key}" data-enter-own data-i="${i}" data-j="${j}" value="${esc(value)}" inputmode="${mode}" aria-label="${esc(aria)}">`}
 /* 欄を結んだあとに足す（手動入力の選択状態など）は `afterBindInputs`（§9.352）。 */
 function bindMeasureInputs(){bindMeasureInputsCore();WL.measureHooks.run('afterBindInputs')}
 function bindMeasureInputsCore(){
