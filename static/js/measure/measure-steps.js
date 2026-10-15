@@ -945,6 +945,8 @@
  WL.onReady(()=>{
   bind();bindChoiceUsage();watchModal();watchInputs();watchProgress();watchWorkTabs();
   watchUiSize();watchInfoWall();
+  /* 測定画面の入力欄は Enter でも次の欄へ（§9.606・答えは`WL.base.enterMoves`）。 */
+  WL.base.enterMoves(document.getElementById('measureModal'));
   const el=shell();if(el&&!el.classList.contains('mstep-1'))el.classList.add('mstep-1');
   paint();
  });
