@@ -19,12 +19,12 @@ const post = (p, x) => fetch(B + p, { method: 'POST', headers: { 'Content-Type':
  .then(async r => ({ st: r.status, body: await r.json().catch(() => ({})) }));
 const get = p => fetch(B + p).then(r => r.json());
 const FEATS = ['measure', 'schedule', 'report'];
-const ITEMS = ['全長', '寸法・外観', '板厚', '板幅', 'ラテラルボー', 'バリ', 'テレスコープ', '巻ずれ', 'フラットネス'];
+const ITEMS = ['全長', '寸法・外観', '板厚・板幅', 'ラテラルボー', 'バリ', 'テレスコープ', '巻ずれ', 'フラットネス'];
 const SAMPLE = {
  'テスト設備A': { f: [], i: [] },
  'テスト設備B': { f: [], i: ['テレスコープ', '巻ずれ'] },
  'テスト設備C': { f: [], i: ['テレスコープ', '巻ずれ'] },
- 'テスト設備D': { f: ['schedule'], i: ['板幅', 'ラテラルボー', 'バリ', 'テレスコープ', '巻ずれ'] }};
+ 'テスト設備D': { f: ['schedule'], i: ['板厚・板幅', 'ラテラルボー', 'バリ', 'テレスコープ', '巻ずれ'] }};
 const rowFields = x => ({ id: x.id, name: x.name, kind: x.kind, maxStrips: x.maxStrips, standardMinutes: x.standardMinutes, maxLineSpeed: x.maxLineSpeed });
 /* 正解（網の中で独立に作る）。 */
 function truth(set) {
@@ -54,8 +54,8 @@ run('test_equse: 設備の使い分けの表と効き先の図（§9.542）', as
 
   /* ① 答えの1箇所（死んだ設備・測定を使わない設備を含む見本で） */
   /* f を足して、板厚を「使う2台・外す2台」の同数にする（同数は「使う」が多数派——既定の側）。 */
-  const PURE = { a: { f: [], i: [] }, b: { f: [], i: ['バリ'] }, c: { f: ['measure'], i: [] }, d: { f: FEATS.slice(), i: [] }, e: { f: ['report'], i: ['バリ', '板厚'] },
-   f: { f: [], i: ['板厚'] } };
+  const PURE = { a: { f: [], i: [] }, b: { f: [], i: ['バリ'] }, c: { f: ['measure'], i: [] }, d: { f: FEATS.slice(), i: [] }, e: { f: ['report'], i: ['バリ', '板厚・板幅'] },
+   f: { f: [], i: ['板厚・板幅'] } };
   const got = await page.evaluate(([set, feats, items]) => {
    const mx = WL.equipUse.useMatrix(Object.entries(set).map(([n, v], k) => ({ id: k, name: n, disabledFeatures: v.f, disabledMeasureItems: v.i })),
     feats.map(key => ({ key })), items.map(key => ({ key })), 'measure');
@@ -120,7 +120,7 @@ run('test_equse: 設備の使い分けの表と効き先の図（§9.542）', as
   await page.mouse.move(5, 5);
   await W.until(page, () => !document.querySelector('.wl-menu.eu-peek'), null, { ms: 5000, what: '浮き出しが閉じる' });
   /* 鍵盤で焦点を移すと開く（`:focus-visible`のときだけ。押した瞬間の焦点では開かない）。 */
-  await page.focus(cellSel('テスト設備C', '板厚'));
+  await page.focus(cellSel('テスト設備C', '板厚・板幅'));
   await page.keyboard.press('Tab');
   await W.until(page, () => /テスト設備C × 板幅/.test((document.querySelector('.wl-menu.eu-peek h4') || {}).textContent || ''), null, { ms: 5000, what: '鍵盤で移った先の浮き出し' });
   rec('⑤ 鍵盤（Tab）で焦点を移すと、その先のセルの浮き出しが開く', /テスト設備C × 板幅/.test(await page.evaluate(() => (document.querySelector('.wl-menu.eu-peek h4') || {}).textContent || '')));

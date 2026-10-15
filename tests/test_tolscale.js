@@ -77,7 +77,7 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
    const s=S.measure.source=S.measure.source||{};
    s['製造板幅']=base;s['板幅公差_製造_ﾌﾟﾗｽ']=plus;s['板幅公差_製造_ﾏｲﾅｽ']=minus;
    S.measure.basic.mfgWidth=base;
-   document.querySelector('#measureType').value='板幅';
+   document.querySelector('#measureType').value='板厚・板幅';
    document.querySelector('#horizontalCount').value=String(vals.length);
    const w=S.measure.measurements.width[lengthIndex()];
    vals.forEach((v,i)=>w[i]=v);
@@ -546,7 +546,7 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
       e2.入口&&e2.面==='札'&&e2.見えている&&/基準なし/.test(e2.字)&&/手入力/.test(e2.字),
       JSON.stringify(e2));
   /* **寸法系（板幅）には手入力の道を混ぜない**（公差の出どころが別に在る）。 */
-  await setType('板幅');
+  await setType('板厚・板幅');
   const e3=await entry();
   rec('板幅（寸法系）には手入力の入口を出さない',e3.入口===false,JSON.stringify(e3));
   /* 空欄で決定 ＝ 取り消し。 */

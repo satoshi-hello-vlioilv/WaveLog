@@ -110,7 +110,7 @@ run('test_ngcard: 完了前の確認カードの強調と「NGが発生した」
   });
   rec('公差の材料を注ぎ込めた',seeded===true,String(seeded));
 
-  await setType('板幅');
+  await setType('板厚・板幅');
   const pWidth=await pill();
   rec('板幅では「公差」の言葉で言う',
       !!pWidth&&/公差/.test(pWidth.文)&&!/基準なし/.test(pWidth.文),JSON.stringify(pWidth));

@@ -63,7 +63,7 @@ run('test_devdigits: 測定器で桁が変わる／公差の桁／全〇／レ�
    const m=S.measure;m.basic.mfgThickness=1.5;m.source=m.source||{};
    /* 1.5±0.025 は二進で表せないので、生の`range`は`1.4749999999999999`になる。 */
    m.source['板厚公差_製造_プラス']=0.025;m.source['板厚公差_製造_マイナス']=0.025;
-   const ty=document.getElementById('measureType');ty.value='板厚';
+   const ty=document.getElementById('measureType');ty.value='板厚・板幅';
    ty.dispatchEvent(new Event('change',{bubbles:true}));
   });
   await idle();
@@ -86,7 +86,7 @@ run('test_devdigits: 測定器で桁が変わる／公差の桁／全〇／レ�
   rec('判定した器を今ある1行の中に出す（マイクロメータ）',
       /マイクロメータ/.test(micro.札)&&/3桁/.test(micro.札),JSON.stringify(micro.札));
 
-  await page.evaluate(()=>{const ty=document.getElementById('measureType');ty.value='板幅';
+  await page.evaluate(()=>{const ty=document.getElementById('measureType');ty.value='板厚・板幅';
     ty.dispatchEvent(new Event('change',{bubbles:true}));S.measure.settings.wStep=0});
   // 起きないことを見る判定（札を出さない）: 項目を替えた描き直しと往復が静まるまで待つ。
   await idle();
@@ -132,7 +132,7 @@ run('test_devdigits: 測定器で桁が変わる／公差の桁／全〇／レ�
 
   /* ---- ⑦ 押していないのにDBへ入る／バッジが言う ---- */
   await page.evaluate(()=>{
-   const ty=document.getElementById('measureType');ty.value='板幅';
+   const ty=document.getElementById('measureType');ty.value='板厚・板幅';
    ty.dispatchEvent(new Event('change',{bubbles:true}));S.measure.settings.wStep=0});
   await paint();
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
