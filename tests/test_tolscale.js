@@ -90,11 +90,11 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
   rec('非対称公差を注入できる(範囲999〜1003・基準1000)',
    !!inj.range&&Math.abs(inj.range[0]-(BASE-MINUS))<1e-6&&Math.abs(inj.range[1]-(BASE+PLUS))<1e-6,
    JSON.stringify(inj));
-   await W.until(page,()=>!!document.querySelector('.accurate-numberline'),null,{ms:6000,what:'公差数直線が描かれる'});
+   await W.until(page,()=>!!document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline'),null,{ms:6000,what:'公差数直線が描かれる'});
    await idle();
 
   const g=await page.evaluate(()=>{
-   const box=document.querySelector('.accurate-numberline');
+   const box=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline');
    if(!box)return {none:true};
    // 祖先の表示状態。パネルが隠れていると全要素の寸法が0になり、原因が
    // 分からないまま位置の検証だけが落ちるので、失敗時の手がかりに残す。
@@ -112,7 +112,7 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
              inside:r.left>=br.left-1&&r.right<=br.right+1};});
    /* **行が測定表とそろっているか**——この図の値打ちそのもの。 */
    const rows=[...box.querySelectorAll('.tc-row')];
-   const trs=[...document.querySelectorAll('#measurementGrid .measure-matrix tbody tr')];
+   const trs=[...document.querySelectorAll('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .measure-matrix tbody tr')];
    let rowGap=null;
    if(rows.length===trs.length&&rows.length){
     rowGap=0;
@@ -199,7 +199,7 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
   /* --- 5) 確定前の先読みリングが確定後の点と同じ写像で置かれる --- */
   const pend=await page.evaluate(()=>{
    WL.measureInput.updateNumberlinePending('DT11+1002.8M');   // ノギス受信中(未確定)
-   const m=document.querySelector('#numberlinePending'),box=document.querySelector('.accurate-numberline');
+   const m=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) [data-nl-pending]'),box=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline');
    if(!m||!box)return null;
    const r=m.getBoundingClientRect(),br=box.getBoundingClientRect();
    return {hidden:m.hidden,x:+(r.left-br.left+r.width/2).toFixed(1)};
@@ -269,7 +269,7 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
    await new Promise(r=>setTimeout(r,300));
   });
   const mixedRead=async()=>page.evaluate(()=>{
-   const box=document.querySelector('.accurate-numberline'),br=box.getBoundingClientRect();
+   const box=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline'),br=box.getBoundingClientRect();
    const at=e=>{const r=e.getBoundingClientRect();return +(r.left-br.left+r.width/2).toFixed(1)};
    const dots=[...box.querySelectorAll('.tc-row')].map(r=>{
     const d=r.querySelector('.tc-dot');return d?{x:at(d),ng:d.className.includes('ng'),t:d.title}:null});
@@ -340,7 +340,7 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
    nlOpen.絵.length===2&&nlOpen.絵[0]!==nlOpen.絵[1],nlOpen.絵.join(' / '));
   rec('いま軸の外に何件あるかを文字で言う',/軸の外/.test(nlOpen.状態),nlOpen.状態);
   await page.click('#numberlinePanel [data-nl-mode="rel"]');
-  await W.until(page,()=>(document.querySelector('.accurate-numberline')||{dataset:{}}).dataset.mode==='rel',null,{ms:5000,what:'図が公差比の軸で描き直される'});
+  await W.until(page,()=>(document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline')||{dataset:{}}).dataset.mode==='rel',null,{ms:5000,what:'図が公差比の軸で描き直される'});
   const relMixed=await mixedRead();
   rec('切り替えると図が描き直される(公差比の軸になる)',
    relMixed.軸==='rel',String(relMixed.軸));
@@ -352,11 +352,11 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
   rec('選んだ候補に印が付く',
    await page.evaluate(()=>document.querySelector('[data-nl-mode="rel"]').classList.contains('is-on')),'');
   await page.click('#numberlinePanel [data-nl-mode="abs"]');
-  await W.until(page,()=>(document.querySelector('.accurate-numberline')||{dataset:{}}).dataset.mode==='abs',null,{ms:5000,what:'図が実寸の軸へ戻る'});
+  await W.until(page,()=>(document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline')||{dataset:{}}).dataset.mode==='abs',null,{ms:5000,what:'図が実寸の軸へ戻る'});
 
   /* 軸の外は**件数を文字で言い、表示幅を広げれば入る**（黙って端で潰さない）。 */
   const far=async()=>page.evaluate(()=>{
-   const box=document.querySelector('.accurate-numberline');
+   const box=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline');
    const n=document.getElementById('numberlineOutside');
    return{端:Number(box.dataset.edge),軸外:Number(box.dataset.out),
           文:n&&!n.hidden?n.textContent:'',
@@ -399,7 +399,7 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
    [1000,1000.02,1000.04,999.2,1002.9].forEach((v,i)=>w[i]=v.toFixed(3));
    WL.measureInput.renderMeasureGrid();
    await new Promise(r=>setTimeout(r,300));
-   const box=document.querySelector('.accurate-numberline'),br=box.getBoundingClientRect();
+   const box=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline'),br=box.getBoundingClientRect();
    const rows=[...box.querySelectorAll('.tc-row')];
    const dots=rows.map((row,i)=>{
     const e=row.querySelector('.tc-dot');if(!e)return null;
@@ -430,7 +430,7 @@ run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)�
    const cell=document.querySelector('input[data-mkey="width"][data-j="0"]');
    cell?.click();cell?.focus();
    await new Promise(r=>setTimeout(r,300));
-   const box=document.querySelector('.accurate-numberline');
+   const box=document.querySelector('#measurementGrid section[data-grid-key]:not([data-grid-key="thickness"]) .accurate-numberline');
    const cur=[...box.querySelectorAll('.tc-row.is-current')];
    const rows=[...box.querySelectorAll('.tc-row')];
    const size=e=>Math.round((e?.querySelector('.tc-dot')||e)?.getBoundingClientRect().width||0);

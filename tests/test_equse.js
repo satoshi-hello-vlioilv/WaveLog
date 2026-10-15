@@ -122,8 +122,8 @@ run('test_equse: 設備の使い分けの表と効き先の図（§9.542）', as
   /* 鍵盤で焦点を移すと開く（`:focus-visible`のときだけ。押した瞬間の焦点では開かない）。 */
   await page.focus(cellSel('テスト設備C', '板厚・板幅'));
   await page.keyboard.press('Tab');
-  await W.until(page, () => /テスト設備C × 板幅/.test((document.querySelector('.wl-menu.eu-peek h4') || {}).textContent || ''), null, { ms: 5000, what: '鍵盤で移った先の浮き出し' });
-  rec('⑤ 鍵盤（Tab）で焦点を移すと、その先のセルの浮き出しが開く', /テスト設備C × 板幅/.test(await page.evaluate(() => (document.querySelector('.wl-menu.eu-peek h4') || {}).textContent || '')));
+  await W.until(page, () => /テスト設備C × ラテラルボー/.test((document.querySelector('.wl-menu.eu-peek h4') || {}).textContent || ''), null, { ms: 5000, what: '鍵盤で移った先の浮き出し' });
+  rec('⑤ 鍵盤（Tab）で焦点を移すと、その先のセルの浮き出しが開く', /テスト設備C × ラテラルボー/.test(await page.evaluate(() => (document.querySelector('.wl-menu.eu-peek h4') || {}).textContent || '')));
   await page.keyboard.press('Escape');
   await W.until(page, () => !document.querySelector('.wl-menu.eu-peek'), null, { ms: 5000, what: 'Escで閉じる' });
 

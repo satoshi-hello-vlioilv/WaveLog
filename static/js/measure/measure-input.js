@@ -985,7 +985,10 @@ function renderMeasureGridVertical(){
     （§9.234 ③の「見出しは1行」を崩さない）。出るのは**桁が器で変わる項目**
     （板厚・板幅）で、**まだ転送を受けていなければ出さない**——「不明」と
     書く場所を常設すると、いちばん多い状態が場所だけ取ることになる。 */
- const devBadge=keys.map(key=>{
+ /* 板厚・板幅の器の札は**最後に値を受けた器**だけ（2つ並べるとどちらの器か読めない・
+    項目を選び直したら次の転送まで出さない・§9.607）。 */
+ const last=(S.measure.settings||{}).deviceLast;
+ const devBadge=(dim?(keys.includes(last)?[last]:[]):keys).map(key=>{
   const dev=key?WL.measureDevice.of(key):'';
   if(!dev||WL.measureDevice.digits(key,'')===null)return '';
   const label=WL.measureDevice.label(dev),d=WL.measureDevice.digits(key,dev);
@@ -1594,7 +1597,8 @@ WL.measureTolerance={
    軸からはみ出した点は**件数を文字で言い、直し方（表示幅）を同じ行に置く**。 */
 function syncNumberlineControls(){
  /* 軸の外の数は**全部の図**で数える（板厚・板幅は図が2つ・§9.607）。 */
- const out=[...document.querySelectorAll('.accurate-numberline')].reduce((n,c)=>n+(Number(c.dataset.out)||0),0);
+ const charts=[...document.querySelectorAll('.accurate-numberline')],chart=charts.length>0;
+ const out=charts.reduce((n,c)=>n+(Number(c.dataset.out)||0),0);
  const note=document.getElementById('numberlineOutside');
  if(note){
   /* 畳んである先に打つ手がある（§9.208 ④）。**どこを触れば見えるのか**まで

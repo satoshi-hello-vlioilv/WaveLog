@@ -245,7 +245,7 @@ H.run('test_measitems: 入力内容を設備ごとに出し分ける（§9.392�
   await openMeasure();
   const v1=await shown();
   rec('外した入力内容が選択肢から消える',
-   v1.選択肢.length===7&&!v1.選択肢.includes('テレスコープ')&&!v1.選択肢.includes('フラットネス'),
+   v1.選択肢.length===6&&!v1.選択肢.includes('テレスコープ')&&!v1.選択肢.includes('フラットネス'),
    JSON.stringify(v1.選択肢));
   rec('チップからも同じだけ消える（選択肢とチップで食い違わない）',
    v1.チップ.join(',')===v1.選択肢.join(','),JSON.stringify(v1.チップ));

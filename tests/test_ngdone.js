@@ -40,7 +40,7 @@ run('test_ngdone: 公差外・基準外があっても測定を完了できる�
  const modal=()=>page.evaluate(()=>{
   const el=document.getElementById('appConfirmModal');
   if(!el||el.hidden)return null;
-  return {文:(document.getElementById('appConfirmBody')||{}).textContent||'',
+  return {文:el.textContent||'',
           数:document.querySelectorAll('#appConfirmModal:not([hidden])').length};
  });
  const answer=async yes=>{
@@ -130,7 +130,7 @@ run('test_ngdone: 公差外・基準外があっても測定を完了できる�
   rec('押す前に確認が出る（アプリの窓で1つだけ）',
       !!ask&&ask.数===1&&native===0,JSON.stringify(ask)+' native='+native);
   rec('確認に件数と項目が読める',
-      !!ask&&/公差・基準の外/.test(ask.文)&&/板幅 公差外 1件/.test(ask.文),
+      !!ask&&/公差・基準の外/.test(ask.文)&&/板厚・板幅 公差外 1件/.test(ask.文),
       (ask&&ask.文||'').replace(/\s+/g,' ').slice(0,110));
   rec('記録に残ることも書いてある（黙って通さない）',
       !!ask&&/記録に残ります/.test(ask.文),'');

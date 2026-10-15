@@ -2354,6 +2354,7 @@ function noteMeasureDevice(key,device){
  if(!MEASURE_DEVICE_DIGITS[device])return;      /* 桁を持つ器だけ覚える */
  m.settings=m.settings||{};
  m.settings.deviceOf=Object.assign({},m.settings.deviceOf,{[key]:device});
+ m.settings.deviceLast=key;   /* 最後に判定した器の量（板厚・板幅の札が読む・§9.607） */
 }
 function measurementDigits(key,device){
  const base=key==='thickness'?3:key==='width'?2:null;

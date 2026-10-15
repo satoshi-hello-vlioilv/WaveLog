@@ -976,7 +976,7 @@ function syncInputModeLock(){
     ままになる（「自動」と出たまま手入力、が実際に作れる）。 */
  WL.measureInput.updateReceiveState(document.activeElement===$('#deviceInput'));
 }
-$('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.dimKey='thickness';S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();syncInputModeLock();$('#deviceInput').focus();markDirty()};
+$('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.dimKey='thickness';S.measure.settings.deviceLast=null;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();syncInputModeLock();$('#deviceInput').focus();markDirty()};
 /* 測定画面全体の再描画。旧実装は9層のラップ(モード表示→製品丈→検証→
    基本情報→公差セレクタ→コース→作業時間→タブ初期化)だったものを、
    実行順を保ったまま一本の関数へ整理した。 */
