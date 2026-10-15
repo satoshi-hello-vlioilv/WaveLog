@@ -355,7 +355,7 @@ rec('Start.vbs は版に入れない（§9.559で外した）', 'Start.vbs' not 
 # ---- 10) 版の確かめと Python の起動を同時に進める（§9.561、利用者の承認） ----
 MAIN = (ROOT / 'desktop' / 'src' / 'main.rs').read_text(encoding='utf-8')
 UPD = (ROOT / 'desktop' / 'src' / 'update.rs').read_text(encoding='utf-8')
-i_peek, i_get = MAIN.find('peek_in_background(&root)'), MAIN.find('let started = sup.get();')
+i_peek, i_get = MAIN.find('let peeked = peek_in_background('), MAIN.find('let started = sup.get();')
 rec('版の確かめを裏で始めてから Python を起こす（起動＝長いほう）', 0 < i_peek < i_get, f'{i_peek} < {i_get}')
 body = MAIN[MAIN.find('fn settle_update('):]
 rec('違えば写しを手放してから Python を止め、入れ替え、起こし直す',

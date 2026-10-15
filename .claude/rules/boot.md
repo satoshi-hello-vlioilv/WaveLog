@@ -1,4 +1,4 @@
-# 起動・停止・監視（75件）
+# 起動・停止・監視（77件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 起動画面はいまの段だけを塗る（後の段の知らせは控え、前の段が済んだら当てる・済んだ段は塗り直さない・帯は下げない）。答えは`desktop/splash`の`take()` | `test_splashorder.js` | [§9.606](../../docs/decisions/9.606.md) |
+| 版の段は`splash.version()`（字は起動画面の1箇所）。向きは`update::direction()`、開き直す窓へは`--updated`を渡す | `test_splashorder.js`・`test_boot.py` | [§9.606](../../docs/decisions/9.606.md) |
 | 起動の画面が見せる段は4つで、顔ぶれは`boot_status.PHASES`の1箇所（覆いはテンプレートが回して描く・窓の起動画面は同じ鍵と言葉の写し）。技術の言葉を出さない | `test_boot.py`・`test_bootui.js` | [§9.580](../../docs/decisions/9.580.md) |
 | 窓の起動画面と覆いは同じ分割カード。窓の細かな字（Python の場所など）は段の title にだけ残し、進み具合は「アプリを起こす」が済んだ時点で60%（覆いが引き継ぐ値） | `test_bootui.js` | [§9.580](../../docs/decisions/9.580.md) |
 | 窓が終わるときの止め方は`Sidecar::shutdown()`の1箇所（1回だけ）。`stop()`は写し（`Arc`）の数を問わずその場で止める | — | [§9.600](../../docs/decisions/9.600.md) |

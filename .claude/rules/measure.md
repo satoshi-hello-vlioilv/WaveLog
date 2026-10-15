@@ -1,4 +1,4 @@
-# 測定画面（105件）
+# 測定画面（109件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 欄の判定は`judgeInput()`の1箇所（基準は欄の項目で引く＝`WL.measureItem.typeOfKey`・NG の札も打つたびに付け外す） | `test_lateraljudge.js` | [§9.606](../../docs/decisions/9.606.md) |
+| 仕掛の完全な行が後から届いたら`afterSourceRefresh`で判定と見出しを出し直す（`rejudgeInputs()`・表を作り直さない） | `test_lateraljudge.js` | [§9.606](../../docs/decisions/9.606.md) |
+| 操業データの置き場「品質情報の下」（`#qualityOpGrid`）。最初の1欄「品質メモ」はパス設定マスタの印で1度だけ置く | `test_qualitynote.js`・`test_opui.js` | [§9.606](../../docs/decisions/9.606.md) |
+| 種の値を後から改めるのは`SEED_REVISIONS`（前の種の値のままの行だけ・パス設定マスタの印で1度だけ） | `test_seedrevise.py` | [§9.606](../../docs/decisions/9.606.md) |
 | 操業データの浮き面（メニュー・数の小窓・語句の候補）は**外の**スクロールでだけ閉じる。答えは`closeOnOuterScroll()`の1箇所 | `test_opwidget.js` | [§9.585](../../docs/decisions/9.585.md) |
 | 寸法・外観の判定は**エッジ形状の右隣**。見出しの上段で「判定に効かない列」と「揃いで判定する列」を分け、級の字は`judgeGroupText()`（基準の帯と同じ答え） | `test_msteps.js` | [§9.586](../../docs/decisions/9.586.md) |
 | 打った値の整え方は`WL.opData.settleValue()`の1箇所（マイナス→刻みで丸め→小数桁→上下限）。小数桁が空なら1桁（`ruleText()`と同じ） | `test_oprange.js` | [§9.541](../../docs/decisions/9.541.md) |

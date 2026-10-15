@@ -1,4 +1,4 @@
-# 画面の土台（62件）
+# 画面の土台（63件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| Enter で次の入力欄へは`WL.base.enterMoves(root)`の1箇所。Enter を自分で使う欄（`data-enter-own`等）からは奪わない | `test_entermove.js` | [§9.606](../../docs/decisions/9.606.md) |
 | 窓の小見出しはいる画面の名前（`WL.base.whereName()`）・題は中身（無ければ文の最初の1文）・決めるボタンは動詞（`confirmLabel`） | `test_modalwords.py`・`test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 同じ操作は同じ言葉: 削除の決めるボタンは「削除する」、やめる側は既定の「キャンセル」（言い換えを渡さない） | `test_modalwords.py` | [§9.604](../../docs/decisions/9.604.md) |
 | 保存していない変更を捨てるかを聞く窓は`WL.mm.confirmDiscard()`の1つ（題・ボタン「変更を捨てる｜戻って続ける」・赤が同じ） | `test_modalwords.py` | [§9.604](../../docs/decisions/9.604.md) |
