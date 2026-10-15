@@ -107,7 +107,23 @@ function renderStats(){
   +lotHtml;
 }
 function deviceParse(raw){const manual=S.measure?.settings?.inputMode==='manual',v=(manual?String(raw||''):WL.base.toHalfWidth(String(raw||''))).trim().toUpperCase();if(v==='#DELETEMODE#'||v==='DELETE')return{device:'delete',value:null};if(v.includes('+#L')){const num=Number(v.split('+#L')[1]);return{device:'tape',value:Number.isFinite(num)?num:null}}if(!v.includes('+'))return Number.isFinite(Number(v))?{device:'manual',value:Number(v)}:{device:'invalid',value:null};const [code,data]=v.split('+');let device='invalid';if(code.startsWith('DT1')){const kind=code.slice(-2,-1);device=kind==='0'?'micrometer':kind==='1'?'caliper':kind==='2'?'depth':'invalid'}const num=Number(String(data).replace(/M$/,''));return{device,value:Number.isFinite(num)?num:null}}
-function activeMeasureKey(){return WL.measureItem.KEYS[$('#measureType').value]||'width'}
+function activeMeasureKey(){const keys=WL.measureItem.keysOf($('#measureType').value);return keys.length>1?WL.measureItem.dimKey():(keys[0]||'width')}
+/* ---------- 寸法の受け口（§9.607、利用者の選択「F の振り分け」） ----------
+   どの測定値へ入れるかは**測定器が決める**: マイクロメータ→板厚、ノギス／コンベックス→板幅。器の印の無い数（手入力の
+   数字）は**いまの段**（`dimKey`）へ。答えはここ1箇所（受信・待ちの印・丸めの入口が読む）。
+   戻りは鍵／`null`（この項目では受け取れない器）／`undefined`（寸法の項目ではない＝ほかの道へ）。 */
+const DIM_DEVICES={thickness:['micrometer','manual'],width:['caliper','tape','manual']};
+const DIM_DEVICE_WORD={thickness:'板厚はマイクロメータ',width:'板幅はノギスまたはコンベックス'};
+function deviceTarget(type,device){
+ const keys=WL.measureItem.keysOf(type).filter(k=>DIM_DEVICES[k]);
+ if(!keys.length)return undefined;
+ const hit=keys.filter(k=>DIM_DEVICES[k].includes(device));
+ if(hit.length>1)return WL.measureItem.dimKey();
+ return hit[0]||null;
+}
+function dimDeviceError(type){return WL.measureItem.keysOf(type).filter(k=>DIM_DEVICE_WORD[k]).map(k=>DIM_DEVICE_WORD[k]).join('、')+'を使用してください'}
+/* 板厚・板幅で、いま入れていない側の次の枠（点線で示す・§9.607）。 */
+function otherDimKey(){const keys=WL.measureItem.keysOf($('#measureType').value);return keys.length>1?keys.find(k=>k!==activeMeasureKey()):null}
 /* ---------- バリは「2回測って差を採る」（§9.242 ③、利用者の指示） ----------
    「1回目のデータを受け付けたことを表示し、2回目入力時にはそのデータの
     計算式も合わせて見える形に表示してください。ただし、表示領域は今の1行の
@@ -180,8 +196,7 @@ function burrStepHtml(){
 function numberlinePendingKind(raw){
  const type=$('#measureType')?.value,p=deviceParse(raw);
  if(!p||p.device==='invalid'||p.device==='delete'||p.value===null)return null;
- if(type==='板厚')return['micrometer','manual'].includes(p.device)?'thickness':null;
- if(type==='板幅')return['caliper','tape','manual'].includes(p.device)?'width':null;
+ {const k=deviceTarget(type,p.device);if(k!==undefined)return k}
  if(type==='バリ')return['micrometer','manual'].includes(p.device)?'burr':null;
  if(type==='テレスコープ')return['depth','manual'].includes(p.device)?'telescope':null;
  const key=activeMeasureKey();
@@ -191,15 +206,17 @@ function numberlinePendingKind(raw){
  return (S.measure&&S.measure.measurements&&S.measure.measurements[key])?key:null;
 }
 function updateNumberlinePending(raw){
- const marker=$('#numberlinePending');if(!marker)return;
- if(!S.measure||S.measure.settings?.inputMode==='manual'||!raw){marker.hidden=true;return}
- const kind=numberlinePendingKind(raw);
- if(!kind){marker.hidden=true;return}
+ /* 待ちの印は**その値が入る表の図**に出す（板厚・板幅は図が2つ・§9.607）。ほかの図の印は伏せる。 */
+ const kind=raw&&S.measure&&S.measure.settings?.inputMode!=='manual'?numberlinePendingKind(raw):null;
+ document.querySelectorAll('[data-nl-pending]').forEach(x=>{x.hidden=true});
+ const block=kind&&(document.querySelector(`#measurementGrid [data-grid-key="${kind}"]`)||document.querySelector('#measurementGrid [data-grid-key]'));
+ const marker=block&&block.querySelector('[data-nl-pending]');
+ if(!marker)return;
  /* 図と**同じ写像**で置く（§9.151／§9.152）。軸は描画時に決まっており、
     測定器から1文字届くたびに40条ぶんの公差を引き直すのは重いので、
     **軸は図が持っている値を読む**（`data-mode`/`data-edge`）。
     引くのは**いま入れている条の公差1件だけ**。 */
- const chart=document.querySelector('.accurate-numberline');
+ const chart=block.querySelector('.accurate-numberline');
  const mode=chart&&chart.dataset.mode,edge=Number(chart&&chart.dataset.edge);
  const j=Number(kind==='thickness'?S.measure.settings?.tStep:S.measure.settings?.wStep)||0;
  const t=normalizeTolerance(typeof toleranceDetail==='function'?toleranceDetail(kind,j):null);
@@ -231,8 +248,11 @@ function moveCaretTo(el){
  finally{caretMoving=false}
 }
 function focusCurrent(){
- document.querySelectorAll('[data-mkey]').forEach(x=>x.classList.remove('current'));
- const m=S.measure.settings,key=activeMeasureKey(),li=lengthIndex();
+ document.querySelectorAll('[data-mkey]').forEach(x=>x.classList.remove('current','current-alt'));
+ const m=S.measure.settings,key=activeMeasureKey(),li=lengthIndex(),other=otherDimKey();
+ /* 板厚・板幅は**もう一方の表の次の枠も点線で**示す（測定器を持ち替えたら値がそこへ入る・§9.607）。 */
+ if(other){const oj=other==='thickness'?(m.tStep||0):(m.wStep||0);
+  const alt=document.querySelector(`[data-mkey="${other}"][data-i="${li}"][data-j="${oj}"]`);if(alt)alt.classList.add('current-alt')}
  /* 板厚は**丈ごとに3点**（エッジOS・中央CL・エッジDS）なので、進む先を持つのは
     条ごとの`wStep`ではなく`tStep`。 */
  const step=key==='thickness'?(m.tStep||0):(m.wStep||0);
@@ -247,7 +267,8 @@ function focusCurrent(){
      フォーカスが外れた瞬間に転送を1件も受けなくなる。 */
   moveCaretTo(el);
  }
- const slot=key==='thickness'?(WL.measureItem.slotLabels('thickness')[step]||String(step+1)):`条 ${step+1}`;
+ const slot=(other?(key==='thickness'?'板厚':'板幅'):'')
+  +(key==='thickness'?(WL.measureItem.slotLabels('thickness')[step]||String(step+1)):`条 ${step+1}`);
  /* **短く言い、名前は`title`へ**（§9.234 ③。見出しは1行に収める）。
     「入力位置」の4文字は、この欄が入力位置を指していることを毎回言い直して
     いるだけで、値（丈と条）を読めば分かる。 */
@@ -260,14 +281,26 @@ function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizonta
 /* 「次の枠へ／前の枠へ」。条ごとの項目は条入力順(`widthSequence`)に従うが、
    板厚は3点の巡回なので順序の設定を持たない。**進む道具は1つ**にして、
    どちらの項目かはここで1回だけ見る（キー操作・転送・Enterが同じ物を呼ぶ）。 */
+/* 板厚・板幅は**板厚 OS→CL→DS → 板幅の条入力順 → 板厚 OS**と段をまたいで続く（§9.607・手で打つとき）。 */
+function widthSeqNow(){return WL.base.widthSequence(Math.max(1,+$('#horizontalCount').value||1),$('#widthOrder').value,$('#widthDirection').value)}
 function advanceSlot(){
- const m=S.measure.settings;
- if(activeMeasureKey()==='thickness')m.tStep=((m.tStep||0)+1)%3;else advanceWidth();
+ const m=S.measure.settings,dim=!!otherDimKey(),seq=widthSeqNow();
+ if(activeMeasureKey()==='thickness'){
+  const nx=((m.tStep||0)+1)%3;
+  if(dim&&nx===0){m.dimKey='width';m.wStep=seq[0]||0;return}
+  m.tStep=nx;return;
+ }
+ if(dim&&seq.indexOf(m.wStep||0)===seq.length-1){m.dimKey='thickness';m.tStep=0;return}
+ advanceWidth();
 }
 function retreatSlot(){
- const m=S.measure.settings;
- if(activeMeasureKey()==='thickness'){m.tStep=((m.tStep||0)+2)%3;return}
- const seq=WL.base.widthSequence(Math.max(1,+$('#horizontalCount').value||1),$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(m.wStep||0);
+ const m=S.measure.settings,dim=!!otherDimKey(),seq=widthSeqNow();
+ if(activeMeasureKey()==='thickness'){
+  if(dim&&(m.tStep||0)===0){m.dimKey='width';m.wStep=seq[seq.length-1]||0;return}
+  m.tStep=((m.tStep||0)+2)%3;return;
+ }
+ const pos=seq.indexOf(m.wStep||0);
+ if(dim&&pos<=0){m.dimKey='thickness';m.tStep=2;return}
  m.wStep=seq[(pos-1+seq.length)%seq.length];
 }
 /* 自動転送モードでは、DOM再描画(renderMeasureGrid)の前後で万一
@@ -305,14 +338,16 @@ function processDeviceInputCore(raw){
  /* 板厚と板幅は別々の入力内容(§9.138)。使う測定器も枠の数も違うので、
     受け取れる機種もここで項目ごとに分かれる（バリ＝マイクロメータ、
     テレスコープ＝デプスゲージ と同じ形）。 */
- if(type==='板厚'){
-  if(!['micrometer','manual'].includes(p.device))return inputError('板厚はマイクロメータを使用してください');
+ const dimK=deviceTarget(type,p.device);
+ if(dimK===null)return inputError(dimDeviceError(type));
+ /* 板厚・板幅では、値の入った表がいまの段になる（光る枠が測定器の持ち替えに付いていく・§9.607）。 */
+ if(dimK&&otherDimKey())st.dimKey=dimK;
+ if(dimK==='thickness'){
   /* **桁は器が決める**（§9.320-C）。マイクロメータ＝3桁を`WL.base.measurementDigits()`
      の1箇所から引く（ここに3と書くと、桁を直したときに2箇所になる）。 */
   WL.base.noteMeasureDevice('thickness',p.device);
   const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(WL.base.measurementDigits('thickness',p.device));st.tStep=(j+1)%3
- }else if(type==='板幅'){
-  if(!['caliper','tape','manual'].includes(p.device))return inputError('板幅はノギスまたはコンベックスを使用してください');
+ }else if(dimK==='width'){
   /* **板幅は測定器によらず小数2桁**（§9.242 ②、利用者の指示）。以前は
      ノギスだけ2桁・コンベックスは1桁だったが、入口の`processDeviceInput()`が
      どちらも1桁へ丸めてから渡していたため、**ノギスの2桁目は必ず0**だった
@@ -366,7 +401,7 @@ function processDeviceInput(raw){
  const pad2=n=>String(n).padStart(2,'0'),d=new Date(),ts=`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
  const type=$('#measureType')?.value,parsed=deviceParse(raw);
  let result;
- if(type==='板幅'&&parsed.value!==null&&Number.isFinite(parsed.value)&&['caliper','tape','manual'].includes(parsed.device)){
+ if(deviceTarget(type,parsed.device)==='width'&&parsed.value!==null&&Number.isFinite(parsed.value)){
   /* 丸めるのは**`WL.base.measurementDigits('width')`の桁**（§9.242 ②）。ここに
      桁数を直に書くと、`base.js`の桁数を上げてもこちらが先に落として
      しまう（実際に2桁の設定が1桁で潰されていた）。 */
@@ -488,7 +523,9 @@ function makeMeasureInput(key,i,j,value){value=WL.base.fixedMeasurementValue(key
 function bindMeasureInputs(){bindMeasureInputsCore();WL.measureHooks.run('afterBindInputs')}
 function bindMeasureInputsCore(){
  const m=S.measure;
- const syncStepFor=x=>{if(x.dataset.mkey==='thickness')m.settings.tStep=+x.dataset.j;else m.settings.wStep=+x.dataset.j};
+ /* 押した欄の表がいまの段（板厚・板幅・§9.607）。 */
+ const syncStepFor=x=>{if(x.dataset.mkey==='thickness')m.settings.tStep=+x.dataset.j;else m.settings.wStep=+x.dataset.j;
+  if(otherDimKey()&&WL.measureItem.DIM_KEYS.includes(x.dataset.mkey))m.settings.dimKey=x.dataset.mkey};
  document.querySelectorAll('[data-mkey]').forEach(x=>{
   /* マイナス禁止・「.5」の省略打ち・全角は`WL.numericInput`が引き受ける
      （§9.208 ③）。**フラットネスだけは対象外**——〇/△/×と自由記述の欄で、
@@ -701,7 +738,7 @@ function lengthSlotCount(){
    `lengthSlotCount()`が4を返すので、**4列がきれいに収まる幅**を主に置き、
    5列以上のときだけ詰める。 */
 const MX_ROOMY_ROWS=25,MX_WIDE_SLOTS=4;
-function measureMatrixHtml(key,count,type){
+function measureMatrixHtml(key,count,type,opt){
  const m=S.measure,lp=$('#lengthPos'),slots=lengthSlotCount(),cur=lengthIndex();
  const labels=WL.measureItem.slotLabels(key,count),head=WL.measureItem.slotHead(key);
  const label=li=>(lp&&lp.options[li]&&lp.options[li].value)||('丈'+(li+1));
@@ -712,7 +749,8 @@ function measureMatrixHtml(key,count,type){
     丈を全部出すと画面も圧迫していた。板厚は行が条ではなく
     エッジOS/中央CL/エッジDSの3点なので、この列は付けない。 */
  const badges=key==='thickness'?[]:WL.split.lotColumn(count);
- const hasLot=badges.some(Boolean);
+ /* 板厚・板幅で上下に重ねるとき、板幅にロット列があれば板厚の表にも空の列を置く（丈位置の列を縦にそろえる・§9.607）。 */
+ const hasLot=badges.some(Boolean)||!!(opt&&opt.lotPad);
  let thead='';
  for(let li=0;li<slots;li++)
   thead+=`<th scope="col" class="${li===cur?'is-current':''}">`
@@ -876,6 +914,8 @@ function gotoLengthSlot(li){
    行き先なので、そこで先頭へ戻すと押した意味が消える。 */
 function startSlotOfLength(){
  const st=S.measure&&S.measure.settings;if(!st)return;
+ /* 板厚・板幅は丈の頭＝板厚 OS（測る順の先）・板幅も先頭へ（§9.607）。 */
+ if(otherDimKey()){st.dimKey='thickness';st.tStep=0;st.wStep=widthSeqNow()[0]||0;return}
  if(activeMeasureKey()==='thickness'){st.tStep=0;return}
  const seq=WL.base.widthSequence(Math.max(1,+$('#horizontalCount').value||1),
                          $('#widthOrder').value,$('#widthDirection').value);
@@ -906,17 +946,14 @@ function renderMeasureGridVertical(){
     実測: 「Cannot read properties of undefined (reading '1')」が2件）。
     項目名で並べず**器の有無で見る**ので、面を足しても直し忘れない。 */
  const actualKey=(m.measurements&&m.measurements[key])?key:'width';
- const slots=WL.measureItem.slotCount(actualKey,count);
+ /* **表は項目の鍵ごとに1枚**（§9.607）。板厚・板幅は板厚（3点）と板幅（条ごと）を上下に重ね、列（丈位置）をそろえる。
+    ほかの項目は1枚。器の無い鍵（手入力の面）は描かない＝いまの鍵へ寄せる。 */
+ const keys=(()=>{const ks=WL.measureItem.keysOf(type).filter(k=>m.measurements&&m.measurements[k]);return ks.length?ks:[actualKey]})();
+ const dim=keys.length>1;
+ const blocks=keys.map(k=>{const sl=WL.measureItem.slotCount(k,count),vals=m.measurements[k][li];
+  return {key:k,slots:sl,values:vals,done:vals.slice(0,sl).filter(v=>v!=='').length}});
+ const slots=blocks.find(b=>b.key===actualKey)?.slots??blocks[0].slots;
  const values=m.measurements[actualKey][li],done=values.slice(0,slots).filter(v=>v!=='').length;
- /* ---------- フラットネスの一括入力（§9.233 ④、利用者の指示） ----------
-    「右側のフラットネス入力欄の上部の表示やボタン類が2行になってしまって
-      おり、1行に収まるようにボタンや表示のコンパクト化アイコン化を検討し、
-      他の入力項目と同じように1行で表示してください」
-    ——見出しの塊は`.mhead-line`が2つで、フラットネスだけ**約200px多い**ため
-    1680px以下（表示サイズ「大」では1920pxでも）で2行になっていた。
-    **文字で説明していた「現在の条へ入力」は`title`／`aria-label`へ移す**
-    ——記号3つは打ち込む値そのものなので、押す前に何が入るかは読める。
-    「全条 〇」は同じ群の中へ入れて`|`で区切る（器と隙間をひとつ減らす）。 */
  const bulkBtn=type==='フラットネス'
    ?'<span class="flat-pick-group" role="group" aria-label="現在の条へ記号を入力"'
      +' title="押した記号を、いま選んでいる条へ入れます（〇=OK／△×=NG）">'
@@ -928,7 +965,8 @@ function renderMeasureGridVertical(){
      +' title="この丈のすべての条を〇（OK）にします">全〇</button>'
      +'</span>'
    :'';
- const tol=WL.measureTolerance.parts(actualKey,values,slots);
+ const tols=blocks.map(b=>WL.measureTolerance.parts(b.key,b.values,b.slots));
+ const tol={graph:tols.some(t=>t.graph)?'1':''};
  /* ---------- 見出しは「測定」の1行へ集約する（§9.209 ③④、利用者の指示） ----------
     以前は表の上にもう1本、項目名と「測定待ち」だけの帯（26px）があった。
     「測定」と書いてある行と**同じことを2箇所**に出していたうえ、多条の
@@ -947,20 +985,32 @@ function renderMeasureGridVertical(){
     （§9.234 ③の「見出しは1行」を崩さない）。出るのは**桁が器で変わる項目**
     （板厚・板幅）で、**まだ転送を受けていなければ出さない**——「不明」と
     書く場所を常設すると、いちばん多い状態が場所だけ取ることになる。 */
- const devBadge=(()=>{
-  const key=actualKey,dev=key?WL.measureDevice.of(key):'';
+ const devBadge=keys.map(key=>{
+  const dev=key?WL.measureDevice.of(key):'';
   if(!dev||WL.measureDevice.digits(key,'')===null)return '';
   const label=WL.measureDevice.label(dev),d=WL.measureDevice.digits(key,dev);
   return `<span class="mhead-device" title="${esc(`自動転送の値から判定した測定器です。`
     +`${label}が保証できる桁までで記録します（小数${d}桁）。手入力もこの桁にそろえます。`)}">`
     +`${esc(label)} <b>${d}桁</b></span>`;
- })();
+ }).join('');
+ /* 進みは**表ごとに別々**（板厚・板幅は「板厚 2/3・板幅 1/4」・合算しない＝§9.138 の理由をくり返さない）。 */
+ const DIM_WORD={thickness:'板厚',width:'板幅'};
+ const statusText=dim?blocks.map(b=>`${DIM_WORD[b.key]||b.key} ${b.done}/${b.slots}`).join('・'):compactMeasureStatus(done,slots);
  if(head)head.innerHTML=`<b class="mhead-item">${esc(type)}</b>`
-   +`<span class="mhead-status" title="${esc(`この丈の進み: ${compactMeasureStatus(done,slots)}`)}">`
-   +`${esc(compactMeasureStatus(done,slots))}</span>`+devBadge+burrBadge+bulkBtn;
- let h=`<section class="measure-grid-block compact-other"><div class="matrix-body${tol.graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tol.graph}</aside>`;
- h+=measureMatrixHtml(actualKey,slots,type);
- h+='</div></section>';
+   +`<span class="mhead-status" title="${esc(`この丈の進み: ${statusText}`)}">`
+   +`${esc(statusText)}</span>`+devBadge+burrBadge+bulkBtn;
+ const lotPad=dim&&WL.split.lotColumn(count).some(Boolean);
+ /* 板厚・板幅の表の名前は**何で測るか**まで言う（測定器が振り分ける先・§9.607）。進みの数は見出しが言うので書かない。 */
+ const BLOCK_TITLE={thickness:'板厚<small>OS・CL・DS／マイクロメータ</small>',width:'板幅<small>条ごと／ノギス・コンベックス</small>'};
+ let h=dim?'<div class="dim-stack">':'';
+ blocks.forEach((b,i)=>{
+  h+=`<section class="measure-grid-block compact-other" data-grid-key="${b.key}">`
+   +(dim?`<div class="dim-title">${BLOCK_TITLE[b.key]||esc(b.key)}</div>`:'')
+   +`<div class="matrix-body${tols[i].graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tols[i].graph}</aside>`
+   +measureMatrixHtml(b.key,b.slots,type,{lotPad:b.key==='thickness'&&lotPad})
+   +'</div></section>';
+ });
+ if(dim)h+='</div>';
  if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
  $('#measurementGrid').innerHTML=h;
  /* 公差を言う場所は**1つだけ**（§9.129／§9.209 ②）。
@@ -1020,10 +1070,14 @@ const MX_MIN_ROWH=15,MX_MIN_COLW=44,MX_FIT_MAX_SLOTS=5,MX_FIT_PASSES=3;
    無いと丈1本のロットで行だけが間延びする（表は縦に条を並べるものなので、
    1行が操作系の器（`--ctl-h`）より高くなる理由が無い）。 */
 const MX_MAX_ROWH=36;
+/* 表ごとに器へ合わせる（板厚・板幅は2枚。板厚は中身の高さ・板幅が残りの高さを持つ＝CSSの`.dim-stack`・§9.607）。 */
 function fitMeasureMatrix(){
- const table=document.querySelector('#measurementGrid .measure-matrix');
- const body=document.querySelector('#measurementGrid .matrix-body');
- if(!table||!body)return;
+ document.querySelectorAll('#measurementGrid [data-grid-key]').forEach(block=>{
+  const table=block.querySelector('.measure-matrix'),body=block.querySelector('.matrix-body');
+  if(table&&body)fitOneMatrix(table,body);
+ });
+}
+function fitOneMatrix(table,body){
  table.style.removeProperty('--mx-rowh');
  table.style.removeProperty('--mx-colw');
  table.classList.remove('mx-fitted');
@@ -1458,20 +1512,22 @@ function compactToleranceScale(kind,values,count){
   +`<div class="tc-body">`
   +lineOf('low')+lineOf('base')+lineOf('high')
   +rows
-  +`<div class="numberline-pending" id="numberlinePending" hidden></div>`
+  +`<div class="numberline-pending" data-nl-pending hidden></div>`
   +`</div></div>`;
 }
 /* 図の行を**実際の表に合わせる**。測るのは見出し1行と本文1行だけ（40行を
    測らない）——どの行も同じ高さなので、頭の高さと1行の高さが分かれば足りる。 */
 function alignToleranceChart(){
- const chart=document.querySelector('.accurate-numberline');
- const tbl=document.querySelector('#measurementGrid .measure-matrix');
- if(!chart||!tbl)return;
- const head=tbl.querySelector('thead tr'),row=tbl.querySelector('tbody tr');
- if(!head||!row)return;
- const hh=head.getBoundingClientRect().height,rh=row.getBoundingClientRect().height;
- if(hh>0)chart.style.setProperty('--tc-head',(Math.round(hh*100)/100)+'px');
- if(rh>0)chart.style.setProperty('--tc-row',(Math.round(rh*100)/100)+'px');
+ /* 表ごとに、その表の図をそろえる（板厚・板幅は2組・§9.607）。 */
+ document.querySelectorAll('#measurementGrid [data-grid-key]').forEach(block=>{
+  const chart=block.querySelector('.accurate-numberline'),tbl=block.querySelector('.measure-matrix');
+  if(!chart||!tbl)return;
+  const head=tbl.querySelector('thead tr'),row=tbl.querySelector('tbody tr');
+  if(!head||!row)return;
+  const hh=head.getBoundingClientRect().height,rh=row.getBoundingClientRect().height;
+  if(hh>0)chart.style.setProperty('--tc-head',(Math.round(hh*100)/100)+'px');
+  if(rh>0)chart.style.setProperty('--tc-row',(Math.round(rh*100)/100)+'px');
+ });
 }
 /* 公差の「図」と「値」は**別の問いに答えるので、別の場所へ置く**（§9.140、
    骨子§9.137）。図＝いま公差のどのへんか（測定カードの左・選択中の丈位置
@@ -1504,7 +1560,9 @@ WL.measureTolerance={
     スクロール位置も動かない（条ごとに公差が変わる分割ロット用）。 */
  repaint(kind,values,count){
   const parts=this.parts(kind,values,count);
-  const body=document.querySelector('.matrix-body'),side=body&&body.querySelector('.compact-tolerance-side');
+  /* その鍵の表の図だけを描き直す（板厚・板幅は2組・§9.607）。 */
+  const block=document.querySelector(`#measurementGrid [data-grid-key="${kind}"]`)||document.querySelector('#measurementGrid [data-grid-key]');
+  const body=block&&block.querySelector('.matrix-body'),side=body&&body.querySelector('.compact-tolerance-side');
   if(side)side.innerHTML=parts.graph;
   if(body)body.classList.toggle('no-graph',!parts.graph);
   alignToleranceChart();
@@ -1521,19 +1579,22 @@ WL.measureTolerance={
   if(typeof S==='undefined'||!S?.measure||typeof WL.measureItem?.kindOf!=='function')return;
   const type=document.getElementById('measureType')?.value;
   if(!type)return;
-  const key=WL.measureItem.kindOf(type);
   const li=typeof lengthIndex==='function'?lengthIndex():0;
   const count=Math.max(1,Math.min(40,+(document.getElementById('horizontalCount')?.value)||1));
-  const values=S.measure?.measurements?.[key]?.[li]||[];
-  this.repaint(key,values,WL.measureItem.slotCount(key,count));
+  /* 項目の鍵ごとに描き直す（板厚・板幅は2つ・§9.607）。 */
+  const keys=WL.measureItem.keysOf(type).filter(k=>S.measure?.measurements?.[k]);
+  (keys.length?keys:[WL.measureItem.kindOf(type)]).forEach(key=>{
+   const values=S.measure?.measurements?.[key]?.[li]||[];
+   this.repaint(key,values,WL.measureItem.slotCount(key,count));
+  });
  },
 };
 /* 軸の切り替え（§9.152）。**選んだ結果は端末に覚える**——見え方の好みなので
    レコードへは書かない（他のPCで開いたときに勝手に変わらない）。
    軸からはみ出した点は**件数を文字で言い、直し方（表示幅）を同じ行に置く**。 */
 function syncNumberlineControls(){
- const chart=document.querySelector('.accurate-numberline');
- const out=Number(chart&&chart.dataset.out)||0;
+ /* 軸の外の数は**全部の図**で数える（板厚・板幅は図が2つ・§9.607）。 */
+ const out=[...document.querySelectorAll('.accurate-numberline')].reduce((n,c)=>n+(Number(c.dataset.out)||0),0);
  const note=document.getElementById('numberlineOutside');
  if(note){
   /* 畳んである先に打つ手がある（§9.208 ④）。**どこを触れば見えるのか**まで

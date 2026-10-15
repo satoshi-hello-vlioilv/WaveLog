@@ -2242,6 +2242,16 @@ th.col-sorted:hover{background:#c7e7ea}
 /* すべての測定種（板厚・板幅・ラテラルボー・バリ…）の単独ブロック */
 .compact-other{height:100%;display:flex;flex-direction:column;overflow:hidden}
 .compact-other .matrix-body{flex:1;min-height:0}
+/* 板厚・板幅（§9.607）: 板厚の表（3行）と板幅の表を上下に重ねる。板厚は中身の高さ、板幅が残りの高さを持つ
+   （器へ合わせる処理は表ごと・`fitMeasureMatrix`）。表の名前は何で測るかまで言う（測定器の振り分け先）。 */
+.dim-stack{height:100%;display:flex;flex-direction:column;gap:var(--space-2);min-height:0}
+.dim-stack>.compact-other{height:auto}
+.dim-stack>[data-grid-key="thickness"]{flex:0 0 auto}
+.dim-stack>[data-grid-key="thickness"] .matrix-body{flex:0 0 auto}
+.dim-stack>[data-grid-key="width"]{flex:1 1 auto;min-height:0}
+.dim-title{display:flex;align-items:baseline;gap:var(--space-2);padding:var(--space-1) var(--space-2) 0;
+  font-size:var(--fs-sm);font-weight:var(--fw-strong);color:var(--teal-ink)}
+.dim-title small{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--ink-2)}
 /* ---------- ②の測定表は「丈位置×条」の1つの表（§9.136） ----------
    左＝公差（数直線）、右＝表。以前は「いま選んでいる丈の帯」＋「丈位置
    くらべ」の2枚で、同じ値が2箇所にあった（§9.129に反する）。1つの表に
@@ -2358,6 +2368,8 @@ th.col-sorted:hover{background:#c7e7ea}
 .strip-input-wrap.has-judge input{padding-right:31px}
 /* 測定セルの状態色 */
 .measure-grid-block input.current,.measure-matrix input.current{outline:3px solid #f39a18;outline-offset:-3px;background:#fff6d8}
+/* 板厚・板幅で、いま入れていない表の次の枠（測定器を持ち替えたら値が入る所・§9.607）。点線で「次はここ」とだけ言う。 */
+.measure-matrix input.current-alt{outline:2px dashed var(--teal);outline-offset:-3px}
 .measure-grid-block input.complete,.measure-matrix input.complete{background:#bdece5}
 .measure-grid-block input.ng,.measure-matrix input.ng{background:#ff9e9e;color:#7a0000;font-weight:var(--fw-strong)}
 .device-ok{background:#dff7ee}

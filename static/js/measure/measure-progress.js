@@ -27,12 +27,9 @@
 const ITEM_DEFS=[
  {name:WL.measureItem.MATERIAL, scope:'mother'},
  {name:WL.measureItem.PIECE,    scope:'piece'},
- /* 板厚と板幅は**枠の数がまるで違う**ので別々の項目にした(§9.138)。
-    板厚は丈ごとに3点(エッジOS・中央CL・エッジDS)、板幅は条ごと。
-    1つの項目のままだと進捗が「3+条数」の合算になり、板幅だけ終わって
-    いるのか板厚だけ終わっているのかが数字から読めなかった。 */
- {name:'板厚',          scope:'length',keys:['thickness']},
- {name:'板幅',          scope:'length',keys:['width']},
+ /* 板厚と板幅は**枠の数がまるで違う**（板厚は丈ごとに3点・板幅は条ごと）。§9.138 で別々の項目にしたのは、合算だと
+    どちらが残っているか読めなかったから。§9.607 で1つの項目へ戻したが、**進みは鍵ごとに別々**に数えて言う（`byKey`）。 */
+ {name:WL.measureItem.DIM,scope:'length',keys:WL.measureItem.DIM_KEYS},
  {name:'ラテラルボー',   scope:'length',keys:['lateral']},
  {name:'バリ',          scope:'length',keys:['burr']},
  {name:'テレスコープ',   scope:'length',keys:['telescope']},
@@ -84,7 +81,7 @@ function countsOf(m){
 
 /* 1項目分の進捗。perLength は丈位置ごとの充足数(length scope のみ)。 */
 function itemProgress(m,def){
- const c=countsOf(m),out={name:def.name,filled:0,total:0,perLength:[]};
+ const c=countsOf(m),out={name:def.name,filled:0,total:0,perLength:[],byKey:{}};
  if(def.scope==='mother'){
   /* 母材の欄だけ（§9.391）。**丈と合算しない**——面が分かれたので、
      合算すると「どちらが残っているか」がチップの数字から読めない。 */
@@ -105,8 +102,9 @@ function itemProgress(m,def){
     const row=(ms[key]&&ms[key][li])||[];
     /* 板厚は条ごとではなく長さごとに3枠(OS/CL/DS)。他は条数分。 */
     const n=key==='thickness'?3:c.horizontal;
-    t+=n;
-    for(let j=0;j<n;j++)if(filled(row[j]))f++;
+    const bk=out.byKey[key]||(out.byKey[key]={filled:0,total:0});
+    t+=n;bk.total+=n;
+    for(let j=0;j<n;j++)if(filled(row[j])){f++;bk.filled++}
    });
    out.perLength.push({filled:f,total:t});
    out.filled+=f;out.total+=t;
@@ -220,8 +218,12 @@ const STATE_LABEL={done:'済',part:'一部',todo:'未',skip:'対象外'};
 function chipHtml(x,current){
  const cls=['type-chip','type-chip--'+x.state];
  if(x.name===current)cls.push('is-current');
- const st=x.excluded?'対象外':x.state==='done'?'済':`${x.filled}/${x.total}`;
- const unit=WL.measureItem.unitOf(x.name),detail=WL.measureItem.detailOf(x.name);
+ /* 鍵が2つ（板厚・板幅）なら数は2行目に鍵ごと（合算しない・§9.607）。 */
+ const DIM_WORD={thickness:'板厚',width:'板幅'},ks=Object.keys(x.byKey||{}),split=ks.length>1;
+ const st=x.excluded?'対象外':x.state==='done'?'済':split?'':`${x.filled}/${x.total}`;
+ const unit=WL.measureItem.unitOf(x.name);
+ const detail=split&&!x.excluded&&x.state!=='done'?ks.map(k=>`${DIM_WORD[k]||k} ${x.byKey[k].filled}/${x.byKey[k].total}`).join('・')
+  :WL.measureItem.detailOf(x.name);
  const title=x.excluded
   ?`${x.name}: 対象外に設定しています。右クリックで対象に戻します`
   :`${x.name}（${unit}）: ${x.filled}/${x.total} 入力済み。右クリックで対象外にします`;

@@ -1159,7 +1159,7 @@
     （§9.107。記録したものを紙から消さない。設備の設定を変えたあとに古い
     ロットを刷ると、測った値が紙から消えてしまう）。
     **判定はここ1箇所**——節ごとに書くと、片方だけ消える紙ができる。 */
- const RP_ITEM_VALUE_KEYS={板厚:['thickness'],板幅:['width'],ラテラルボー:['lateral'],
+ const RP_ITEM_VALUE_KEYS={'板厚・板幅':['thickness','width'],板厚:['thickness'],板幅:['width'],ラテラルボー:['lateral'],
    バリ:['burr'],テレスコープ:['telescope'],巻ずれ:['offset'],フラットネス:['flatness']};
  function rpItemHasValue(x,name){
   if(name===WL.measureItem.MATERIAL)return Object.values(x.mother||{}).some(v=>String(v??'').trim()!=='');
@@ -1170,7 +1170,9 @@
  }
  function rpItemOff(x,name){
   const off=(x.settings||{}).measureItemsOff;
-  if(!Array.isArray(off)||off.indexOf(name)<0)return false;
+  /* 前の版の名前（板厚・板幅）も今の名前で比べる（§9.607・保存値はサーバーが今の名前へ寄せる）。 */
+  const norm=n=>WL.measureItem.normalize(n);
+  if(!Array.isArray(off)||!off.some(o=>norm(o)===norm(name)))return false;
   return !rpItemHasValue(x,name);
  }
  /* ======================================================================
@@ -1874,11 +1876,11 @@
  function rpIsDimensional(x){
   const t=x.settings?.measureType;
   if(rpItemOff(x,'板厚'))return false;    /* 設備で外した項目（§9.395） */
-  return t==='板厚'||t==='板幅'||t==='板厚/板幅'||hasMeasurementValues(x,['thickness']);
+  return WL.measureItem.normalize(t)===WL.measureItem.DIM||hasMeasurementValues(x,['thickness']);
  }
  function rpShowWidthTable(x){
   const t=x.settings?.measureType;
-  return ['板厚','板幅','板厚/板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(t)
+  return [WL.measureItem.DIM,'ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'].includes(WL.measureItem.normalize(t))
     ||hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
  }
  function rpShowProduct(x){

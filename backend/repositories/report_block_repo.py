@@ -440,7 +440,7 @@ SAMPLE_VALUES = {
     'basic.mfgLength': '2000',
     'basic.originalWidth': '1224.5',
     'settings.registeredEquipment': 'スリッター1号',
-    'settings.measureType': '板厚',
+    'settings.measureType': '板厚・板幅',
     # 丈位置は**選択欄に実在する綴り**にする（`updateLengthOptions()`が
     # `1(頭)…N(頭)`＋`N(尾)`を作る）。`select.value`に無い値を入れると
     # 空文字へ落ちて記録が黙って消える（§9.204と同じ罠）。
@@ -501,7 +501,7 @@ SAMPLE_VALUES = {
     'calc.equipment': 'スリッター1号',
     'calc.coilStop': 'テープ止め',
     'calc.manualLimit': 'ラテラルボー 0〜2.5（手入力）',
-    'calc.measureType': '板幅',
+    'calc.measureType': '板厚・板幅',
     'calc.crewSize': '2名班',
     'calc.workStart': '2026-08-27 08:15',
     'calc.workEnd': '2026-08-27 11:40',
