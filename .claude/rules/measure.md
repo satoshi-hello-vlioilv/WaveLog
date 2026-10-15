@@ -1,4 +1,4 @@
-# 測定画面（109件）
+# 測定画面（112件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 板厚と板幅は1つの項目「板厚・板幅」（8項目）。表は鍵ごとに1枚を上下に重ね、丈位置の列をそろえる。語彙は`WL.measureItem`の`DIM`・`keysOf()`・`dimKey()`の1箇所 | `test_dimboth.js`・`test_msteps.js` | [§9.607](../../docs/decisions/9.607.md) |
+| 板厚・板幅の値は測定器で振り分ける（`deviceTarget()`の1箇所: マイクロメータ→板厚・ノギス／コンベックス→板幅・手入力→いまの段）。器の札は最後に受けた器だけ | `test_dimboth.js`・`test_mcore.js`・`test_devdigits.js` | [§9.607](../../docs/decisions/9.607.md) |
+| 前の綴り（板厚／板幅／板厚/板幅）は`normalize()`と`MEASURE_ITEM_ALIASES`で読み替え、設備の「使わない」は前の2つが両方外れていたときだけ（`MEASURE_ITEM_MERGED`） | `test_dimboth.js`・`test_measitems.js` | [§9.607](../../docs/decisions/9.607.md) |
 | 欄の判定は`judgeInput()`の1箇所（基準は欄の項目で引く＝`WL.measureItem.typeOfKey`・NG の札も打つたびに付け外す） | `test_lateraljudge.js` | [§9.606](../../docs/decisions/9.606.md) |
 | 仕掛の完全な行が後から届いたら`afterSourceRefresh`で判定と見出しを出し直す（`rejudgeInputs()`・表を作り直さない） | `test_lateraljudge.js` | [§9.606](../../docs/decisions/9.606.md) |
 | 操業データの置き場「品質情報の下」（`#qualityOpGrid`）。最初の1欄「品質メモ」はパス設定マスタの印で1度だけ置く | `test_qualitynote.js`・`test_opui.js` | [§9.606](../../docs/decisions/9.606.md) |

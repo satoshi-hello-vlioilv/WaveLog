@@ -62,7 +62,7 @@ run('test_dimboth: 板厚と板幅を1つの項目で同時に入れる（§9.60
   for(const r of [...T,...Wd]){await send(r);}
   await idle();
  }
- const got=await page.evaluate(()=>{const m=S.measure.measurements,f=a=>a.slice(0,2).flatMap((r,i)=>r.slice(0,i===0||true?r.length:0));
+ const got=await page.evaluate(()=>{const m=S.measure.measurements;
   const t=m.thickness.slice(0,2).flatMap(r=>r.slice(0,3)).filter(v=>v!=='').length;
   const w=m.width.slice(0,2).flatMap(r=>r.slice(0,4)).filter(v=>v!=='').length;
   return {t,w};});
@@ -86,6 +86,17 @@ run('test_dimboth: 板厚と板幅を1つの項目で同時に入れる（§9.60
   const t=document.querySelector('input[data-mkey="thickness"][data-i="0"][data-j="0"]'),w=document.querySelector('input[data-mkey="width"][data-i="0"][data-j="3"]');
   return {thickNg:t?t.classList.contains('ng'):null,widthNg:w?w.classList.contains('ng'):null};});
  rec('D5. 板厚の欄は板厚の公差、板幅の欄は板幅の公差で判定する',judge.thickNg===false&&judge.widthNg===true,JSON.stringify(judge));
+ if(process.env.WAVELOG_SHOT){
+  /* 比べるページ用（§9.607）: 同じ材料・同じ値で、利用者の PC とフル HD の大きさで撮る。直す前は板厚と板幅を別々に撮る。 */
+  await page.evaluate(()=>document.querySelector('[data-mode="auto"]')?.click());await closeModal();
+  for(const [w,hh] of [[1728,1152],[1536,864]]){
+   await page.setViewportSize({width:w,height:hh});await idle();
+   for(const t of opts.includes(DIM)?[DIM]:['板厚','板幅']){
+    await setType(t);await setLen(0);await idle();
+    await page.screenshot({path:`${process.env.WAVELOG_SHOT}/dim-${t==='板幅'?'width':t==='板厚'?'thick':'both'}-${w}.png`});
+   }
+  }
+ }
  /* D6: 前の版の記録の名前 */
  const legacy=await page.evaluate(()=>['板厚','板幅','板厚/板幅'].map(n=>WL.measureItem.normalize(n)));
  rec('D6. 前の版の入力内容「板厚」「板幅」「板厚/板幅」は「板厚・板幅」で開く',legacy.every(n=>n===DIM),JSON.stringify(legacy));

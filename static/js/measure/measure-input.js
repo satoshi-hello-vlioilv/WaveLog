@@ -938,6 +938,39 @@ document.addEventListener('click',e=>{
    もう一度並べていた。板厚を独立した入力内容にしたことで、板厚も他の項目と
    同じ「公差の数直線＋枠の一覧＋丈位置くらべ」で書けるようになった
    ——違いは**枠の数と呼び名だけ**で、それは`WL.measureItem`が答える。 */
+/* 測定の見出し（項目名・進み・器の札）を塗り、表の器（鍵ごとに1枚）のHTMLを返す（§9.607）。 */
+function measureHeadAndBlocks({type,keys,dim,blocks,tols,count,head,burrBadge,bulkBtn,status}){
+ /* 板厚・板幅の器の札は**最後に値を受けた器**だけ（2つ並べるとどちらの器か読めない・
+    項目を選び直したら次の転送まで出さない・§9.607）。 */
+ const last=(S.measure.settings||{}).deviceLast;
+ const devBadge=(dim?(keys.includes(last)?[last]:[]):keys).map(key=>{
+  const dev=key?WL.measureDevice.of(key):'';
+  if(!dev||WL.measureDevice.digits(key,'')===null)return '';
+  const label=WL.measureDevice.label(dev),d=WL.measureDevice.digits(key,dev);
+  return `<span class="mhead-device" title="${esc(`自動転送の値から判定した測定器です。`
+    +`${label}が保証できる桁までで記録します（小数${d}桁）。手入力もこの桁にそろえます。`)}">`
+    +`${esc(label)} <b>${d}桁</b></span>`;
+ }).join('');
+ /* 進みは**表ごとに別々**（板厚・板幅は「板厚 2/3・板幅 1/4」・合算しない＝§9.138 の理由をくり返さない）。 */
+ const DIM_WORD={thickness:'板厚',width:'板幅'};
+ const statusText=dim?blocks.map(b=>`${DIM_WORD[b.key]||b.key} ${b.done}/${b.slots}`).join('・'):status;
+ if(head)head.innerHTML=`<b class="mhead-item">${esc(type)}</b>`
+   +`<span class="mhead-status" title="${esc(`この丈の進み: ${statusText}`)}">`
+   +`${esc(statusText)}</span>`+devBadge+burrBadge+bulkBtn;
+ const lotPad=dim&&WL.split.lotColumn(count).some(Boolean);
+ /* 板厚・板幅の表の名前は**何で測るか**まで言う（測定器が振り分ける先・§9.607）。進みの数は見出しが言うので書かない。 */
+ const BLOCK_TITLE={thickness:'板厚<small>OS・CL・DS／マイクロメータ</small>',width:'板幅<small>条ごと／ノギス・コンベックス</small>'};
+ let h=dim?'<div class="dim-stack">':'';
+ blocks.forEach((b,i)=>{
+  h+=`<section class="measure-grid-block compact-other" data-grid-key="${b.key}">`
+   +(dim?`<div class="dim-title">${BLOCK_TITLE[b.key]||esc(b.key)}</div>`:'')
+   +`<div class="matrix-body${tols[i].graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tols[i].graph}</aside>`
+   +measureMatrixHtml(b.key,b.slots,type,{lotPad:b.key==='thickness'&&lotPad})
+   +'</div></section>';
+ });
+ if(dim)h+='</div>';
+ return h;
+}
 function renderMeasureGridVertical(){
  const type=$('#measureType').value,key=activeMeasureKey(),m=S.measure,li=lengthIndex(),count=Math.max(1,Math.min(40,+$('#horizontalCount').value||1));
  /* **手入力の面（母材・丈毎）は測定値の器を持たない**（§9.391）。
@@ -985,37 +1018,10 @@ function renderMeasureGridVertical(){
     （§9.234 ③の「見出しは1行」を崩さない）。出るのは**桁が器で変わる項目**
     （板厚・板幅）で、**まだ転送を受けていなければ出さない**——「不明」と
     書く場所を常設すると、いちばん多い状態が場所だけ取ることになる。 */
- /* 板厚・板幅の器の札は**最後に値を受けた器**だけ（2つ並べるとどちらの器か読めない・
-    項目を選び直したら次の転送まで出さない・§9.607）。 */
- const last=(S.measure.settings||{}).deviceLast;
- const devBadge=(dim?(keys.includes(last)?[last]:[]):keys).map(key=>{
-  const dev=key?WL.measureDevice.of(key):'';
-  if(!dev||WL.measureDevice.digits(key,'')===null)return '';
-  const label=WL.measureDevice.label(dev),d=WL.measureDevice.digits(key,dev);
-  return `<span class="mhead-device" title="${esc(`自動転送の値から判定した測定器です。`
-    +`${label}が保証できる桁までで記録します（小数${d}桁）。手入力もこの桁にそろえます。`)}">`
-    +`${esc(label)} <b>${d}桁</b></span>`;
- }).join('');
- /* 進みは**表ごとに別々**（板厚・板幅は「板厚 2/3・板幅 1/4」・合算しない＝§9.138 の理由をくり返さない）。 */
- const DIM_WORD={thickness:'板厚',width:'板幅'};
- const statusText=dim?blocks.map(b=>`${DIM_WORD[b.key]||b.key} ${b.done}/${b.slots}`).join('・'):compactMeasureStatus(done,slots);
- if(head)head.innerHTML=`<b class="mhead-item">${esc(type)}</b>`
-   +`<span class="mhead-status" title="${esc(`この丈の進み: ${statusText}`)}">`
-   +`${esc(statusText)}</span>`+devBadge+burrBadge+bulkBtn;
- const lotPad=dim&&WL.split.lotColumn(count).some(Boolean);
- /* 板厚・板幅の表の名前は**何で測るか**まで言う（測定器が振り分ける先・§9.607）。進みの数は見出しが言うので書かない。 */
- const BLOCK_TITLE={thickness:'板厚<small>OS・CL・DS／マイクロメータ</small>',width:'板幅<small>条ごと／ノギス・コンベックス</small>'};
- let h=dim?'<div class="dim-stack">':'';
- blocks.forEach((b,i)=>{
-  h+=`<section class="measure-grid-block compact-other" data-grid-key="${b.key}">`
-   +(dim?`<div class="dim-title">${BLOCK_TITLE[b.key]||esc(b.key)}</div>`:'')
-   +`<div class="matrix-body${tols[i].graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tols[i].graph}</aside>`
-   +measureMatrixHtml(b.key,b.slots,type,{lotPad:b.key==='thickness'&&lotPad})
-   +'</div></section>';
- });
- if(dim)h+='</div>';
- if(type==='フラットネス')h+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
- $('#measurementGrid').innerHTML=h;
+ const h=measureHeadAndBlocks({type,keys,dim,blocks,tols,count,head,burrBadge,bulkBtn,status:compactMeasureStatus(done,slots)});
+ let html=h;
+ if(type==='フラットネス')html+=`<section class="measure-grid-block flatness-note-block"><div class="measure-grid-block-title"><span>備考</span></div><div class="flatness-entry"><label>対象条<select id="coilNo"></select></label><label>備考<textarea id="coilComment"></textarea></label></div></section>`;
+ $('#measurementGrid').innerHTML=html;
  /* 公差を言う場所は**1つだけ**（§9.129／§9.209 ②）。
       板厚・板幅（寸法系）… 図があるなら数直線の隣の公差カード、
                             図が無いなら（＝公差が無い）ここのピル
