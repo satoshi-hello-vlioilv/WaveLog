@@ -1,4 +1,4 @@
-# 測定画面（112件）
+# 測定画面（114件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 公差の図の行は表の大きさが変わるたびに測り直す（`alignToleranceChart()`・表ごとの`ResizeObserver`）。描いた時の1回で済ませない | `test_dimboth.js` | [§9.608](../../docs/decisions/9.608.md) |
+| 測定データ分析の MIN／MAX は数の幅のまま並べ、入らなければ下の段へ折り返す（2つに割った枠へ押し込まない） | `test_dimboth.js` | [§9.608](../../docs/decisions/9.608.md) |
 | 板厚と板幅は1つの項目「板厚・板幅」。表は鍵ごとに1枚を上下に重ね丈位置の列をそろえる（`WL.measureItem`の`keysOf()`・`dimKey()`） | `test_dimboth.js`・`test_msteps.js` | [§9.607](../../docs/decisions/9.607.md) |
 | 板厚・板幅の値は測定器で振り分ける（`deviceTarget()`の1箇所・マイクロメータ→板厚・ノギス等→板幅・手入力→いまの段）。器の札は最後の器 | `test_dimboth.js`・`test_mcore.js`・`test_devdigits.js` | [§9.607](../../docs/decisions/9.607.md) |
 | 前の綴りは`normalize()`・`MEASURE_ITEM_ALIASES`で読み替える。設備で外すのは前の2つが両方外れていたときだけ | `test_dimboth.js`・`test_measitems.js` | [§9.607](../../docs/decisions/9.607.md) |

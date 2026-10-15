@@ -97,6 +97,62 @@ run('test_dimboth: 板厚と板幅を1つの項目で同時に入れる（§9.60
    }
   }
  }
+ /* D7: 公差の図の行と表の行が同じ高さに並ぶ（板厚＝位置 OS・CL・DS／板幅＝条・利用者の指摘）。
+    表ごとに、図の行の中心と表の行の中心の縦のずれ（最大 px）と、行の数の食い違いを測る。 */
+ const rowGap=()=>page.evaluate(()=>[...document.querySelectorAll('#measurementGrid section[data-grid-key]')].map(b=>{
+  const rows=[...b.querySelectorAll('.accurate-numberline .tc-row')],trs=[...b.querySelectorAll('.measure-matrix tbody tr')];
+  const mid=e=>{const r=e.getBoundingClientRect();return r.top+r.height/2};
+  const n=Math.min(rows.length,trs.length);let gap=0;
+  for(let i=0;i<n;i++)gap=Math.max(gap,Math.abs(mid(rows[i])-mid(trs[i])));
+  return{key:b.dataset.gridKey,図:rows.length,表:trs.length,ずれ:Math.round(gap*10)/10};}));
+ await setType(pick);await setLen(0);await idle();
+ await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+ /* 場面: ①4条で開いたまま ②2条へ減らす ③手で値を打つ（判定で図が描き直る） ④窓の大きさを変える ⑤別の丈へ移って戻る */
+ const scenes={};
+ scenes.開いたまま=await rowGap();
+ const settle=async()=>{await idle();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));};
+ await page.evaluate(()=>{const h=document.getElementById('horizontalCount');h.value='2';h.dispatchEvent(new Event('change',{bubbles:true}))});await settle();
+ scenes.条を2つへ=await rowGap();
+ await page.evaluate(()=>document.querySelector('[data-mode="manual"]')?.click());await closeModal();
+ for(const [k,j,v] of [['thickness',0,'1.2'],['thickness',2,'0.5'],['width',1,'4']]){
+  const sel=`input[data-mkey="${k}"][data-i="0"][data-j="${j}"]`;
+  if(await page.$(sel)){await page.click(sel);await page.fill(sel,v);await page.keyboard.press('Tab');await settle();}
+ }
+ scenes.手で打った後=await rowGap();
+ const vp=page.viewportSize();
+ await page.setViewportSize({width:1536,height:864});await settle();
+ scenes.窓を変えた後=await rowGap();
+ await page.setViewportSize(vp);await settle();
+ await setLen(1);await settle();await setLen(0);await settle();
+ scenes.丈を往復=await rowGap();
+ /* ⑥表示サイズ「大」 ⑦保存した測定を開き直す形（測定の窓が伏せてある間に描いてから出す＝resumeStoredMeasure と同じ順） */
+ await page.evaluate(()=>WL.uiSize.setSize('lg'));await settle();
+ scenes.表示サイズ大=await rowGap();
+ await page.evaluate(()=>WL.uiSize.setSize('md'));await settle();
+ await page.evaluate(()=>{const mm=document.getElementById('measureModal');mm.hidden=true;WL.measureView.renderMeasurement();mm.hidden=false;});await settle();
+ scenes.伏せて描いてから出す=await rowGap();
+ const bad=Object.entries(scenes).filter(([,g])=>!(g.length>0&&g.every(x=>x.図===x.表&&x.ずれ<=1)));
+ rec('D7. 公差の図の行が表の行と同じ高さに並ぶ（5場面・どの表もずれ1px以下・行の数が同じ）',bad.length===0,JSON.stringify(scenes));
+ /* D8: ③の測定データ分析で数がはみ出さない（利用者の指摘「100.0001000.000」）。桁の多い値（板厚 100.000〜1000.000）で、
+    数どうしが重ならないこと・カードの縁を越えないことを、利用者の PC とフル HD の両方で数える。 */
+ await page.evaluate(()=>{const m=S.measure.measurements;m.thickness[0].splice(0,3,'100.000','100.000','1000.000');m.width[0].splice(0,2,'6.00','4.00');});
+ const anOver=()=>page.evaluate(()=>{
+  if(typeof WL.measureInput.renderStats==='function')WL.measureInput.renderStats();
+  const out=[];
+  document.querySelectorAll('#stats .an-card').forEach(c=>{
+   const cr=c.getBoundingClientRect(),bs=[...c.querySelectorAll('.an-slot b')].map(b=>b.getBoundingClientRect());
+   const name=(c.querySelector('.an-card-head b')||{}).textContent;
+   bs.forEach((r,i)=>{if(r.width&&r.right>cr.right-1)out.push(`${name}${i}:縁を${Math.round(r.right-cr.right+1)}px越える`);});
+   for(let i=0;i<bs.length;i++)for(let j=i+1;j<bs.length;j++){const a=bs[i],b=bs[j];
+    if(a.width&&b.width&&a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom)out.push(`${name}:数が重なる${Math.round(Math.min(a.right,b.right)-Math.max(a.left,b.left))}px`);}
+  });
+  return out;});
+ const overs={};
+ await page.evaluate(()=>WL.measureSteps.go('3'));await idle();await closeModal();
+ for(const [w,hh] of [[1728,1152],[1536,864]]){await page.setViewportSize({width:w,height:hh});await settle();overs[w]=await anOver();
+  if(process.env.WAVELOG_SHOT){const el=await page.$('#stats');if(el)await el.screenshot({path:`${process.env.WAVELOG_SHOT}/dim-stats-${w}.png`});}}
+ await page.setViewportSize(vp);await page.evaluate(()=>WL.measureSteps.go('2'));await idle();await closeModal();
+ rec('D8. 測定データ分析の数がはみ出さない・重ならない（1728／1536）',Object.values(overs).every(o=>o.length===0),JSON.stringify(overs));
  /* D6: 前の版の記録の名前 */
  const legacy=await page.evaluate(()=>['板厚','板幅','板厚/板幅'].map(n=>WL.measureItem.normalize(n)));
  rec('D6. 前の版の入力内容「板厚」「板幅」「板厚/板幅」は「板厚・板幅」で開く',legacy.every(n=>n===DIM),JSON.stringify(legacy));
