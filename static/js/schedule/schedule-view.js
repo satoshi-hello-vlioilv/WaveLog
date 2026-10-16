@@ -4340,7 +4340,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 実績時刻（§9.611、利用者の指示「登録した実績の時刻や取り込んだ実績の時刻が同じ実績時刻のところに出せる(ONOFF可能)」）。
      出どころの違う実績（測定の記録・手で入れた・取り込んだ・自動で入れた）を**同じ1列**に、出どころの札つきで出す。
      予定の「時刻」とは別の列（予定と並べて見られる）。既定では出さず、「表示列」で出し入れする。 */
-  {key:'__acttime__',label:'実績時刻',w:150,note:'実際の開始〜終了と出どころ（測定・手入力・取込・自動）',sample:'00:00〜00:00(翌) 取込',
+  {key:'__acttime__',label:'実績時刻',w:132,note:'実際の開始〜終了と出どころ（測定・手入力・取込・自動）',sample:'00:00〜00:00(翌) 取込',
    cell:'sc-row-acttime',off:true},
   {key:'__shift__',label:'勤務',w:58,note:'勤務形態マスタの名称'},
   {key:'__rel__',label:'残り',w:88,note:'開始までの目安時間'},
@@ -4354,7 +4354,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   {key:'__pc__',label:'登録端末',w:112,note:'この予定を入れた端末(PC)名',off:true},
   {key:'__upby__',label:'更新者',w:96,note:'最後に動かした利用者ID',off:true},
   {key:'__uppc__',label:'更新端末',w:112,note:'最後に動かした端末(PC)名',off:true},
-  {key:'__actions__',label:'操作',w:148,note:'開始・固定・帳票・削除のボタン'},
+  {key:'__actions__',label:'操作',w:168,note:'開始・固定・帳票・削除のボタン'},
  ];
  const SC_COL_MAP=new Map(SC_COL_DEFS.map(d=>[d.key,d]));
  const SC_COL_BEFORE=['__cat__','__workable__','__date__','__caldate__','__time__','__acttime__','__shift__','__rel__'];
@@ -5676,8 +5676,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   });
   scState.historyShown=shown;scState.historyHidden=hidden;
   // 時刻の無い行(展開しきれなかった予定など)は末尾へ寄せて順序を保つ
-  /* g＝完了側(0)／予定側(1)・u＝同じ開始のときに比べる終わり（§9.611）。下で埋める。 */
-  const rows=list.map((e,i)=>({e,i,t:rowTimeOf(e),g:1,u:0}));
+  /* g＝完了側(0)／作業中(1)／予定(2)・u＝同じ開始のときに比べる終わり（§9.611）。下で埋める。 */
+  const rows=list.map((e,i)=>({e,i,t:rowTimeOf(e),g:2,u:0}));
   /* **位置を指定して入れた行は、その位置のまま出す**(§9.196、利用者の指摘
      「位置を指定しても一旦一番下に挿入データの処理中の表示が出てしまう」)。
      楽観的追加の行はまだ予定時刻を持たないので、時刻順に並べると必ず末尾へ
@@ -5693,10 +5693,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      （これから並ぶ行が無ければ今）。互いの順は予定の並び（配列の順）のまま。 */
   const edge=rows.reduce((m,r)=>(r.t!==null&&r.e.state!=='完了'&&r.e.state!=='取消')?Math.min(m,r.t):m,Infinity);
   /* §9.611（利用者の指示「完了ロットは開始終了時刻順に並べて完了側に並べてその続きで予定スケジュールを並べる」）:
-     済んだ行（完了・取消）は**いつも予定より前**（完了側）、その中は実績の開始→終了の順。時刻の無い済んだ行も完了側の最後。 */
+     済んだ行（完了・取消）は**いつも予定より前**（完了側）、その中は実績の開始→終了の順。時刻の無い済んだ行も完了側の最後。
+     作業中の行はその続き（いま）——表示順の後ろの行を先に始めても、予定の行の下へ埋もれない。 */
   const done=e=>e.state==='完了'||e.state==='取消';
   rows.forEach(r=>{
-   r.g=done(r.e)?0:1;
+   r.g=done(r.e)?0:r.e.state==='着手'?1:2;
    if(r.t===null&&(r.e.timesNeeded||done(r.e)))r.t=(Number.isFinite(edge)?edge:Date.now())-1;
    const en=r.g===0&&r.e.actual&&r.e.actual.endAt?new Date(r.e.actual.endAt).getTime():NaN;
    r.u=Number.isFinite(en)?en:r.t;
@@ -7391,6 +7392,15 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     を1つの関数が答える形にする。設定パネルの見本(「この列の見え方（実データ）」)
     も同じ関数を通す——見本を別に作ると、画面には出ているのに設定画面では
     「値のある行がありません」と出る(実際にそうなった)。 */
+ /* 実績時刻の列を出しているとき（§9.611）は、**実績は実績時刻の列だけが言う**——済んだ行の「時刻」は —、
+    作業中の設備停止は見積で終わる見込みの時刻だけ（同じ開始時刻を2列に並べない）。出していなければ null。 */
+ function deferredTime(e){
+  if(!actTimeShown()||!(e.actual&&e.actual.startAt)||!(e.state==='完了'||e.ongoing))return null;
+  const end=e.ongoing&&e.kind==='設備停止'&&e.plannedEnd?e.plannedEnd:null;
+  /* 「見込」は従（`.sc-time-est`）——セルを組むときに分ける */
+  return end?{text:`〜${fmtHM(end)} 見込`,title:`見積の時間で ${fmtDateTime(end)} に終わる見込みです（実績は「実績時刻」の列）。`}
+            :{text:'—',title:'実績は「実績時刻」の列に出しています。'};
+ }
  function entryCellInfo(e){
   const cat=categoryOf(e);
   const locked=!!e.fixedStart;
@@ -7420,8 +7430,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    +(shifted?`\n現場歴では ${fmtWorkDateTitle(e.workDate)}（日付補正 ${e.shiftDayOffset}日）。`:'');
   // 作業中(§9.37)はまだ終わっていない。予定終了は常に現在時刻なので、
   // 終了時刻を数字で出すと「もう終わったように」見える。「継続中」と出す。
-  let timeText,timeTitle;
-  if(e.ongoing){
+  let timeText,timeTitle;const deferred=deferredTime(e);   // 実績時刻の列を出していれば実績を繰り返さない（§9.611）
+  if(deferred)({text:timeText,title:timeTitle}=deferred);else if(e.ongoing){
    timeText=`${fmtHM(showStart)}〜継続中`;
    timeTitle=`実績開始 ${fmtDateTime(showStart)} / 未完了のため予定終了は現在時刻`;
   }else if(e.timesNeeded){
@@ -7488,7 +7498,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const scrapText=scrapCellText(e),scrapTitle=scrapCellTitle(e);
   return {scrapText,scrapTitle,
           cat,locked,workable,wk,wkTitle,dateText,dateTitle,dateShifted:shifted,
-          calDateText,calDateTitle,timeText,timeTitle,shiftText,
+          calDateText,calDateTitle,timeText,timeTitle,timeDeferred:!!deferred,shiftText,
           relText,estText,estSrc,estProvisional,estNote,actualText,flags,flagList,
           createdBy,createdPc,updatedBy,updatedPc,
           createdAt:e.createdAt||'',updatedAt:e.updatedAt||''};
@@ -7685,6 +7695,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   return {style:nwStyle,span:nwSpan,title:nwTitle};
  }
  /* ④ 固定の列（区分・作業可否・日付・時刻・勤務・見積・実績・印・屑幅・操作）のセル。 */
+ /* 「時刻」の字。終わる見込み（§9.611）の「見込」は従の小さな灰。 */
+ function timeHtml(text){return esc(text).replace(/ 見込$/,'<small class="sc-time-est">見込</small>')}
+ /* 行の「開始」「終了」（§9.611）の中身。形（▶／■）でも見分ける。 */
+ function progressLabelHtml(p){return `<i class="fa-solid fa-${p==='end'?'stop':'play'}" aria-hidden="true"></i>${p==='end'?'終了':'開始'}`}
  function entryFixedCells(e,info,caps){
   const {cat,locked,dateText,dateTitle,dateShifted,timeText,timeTitle,shiftText,relText,estText,estSrc,estProvisional,estNote,actualText,flags,wk,wkTitle}=info;
   const {detailHtml,canDelete,startState,canLock,canReport,canResume,canDeleteHistory,canTimes,timesOk,catShown,manualTimes,progress,progressOk}=caps;
@@ -7697,7 +7711,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    '__caldate__':`<span class="sc-row-date" data-col="__caldate__" title="${esc(info.calDateTitle)}">${esc(info.calDateText)}</span>`,
    '__acttime__':actTimeCellHtml(e),
    '__time__':`<span class="sc-row-time${e.timesNeeded?' is-need':''}" data-col="__time__"${e.timesNeeded?' data-times="need"':''} title="${esc(timeTitle)}">${
-    manualTimes?`<i class="fa-solid fa-pen sc-time-manual" data-times="manual" role="img" aria-label="手入力"></i>`:''}${esc(timeText)}</span>`,
+    manualTimes&&!info.timeDeferred?`<i class="fa-solid fa-pen sc-time-manual" data-times="manual" role="img" aria-label="手入力"></i>`:''}${timeHtml(timeText)}</span>`,
    '__shift__':`<span class="sc-row-shift" data-col="__shift__" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>`,
    '__rel__':`<span class="sc-row-rel" data-col="__rel__">${esc(relText)}</span>`,
    '__est__':`<span class="sc-row-est${estProvisional?' sc-est-default':''}${estSrc==='equipment-standard'?' sc-est-standard':''}" data-col="__est__" title="${esc(estNote)}">${estProvisional?'~':''}${esc(estText)}</span>`,
@@ -7710,7 +7724,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       ?'実際の開始・終了の時刻を入れます（開始だけなら見積で終わります）':timesBlockReason())}">時刻入力</button>`:''}
     ${startBtnHtml(e,startState)}
     ${progress?`<button type="button" class="sc-row-btn sc-row-progress${progress==='end'?' is-end':''}" data-progress="${progress}"${progressOk?'':' disabled'} title="${esc(progressOk
-      ?progressTitle(e,progress):(scState.timesDenied||'この端末では開始・終了を入れられません。'))}">${progress==='end'?'終了':'開始'}</button>`:''}
+      ?progressTitle(e,progress):(scState.timesDenied||'この端末では開始・終了を入れられません。'))}">${progressLabelHtml(progress)}</button>`:''}
     ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
     ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">再開</button>`:''}
     ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">帳票</button>`:''}
@@ -10529,15 +10543,18 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(a.endFrom==='実績データ')return 'join';
   return a.source==='手入力'?'manual':'auto';
  }
+ /* 実績時刻の列（§9.611）を出しているか。出していれば「時刻」の列は実績を繰り返さない。 */
+ function actTimeShown(){return !timelineHiddenSet().has('__acttime__')}
  function actTimeCellHtml(e){
   const a=e.actual;
   if(!a||!a.startAt)return `<span class="sc-row-acttime is-blank" data-col="__acttime__">—</span>`;
   const src=actSourceOf(a);
-  const text=a.endAt?fmtTimeRange(a.startAt,a.endAt):`${fmtHM(a.startAt)}〜作業中`;
+  const text=a.endAt?fmtTimeRange(a.startAt,a.endAt):`${fmtHM(a.startAt)}〜`;   // 作業中は終わりを空けて言う（区分が「作業中」と言う）
   const title=`実績 ${fmtDateTime(a.startAt)} 〜 ${a.endAt?fmtDateTime(a.endAt):'作業中'}（${
    src==='measure'?'測定の記録':src==='join'?'取り込んだ実績（完了突合）':a.manual?scManualFromText(a):a.source||''}）`;
-  return `<span class="sc-row-acttime" data-col="__acttime__" data-act-src="${src}" title="${esc(title)}">${esc(text)}`
-   +`<small class="sc-act-src">${esc(ACT_SRC[src]||'')}</small></span>`;
+  /* 出どころ（従）を先に固定幅で置き、時刻（主）の左端をそろえる。 */
+  return `<span class="sc-row-acttime" data-col="__acttime__" data-act-src="${src}" title="${esc(title)}">`
+   +`<small class="sc-act-src">${esc(ACT_SRC[src]||'')}</small><span class="sc-act-at">${esc(text)}</span></span>`;
  }
  /* 未登録の行を**順に**入れる（知らせの棚の「順に入れる」）。やめたらそこで止まる。 */
  async function openTimesInOrder(){

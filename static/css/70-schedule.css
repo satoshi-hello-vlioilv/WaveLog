@@ -553,7 +553,7 @@
 }
 .sc-row-cat i{font-style:normal;font-size:var(--tbl-fs);line-height:1}
 .sc-cat-doing{background:var(--success-bg);color:var(--success);border-left-color:var(--success)}
-.sc-cat-done{background:transparent;color:var(--line-strong)}
+.sc-cat-done{background:transparent;color:var(--muted)}   /* 薄くても読める（白地 4.5:1・§9.611の採点） */
 .sc-cat-planned{background:transparent;color:var(--teal-ink)}
 .sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-left-color:var(--danger)}
 .sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-left-color:var(--warn-border)}
@@ -565,12 +565,12 @@
    「何か注記がある」ことの目印にとどめ、理由はツールチップの文で言う。 */
 .sc-row-date.is-shifted{text-decoration:underline dotted;text-underline-offset:2px}
 .sc-row-time{font-size:var(--tbl-fs);color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
-/* 実績時刻（§9.611）。時刻の後ろに出どころの字（測定・手入力・取込・自動）——色だけで言わない。無い行は薄い「—」。 */
+/* 実績時刻（§9.611）。出どころ（測定・手入力・取込・自動＝従）を先に固定幅の灰の字で置き、時刻（主）の左端をそろえる
+   ——色だけで言わない。作業中は終わりを空けた「04:11〜」。無い行は薄い「—」。 */
 .sc-row-acttime{font-size:var(--tbl-fs);color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;
- display:inline-flex;align-items:baseline;gap:var(--space-1)}
+ display:inline-flex;align-items:baseline;gap:var(--space-2)}
 .sc-row-acttime.is-blank{color:var(--muted)}
-.sc-act-src{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
-.sc-row-acttime[data-act-src="auto"] .sc-act-src{color:var(--muted)}
+.sc-act-src{flex:none;width:3.4em;font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--muted)}
 .sc-row-shift{font-size:var(--tbl-fs);color:var(--ink-2);font-weight:var(--fw-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-row-rel{font-size:var(--tbl-fs);color:var(--muted);white-space:nowrap;overflow:hidden}
 .sc-row-title{font-size:var(--tbl-fs);font-weight:var(--fw-strong);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -1420,14 +1420,16 @@
  font-weight:var(--fw-strong);white-space:nowrap;
 }
 .sc-row-start:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
-/* 行の「開始」「終了」（§9.611）。設備停止の開始は作業の開始と同じ塗り（いま押す一手）、始まった行の終了は縁取り
-   （作業中の行で押す・塗りの開始と取り違えない）。押せない端末では消さずに破線で残す（理由は`title`・§CLAUDE 4）。 */
-.sc-row-progress{min-width:auto;padding:0 var(--ctl-pad-x-xs);background:var(--teal);border-color:var(--teal);color:#fff;
- font-weight:var(--fw-strong);white-space:nowrap}
-.sc-row-progress:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
-.sc-row-progress.is-end{background:var(--surface);border-color:var(--teal);color:var(--teal-ink)}
-.sc-row-progress.is-end:hover{background:var(--teal-tint);border-color:var(--teal-dark);color:var(--teal-ink)}
+/* 行の「開始」「終了」（§9.611・3回の採点で決めた）。**塗りは押す一手の「■終了」の1つだけ**（作業中の行で押す）、
+   予定の設備停止の「▶開始」は「固定」と同じ中立の縁取りで印だけ青緑——形（■▶）・塗り・字の3つで見分ける。
+   押せない端末では消さずに破線で残す（理由は`title`・§CLAUDE 4）。 */
+.sc-row-progress{min-width:auto;padding:0 var(--ctl-pad-x-xs);font-weight:var(--fw-strong);white-space:nowrap}
+.sc-row-progress i{font-size:.72em;margin-right:4px;color:var(--teal)}
+.sc-row-progress.is-end{background:var(--teal);border-color:var(--teal);color:#fff}
+.sc-row-progress.is-end i{color:inherit}
+.sc-row-progress.is-end:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
 .sc-row-progress:disabled,.sc-row-progress:disabled:hover{background:none;border-style:dashed;border-color:var(--line-mid);color:var(--muted);cursor:not-allowed}
+.sc-row-progress:disabled i{color:inherit}
 /* 厳密モードでいまは押せない開始（§9.592・7案→組合せの B3、利用者の指示「グレーアウトのような見えるけど使えない
    状態を適切に表現」）。**同じ形・同じ場所に灰の面**で残す——どのロットを一番上へ入れ替えれば始められるかが読める。
    押せないことは色だけで言わない（鍵の印・`aria-disabled`・乗せると理由・押すと理由のお知らせ）。字は灰色の段
@@ -1506,6 +1508,10 @@
 .sc-row-lock.active{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
 /* 作業中は予定終了が常に現在時刻(継続中)。進行中であることを時刻欄でも示す。 */
 .sc-row-line.sc-row-ongoing .sc-row-time{font-weight:var(--fw-strong);color:var(--success)}
+/* 実績時刻の列を出しているとき（§9.611）、作業中の行の主は実績の開始。「時刻」は終わる見込み（従）なので強めない。 */
+.sc-row-line.sc-row-ongoing .sc-act-at{font-weight:var(--fw-ui)}
+.sc-row-line.sc-row-ongoing .sc-row-time:has(.sc-time-est){font-weight:var(--fw-body);color:var(--ink-2)}
+.sc-time-est{margin-left:4px;font-size:var(--fs-sm);color:var(--muted);font-weight:var(--fw-body)}
 .sc-row-line.sc-row-ongoing .sc-row-rel{color:var(--success);font-weight:var(--fw-strong)}
 /* 読込時点の表示(§9.42)は`.sc-sync-chip`へ畳んだ(§9.300 ①)——同じ
    「いつのデータか」に2つのチップが答えていたため。規則は下の

@@ -148,7 +148,7 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
 G['モーダル'] = ['test_modalkeep', 'test_mmunify', 'test_maint', 'test_master', 'test_opui', 'test_opchoice',
                  # §9.257 ②: 使用設備の設定（窓の作りは1箇所・選んでも動かない）
                  'test_eqsetup']
-G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
+G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
                     'test_scframe',
