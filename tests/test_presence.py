@@ -279,46 +279,14 @@ try:
         bool(d.get('fleet', {}).get('latestVersion')) and 'users' in d.get('fleet', {})
         and all('outdated' in x for x in d.get('items') or []), str(d.get('fleet', {}).get('counts')))
 
-    # ---- 10. 古い版の端末への知らせ（§9.515） -----------------------------
-    # 運用中の最新版は裏で数えて控え、ハートビートの応答が**控えを返すだけ**。
-    presence._newest.update(at=0.0, latest='')
-    ME = {'key': 'PC-ME@me', 'login': 'me', 'pc': 'PC-ME', 'version': ver}   # 在席を書く裏のスレッドが渡す「この端末」
-    rec('数える前は知らせを返さない（「まだ分からない」を「最新」と言わない）',
-        presence.version_notice() is None)
-    hdir = box / presence.HISTORY_DIR
-    hdir.mkdir(parents=True, exist_ok=True)
-    newer = hdir / 'PC-N@new.json'
-    newer.write_text(json.dumps({'key': 'PC-N@new', 'login': 'new', 'pc': 'PC-N', 'version': '99.0.0',
-                                 'sessions': 1}), encoding='utf-8')
-    presence.refresh_newest(ME, force=True)
-    n = presence.version_notice() or {}
-    rec('運用中に新しい版があれば「この端末は古い」と答える',
-        n.get('latestVersion') == '99.0.0' and n.get('myVersion') == ver and n.get('outdated') is True, str(n))
-    rec('最新版の物差しは接続状況の一覧と同じ（latest_version の1箇所）',
-        presence.fleet_summary(presence.entries(), presence.history_entries(), ver)['latestVersion']
-        == n.get('latestVersion'))
-    newer.unlink()
-    presence.refresh_newest(ME)
-    rec('数え直すのは間隔ごと（ハートビートのたびに共有を読まない）',
-        (presence.version_notice() or {}).get('latestVersion') == '99.0.0')
-    _ent, _his = presence.entries, presence.history_entries
-    try:
-        presence.entries = lambda: None
-        presence.history_entries = lambda: None
-        presence.refresh_newest(ME, force=True)
-        rec('読めなかったときは前の答えのまま（共有が遅れただけで知らせを消さない）',
-            (presence.version_notice() or {}).get('outdated') is True)
-    finally:
-        presence.entries, presence.history_entries = _ent, _his
-    presence.refresh_newest(ME, force=True)
-    rec('新しい版が見えなくなれば知らせは消える（自分が最新）',
-        (presence.version_notice() or {}).get('outdated') is False, str(presence.version_notice()))
+    # ---- 10. 【§9.610で外した】古い版の端末への知らせ（§9.515） ------------
+    # 通常の配布では知らせない。ハートビートは運用中の最新版を返さず、推奨の更新の席（update）だけ。
+    rec('運用中の最新版の知らせを数える口は無い（version_notice・refresh_newest を外した）',
+        not hasattr(presence, 'version_notice') and not hasattr(presence, 'refresh_newest'))
     r = c.post('/api/heartbeat')
     hb = r.get_json() or {}
-    rec('ハートビートの応答に版の知らせが載る（全区分の端末へ届く道）',
-        r.status_code == 200 and hb.get('ok') is True
-        and (hb.get('version') or {}).get('latestVersion') == ver, str(hb))
-    presence._newest.update(at=0.0, latest='')
+    rec('ハートビートの応答は推奨の更新の席だけ（version を返さない）',
+        r.status_code == 200 and hb.get('ok') is True and 'update' in hb and 'version' not in hb, str(hb))
 
     # ---- 11. 最新版の判定から開発者を除く（§9.516） -------------------------
     # 開発者の端末は**まだ配っていない版**を動かす。数えると全端末へ「新しい版あり」が出る。
@@ -340,21 +308,6 @@ try:
     f = presence.fleet_summary([], dev_hist, '2.10.0', roles=None)
     rec('区分が分からない（マスタを読めない）端末は数える（配った版まで消さない）',
         f['latestVersion'] == '99.0.0', f['latestVersion'])
-    # 古い版の知らせも同じ判定（裏で数える分）
-    _role['targets']['PC-N@new'] = mr.ROLE_DEVELOPER
-    newer.write_text(json.dumps({'key': 'PC-N@new', 'login': 'new', 'pc': 'PC-N', 'version': '99.0.0',
-                                 'sessions': 1}), encoding='utf-8')
-    presence.refresh_newest({'key': 'ME', 'login': 'me', 'pc': 'PC-ME', 'version': ver}, force=True)
-    n = presence.version_notice(mr.ROLE_USER) or {}
-    rec('知らせの最新版にも開発者の端末の版を数えない', n.get('latestVersion') == ver and n.get('outdated') is False, str(n))
-    _role['targets']['PC-N@new'] = mr.ROLE_USER
-    presence.refresh_newest(ME, force=True)
-    rec('開発者の端末には「古い」と言わない（配る側を急かさない）',
-        (presence.version_notice(mr.ROLE_USER) or {}).get('outdated') is True
-        and (presence.version_notice(mr.ROLE_DEVELOPER) or {}).get('outdated') is False,
-        str([presence.version_notice(mr.ROLE_USER), presence.version_notice(mr.ROLE_DEVELOPER)]))
-    newer.unlink()
-    presence._newest.update(at=0.0, latest='')
     # 区分の読み方は permission_flags と同じ1箇所（_permission_row）
     import sqlite3
     mc = sqlite3.connect(':memory:')

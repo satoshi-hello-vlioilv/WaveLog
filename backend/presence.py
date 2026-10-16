@@ -87,9 +87,6 @@ HISTORY_VERSIONS = 10
 # この版から版と記録を書く。これより前の版の端末は**版が空**で届く（画面は
 # 「VER2.400.0より前」と言い、最新ではないと数える）。
 HISTORY_SINCE = '2.400.0'
-# 運用中の最新版を数え直す間隔（§9.515）。数えるのは在席を書く裏のスレッドで、
-# ハートビートの応答は**数えてある値を返すだけ**（共有を読みに行かない）。
-NEWEST_INTERVAL_SEC = 300
 # 運用中の最新版の判定に数えない区分（§9.516、利用者の指示「運用中の最新版の判定は
 # アクセス権限の『開発者』を除いた形にしたい」）。答えは`counts_for_latest()`。
 LATEST_EXCLUDED_ROLES = (ROLE_DEVELOPER,)
@@ -102,8 +99,6 @@ _state = {'wrote_at': 0.0, 'swept_at': 0.0, 'revoked': None, 'revoked_at': 0.0}
 # として数える（タブを閉じて開き直した・PCが眠っていた）。
 _session = {'key': '', 'since': '', 'last': 0.0}
 _hist = {'key': '', 'data': None, 'wrote': 0.0}
-# 運用中の最新版の控え（§9.515）。`at`が0＝まだ数えていない（知らせを出さない）。
-_newest = {'at': 0.0, 'latest': ''}
 
 
 # ---- 置き場 --------------------------------------------------------------
@@ -295,7 +290,7 @@ def counts_for_latest(role):
     """その区分の端末を「運用中の最新版」の判定に数えるか（§9.516）。**ここ1箇所**。
 
     開発者の端末は**まだ配っていない版**を動かすので数えない（数えると、試しに
-    動かしただけで全端末へ「新しい版あり」が出る）。区分が分からない（`None`・
+    動かしただけの版が接続状況の「運用中の最新版」になり、全端末が「要更新」に見える）。区分が分からない（`None`・
     マスタを読めなかった）ときは数える——数えないほうへ倒すと、配った版まで消える。"""
     return role not in LATEST_EXCLUDED_ROLES
 
@@ -304,8 +299,8 @@ def latest_version(terminals, roles=None):
     """運用中の最新版＝**数える区分の端末の版の最大**（§9.515・§9.516）。
 
     `terminals`は`key`と`version`を持つ並び、`roles`は key→登録上の区分。
-    答えはここ1箇所——接続状況の一覧（`fleet_summary()`）と、古い版の端末への
-    知らせ（`version_notice()`）が同じ物差しで比べる（§9.208）。"""
+    答えはここ1箇所——接続状況の一覧（`fleet_summary()`）が読む。【§9.610】古い版の端末への
+    知らせ（`version_notice()`）は外した——知らせるのは推奨の更新の札があるときだけ（`app_update.notice_of()`）。"""
     roles = roles or {}
     return max((str(t.get('version')) for t in terminals or []
                 if t.get('version') and counts_for_latest(roles.get(t.get('key')))),
@@ -331,42 +326,6 @@ def registered_roles(items):
         quiet('区分を引けない（開発者を見分けられないので、全部の端末を数える）', _e)
         return None
     return {str(t['key']): got.get(pair(t), ROLE_DEFAULT) for t in items}
-
-
-def refresh_newest(me=None, force=False):
-    """運用中の最新版を数え直して控える（§9.515）。在席を書く裏のスレッドから呼ぶ。
-
-    `me`＝この端末（`key`・`login`・`pc`・`version`）。在席が書けなかったときも
-    自分の版を数えに入れる（区分で外れるのは他の端末と同じ）。
-    **読めなかったときは前の答えのまま**——「読めない」を「最新版は自分」と
-    言い換えると、共有が一瞬遅れただけで知らせが消えたり出たりする。"""
-    now = time.time()
-    with _lock:
-        if not force and _newest['at'] and (now - _newest['at']) < NEWEST_INTERVAL_SEC:
-            return _newest['latest']
-        _newest['at'] = now
-    online, history = entries(), history_entries()
-    if online is None and history is None:
-        return _newest['latest']
-    seen = (online or []) + (history or []) + ([me] if me else [])
-    latest = latest_version(seen, registered_roles(seen))
-    with _lock:
-        _newest['latest'] = latest
-    return latest
-
-
-def version_notice(role=''):
-    """この端末へ返す「版の知らせ」（§9.515）。まだ数えていなければNone。
-
-    判定はここ1箇所（画面は`outdated`を読むだけ）。**数えない区分の端末
-    （開発者）には「古い」と言わない**（§9.516）——配る側の端末を急かさない。"""
-    with _lock:
-        latest = _newest['latest'] if _newest['at'] else ''
-    if not latest:
-        return None
-    mine = app_version()
-    return {'latestVersion': latest, 'myVersion': mine,
-            'outdated': counts_for_latest(role) and version_key(mine) < version_key(latest)}
 
 
 def behind_release(want, online=None, history=None, roles=None):
@@ -500,11 +459,6 @@ def touch(login_id, pc_name, mode='', role='', view='', force=False):
         # 記録が書けなくても在席は出す（記録は運用のための副産物）
         app_logger().warning('接続の記録を書けませんでした: %s', e)
     _sweep()
-    try:
-        refresh_newest({'key': key, 'login': str(login_id or ''), 'pc': str(pc_name or ''), 'version': version})
-    except Exception as e:
-        # 数えられなくても在席は出す（知らせは前の答えのまま・§9.515）
-        app_logger().warning('運用中の最新版を数えられませんでした: %s', e)
     return ok
 
 
