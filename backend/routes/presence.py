@@ -8,7 +8,7 @@
 編集可否とは別の軸なので、閲覧モードの端末でも開発者なら切断できる
 （`access_mode._WRITE_ALLOWED_MODES`でこの段に3モードとも許してある）。
 """
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from .. import desktop_shell, presence
 from ..access_mode import current_login_id, current_pc_name, current_permission_flags, get_mode
@@ -82,6 +82,17 @@ def presence_list():
                    me=me, can=role_capabilities(me['role']), roles=list(ROLES),
                    ttlSec=presence.TTL_SEC, cooldownSec=presence.REVOKE_COOLDOWN_SEC,
                    revoked=presence.my_revocation(me['login'], me['pc']))
+
+
+@bp.get('/api/presence/release-spread')
+def presence_release_spread():
+    """配る版と違う版で動いている端末の数（§9.609・版の管理の③「古い版の PC N台」）。
+    数え方は`presence.release_spread()`の1箇所。接続状況を見られない区分には数を出さない（一覧と同じ断り）。"""
+    me = _me()
+    if not role_can(me['role'], 'presence:view'):
+        return jsonify(error=f'この端末の権限区分（{me["role"]}）では接続状況を見られません。'), 403
+    want = str(request.args.get('version') or '')[:40]
+    return jsonify(spread=presence.release_spread(want) if want else None)
 
 
 @bp.post('/api/presence/disconnect')

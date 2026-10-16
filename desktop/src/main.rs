@@ -160,6 +160,19 @@ fn native(app: AppHandle, info: serde_json::Value) -> Native {
             }
             Some(json_reply(&json!({"received": true})))
         }
+        // 推奨の更新の知らせの「開き直して更新」（§9.609）。失うものは画面が先に確かめてから呼ぶ（`WL.closeGuard`）。
+        ("POST", "/__desktop/restart") => {
+            let program = std::path::PathBuf::from(info["program"].as_str().unwrap_or_default());
+            if !launch::restart(&program, &log) {
+                return Some(json_reply(
+                    &json!({"ok": false, "error": "開き直せませんでした。×で閉じて、起動アイコンから開き直してください。"}),
+                ));
+            }
+            log("EXIT 窓を閉じた（開き直して更新）");
+            let app = app.clone();
+            std::thread::spawn(move || app.exit(0));
+            Some(json_reply(&json!({"ok": true})))
+        }
         ("GET", "/__desktop/info") => Some(json_reply(&info)),
         ("GET", "/__desktop/downloads") => Some(json_reply(&json!(downloads().lock().map(|v| v.clone()).unwrap_or_default()))),
         ("POST", "/__desktop/selftest") => {

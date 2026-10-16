@@ -2464,7 +2464,8 @@ enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationT
 WL.versionNotice=(()=>{
  const HOST='.layout>aside .brand .build-badge';
  let state=null;
- const behind=()=>!!(state&&state.outdated)&&document.getElementById('restartNeeded')?.hidden!==false;
+ /* 推奨の更新の札が出ている間は伏せる（打つ手＝開き直すは同じで、あちらが版と理由まで言う・§9.609）。 */
+ const behind=()=>!!(state&&state.outdated)&&document.getElementById('restartNeeded')?.hidden!==false&&!(WL.updateNotice&&WL.updateNotice.on());
  function paint(){
   const on=behind();
   document.querySelectorAll(HOST).forEach(badge=>{
@@ -2488,6 +2489,70 @@ WL.versionNotice=(()=>{
  }
  return {apply,paint,state:()=>state,behind};
 })();
+/* ---------- 推奨の更新の知らせ（§9.609、利用者の指示「そのアップデートの版が配布されたら、表示を邪魔しない
+   程度に使用中ユーザーにアップデートを促す通知を出す」） ----------
+   出すかはサーバーの`app_update.notice_of()`の1箇所（配る版に推奨の札があり、この PC が違う版のとき）。答えは
+   **ハートビートの応答に相乗り**して届く（`body.update`・サーバーは裏で1分に1回読み直す）。
+   閉じた形は**ヘッダーの状態の札1つ**（`#updateNotice`・「更新 ★推奨 2.442.0 ▾」）——帯・トースト・窓は出さない、
+   本文を覆わない・押しのけない。押すと小さな面（器は`.wl-menu`・置き方と閉じ方は`WL.popMenu`）が「なぜ・この PC→
+   新しい版・あとで｜開き直して更新」を言う。「開き直して更新」は失うもの（`WL.closeGuard`）を先に確かめてから
+   窓へ頼む（`/__desktop/restart`）。窓の外（開発の入口）では押せる形にせず、閉じて開き直すと書く。
+   出ている間は「新しい版あり」（`WL.versionNotice`）を伏せる（同じことを2箇所で言わない）。 */
+WL.updateNotice=(()=>{
+ let state=null,pop=null;
+ const chipEl=()=>document.getElementById('updateNotice');
+ const on=()=>!!state;
+ function paint(){
+  const c=chipEl();if(!c)return;
+  c.hidden=!state;
+  if(state){
+   const down=state.direction==='down';
+   document.getElementById('updateNoticeLabel').textContent=`推奨 ${state.release}`;
+   c.title=`推奨の更新 ${state.release}${down?'（前の版へ戻す）':''}${state.note?'：'+state.note:''}（この PC は ${state.mine}・押すとくわしく）`;
+  }else if(pop)WL.popMenu.close();
+  WL.versionNotice.paint();
+ }
+ function apply(u){
+  const next=u&&u.release?{release:String(u.release),mine:String(u.mine||''),note:String(u.note||''),direction:u.direction==='down'?'down':'up'}:null;
+  if(JSON.stringify(next)===JSON.stringify(state))return;
+  state=next;paint();
+ }
+ async function restart(){
+  const rs=WL.closeGuard.reasons();
+  if(rs.length){
+   const ok=await confirmModal({title:'開き直して更新しますか？',confirmLabel:'開き直す',danger:true,
+    bodyHtml:'<ul class="confirm-modal-list">'+rs.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>'});
+   if(!ok)return;
+  }
+  try{
+   const r=await fetch('/__desktop/restart',{method:'POST'});
+   const j=await r.json().catch(WL.quiet('窓の答えを読めない（開き直しは窓が進める）'));
+   if(j&&j.ok===false)throw Error(j.error||'開き直せませんでした');
+  }catch(e){await alertModal({title:'開き直せませんでした',message:e.message||String(e)})}
+ }
+ function open(){
+  const c=chipEl();if(!c||!state)return;
+  if(pop){WL.popMenu.close();return}
+  const s=state,desk=WL.base.inDesktopShell(),down=s.direction==='down';
+  const el=document.createElement('div');
+  el.className='wl-menu update-pop';el.setAttribute('role','dialog');el.setAttribute('aria-label','推奨の更新');
+  el.innerHTML=`<h4><span class="au-chip is-rec">★ 推奨の更新</span></h4>`
+   +(s.note?`<p class="up-why">${esc(s.note)}</p>`:'')
+   +`<div class="up-vv"><span>この PC</span><b>${esc(s.mine)}</b><span aria-hidden="true">→</span><b>${esc(s.release)}</b>${down?'<span>（前の版へ戻す）</span>':''}</div>`
+   +(desk?`<p>開き直すと更新します。入れたデータ・設定はそのままです。</p>`
+         :`<p>この画面は窓の外で開いています。窓を×で閉じて開き直すと、起動のときに更新します。</p>`)
+   +`<div class="up-row"><button type="button" data-up-later>あとで</button>`
+   +(desk?`<button type="button" class="is-go" data-up-restart>開き直して更新</button>`:'')+`</div>`;
+  document.body.append(el);pop=el;c.setAttribute('aria-expanded','true');
+  el.addEventListener('click',e=>{
+   if(e.target.closest('[data-up-later]'))WL.popMenu.close();
+   else if(e.target.closest('[data-up-restart]')){WL.popMenu.close();restart()}
+  });
+  WL.popMenu.open(el,{anchor:c,owner:c,onClose:()=>{el.remove();if(pop===el)pop=null;c.setAttribute('aria-expanded','false')}});
+ }
+ WL.onReady(()=>{const c=chipEl();if(c)c.addEventListener('click',open)});
+ return {apply,paint,on,open,state:()=>state};
+})();
 const HEARTBEAT_INTERVAL_MS=15000, HEARTBEAT_FAIL_LIMIT=2;
 let heartbeatFailures=0;
 function setConnectionLost(lost){
@@ -2506,6 +2571,7 @@ async function sendHeartbeat(){
   heartbeatFailures=0;setConnectionLost(false);
   const body=await res.json().catch(WL.quiet('応答を読めなくても生きている（版の知らせは前のまま）'));
   WL.versionNotice.apply(body&&body.version);
+  WL.updateNotice.apply(body&&body.update);
  }catch(e){
   heartbeatFailures++;
   if(heartbeatFailures>=HEARTBEAT_FAIL_LIMIT)setConnectionLost(true);

@@ -443,6 +443,16 @@ finally:
     am.forget_revocation()
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ---- 推奨の更新の②「古い版の PC N台」（§9.609・`behind_release()`） ----
+_on = [{'key': 'A', 'version': '2.442.0'}]
+_hi = [{'key': 'A', 'version': '2.441.0'}, {'key': 'B', 'version': '2.441.0'}, {'key': 'C', 'version': '2.442.0'},
+       {'key': 'D', 'version': '2.443.0'}]
+_b = presence.behind_release('2.442.0', _on, _hi, {'D': mr.ROLE_DEVELOPER})
+rec('配る版と違う版の端末を数える（在席があれば在席の版で・開発者は数えない）', _b == {'behind': 1, 'total': 3}, str(_b))
+rec('配る版が決まっていなければ数えない', presence.behind_release('', _on, _hi) == {'behind': 0, 'total': 0})
+rec('戻した版を配っているときは、新しい版の端末も「違う版」に数える',
+    presence.behind_release('2.441.0', [], _hi, {}) == {'behind': 2, 'total': 4}, str(presence.behind_release('2.441.0', [], _hi, {})))
+
 ng = [x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')

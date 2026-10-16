@@ -310,6 +310,21 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .hd-chip-run.is-strict{border-color:var(--teal);background:var(--teal-tint)}
 .hd-chip-run.is-strict .hd-chip-val{color:var(--teal-ink)}
 .hd-chip-run[aria-expanded="true"]{border-color:var(--teal)}
+/* 推奨の更新（§9.609）。**縁・地・値は中立**のまま、★ だけ琥珀（琥珀は推奨の更新の意味にだけ使う）。
+   隣の「使用設備 未設定」（設定要の橙の面）と取り違えない。▾ が押せることを言う。 */
+.hd-star{font-style:normal;color:var(--warn);margin-right:2px}
+.hd-chip-update[aria-expanded="true"]{border-color:var(--teal)}
+.wl-menu.update-pop{width:330px;padding:var(--space-3) var(--space-4);font-size:var(--fs-sm);color:var(--ink)}
+.update-pop h4{margin:0 0 var(--space-1);font-size:var(--fs)}
+.update-pop .up-why{margin:0 0 var(--space-1);color:var(--ink);font-weight:var(--fw-ui);line-height:1.6}
+.update-pop .up-vv{display:flex;align-items:center;gap:var(--space-2);margin:var(--space-1) 0 var(--space-2);font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.update-pop .up-vv b{font-size:var(--fs-lg);color:var(--ink)}
+.update-pop p{margin:0 0 var(--space-2);color:var(--ink-2);line-height:1.6}
+.update-pop .up-row{display:flex;gap:var(--space-2);justify-content:flex-end}
+.update-pop .up-row button{display:inline-flex;align-items:center;justify-content:center;width:auto;height:30px;padding:0 var(--space-3);border-radius:var(--radius-sm);border:1px solid var(--line-mid);background:var(--surface);
+ color:var(--teal-dark);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
+.update-pop .up-row .is-go{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:var(--fw-strong)}
+.update-pop .up-row .is-go:hover{background:var(--teal-dark)}
 /* 押せない状態チップ（`.hd-chip-static`＝現場段取り）。**正常のときは中立**——素の`.hd-chip`
    （白地・`--line`の枠）のまま色を足さない（§9.338）。以前はここで橙
    （`--warn-*`）を当てており、**正常な「並べ替え可」が全画面でずっと橙**で、

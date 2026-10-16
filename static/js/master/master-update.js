@@ -78,34 +78,63 @@
   const bad=!st||!st.reachable;
   if(bad){panel.dataset.tabBadge='!';panel.dataset.tabTone='bad';panel.dataset.tabBadgeTitle='要対応 更新の置き場に届きません'}
   else{delete panel.dataset.tabBadge;delete panel.dataset.tabTone;delete panel.dataset.tabBadgeTitle}
-  /* 左の一覧の状態の札（§9.598 1h）。配る版が未定なのは「決めること」（橙）、次の起動でそろうのは「更新待ち」。正常は中立。 */
+  /* 左の一覧の状態の札（§9.598 1h）。配る版が未定なのは「決めること」（橙）。次の起動でそろう「更新待ち」は
+     待てば済むので中立（§9.609・琥珀は推奨の更新の色に取っておく）。 */
   panel.dataset.tabState=!st?'読めません':!st.reachable?'届きません':!rel?'未定':(st.pending?'更新待ち':'正常');
-  panel.dataset.tabStateTone=bad?'bad':(!rel||st.pending)?'warn':'';
+  panel.dataset.tabStateTone=bad?'bad':!rel?'warn':'';
   if(form&&typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
  }
- /* ① → ② → ③ の流れ。いまの値を各段に書く（図と字を結ぶ）。 */
+ /* ① → ② → ③ の流れ。いまの値を各段に書く（図と字を結ぶ）。状態は**上の太い線**が言う（§9.609・LotScope と同じ型）:
+    ① 置いた＝灰の実線／② 配る版を決めた＝青緑の実線／③ そろうのを待っている＝薄い青緑の点線。面は塗らない。 */
  function flowHtml(st){
   const rel=st.release&&st.release.version;
   const here=st.local;
   const step3=!rel?'配る版が決まるまで、各PCはいまの版のまま'
    :(st.pending?`この PC は次の起動で <b>${esc(here)} → ${esc(rel)}</b> にそろいます`
                 :`この PC は配る版（<b>${esc(rel)}</b>）と同じです`);
+  /* 古い版で動いている PC の台数（接続の記録から・開発者は数えない）。③が言う＝そろう相手の数（推奨にするか決める根拠）。 */
+  const sp=st.spread&&st.spread.total>0&&rel?`<span class="au-nw">古い版の PC ${Number(st.spread.behind)}台</span>・`:'';
   return `<ol class="au-flow" aria-label="更新の流れ">
-   <li class="au-step"><b>① 版を置く</b><span>${st.versions.length} 版を置いてあります</span>
+   <li class="au-step${st.versions.length?' is-done':''}"><b>① 版を置く</b><span>${st.versions.length} 版を置いてあります</span>
     <small>GitHub の「Download ZIP」で落とした ZIP を選ぶ</small></li>
    <li class="au-arrow" aria-hidden="true"></li>
    <li class="au-step${rel?' is-set':''}"><b>② 配る版を選ぶ</b><span>${rel?`配る版 <b>${esc(rel)}</b>`:'まだ決めていません'}</span>
-    <small>${rel?esc(`${st.release.setAt||''} ${st.release.setBy||''}`.trim())+(st.release.previous?`・前は ${esc(st.release.previous)}`:''):'一覧の「この版を配る」で決める'}</small></li>
+    <small>${rel?esc(`${st.release.setAt||''} ${st.release.setBy||''}`.trim()):'一覧の「この版を配る」で決める'}</small></li>
    <li class="au-arrow" aria-hidden="true"></li>
    <li class="au-step${st.pending?' is-pending':''}"><b>③ 各PCがそろう</b><span>${step3}</span>
-    <small>起動のとき、Python を起こす前にそろえます（db・config は触りません）</small></li>
+    <small>${sp}起動のとき、Python を起こす前にそろえます（db・config は触りません）</small></li>
   </ol>`;
  }
  /* 消せる版（配っている版のほかの全部）。整理の入口を出すか・整理を終えるかはこの答えから決める。 */
  const deletable=st=>st.versions.filter(v=>v.version!==(st.release&&st.release.version));
  const sumBytes=vs=>vs.reduce((n,v)=>n+Number(v.bytes||0),0);
+ /* 版を数として比べる（サーバーの`version_key()`と同じ読み方）。 */
+ const vkey=v=>String(v||'').split(/[.-]/).map(x=>/^\d+$/.test(x)?Number(x):0);
+ const vcmp=(a,b)=>{const x=vkey(a),y=vkey(b);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d}return 0};
+ /* 状態の札（淡い地に濃い字・字で言う）。並びは 配っている → 前に配った → 推奨 → この PC。 */
+ const chip=(t,c,title)=>`<span class="au-chip ${c}"${title?` title="${esc(title)}"`:''}>${t}</span>`;
+ function tagsHtml(v,st){
+  const rel=st.release&&st.release.version,prev=st.release&&st.release.previous,r=v.recommend;
+  return [v.version===rel?chip('配っている','is-live'):'',v.version===prev?chip('前に配った','is-prev'):'',
+   r?chip('★ 推奨の更新','is-rec',`推奨の更新（${r.setAt||''} ${r.setBy||''}）${r.note?'：'+r.note:''}`):'',
+   v.version===st.local?chip('この PC','is-me'):''].join('');
+ }
+ /* 行の操作。新しい版は塗りの「この版を配る」、古い版は縁取りの「この版に戻す」（LotScope と同じ言い分け）。
+    どちらも ▾ で「推奨の更新として配る」を選べる。配っている版の行は推奨の付け外しだけ。 */
+ function actHtml(v,st){
+  const rel=st.release&&st.release.version;
+  if(tidy)return v.version===rel?'<span class="au-muted">配っている版は消せません</span>'
+   :`<button type="button" class="mm-btn-ghost au-del" data-au-delete="${esc(v.version)}">消す…</button>`;
+  if(!st.canRelease||busy)return '';
+  if(v.version===rel)return v.recommend
+   ?`<button type="button" class="au-btn au-rec" data-au-recommend="${esc(v.version)}" data-au-on="0">推奨を外す</button>`
+   :`<button type="button" class="au-btn au-rec" data-au-recommend="${esc(v.version)}" data-au-on="1">★ 推奨にする</button>`;
+  const up=!rel||vcmp(v.version,rel)>0;
+  return `<span class="au-split"><button type="button" class="au-btn${up?' is-go':''}" data-au-release="${esc(v.version)}">${up?'この版を配る':'この版に戻す'}</button>`
+   +`<button type="button" class="au-btn${up?' is-go':''} au-more" data-au-more="${esc(v.version)}" aria-haspopup="menu" title="配り方を選ぶ">▾</button></span>`;
+ }
  function rowsHtml(st){
-  const rel=st.release&&st.release.version,prev=st.release&&st.release.previous;
+  const rel=st.release&&st.release.version;
   if(!st.versions.length)return `<p class="au-empty">まだ版を置いていません。上の「ZIP から版を置く…」で置いてください。</p>`;
   const free=deletable(st),canTidy=st.canRelease&&!busy&&free.length>0;
   if(!canTidy)tidy=false;
@@ -113,20 +142,11 @@
   /* 整理中は「消せる量」も言う（消す前に、どれだけ空けられるかが見える）。 */
   const head=`<div class="au-list-head"><b>置いてある版 ${st.versions.length}・合計 ${MB(sumBytes(st.versions))}</b>${
    tidy?`<span class="au-tidy-note">消せるのは ${free.length} 版・${MB(sumBytes(free))}</span><span class="au-tidy-note">整理中: 消す版の「消す…」を押してください。配っている版は消せません。</span>`:''}${tidyBtn}</div>`;
-  const act=v=>{
-   if(tidy)return v.version===rel?'<span class="au-muted">配っている版は消せません</span>'
-    :`<button type="button" class="mm-btn-ghost au-del" data-au-delete="${esc(v.version)}">消す…</button>`;
-   return (st.canRelease&&!busy&&v.version!==rel)
-    ?`<button type="button" class="mm-btn-ghost" data-au-release="${esc(v.version)}">この版を配る</button>`:'';
-  };
-  return `${head}<table class="au-table"><thead><tr><th>版</th><th>状態</th><th>置いた日時・人</th><th>元の ZIP</th><th>コミット</th><th class="au-num">中身</th><th></th></tr></thead><tbody>${
-   st.versions.map(v=>{
-    const state=v.version===rel?'<em class="au-tag is-live">配っている</em>'
-     :(v.version===prev?'<em class="au-tag">前に配った</em>':'');
-    return `<tr${v.version===rel?' class="is-live"':''}><td><b>${esc(v.version)}</b>${v.version===st.local?' <small>この PC</small>':''}</td><td>${state}</td>
-     <td>${esc(v.placedAt)} ${esc(v.placedBy)}</td><td>${esc(v.source)}</td><td><code>${esc(v.commit||'—')}</code></td>
-     <td class="au-num">${v.files} ファイル・${MB(v.bytes)}</td><td class="au-act">${act(v)}</td></tr>`;
-   }).join('')}</tbody></table>`;
+  return `${head}<div class="au-wrap"><table class="au-table"><thead><tr><th>版</th><th>状態</th><th>置いた日時・人</th><th>元の ZIP</th><th class="au-num">大きさ</th><th></th></tr></thead><tbody>${
+   st.versions.map(v=>`<tr${v.version===rel?' class="is-live"':''}><td class="au-ver" title="${esc(`コミット ${v.commit||'—'}・${v.files} ファイル`)}">${esc(v.version)}</td>
+     <td><span class="au-tags">${tagsHtml(v,st)}</span></td>
+     <td>${esc(v.placedAt)}　${esc(v.placedBy)}</td><td class="au-mono">${esc(v.source)}</td>
+     <td class="au-num">${MB(v.bytes)}</td><td class="au-act">${actHtml(v,st)}</td></tr>`).join('')}</tbody></table></div>`;
  }
  function render(host,st){
   paintDir(st);
@@ -165,10 +185,21 @@
   return `<p class="au-new"><b>新しい PC へ</b><span>このアドレスを渡し、ダブルクリックしてもらいます: <code>${esc(e.path)}</code>
    <button type="button" class="mm-btn-ghost" data-au-copy="${esc(e.path)}">アドレスをコピー</button><br><small>${seed}。アプリは %USERPROFILE%\\WaveLog へ写り、デスクトップの起動アイコンは作るかを聞きます。</small></span></p>`;
  }
+ /* 状態＋古い版の PC の台数（数えるのは接続の記録・§9.609）。台数が読めない（区分で断られた・記録が無い）
+    ときは`spread`を空のまま描く（台数を言わない・0台と言わない）。 */
+ async function loadState(){
+  const st=await api('/api/app/update');
+  st.spread=null;
+  if(st.release&&st.release.version){
+   try{st.spread=(await api('/api/presence/release-spread?version='+encodeURIComponent(st.release.version))).spread||null}
+   catch(e){WL.quiet.note('古い版の端末を数えられない（台数を出さない）',e)}
+  }
+  return st;
+ }
  async function refresh(){
   const host=document.getElementById('appUpdate');if(!host)return;
   try{
-   const st=await api('/api/app/update');
+   const st=await loadState();
    /* 開き直したとき、この PC がまだ置いている最中なら進み具合へ戻る（送った人の画面が消えても続いている） */
    if(st.publishing&&!busy){busy={name:'',size:0,stage:'check'};watch()}
    render(host,st);paintProgress();paintTab(st);
@@ -232,8 +263,8 @@
   }finally{busy=null;clearTimeout(timer);refresh()}
  }
  async function release(version,st){
-  const cur=st.release&&st.release.version;
-  const ok=await confirmModal({confirmLabel:'配る',title:`版 ${version} を配りますか？`,
+  const cur=st.release&&st.release.version,up=!cur||vcmp(version,cur)>0;
+  const ok=await confirmModal({confirmLabel:up?'配る':'戻す',title:up?`版 ${version} を配りますか？`:`配る版を ${version} に戻しますか？`,
    message:`全PCが次の起動で ${version} にそろいます${cur?`（いま配っている版は ${cur}）`:''}。\n`
      +'起動中のPCは、閉じて開き直したときにそろいます。前の版へ戻すときも、ここで選び直すだけです。'});
   if(!ok)return;
@@ -244,6 +275,56 @@
    if(j.notes&&j.notes.length)await alertModal({title:'新しい PC へ渡すものに注意があります',message:j.notes.join('\n')});
   }catch(e){await alertModal({title:'配る版を決められませんでした',message:e.message})}
   refresh();
+ }
+ /* 推奨の更新の札（§9.609、利用者の指示「配布する版に推奨アップデートの札を付けられるように」）。
+    札のある版を配っていると、古い版で使っている PC に「開き直して更新」を控えめに知らせる（判定はサーバーの
+    `notice_of()`）。付けるときは知らせに添える一言を聞く（なぜ更新してほしいか）。外すのは1手（取り返せる）。 */
+ const post=(url,body)=>api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const behindWord=st=>st.spread&&st.spread.total>0?`古い版で使っている PC（${st.spread.behind}台）`:'古い版で使っている PC';
+ const askNote=(title,message,label)=>promptModal({title,message,label:'知らせに添える一言（任意）',maxLength:80,
+  placeholder:'例: 測定表の公差の図のずれを直しました',hint:'使っている人の知らせにそのまま出ます（80字まで）。',confirmLabel:label});
+ async function recommend(version,on,st){
+  try{
+   if(!on){
+    await post('/api/app/update/recommend',{version,on:false,note:''});
+    showToast&&showToast(`版 ${version} の推奨を外しました`,'使っている PC への知らせは次のハートビート（1分以内）で消えます。',5000);
+    return refresh();
+   }
+   const note=await askNote(`版 ${version} を推奨の更新にしますか？`,
+    `${behindWord(st)}に、画面の上の札で「開き直して更新」を控えめに知らせます。作業は止めません。`,'推奨にする');
+   if(note===null)return;
+   await post('/api/app/update/recommend',{version,on:true,note});
+   showToast&&showToast(`版 ${version} を推奨の更新にしました`,'使っている PC には1分以内に知らせが出ます。',5000);
+  }catch(e){await alertModal({title:'推奨の札を変えられませんでした',message:e.message})}
+  refresh();
+ }
+ /* 「推奨の更新として配る」＝配る版を決めて、同じ版に推奨の札を付ける（1回の確かめで2つ）。 */
+ async function releaseRecommended(version,st){
+  const cur=st.release&&st.release.version;
+  const note=await askNote(`版 ${version} を推奨の更新として配りますか？`,
+   `全PCが次の起動で ${version} にそろいます${cur?`（いま配っている版は ${cur}）`:''}。\n`
+    +`あわせて${behindWord(st)}に、画面の上の札で「開き直して更新」を控えめに知らせます。`,'推奨として配る');
+  if(note===null)return;
+  try{
+   const j=await post('/api/app/update/release',{version});
+   await post('/api/app/update/recommend',{version,on:true,note});
+   showToast&&showToast(`版 ${j.version} を推奨の更新として配りました`,'使っている PC には1分以内に知らせが出ます。',5000);
+   if(j.notes&&j.notes.length)await alertModal({title:'新しい PC へ渡すものに注意があります',message:j.notes.join('\n')});
+  }catch(e){await alertModal({title:'配る版を決められませんでした',message:e.message})}
+  refresh();
+ }
+ /* ▾ の配り方の面（器は`.wl-menu`の1つ・置き方と閉じ方は`WL.popMenu`・§9.448）。 */
+ function openMore(btn,version,st){
+  const up=!(st.release&&st.release.version)||vcmp(version,st.release.version)>0;
+  const el=document.createElement('div');
+  el.className='wl-menu au-menu';
+  el.innerHTML=`<button type="button" data-au-pick="plain"><b>${up?'この版を配る':'この版に戻す'}</b><small>次の起動でそろう（知らせない）</small></button>`
+   +`<button type="button" data-au-pick="rec"><b>★ 推奨の更新として配る</b><small>${esc(behindWord(st))}に「開き直して更新」を知らせる</small></button>`;
+  document.body.append(el);
+  btn.setAttribute('aria-expanded','true');
+  el.addEventListener('click',e=>{const k=e.target.closest('[data-au-pick]');if(!k)return;
+   WL.popMenu.close();(k.dataset.auPick==='rec'?releaseRecommended:release)(version,st)});
+  WL.popMenu.open(el,{anchor:btn,owner:btn,onClose:()=>{el.remove();btn.setAttribute('aria-expanded','false')}});
  }
  /* 版を消す（§9.584）。何が消え・何が残り・戻す道はあるかを先に言ってから聞く（取り消せない）。 */
  async function remove(version,st){
@@ -274,11 +355,15 @@
   const cp=ev.target.closest('[data-au-copy]');
   if(cp){ev.preventDefault();WL.base.copyText(cp.dataset.auCopy).then(()=>showToast&&showToast('アドレスをコピーしました',cp.dataset.auCopy,3600));return}
   if(ev.target.closest('[data-au-tidy]')){ev.preventDefault();tidy=!tidy;refresh();return}
-  const d=ev.target.closest('[data-au-delete]');
-  const b=d||ev.target.closest('[data-au-release]');if(!b)return;
+  const d=ev.target.closest('[data-au-delete]'),m=ev.target.closest('[data-au-more]'),r=ev.target.closest('[data-au-recommend]');
+  const b=d||m||r||ev.target.closest('[data-au-release]');if(!b)return;
   ev.preventDefault();
   /* 押した時点の状態で確かめる（表を描いたあとに別の PC が配る版を変えているかもしれない） */
-  try{const st=await api('/api/app/update');d?remove(d.dataset.auDelete,st):release(b.dataset.auRelease,st)}
+  try{const st=await loadState();
+   if(d)remove(d.dataset.auDelete,st);
+   else if(m)openMore(m,m.dataset.auMore,st);
+   else if(r)recommend(r.dataset.auRecommend,r.dataset.auOn==='1',st);
+   else release(b.dataset.auRelease,st)}
   catch(e){await alertModal({title:'更新の状態を読めません',message:e.message})}
  }
  WL.appUpdate={sectionHtml,refresh,wire};

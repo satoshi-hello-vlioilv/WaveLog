@@ -127,6 +127,24 @@ pub fn relaunch(program: &Path, from: &str, to: &str, log: &dyn Fn(&str)) -> boo
     handoff_with(program, &[AFTER_ARG.into(), std::process::id().to_string(), UPDATED_ARG.into(), from.into(), to.into()], log)
 }
 
+/// 画面の「開き直して更新」（§9.609）: **いま動いている exe** をもう一度起こし、この窓が終わるのを待ってもらう
+/// （`--after-pid`。先に開くと「1つだけ起動」がこの窓を前に出して、新しい窓が閉じてしまう）。新しい窓は起動のときに
+/// 配る版へそろえる（`update::peek()`・exe が変われば`relaunch()`で新しい版の写しへ渡る）。起こせなければ false。
+pub fn restart(program: &Path, log: &dyn Fn(&str)) -> bool {
+    let Ok(me) = std::env::current_exe() else { return false };
+    let pid = std::process::id().to_string();
+    match std::process::Command::new(&me).arg(locate::PROGRAM_ARG).arg(program).arg(AFTER_ARG).arg(&pid).spawn() {
+        Ok(_) => {
+            log(&format!("LAUNCH 開き直します（画面の知らせから）: {}", me.display()));
+            true
+        }
+        Err(e) => {
+            log(&format!("LAUNCH 開き直せません（{}）: {e}", me.display()));
+            false
+        }
+    }
+}
+
 /// `--updated <前の版> <新しい版>` が付いていれば、その2つ。
 pub fn updated_from_args() -> Option<(String, String)> {
     let args: Vec<String> = std::env::args().collect();

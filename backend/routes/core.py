@@ -448,6 +448,17 @@ def app_update_release():
  out=app_update.set_release(x.text('version'),current_login_id())
  return jsonify(**out),(200 if out.get('ok') else 400)
 
+@bp.post('/api/app/update/recommend')
+@api_guard('推奨の札を変えられません')
+def app_update_recommend():
+ """版に推奨の更新の札を付ける／外す（§9.609）。札のある版を配ると、古い版で使っている PC に知らせが出る。"""
+ role,can=_release_role()
+ if not can:
+  return jsonify(error=f'推奨の札を付けられるのは開発者・メンテナンス者だけです（この端末は「{role}」）。'),403
+ x=body({'version':str,'on':flag,'note':str},strict=True)
+ out=app_update.set_recommend(x.text('version'),x.flag('on'),x.text('note'),current_login_id())
+ return jsonify(**out),(200 if out.get('ok') else 400)
+
 @bp.post('/api/app/update/delete')
 @api_guard('版を消せません')
 def app_update_delete():
