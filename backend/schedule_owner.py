@@ -69,6 +69,8 @@ RELAY_PATHS=(
  '/api/schedule/plan/reorder','/api/schedule/plan/batch',
  # 厳密モードの開始(§9.588)。書くのは開始判定と設備停止の時刻——共有へ書くので**書込役へ頼む**。
  '/api/schedule/plan/start',
+ # 予定の行の「開始」「終了」(§9.611)。開始判定と実際の時刻を共有へ書くので同じ。
+ '/api/schedule/plan/progress',
 )
 # 中継されてきたことを示すヘッダ。**誰が・どの端末で・どのモードで**操作
 # したかを運ぶ。

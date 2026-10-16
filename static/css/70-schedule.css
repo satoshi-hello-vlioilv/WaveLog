@@ -565,6 +565,12 @@
    「何か注記がある」ことの目印にとどめ、理由はツールチップの文で言う。 */
 .sc-row-date.is-shifted{text-decoration:underline dotted;text-underline-offset:2px}
 .sc-row-time{font-size:var(--tbl-fs);color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+/* 実績時刻（§9.611）。時刻の後ろに出どころの字（測定・手入力・取込・自動）——色だけで言わない。無い行は薄い「—」。 */
+.sc-row-acttime{font-size:var(--tbl-fs);color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;
+ display:inline-flex;align-items:baseline;gap:var(--space-1)}
+.sc-row-acttime.is-blank{color:var(--muted)}
+.sc-act-src{font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink-2)}
+.sc-row-acttime[data-act-src="auto"] .sc-act-src{color:var(--muted)}
 .sc-row-shift{font-size:var(--tbl-fs);color:var(--ink-2);font-weight:var(--fw-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-row-rel{font-size:var(--tbl-fs);color:var(--muted);white-space:nowrap;overflow:hidden}
 .sc-row-title{font-size:var(--tbl-fs);font-weight:var(--fw-strong);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -1414,6 +1420,14 @@
  font-weight:var(--fw-strong);white-space:nowrap;
 }
 .sc-row-start:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
+/* 行の「開始」「終了」（§9.611）。設備停止の開始は作業の開始と同じ塗り（いま押す一手）、始まった行の終了は縁取り
+   （作業中の行で押す・塗りの開始と取り違えない）。押せない端末では消さずに破線で残す（理由は`title`・§CLAUDE 4）。 */
+.sc-row-progress{min-width:auto;padding:0 var(--ctl-pad-x-xs);background:var(--teal);border-color:var(--teal);color:#fff;
+ font-weight:var(--fw-strong);white-space:nowrap}
+.sc-row-progress:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
+.sc-row-progress.is-end{background:var(--surface);border-color:var(--teal);color:var(--teal-ink)}
+.sc-row-progress.is-end:hover{background:var(--teal-tint);border-color:var(--teal-dark);color:var(--teal-ink)}
+.sc-row-progress:disabled,.sc-row-progress:disabled:hover{background:none;border-style:dashed;border-color:var(--line-mid);color:var(--muted);cursor:not-allowed}
 /* 厳密モードでいまは押せない開始（§9.592・7案→組合せの B3、利用者の指示「グレーアウトのような見えるけど使えない
    状態を適切に表現」）。**同じ形・同じ場所に灰の面**で残す——どのロットを一番上へ入れ替えれば始められるかが読める。
    押せないことは色だけで言わない（鍵の印・`aria-disabled`・乗せると理由・押すと理由のお知らせ）。字は灰色の段

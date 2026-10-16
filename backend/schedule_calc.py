@@ -634,7 +634,7 @@ def _settle_passed_stops(entries,now,minutes_of):
   if e['kind']=='作業':
    if not e.get('unplanned') and e['state'] in ('着手','完了'):started_after=True
    continue
-  if e['kind']!='設備停止' or e['state'] in PLAN_TERMINAL_STATES:continue
+  if e['kind']!='設備停止' or e['state'] in PLAN_TERMINAL_STATES or e['state']=='着手':continue   # 始まった停止は §9.611 が終える
   if started_after:
    e['state']='完了';e['autoDone']=True
    e['doneReason']='後ろの作業が始まっているので、この設備停止は終わっています。'
@@ -656,25 +656,102 @@ def _settle_stop_times(entries,minutes_of):
  スケジューリングされた時間(前後のロットに挟まれた時刻の範囲)に設備停止として自動登録」「ロットの実績が入って完了に
  移行したときにそのロットの開始時間がその前にある設備停止の終了時間」。分け方は厳密モードの開始（§9.588）と同じ1本
  （`_strict_between`／`_strict_allocate`・見積の比・最後はちょうど開始で終わる）。
+ §9.611（利用者の指示「完了ロットの時刻順に処理し」）: 完了したロットは**実績の開始・終了の順**に処理する。表示順の前のロットが
+ このロットより後に終わった（表示順と違う順に流した）ときは、**時刻の順で直前に終わったロット**の終わりから分ける（無ければ見積ぶん遡る）。
 
  ・入れるのは**時刻の無い**設備停止だけ（人・開始で入れた時刻は動かさない）
  ・**前のロットがまだ終わっていない・終わりの時刻が分からない**なら入れない（分かったときに入れる。推測で埋めない）
  ・前の終わりがこのロットの開始より後（食い違い）も入れない。前にロットが無いときだけ開始から見積ぶん遡る
  入れた行は完了にし、保存する形を`stopTimesToSave`に控える（書くのは書込役の`actual_keep.persist()`）。"""
  planned=[e for e in entries if not e.get('unplanned') and e.get('parentId') is None]
- for e in planned:
-  if not _strict_work(e) or e['state']!='完了':continue
+ done=[e for e in planned if _strict_work(e) and e['state']=='完了' and entry_start_at(e) is not None]
+ done.sort(key=lambda e:(entry_start_at(e),entry_end_at(e) or entry_start_at(e)))
+ ends=[t for t in (entry_end_at(x) for x in done) if t is not None]
+ for e in done:
   start=entry_start_at(e)
-  if start is None:continue
   prev,stops,prev_end=_strict_between(planned,e)
   if not stops:continue
-  if prev is not None and (prev['state']!='完了' or prev_end is None or prev_end>start):continue
+  if prev is not None and (prev['state']!='完了' or entry_end_at(prev) is None):continue
+  if prev_end is None or prev_end>start:
+   before=[t for t in ends if t<=start]
+   prev_end=max(before) if before else None
   out,_from=_strict_allocate(stops,prev_end,start,minutes_of)
   for st,t in zip(stops,out):
    pay=dict(strict_stop_payload(t,'auto:完了で自動'),source=MANUAL_SOURCE_DONE)
    st['manual']=pay;st['state']='完了';st['autoDone']=True
    st['doneReason']=f'後ろのロット {e.get("lotNo") or ""} が完了したので、あいだの時刻を入れました。'
    st['stopTimesToSave']=pay
+
+# 始まった設備停止の終わり（§9.611、利用者の指示「作業ロットを開始して終了まで時間登録した場合、次の項目が設備停止の時は、
+# 設備停止が開始されたことに…自動的に設定された時間が経過して終了…途中でその開始されている設備停止を終了時間を打つか、
+# 次のロットの開始をする、または次の設備停止の開始を行うと設備停止実績が入るように」）。
+MANUAL_SOURCE_RUN='始めた停止の終わり'
+STOP_END_BY_ESTIMATE='予定の時間'
+STOP_END_BY_NEXT_WORK='次のロットの開始'
+STOP_END_BY_NEXT_STOP='次の設備停止の開始'
+STOP_START_BY_PREV='前の終わり'
+
+def _chain_items(entries):
+ """「次の項目」を数える並び（表示順・親の作業と設備停止・取消と計画外を除く）。コメント・枠は時間を持たないので数えない。"""
+ return [e for e in entries if e.get('parentId') is None and not e.get('unplanned') and e['kind'] in sr.PLAN_START_KINDS
+         and e['state']!='取消']
+
+def _measured_end(e):
+ """測定の記録（このアプリの測定画面）で終えた作業ロットの終わりの時刻（§9.611）。無ければNone。
+ 取り込んだ実績（完了突合）・手で入れた時刻は数えない——**測定画面で終えた瞬間**に次の停止が始まる、の合図だけ。
+ 「終了」を押したときは押した口（`apply_progress()`）が次の停止へ開始判定を書く。"""
+ a=e.get('actual') or {}
+ if e['kind']!='作業' or e['state']!='完了' or not a.get('id') or not a.get('endAt'):return None
+ return entry_end_at(e)
+
+def _settle_started_stops(entries,now,minutes_of,derive=True):
+ """始まった設備停止の終わりを決める（§9.611）。**答えはここ1箇所**（予定の展開と開始の口が同じ段を通る）。
+
+ 始まり: 開始判定（「開始」を押した・前のロットの「終了」を押した・前の停止に「終了」を打った時刻）。
+ `derive`（予定の展開）のときは、**表示順の前のロットを測定画面で終えた**時刻からも始まったとみなし、その開始判定を
+ 書込役が残す（`startFlagToSave`・次のロットがまだ始まっていないときだけ）。一度残せば、あとで何を見ても同じ答え。
+ 終わり: 始まり＋見積（予定の時間）が過ぎた・**後ろの項目（ロット・設備停止）が始まった**、の早いほう。どちらも無ければ作業中。
+ 人が終了を打った（手で入れた時刻）停止はここでは触らない。終えた時刻は書込役が残す（`stopTimesToSave`）。"""
+ items=_chain_items(entries)
+ for i,e in enumerate(items):
+  if e['kind']!='設備停止' or e.get('manual') or e['state'] not in (sr.PLAN_REORDERABLE_STATE,'着手'):continue
+  a=e.get('actual') or {}
+  t0=None;from_=START_FLAG_FROM
+  if a.get('startAt'):
+   try:t0=_parse_dt(a['startAt'])
+   except Exception as _e:quiet('始めた停止の時刻を読めない（始まっていないとして扱う）',_e)
+  elif derive and i>0:
+   nwork=next((x for x in items[i+1:] if x['kind']=='作業'),None)
+   if nwork is None or nwork['state']==sr.PLAN_REORDERABLE_STATE:
+    t0=_measured_end(items[i-1]);from_=STOP_START_BY_PREV
+    if t0 is not None:e['startFlagToSave']={'at':t0.isoformat(timespec='minutes'),'by':'auto:'+STOP_START_BY_PREV,'pc':''}
+  if t0 is None or t0>now:continue
+  ends=[]
+  est_end=t0+timedelta(minutes=float(minutes_of(e) or 0.0))
+  if est_end<=now:ends.append((est_end,STOP_END_BY_ESTIMATE))
+  for x in items[i+1:]:
+   xs=entry_start_at(x)
+   if xs is not None and xs>=t0:
+    ends.append((xs,STOP_END_BY_NEXT_WORK if x['kind']=='作業' else STOP_END_BY_NEXT_STOP));break
+  if not ends:
+   e['state']='着手'
+   e['actual']=dict(a or {'id':'','endAt':None,'status':'','key':None},startAt=t0.isoformat(timespec='minutes'),startFrom=from_)
+   continue
+  end,why=min(ends)
+  pay={'startAt':t0.isoformat(timespec='minutes'),'endAt':end.isoformat(timespec='minutes'),'endFrom':why,
+       'minutes':round((end-t0).total_seconds()/60.0),'source':MANUAL_SOURCE_RUN,'by':'auto:'+MANUAL_SOURCE_RUN,'pc':'',
+       'at':datetime.now().isoformat(timespec='seconds')}
+  e['manual']=pay;e['actual']=None;e['state']='完了';e['autoDone']=True
+  e['doneReason']=f'始めた設備停止を「{why}」で終えました。'
+  e['stopTimesToSave']=pay
+
+def _settle_rows(entries,now,minutes_of):
+ """② 済んだ行の段（**この順で**）: 始まった設備停止の終わり（§9.611）→ 時間的に終わった設備停止（§9.514）→
+ 完了したロットより上の設備停止の時刻（§9.605）→ 時刻の登録を促す行（§9.514）。"""
+ _settle_started_stops(entries,now,minutes_of)
+ _settle_passed_stops(entries,now,minutes_of)
+ _settle_stop_times(entries,minutes_of)
+ _times_prompts(entries,minutes_of)
 
 def _times_prompts(entries,minutes_of):
  """時刻の登録を促す行と、入力の手がかり（§9.514）。**手がかりの答えはここ1箇所**。
@@ -973,9 +1050,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
  minutes_of=lambda e:resolve_estimate(mc,equipment,e,memo=est_memo)['minutes']
  # 時間的に終わった設備停止（§9.514）と、時刻の登録を促す行。**並びの順で見る**ので
  # 計画外の実績を混ぜる前に済ませる。
- _settle_passed_stops(entries,now,minutes_of)
- _settle_stop_times(entries,minutes_of)
- _times_prompts(entries,minutes_of)
+ _settle_rows(entries,now,minutes_of)
 
  # 計画外実績(§9.33)を合成する。実施中の分は先頭へ入れて、この直後の
  # アンカー決定にそのまま乗せる(設備が実際に塞がっている時間を、予定を
@@ -1083,11 +1158,11 @@ def stop_skips_merge(current,stop_id,prev_id,on=True):
  return rest+[{'stopId':sid,'prevId':pid}] if on else rest
 
 def _apply_start_flag(entry,actual,raw):
- """開始判定を持つ予定の作業ロットを着手にする。**測定データの実績（完了・開始）が先**——
+ """開始判定を持つ予定の作業ロット・設備停止（§9.611）を着手にする。**測定データの実績（完了・開始）が先**——
  実績で着手・完了になった行は触らない（同じ状態を2つの根拠で決めない）。"""
  flag=start_flag(raw)
  entry['startFlag']=({'at':flag['at'],'by':str(flag.get('by') or ''),'pc':str(flag.get('pc') or '')} if flag else None)
- if not flag or entry['kind']!='作業' or entry.get('parentId') is not None:return
+ if not flag or entry['kind'] not in sr.PLAN_START_KINDS or entry.get('parentId') is not None:return
  if entry['state']!=sr.PLAN_REORDERABLE_STATE:return
  entry['state']='着手'
  # 測定の記録（開始時刻の無い下書き）があれば、その身元は残す（帳票・再開の道）。**索引の値は書き換えない**——写しを作る。
@@ -1202,6 +1277,7 @@ def plan_states(c,mc,equipment,now,actual_index=None):
  entries,matched=_plan_entries(sr.plan_rows(c,equipment),idx)
  memo={}
  minutes_of=lambda e:resolve_estimate(mc,equipment,e,memo=memo)['minutes']
+ _settle_started_stops(entries,now,minutes_of,derive=False)   # 開始の口は書いた事実だけで決める（厳密モードの分け方は §9.605 のまま）
  _settle_passed_stops(entries,now,minutes_of)
  running,_done=unplanned_entries(idx,equipment,matched,now,None)
  return running+entries,minutes_of,idx
@@ -1230,6 +1306,62 @@ def strict_stop_payload(stop,uid='',pc=''):
  return {'startAt':stop['startAt'],'endAt':stop['endAt'],'endFrom':stop['endFrom'],'minutes':stop['minutes'],
          'source':MANUAL_SOURCE_START,'by':str(uid or ''),'pc':str(pc or ''),'at':datetime.now().isoformat(timespec='seconds')}
 
+
+# ---- 予定の行の「開始」「終了」（§9.611） ----
+# 利用者の指示「このアプリで作業ロットを開始して終了まで時間登録…途中でその開始されている設備停止を終了時間を打つか、
+# 次のロットの開始をする、または次の設備停止の開始を行うと設備停止実績が入るように」。口は`/api/schedule/plan/progress`。
+PROGRESS_ACTIONS=('start','end')
+
+def progress_caps(e):
+ """予定の行が「開始」「終了」を出すか（画面のボタンと口が同じ答えを読む）。戻り値: 'start'／'end'／''。
+ ・設備停止: 予定なら「開始」、始まっていれば「終了」
+ ・作業: 「開始」を押して始めた（測定の記録が無い）ロットだけ「終了」。測定の記録で始めたロットは測定画面の完了で終える"""
+ if e.get('parentId') is not None or e.get('unplanned') or e['kind'] not in sr.PLAN_START_KINDS:return ''
+ a=e.get('actual') or {}
+ if e['kind']=='設備停止':
+  if e['state']==sr.PLAN_REORDERABLE_STATE and not e.get('manual'):return 'start'
+  return 'end' if e['state']=='着手' else ''
+ return 'end' if e['state']=='着手' and a.get('startFrom')==START_FLAG_FROM and not a.get('id') else ''
+
+def progress_plan(entries,target_id,action,now,minutes_of):
+ """「開始」「終了」で書く物を決める（§9.611）。**純粋な関数**——書くのは`apply_progress()`。
+ 開始＝その行に開始判定（押した時刻）。終了＝始まりから押した時刻まで（手入力と同じ形）。
+ 前の始まった停止の終わりは書かない（`_settle_started_stops()`が後ろの始まりから決める）。
+ 終了で次の項目がまだ始まっていない設備停止なら、終えた時刻でその停止の開始判定も書く（`next`）。
+ 戻り値: {'ok','error','id','action','flag','manual','next'}"""
+ at=now.replace(second=0,microsecond=0)
+ base={'ok':False,'error':'','id':target_id,'action':action,'flag':None,'manual':None,'next':None}
+ if action not in PROGRESS_ACTIONS:return dict(base,error='「開始」か「終了」を指定してください。')
+ target=next((e for e in entries if str(e['id'])==str(target_id) and not e.get('unplanned')),None)
+ if target is None:return dict(base,error='指定の予定が見つかりません。')
+ cap=progress_caps(target)
+ if cap!=action:
+  word='開始' if action=='start' else '終了'
+  return dict(base,error=f'この行は{word}できません（いまは「{target["state"]}」です）。表を読み直してから押してください。')
+ if action=='start':
+  return dict(base,ok=True,flag={'at':at.isoformat(timespec='minutes')})
+ start=entry_start_at(target)
+ if start is None:return dict(base,error='始まりの時刻が分からないため終了できません。「時刻入力」で始まりと終わりを入れてください。')
+ if at<start:at=start
+ pay=manual_payload(start.isoformat(),at.isoformat(),minutes_of(target),now=now)
+ # 次の項目が、まだ始まっていない設備停止なら、終えた時刻から始まる（開始判定を書く）。
+ items=_chain_items(entries)
+ i=next((k for k,x in enumerate(items) if x is target),None)
+ nxt=items[i+1] if i is not None and i+1<len(items) else None
+ nflag=({'id':nxt['id'],'at':pay['endAt']} if nxt is not None and nxt['kind']=='設備停止' and progress_caps(nxt)=='start'
+        and not nxt.get('startFlag') else None)
+ return dict(base,ok=True,manual=pay,next=nflag)
+
+def apply_progress(c,plan,uid,pc=''):
+ """`progress_plan()`の答えを予定表へ書く（書込サイクルの中で呼ぶ）。戻り値: 書いた行数。"""
+ if plan.get('flag'):
+  return sr.plan_set_start_flag(c,plan['id'],uid,dict(plan['flag'],by=uid,pc=pc),pc=pc)
+ n=0
+ if plan.get('manual'):
+  n+=sr.plan_set_manual_times(c,plan['id'],uid,dict(plan['manual'],by=uid,pc=pc),pc=pc)
+ if plan.get('next'):
+  n+=sr.plan_set_start_flag(c,plan['next']['id'],uid,{'at':plan['next']['at'],'by':uid,'pc':pc},pc=pc)
+ return n
 
 def _entry_of_row(r):
  """予定表の1行（`sr.plan_rows()`の並び）→ (予定, 明細)。明細が読めなければ空で続ける。"""
@@ -1447,7 +1579,9 @@ class _Placer:
   started=_parse_dt(((e.get('actual') or {}).get('startAt')) or '') or now
   elapsed=max(0.0,_minutes_between(started,now))
   e['plannedStart']=started.isoformat()
-  e['plannedEnd']=now.isoformat()
+  # 始まった設備停止（§9.611）は予定の時間が過ぎたら自動で終わる——終わりの見込みは始まり＋見積（過ぎていれば今）。
+  end=max(now,started+timedelta(minutes=float(est['minutes'] or 0.0))) if e['kind']=='設備停止' else now
+  e['plannedEnd']=end.isoformat()
   e['ongoing']=True
   e['startsInMinutes']=round(_minutes_between(now,started),1)
   e['estimate']=dict(est,minutes=round(est['minutes'],1))
@@ -1455,8 +1589,8 @@ class _Placer:
   e['spansNonWorking']=False
   e['overdueMinutes']=round(max(0.0,elapsed-est['minutes']),1)
   e['shift']=self._shift(started)
-  # 後続はすべて現在時刻から並べ直す(着手中が複数あっても基準は1つ)
-  next_cursor,_w=snap_to_working(now,self.timeline)
+  # 後続はすべて現在時刻から並べ直す(着手中が複数あっても基準は1つ)。始まった設備停止はその終わりの見込みから。
+  next_cursor,_w=snap_to_working(end,self.timeline)
   self.cursor=next_cursor if next_cursor is not None else now
 
  def _timed(self,e,est):
@@ -1549,8 +1683,10 @@ def _copy_parent_times(entries):
 
 
 def _finalize_actuals(entries,now):
- """⑦ 実績を画面へ渡す形にする（内部で使った控え`storedState`・`manual`は外す）。"""
+ """⑦ 実績を画面へ渡す形にする（内部で使った控え`storedState`・`manual`は外す）。
+ 行の「開始」「終了」（§9.611・`progress`）も控えを外す前に決める（画面のボタンと口`progress_plan()`が同じ答えを読む）。"""
  for e in entries:
+  e['progress']=progress_caps(e)
   actual=e.pop('actual')
   e.pop('storedState')
   e['actual']=_actual_view(e,actual,now)

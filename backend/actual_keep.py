@@ -74,13 +74,19 @@ def pending(result):
 
 
 def pending_stops(result):
-    """完了したロットより上の設備停止で、時刻をまだ残していない行（§9.605・`schedule_calc._settle_stop_times()`）。
-    控え（`stopTimesToSave`）は**応答へ出さない**ので、ここで外す。戻り値: [(予定ID, 残す形)]。"""
+    """設備停止で、まだ残していない時刻と開始判定（§9.605・§9.611）。
+    時刻（`stopTimesToSave`）は完了したロットより上の停止・始めた停止の終わり、開始判定（`startFlagToSave`）は
+    測定画面でロットを終えて始まった停止。控えは**応答へ出さない**ので、ここで外す。戻り値: [(予定ID, 種類, 残す形)]。"""
     out = []
     for e in result.get('entries') or []:
+        flag = e.pop('startFlagToSave', None)
         pay = e.pop('stopTimesToSave', None)
-        if pay and e.get('id') is not None:
-            out.append((e['id'], pay))
+        if e.get('id') is None:
+            continue
+        if flag:
+            out.append((e['id'], 'flag', flag))
+        if pay:
+            out.append((e['id'], 'times', pay))
     return out
 
 
@@ -114,9 +120,12 @@ def persist(result, uid, pc):
         for e in pend:
             if sr.plan_set_actual_json(c, e['id'], json.dumps(_payload(e), ensure_ascii=False), uid, pc):
                 n += 1
-        # 上の設備停止の時刻（§9.605）。**人が入れた時刻は上書きしない**（`keep`）。
-        for pid, pay in stops:
-            n += sr.plan_set_manual_times(c, pid, uid, pay, pc=pc, keep=True)
+        # 設備停止の時刻（§9.605・§9.611）と開始判定（§9.611）。**人が入れた時刻は上書きしない**（`keep`）。
+        for pid, kind, pay in stops:
+            if kind == 'flag':   # 既に始めた停止は書き直さない（`plan_set_start_flag`が最初の時刻を残す）
+                n += sr.plan_set_start_flag(c, pid, uid, pay, pc=pc)
+            else:
+                n += sr.plan_set_manual_times(c, pid, uid, pay, pc=pc, keep=True)
         return {'saved': n}
     try:
         schedule_sync.with_write(uid, pc, uid, fn)

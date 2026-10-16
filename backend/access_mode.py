@@ -119,6 +119,8 @@ _ENDPOINT_EXTRA_MODES={
  # 運用モードの切り替え(§9.592)。段（schedule_start）の既定はeditだけなので、**scheduleモードへも開ける**。
  # 切り替えてよい端末か（その設備を並べ替えられるか）はハンドラ側(`line_ops_allowed()`)で二重に絞る。
  'schedule_start.run_mode_set':{'schedule'},
+ # 予定の行の「開始」「終了」(§9.611)。ラインで起きた事実なので scheduleモードへも開ける（端末はハンドラの`line_ops_allowed()`）。
+ 'schedule_start.plan_progress':{'schedule'},
  # 実際の時刻の登録(§9.518、利用者の選択「その場で入れられる」)。**編集モードで通すのは
  # 実際の時刻だけ**で、入れてよい端末か（スケジュール可否／その設備の現場段取り）も
  # ハンドラ側(`routes/schedule.py`の`line_ops_allowed()`)で二重に絞る。

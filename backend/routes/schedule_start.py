@@ -7,7 +7,7 @@
    時間で実時間を登録を自動的にできるので、設備停止が残留してしまうということを避けられます。」
   「作業スケジュールの中で開始判定フラグを設け、管理する」
 
-**口は1本**（`POST /api/schedule/plan/start`）。測定画面を開く関門（予定の「開始」・仕掛の一覧の
+**口は1本**（`POST /api/schedule/plan/start`）。予定の行の「開始」「終了」（§9.611）は`POST /api/schedule/plan/progress`。測定画面を開く関門（予定の「開始」・仕掛の一覧の
 どちらの道も通る）が呼ぶ。決めるのは`schedule_calc`（`strict_top()`／`strict_start_plan()`）で、
 ここは読む・断る・書くの段取りだけを持つ。
 
@@ -34,12 +34,13 @@ from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import read_equipment_run_mode, write_equipment_run_mode, RUN_MODE_STRICT
 from ..access_mode import request_user_id, request_pc_name
 from .body import body, any_
-from .schedule import _read, _write_response, line_ops_allowed
+from .schedule import _read, _write_response, line_ops_allowed, PLAN_TIMES_DENIED
 from .common import cfg_write_response
 
 bp = Blueprint('schedule_start', __name__)
 
 START_PATH = '/api/schedule/plan/start'
+PROGRESS_PATH = '/api/schedule/plan/progress'
 RUN_MODE_PATH = '/api/schedule/run-mode'
 RUN_MODE_DENIED = ('この端末では運用モードを切り替えられません。切り替えられるのは、この設備を並べ替えられる端末'
                    '（スケジュールモード、またはアクセス権限マスタの「現場段取り」でこの設備を持つ端末）です。')
@@ -116,6 +117,36 @@ def _refusal_as_conflict(resp):
     if isinstance(j, dict) and j.get('refused'):
         return jsonify(error=j.get('error'), code=j.get('code'), top=j.get('top'), strict=True), 409
     return resp
+
+
+@bp.post(PROGRESS_PATH)
+def plan_progress():
+    """予定の行の「開始」「終了」（§9.611）。決めるのは`schedule_calc.progress_plan()`、書くのは`apply_progress()`。
+
+    利用者の指示「このアプリで作業ロットを開始して終了まで時間登録…次の項目が設備停止の時は、設備停止が開始されたことに…
+    途中でその開始されている設備停止を終了時間を打つか、次のロットの開始をする、または次の設備停止の開始を行うと
+    設備停止実績が入るように」。**押した時刻**で書き、書込サイクルの中でもう一度決め直す（あいだに別の端末が押していても
+    古い判断で書かない）。入れてよい端末は実際の時刻と同じ（`line_ops_allowed()`）。"""
+    x = body({'equipment': any_, 'id': any_, 'action': any_})
+    equipment, action = x.text('equipment'), x.text('action')
+    if not equipment or x.get('id') in (None, ''):
+        return jsonify(error='どの設備のどの行か指定してください。'), 400
+    if not line_ops_allowed(equipment):
+        return jsonify(error=PLAN_TIMES_DENIED), 403
+    uid, pc = request_user_id(x), request_pc_name(x)
+
+    def fn(c):
+        mc = sr.config_master_conn()
+        try:
+            entries, minutes_of, _idx = schedule_calc.plan_states(c, mc, equipment, datetime.now())
+        finally:
+            mc.close()
+        plan = schedule_calc.progress_plan(entries, x.get('id'), action, datetime.now(), minutes_of)
+        if not plan['ok']:
+            raise ValueError(plan['error'])
+        schedule_calc.apply_progress(c, plan, uid, pc)
+        return {'id': plan['id'], 'action': action, 'manual': plan['manual'], 'next': plan['next'], 'flag': plan['flag']}
+    return _write_response(fn)
 
 
 @bp.post(RUN_MODE_PATH)
