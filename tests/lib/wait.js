@@ -233,7 +233,13 @@ async function openRecordReport(page,{has='',not=''}={}){
 async function listView(page){
  const isOpen=()=>page.evaluate(()=>{const p=document.getElementById('listViewPanel');return !!p&&!p.hidden});
  if(await isOpen())return;
- await page.click('#listViewBtn');
+ /* 狭い器では「見せ方 ▾」に畳んである（§9.612）。人と同じく、畳んだ入口から開く。 */
+ const folded=await page.evaluate(()=>{const b=document.getElementById('listViewBtn');return !!b&&!b.getClientRects().length});
+ if(folded){
+  await page.click('#listFold-view');
+  await until(page,()=>!!document.querySelector('#listFoldMenu:not([hidden]) [data-fold-to="listViewBtn"]'),null,{ms:5000,what:'「見せ方」の面が開く'});
+  await page.click('#listFoldMenu [data-fold-to="listViewBtn"]');
+ }else await page.click('#listViewBtn');
  await until(page,()=>{const p=document.getElementById('listViewPanel');return !!p&&!p.hidden},
    null,{ms:5000,what:'「表の見せ方」のパネルが開く'});
 }

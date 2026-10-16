@@ -43,7 +43,7 @@
   c.hidden=false;
   const n=hiddenRows().length;
   c.classList.toggle('is-active',n>0);
-  c.innerHTML=`<i class="fa-solid fa-eye-slash" aria-hidden="true"></i><span class="lt-tool-t">予定と同じロットを伏せる</span><b class="lt-n">${n}</b><i class="hd-caret" aria-hidden="true">▾</i>`;
+  c.innerHTML=`<i class="fa-solid fa-eye-slash" aria-hidden="true"></i><span class="lt-tool-t" data-short="予定と同じ">予定と同じロットを伏せる</span><b class="lt-n">${n}</b><i class="hd-caret" aria-hidden="true">▾</i>`;
   c.title=`予定に入れたロット（同じロットの見分け方: ${rule(info&&info.identity)||'読み込み中'}）をこの一覧に出していません: ${n}件。押すと見分け方と伏せたロットが見えます。`;
   if(!info)fetchInfo().then(paint).catch(WL.quiet('ロットの見分け方を読めない（札の説明は後で）'));
  }

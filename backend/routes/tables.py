@@ -481,6 +481,21 @@ def _ignored_filter_columns(filter_payload,cs):
  return out
 
 
+def _table_counts(cur,t,where,params):
+ """(絞った件数, 絞る前の件数)。帯が「n件 / 全 N件」と言う（§9.612）——絞っていなければ同じ数なので数え直さない。"""
+ cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
+ if not where:return count,count
+ cur.execute(f'SELECT COUNT(*) FROM {qi(t)}');return count,int(cur.fetchone()[0])
+
+
+def _row_dicts(k,cs,rows):
+ """行を dict へ。作業の一覧の行はロットの鍵を持つ（§9.612・予定と同じ`lot_identity`の1箇所）。
+ **列を絞る前に**付ける（鍵の列を出していなくても作れる）。"""
+ out=[dict(zip(cs,r)) for r in rows]
+ if WORK_DB_KEY and k==WORK_DB_KEY:lot_identity.attach(out)
+ return out
+
+
 def _table_where(cs,q,filter_payload):
  """一覧の絞り込み（検索の字・条件）→ `(' WHERE …', 値, 効いた条件)`。一覧・スライサー・色付けの数が同じ答えを読む（§9.591）。"""
  where_parts=[];params=[]
@@ -638,10 +653,7 @@ def api_table():
    ignored=_ignored_filter_columns(filter_payload,cs)
    order,order_keys=_table_order(cs)
    t_count=time.perf_counter()
-   cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
-   # 絞り込む前の件数（§9.612）。帯が「n件 / 全 N件」と言う——絞っていなければ同じ数なので数え直さない。
-   if where:cur.execute(f'SELECT COUNT(*) FROM {qi(t)}');count_all=int(cur.fetchone()[0])
-   else:count_all=count
+   cur=c.cursor();count,count_all=_table_counts(cur,t,where,params)
    lap('count',t_count)
    # そのページぶんだけ取り出す。以前は頭からpage*size件を取ってPython側で
    # 切り出しており、後ろのページほど無駄が増えていた(§9.95。「全件」は
@@ -672,9 +684,7 @@ def api_table():
   keep=set(x for x in want if x in cs) or None
   # **1つも当たらなければ絞らない**(fail-open)。列名を打ち間違えた・
   # データ側で列名が変わった場合に、空の表を黙って返すのが一番困る。
-  row_dicts=[dict(zip(cs,r)) for r in rows]
-  # 作業の一覧の行はロットの鍵を持つ（§9.612・予定と同じ`lot_identity`の1箇所）。**列を絞る前に**付ける（鍵の列を出していなくても作れる）。
-  if WORK_DB_KEY and k==WORK_DB_KEY:lot_identity.attach(row_dicts)
+  row_dicts=_row_dicts(k,cs,rows)
   # 名前は1つずつ(§9.113)。行はdictで同名を1つしか持てないので、列だけ
   # 2つ返すと本数が食い違い、画面では列が増えて見える。
   visible_cs=_unique_columns([x for x in cs if x not in hidden and (keep is None or x in keep)])

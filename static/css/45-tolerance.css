@@ -791,8 +791,6 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .sx-v.is-zero{color:var(--muted)}
 .sx-note{margin:0;color:var(--ink-2)}
 .sx-note.is-ng{color:var(--danger)}
-}
-
 /* ---------- 畳んだ入口・条件のつなぎ（§9.612） ----------
    入口を畳むのは狭い器だけ（分割＝道具と見せ方・ポップアップ＝見せ方）。単独の一覧はいつも全部を並べる。
    押すと面に本物の入口が並ぶ（list-tools.js の`openFold()`）。 */
@@ -816,3 +814,6 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
   padding:var(--space-2);border-top:1px solid var(--line)}
 .fb-cond-scope-row>small{grid-column:1/-1;color:var(--ink-2);font-size:var(--fs-sm)}
 .fb-cond-scope-k{color:var(--ink-2);font-size:var(--fs-sm)}
+.fb-cond-badge.is-warn{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
+.fb-cond-btn.is-partial{border-color:var(--warn-border);background:var(--warn-bg)}
+}

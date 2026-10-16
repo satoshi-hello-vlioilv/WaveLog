@@ -12,6 +12,7 @@
     F5 件数は絞ったら「n件 / 全 N件」
     F6 スライサーだけで0件にしても「条件を外して全件を見る」で戻る
     F7 色付けの下書きが今の一覧に無い列なら、押す前に今の一覧の列へ戻っている（黙って空振りしない）
+    F8 この表に無い列（結合した列など）の条件は黙って捨てず、応答が「効いていない」と言う
     H1 作業スケジュールの仕掛一覧は、予定に入れた（まだ終わっていない）ロットを伏せる（比べるのは鍵 __lotKey）
     H2 伏せている決まりと件数が帯の札で見える（押すと見分け方の列・伏せたロットの面）
     H3 「仕掛一覧と同じ条件」で、元データの一覧で当てた条件がスケジュールの仕掛一覧にも効く（切ると戻る）
@@ -50,7 +51,8 @@ function measureBar() {
 }
 
 H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ page, rec, setMode }) => {
- const shot = async (n) => { if (!SHOT) return; const el = await page.$('#genericFilterBar'); const tb = await page.$('#listToolbar');
+ const shot = async (n) => { if (process.env.WAVELOG_SHOT) await shotBar(n); };
+ const shotBar = async (n) => { const el = await page.$('#genericFilterBar'); const tb = await page.$('#listToolbar');
   const a = el && await el.boundingBox(), b = tb && await tb.boundingBox();
   if (!a) return; const y = a.y, h = (b ? b.y + b.height : a.y + a.height) - y;
   await page.screenshot({ path: path.join(SHOT, n + '.png'), clip: { x: 0, y: Math.max(0, y - 8), width: page.viewportSize().width, height: h + 16 } }); };
@@ -79,6 +81,11 @@ H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ pag
  await shot('state_search');
  await page.fill('#search', '');
  await W.until(page, () => document.querySelectorAll('#grid tbody tr').length > 1, null, { ms: 10000, what: '検索を外す' });
+ /* ---------- F8 この表に無い列の条件は黙って捨てず「効いていない」と返す ---------- */
+ const ign = await page.evaluate(async () => { const q = new URLSearchParams({ db: S.db, table: S.table, page: 1, page_size: 1,
+  filters: JSON.stringify([{ column: '結合で足した列', op: 'eq', value: 'x' }]) }); const d = await (await fetch('/api/table?' + q)).json();
+  return { ign: d.filtersIgnored, all: d.countAll, n: d.count }; });
+ rec('F8 この表に無い列の条件は filtersIgnored で返り、件数は絞る前の数も返る', (ign.ign || []).includes('結合で足した列') && ign.all >= ign.n && ign.all > 0, JSON.stringify(ign));
  /* ---------- F6 スライサーだけで0件 → 「条件を外して全件を見る」で戻る ---------- */
  await page.evaluate(() => { const s = `${S.db}:${S.table}`; const col = S.columns[0];
   localStorage.setItem('wl.listSlicer.v1', JSON.stringify({ tables: { [s]: { open: false, cards: [{ column: col, sel: ['__無い値__'] }] } } })); });

@@ -1317,7 +1317,7 @@
      登録・適用した条件と列で絞り込みに加えて、一覧を検索の字・スライサーの選択も数える（数が0件の案内と食い違わない）。 */
   function narrowingNow(){
     return typeof WL.list?.narrowingItems==='function'?WL.list.narrowingItems()
-      :condRows().map(r=>({source:r.kind==='adhoc'?'列で絞り込み':'条件',text:r.kind==='adhoc'?r.label:condFullText(r.f)}));
+      :condRows().map(r=>({source:r.kind==='adhoc'?'列で絞り込み':'条件',text:r.kind==='adhoc'?r.label:condFullText(r.f),kind:r.kind}));
   }
   function renderActiveTokens(){
     const btn=$('#filterCondBtn'),count=$('#filterCount');if(!btn)return;
@@ -1332,9 +1332,12 @@
     }else if(scope)scope.remove();
     /* 狭い器では「条件」の字を畳む（§9.505）ので、読み上げの名前はここで持つ。 */
     btn.setAttribute('aria-label',`条件 ${n}つ`);
+    const ign=(S.genericFilters||[]).filter(f=>(S.filtersIgnored||[]).includes(f.column)).length;
+    btn.classList.toggle('is-partial',ign>0);
     /* **0でも押せる**（§9.505）——条件を足す・作る入口もこの面にある。 */
     btn.title=n
       ? '効いている条件 '+n+'つ\n'+items.map(x=>`${x.source}: ${x.text}`).join('\n')
+        +(ign?`\n（うち${ign}つはこの一覧の元データに無い列なので効いていません）`:'')
         +'\n押すと中身を確かめたり、外したり、条件を足したりできます。'
       : '効いている条件はありません。押すと、条件を足す・作る入口が開きます。';
     renderCondMenu();
@@ -1351,7 +1354,10 @@
           +`<span class="fb-cond-text">${esc(r.label)}</span>`
           +'<button type="button" class="fb-cond-x" data-adhoc-clear title="列で絞り込みの入力を消して外します">×</button></div>';
       const known=!!registeredPreset(r.f);
-      return `<div class="fb-cond-row${r.locked?' is-locked':''}">`
+      /* この表に無い列（結合で足した品質データの列など）の条件は、サーバーが絞り込みに使えない（§9.612・`filtersIgnored`）。黙らせず字で言う。 */
+      const ignored=(S.filtersIgnored||[]).includes(r.f.column);
+      return `<div class="fb-cond-row${r.locked?' is-locked':''}${ignored?' is-ignored':''}">`
+        +(ignored?'<span class="fb-cond-badge is-warn" title="この一覧の元データに無い列（結合で足した列など）なので、絞り込みに効いていません。元データの列で条件を作ってください">効いていない</span>':'')
         +(r.locked?'<span class="fb-cond-badge is-lock" title="いつも適用（固定）。一覧を開くたびに入ります">\u{1F512} 固定</span>':'')
         +`<span class="fb-cond-text">${esc(r.f.column)} <b>${esc(opLabel(r.f.op))}</b>`
         +(noValueOp(r.f.op)?'':` <em>${esc(r.f.value)}</em>`)

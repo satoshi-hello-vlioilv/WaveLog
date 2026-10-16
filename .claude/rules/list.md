@@ -10,10 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 帯の押す物は LotScope と同じ 30px・13.5px（`--bar-*`）。狭い器でも縮めず字を畳まない。入らないぶんは入口を畳む（`.lt-fold`＝分割は道具・見せ方／ポップアップは見せ方）。検索欄は 22em まで | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
-| 「条件 N」・0件の案内・「条件を全部外す」は同じ顔ぶれ（`WL.list.narrowingItems()`の1箇所・検索の字とスライサーも）。絞ったら件数は「n件 / 全 N件」（伏せたぶんも引く） | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
-| この表に無い列の条件（結合した列など）は黙って捨てず`filtersIgnored`で返す。絞る前の件数は`countAll` | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
-| スケジュールの仕掛一覧の条件は「仕掛一覧と同じ」につなげる（答えは`presetMode()`の1箇所・利用者×一覧）。「条件」の札が字で名乗り、切り替えは条件の面の中 | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| 帯の押す物は LotScope と同じ 30px・13.5px。狭い器でも縮めず、入らないぶんは入口を畳む（`.lt-fold`）。検索欄は 22em まで | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| 「条件 N」・0件の案内・全部外すは同じ顔ぶれ（`WL.list.narrowingItems()`の1箇所）。件数は「n件 / 全 N件」 | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| この表に無い列の条件は黙って捨てず`filtersIgnored`で返し、条件の面が「効いていない」と言う | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| スケジュールの仕掛一覧の条件は「仕掛一覧と同じ」につなげる（`presetMode()`の1箇所・切り替えは条件の面） | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
 | 完了突合が予定へ残す値は`take_of()`の1箇所（時刻だけ／選んだ列も／すべて）。作業時間の列は外せない（`take_columns()`がいつも足す） | `test_boxactual.py`・`test_qjoinui.js` | [§9.605](../../docs/decisions/9.605.md) |
 | 相手が設備ごとのファイルの「一覧に足す」行は`definition_issue()`が名指し、仕掛一覧は当てない（毎回のエラーにしない） | `test_boxactual.py` | [§9.605](../../docs/decisions/9.605.md) |
 | 完了突合の窓の右は流れの図（作業スケジュールの予定→探す→完了→作業時間→残す）。欄に入ると同じ節が光る（`data-qj-jump-to`＝`data-qj-node`） | `test_qjoinui.js` | [§9.605](../../docs/decisions/9.605.md) |

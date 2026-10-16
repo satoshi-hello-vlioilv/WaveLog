@@ -344,6 +344,11 @@
 :is(.sc-split-wrap,.sc-float-body) .list-join-chip[data-short]{font-size:0}
 :is(.sc-split-wrap,.sc-float-body) .list-join-chip[data-short]::after{content:attr(data-short);font-size:var(--lt-fs)}
 :is(.sc-split-wrap,.sc-float-body) .list-pager>b{min-width:0}
+/* 伏せる札は分割では短い名乗り（全文は`title`・押すと面が全部言う）。状態の2行目に結合・ページと並べるため。 */
+.sc-split-wrap #lotHideChip .lt-tool-t[data-short]{font-size:0}
+.sc-split-wrap #lotHideChip .lt-tool-t[data-short]::after{content:attr(data-short);font-size:var(--lt-fs)}
+.sc-split-wrap .lt-state>.lt-state-right{order:7}
+.sc-split-wrap .lt-state>.lt-break{order:3}
 :is(.sc-split-wrap,.sc-float-body) .filter-token-input{padding:var(--pad-chip)}
 :is(.sc-split-wrap,.sc-float-body) .filter-token-search{height:22px;flex-basis:80px;min-width:60px}
 :is(.sc-split-wrap,.sc-float-body) .filter-quick-row{padding:var(--pad-row);gap:var(--gap-tight)}
@@ -2584,8 +2589,8 @@ div.sc-view-row{cursor:default}
    `.hd-viewbar`が`--bar-fs`(=13px×--ui-scale・§9.591)を持つので、表示サイズを
    上げると**しきい値も同じ比で上がる**。pxで書くと、中身だけが1.1倍に
    なってしきい値は据え置きになり、大きい表示でだけ溢れる(§9.127)。
-   109.2em≒1420px / 93.4em≒1214px（表示サイズ「中」のとき）。 */
-@container schead (max-width: 109.2em){
+   107em≒1445px / 89em≒1202px（表示サイズ「中」・字 13.5px のとき・§9.612）。 */
+@container schead (max-width: 107em){
  /* ---------- 「追加」の塊は先に文字を落とす(§9.238 ②→§9.505) ----------
     §9.505（利用者の選択「案A」）で表の見せ方の状態の要約（約190px）を帯から外し、読込の
     チップも「読込 23:14」へ縮めた。**字を全部出して要る幅**を測り直すと（1728／1920／1600／
@@ -2594,15 +2599,18 @@ div.sc-view-row{cursor:default}
     （前は130emで落ちていた）。**しきい値は測って決めること**——`em`は器自身の文字サイズで解ける
     （表示サイズを変えると同じ窓幅でもem数が変わる・§9.199）。
     §9.591 で帯の字を12→13px（`--bar-fs`）にしたので測り直した: 字を全部出して要る幅は **100.0〜109.0em**
-    （同じ窓でも1emが大きくなったぶんem数は下がる）。1728px・中は器111.7em で字つきのまま。 */
+    （同じ窓でも1emが大きくなったぶんem数は下がる）。1728px・中は器111.7em で字つきのまま。
+    §9.612 で帯の字を13→13.5pxにしたので測り直した（1920／1728／1536／1366px × 小・中・大）: 字を全部出して要る幅は
+    **97.0〜106.4em**。しきい値はその最大の少し上。1728px・中は器107.6em で字つきのまま。 */
  #scToolsAdd .sc-ico-btn>span{display:none}
  #scToolsAdd .sc-ico-btn{padding:0 var(--ctl-pad-x-xs)}
 }
-@container schead (max-width: 93.4em){
+@container schead (max-width: 89em){
  /* 次に**塊の見出しと文字**を落としてアイコンだけにする。意味は`title`が持っているので、
     押す前に読める手立ては残る。§9.505で測り直した「追加」の字を落としたあとに要る幅は
     **84.4〜96.6em**——その最大の少し上（前は91em。1366px・中＝90.8emは前から字なし・1440px・中＝97.0emは
-    字が残る）。§9.591（13px）で測り直すと **84.7〜93.3em**——その最大の少し上。 */
+    字が残る）。§9.591（13px）で測り直すと **84.7〜93.3em**——その最大の少し上。
+    §9.612（13.5px）で測り直すと **81.8〜88.5em**——その最大の少し上（1536px・中＝93.3em は見出しと字が残る）。 */
  .sc-tools-label{display:none}
  .sc-ico-btn>span{display:none}
  .sc-ico-btn{padding:0 var(--ctl-pad-x-xs)}

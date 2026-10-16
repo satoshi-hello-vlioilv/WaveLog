@@ -70,19 +70,20 @@ run('test_wipgone: 外したロットを、仕掛に無ければ一覧へ戻さ�
     画面側の書込キューと重なると423で弾かれる。**空くまで試す**——ここは
     「材料を用意できたこと」を確かめたいのであって、ロックの取り合いを
     確かめたいのではない（ロックの網は`test_sclock`）。 */
- const addPlan=lot=>page.evaluate(async a=>{
+ /* 明細は仕掛一覧の行そのもの（製品の「予定へ」と同じ・§9.612 の鍵はここから作る）。 */
+ const addPlan=(lot,detail)=>page.evaluate(async a=>{
   const t0=Date.now();let last=null;
   while(Date.now()-t0<20000){
    const r=await fetch('/api/schedule/plan/add',{method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({user_id:'test-wipgone',equipment:a.eq,kind:'作業',lotNo:a.lot})});
+    body:JSON.stringify({user_id:'test-wipgone',equipment:a.eq,kind:'作業',lotNo:a.lot,detail:a.detail||{}})});
    let j={};try{j=await r.json()}catch(e){j={parseError:String(e)}}
    last={status:r.status,body:j};
    if(r.status!==423)return last;
    await new Promise(z=>setTimeout(z,400));    // ロックが空くのを待つ
   }
   return last;
- },{eq:EQ,lot});
+ },{eq:EQ,lot,detail});
  const made=[];
  /* **製品の入口を通す**——行の「外す」ボタンと確認モーダル。網のためだけの
     入口を作らない（作ると、画面から辿れない道だけが通っていることになる）。 */
@@ -118,17 +119,19 @@ run('test_wipgone: 外したロットを、仕掛に無ければ一覧へ戻さ�
   const real=await page.evaluate(()=>{
    const col=(WL.base.aliases.lotNo||[]).find(n=>S.columns.includes(n));
    const hidden=WL.scheduleView.hiddenLotSet()||new Set();
+   /* 伏せる鍵は行の`__lotKey`（§9.612・サーバーの`lot_identity`が作る）。 */
    const row=(S.rows||[]).find(r=>{
     const v=String(r[col]||'').trim();
-    return v&&!hidden.has(v);
+    return v&&r.__lotKey&&!hidden.has(r.__lotKey);
    });
-   return {col,lot:row?String(row[col]).trim():'',hidden:hidden.size,rows:(S.rows||[]).length};
+   const detail=row?Object.fromEntries(Object.entries(row).filter(([k,v])=>!k.startsWith('__')&&v!=null&&v!=='')):{};
+   return {col,lot:row?String(row[col]).trim():'',detail,hidden:hidden.size,rows:(S.rows||[]).length};
   });
   rec('仕掛一覧からロット番号を1件取れる', !!real.lot,
       `${real.col}=${real.lot} / 一覧${real.rows}行・伏せ${real.hidden}件`);
 
   /* ---- 1. 仕掛にまだ在るロットは、外したら戻る ---------------------- */
-  const add1=await addPlan(real.lot);
+  const add1=await addPlan(real.lot,real.detail);
   if(add1.body&&add1.body.id)made.push(String(add1.body.id));
   rec('仕掛に在るロットを予定へ足せた', add1.status===200&&!!(add1.body||{}).id, JSON.stringify(add1.body).slice(0,120));
   /* **行はidで待つ**——タイムラインの「内容」欄に何を出すかは設備ごとの
@@ -158,6 +161,8 @@ run('test_wipgone: 外したロットを、仕掛に無ければ一覧へ戻さ�
    const src=(S.rows||[])[0];
    const clone=Object.assign({},src);
    clone[a.col]=a.lot;
+   /* 鍵はサーバーが作る（§9.612）。写しの行は予定に入れたあとで、その予定の鍵を持たせる（入れる前は誰とも同じでない）。 */
+   clone.__lotKey='';clone.__wipClone=true;
    S.rows.unshift(clone);
    WL.list.renderGrid();
   },{col:real.col,lot:GONE});
@@ -181,6 +186,12 @@ run('test_wipgone: 外したロットを、仕掛に無ければ一覧へ戻さ�
      },EQ);
      rec('足した予定がタイムラインに出る', false, st);
     });
+  await settle();
+  /* 写しの行へ、足した予定と同じ鍵を持たせる（サーバーが一覧の行に添える鍵と同じ作り・§9.612）。 */
+  const goneKey=await page.evaluate(id=>{
+   const e=WL.scheduleView.entries().find(x=>String(x.id)===String(id));
+   const k=(e&&e.lotKey)||'';(S.rows||[]).filter(r=>r.__wipClone).forEach(r=>{r.__lotKey=k});WL.list.renderGrid();return k;
+  },made[made.length-1]);
   await settle();
   const removable=await page.evaluate(id=>{
    const row=document.querySelector(`.sc-row-line[data-id="${CSS.escape(String(id))}"]`);
@@ -218,10 +229,10 @@ run('test_wipgone: 外したロットを、仕掛に無ければ一覧へ戻さ�
   await page.evaluate(a=>{
    window.invalidateTableCache();
    const clone=Object.assign({},(S.rows||[])[0]);
-   clone[a.col]=a.lot;
+   clone[a.col]=a.lot;clone.__lotKey=a.key;
    S.rows.unshift(clone);
    WL.list.renderGrid();
-  },{col:real.col,lot:GONE});
+  },{col:real.col,lot:GONE,key:goneKey});
   await settle();
   rec('一覧を取り直すと、伏せていたロットも伏せなくなる', await gridHas(GONE));
 
