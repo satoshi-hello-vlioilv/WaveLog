@@ -1336,7 +1336,7 @@
     btn.classList.toggle('is-partial',ign>0);
     /* **0でも押せる**（§9.505）——条件を足す・作る入口もこの面にある。 */
     btn.title=n
-      ? '効いている条件 '+n+'つ\n'+items.map(x=>`${x.source}: ${x.text}`).join('\n')
+      ? '効いている条件 '+n+'つ（すべてに当たる行だけを出します＝かつ）\n'+items.map(x=>`${x.source}: ${x.text}`).join('\n')
         +(ign?`\n（うち${ign}つはこの一覧の元データに無い列なので効いていません）`:'')
         +'\n押すと中身を確かめたり、外したり、条件を足したりできます。'
       : '効いている条件はありません。押すと、条件を足す・作る入口が開きます。';
@@ -1374,7 +1374,7 @@
       +`<button type="button" class="fb-cond-x" data-other-x="${x.kind}" title="${x.kind==='search'?'検索の字を消して外します':'スライサーで選んだ値を外します'}">×</button></div>`;
     const n=rows.length+others.length;
     list.innerHTML='<p class="fb-cond-head">効いている条件'
-      +(n?`<small>${n}つ。この一覧に当てている絞り込みです</small>`
+      +(n?`<small>${n}つ。すべてに当たる行だけを出します（かつ）</small>`
         :'<small>まだありません。下のどれかで足せます</small>')+'</p>'
       +others.map(otherLine).join('')+rows.map(line).join('')+linkSwitchHtml();
     list.querySelectorAll('[data-link-set]').forEach(b=>b.onclick=()=>{const on=b.dataset.linkSet==='1';if(on!==filterLinked()){setFilterLinked(on);renderCondMenu()}});

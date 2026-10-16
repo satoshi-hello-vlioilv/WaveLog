@@ -94,7 +94,9 @@ H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ pag
  await page.click('[data-db-key="SIKALOTNOW"]');
  await W.until(page, () => !!document.querySelector('#grid [data-empty-clear]'), null, { ms: 30000, what: 'スライサーで0件' });
  const sx = await page.evaluate(() => ({ n: (document.getElementById('filterCount') || {}).textContent || '',
-  conds: [...document.querySelectorAll('#grid .list-empty-conds li')].map(x => x.textContent.trim()) }));
+  conds: [...document.querySelectorAll('#grid .list-empty-conds li')].map(x => x.textContent.trim()),
+  count: (document.getElementById('count') || {}).textContent || '', countShown: !!(document.getElementById('count') || {}).getClientRects?.().length }));
+ rec('F5 スライサーで0件でも件数は「0件 / 全 N件」で出る', /^0件\s*\/\s*全/.test(sx.count) && sx.countShown, JSON.stringify({ count: sx.count, shown: sx.countShown }));
  rec('F4 スライサーの選択も条件の数に入る', Number(sx.n) >= 1, `条件 ${sx.n}`);
  rec('F6a 0件の案内がスライサーを効いている条件として名乗る', sx.conds.some(t => /スライサー/.test(t)), sx.conds.join(' / '));
  await shot('state_slicer0');

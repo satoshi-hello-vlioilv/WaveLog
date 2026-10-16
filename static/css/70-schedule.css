@@ -344,11 +344,15 @@
 :is(.sc-split-wrap,.sc-float-body) .list-join-chip[data-short]{font-size:0}
 :is(.sc-split-wrap,.sc-float-body) .list-join-chip[data-short]::after{content:attr(data-short);font-size:var(--lt-fs)}
 :is(.sc-split-wrap,.sc-float-body) .list-pager>b{min-width:0}
-/* 伏せる札は分割では短い名乗り（全文は`title`・押すと面が全部言う）。状態の2行目に結合・ページと並べるため。 */
-.sc-split-wrap #lotHideChip .lt-tool-t[data-short]{font-size:0}
-.sc-split-wrap #lotHideChip .lt-tool-t[data-short]::after{content:attr(data-short);font-size:var(--lt-fs)}
-.sc-split-wrap .lt-state>.lt-state-right{order:7}
+/* 伏せる札は狭い器では短い名乗り（分割もポップアップも同じ字・全文は`title`・押すと面が全部言う）。 */
+:is(.sc-split-wrap,.sc-float-body) #lotHideChip .lt-tool-t[data-short]{font-size:0}
+:is(.sc-split-wrap,.sc-float-body) #lotHideChip .lt-tool-t[data-short]::after{content:attr(data-short);font-size:var(--lt-fs)}
+/* 分割（幅380px）は 1行目＝件数・伏せる札／2行目＝元データ・結合・ページ（ページを1行に独りで置かない）。 */
+.sc-split-wrap .lt-state>#listToolSums{order:2}
 .sc-split-wrap .lt-state>.lt-break{order:3}
+.sc-split-wrap .lt-state>#listFreshness{order:4}
+.sc-split-wrap .lt-state>:is(#listJoinChip,#listTintChip,#listLoadChip){order:5}
+.sc-split-wrap .lt-state>.lt-state-right{order:6}
 :is(.sc-split-wrap,.sc-float-body) .filter-token-input{padding:var(--pad-chip)}
 :is(.sc-split-wrap,.sc-float-body) .filter-token-search{height:22px;flex-basis:80px;min-width:60px}
 :is(.sc-split-wrap,.sc-float-body) .filter-quick-row{padding:var(--pad-row);gap:var(--gap-tight)}
