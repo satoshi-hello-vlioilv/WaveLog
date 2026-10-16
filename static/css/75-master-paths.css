@@ -27,9 +27,10 @@
 .mm-field .mm-path input{flex:1 1 auto;min-width:0;min-width:0;height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);padding:0 var(--ctl-pad-x-sm);background:#fff;color:inherit;font-size:var(--fs-sm);font-family:ui-monospace,Consolas,monospace}
 .mm-path-browse{
  flex:0 0 auto;height:var(--ctl-h);padding:0 .9em;border:1px solid var(--line);border-radius:var(--radius-sm);
- background:var(--pale);color:var(--ink);font-size:var(--fs-sm);cursor:pointer;white-space:nowrap;
+ background:var(--surface);border-color:var(--line-mid);color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap;
 }
-.mm-path-browse:hover{background:var(--pale);border-color:var(--teal)}
+/* 押せる縁取りのボタン（§9.610）。灰の塗りは「使えない」の見た目なので使わない */
+.mm-path-browse:hover{background:var(--teal-tint);border-color:var(--teal)}
 /* パス参照ダイアログ */
 .pathpick-dialog{width:min(94vw,760px)}
 .pathpick-body{display:flex;flex-direction:column;gap:var(--gap-section)}
@@ -321,55 +322,49 @@
 }
 
 /* ---------- アプリの更新（§9.555・master-update.js） ----------
-   流れ（① 版を置く → ② 配る版を選ぶ → ③ 各PCがそろう）は左から右——作業の順と同じ（§CLAUDE 14）。
-   状態は色だけで言わない（段の字・札の字が言う）。 */
+   §9.610（E の手順で選んだ V1）: 置き場の行・①〜③の行・表を同じ幅の1列（`.au-col`・右端は1つ）。
+   ①〜③と新しい PC は「1行＝名前｜値」（共通設定のほかの段と同じ形）。状態は色だけで言わない（札の字が言う）。 */
+.au-col{--au-w:74em;max-width:var(--au-w)}   /* 表の列の幅の和（中身なり）にそろえる */
 .au{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
-/* 置き場の欄（§9.557）。道は長いので欄は横いっぱい、添え書きは欄の下に1行 */
 .au-dir-note{margin:var(--space-1) 0 0;color:var(--warn-fg);font-size:var(--fs-sm)}
 .au-dir-note[hidden]{display:none}
-.au-from{color:var(--ink-2)}
-.au-where{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
-.au-where code{color:var(--ink-2)}
 .au-bad{padding:var(--space-3);border:1px solid var(--danger-border);border-radius:var(--radius-md);
  background:var(--danger-bg);color:var(--danger);font-size:var(--fs-sm);line-height:1.7}
-.au-flow{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:var(--space-2);align-items:stretch}
-.au-step{display:flex;flex-direction:column;gap:2px;padding:var(--space-2) var(--space-3);border:1px solid var(--line);
- border-top:3px solid var(--line-mid);border-radius:var(--radius-md);background:var(--surface-2);min-width:0}
-.au-step>b{font-size:var(--fs);font-weight:var(--fw-strong);color:var(--ink)}
-.au-step>span{font-size:var(--fs);font-weight:var(--fw-body);color:var(--ink)}
-.au-step>small{font-size:var(--fs-sm);color:var(--ink-2)}
-.au-step>small .au-nw{white-space:nowrap}   /* 数と単位は割らない（「3 / 台」にしない） */
-/* 状態は上の太い線だけが言う（§9.609・LotScope と同じ型・面は塗らない）。済み＝灰／決めた＝青緑／待ち＝薄い青緑の点線 */
-.au-step.is-done{border-top-color:var(--line-strong)}
-.au-step.is-set{border-top-color:var(--teal)}
-.au-step.is-pending{border-top-color:var(--teal-soft);border-top-style:dashed}
-.au-arrow{align-self:center;width:var(--space-5);height:2px;background:var(--line-mid);position:relative}
-.au-arrow::after{content:"";position:absolute;right:-1px;top:-4px;border:5px solid transparent;border-left-color:var(--line-mid);border-right:0}
-.au-put{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
-/* 新しい PC へ渡すもの（§9.559）: 名前の列は固定幅、値（アドレス）は横いっぱい */
-.au-new{margin:0;display:grid;grid-template-columns:7em minmax(0,1fr);gap:var(--space-2);align-items:baseline;font-size:var(--fs-sm)}
-.au-new>b{color:var(--ink-2)}
-.au-new code{color:var(--ink);word-break:break-all}
-.au-new small{color:var(--ink-2);font-size:var(--fs-sm)}
-.au-new .mm-btn-ghost{margin-left:var(--space-2)}
-.au-warn{font-style:normal;color:var(--warn-fg);font-weight:var(--fw-strong)}
-.au-put small{color:var(--ink-2);font-size:var(--fs-sm)}
-/* 置いている間（§9.556）: ボタンの行を進み具合の帯（共通の`.wl-progress`）に替える。帯はこの段の中の枠1つ */
-.au-put.is-busy{display:grid;align-items:stretch;gap:var(--space-2)}
-.au .wl-progress{border:1px solid var(--line);border-radius:var(--radius-md)}
-.au-pick{cursor:pointer}
+.au-rows{display:flex;flex-direction:column;border-top:1px solid var(--line-soft)}
+.au-row{display:grid;grid-template-columns:11em minmax(0,1fr);align-items:center;gap:var(--space-3);min-height:44px;border-bottom:1px solid var(--line-soft)}
+.au-row>b{font-size:var(--fs);font-weight:var(--fw-ui);color:var(--ink)}
+.au-row>span{display:flex;align-items:center;gap:var(--space-2);min-width:0;font-size:var(--fs);color:var(--ink)}
+.au-row small{font-size:var(--fs-sm);color:var(--ink-2)}
+.au-nw{white-space:nowrap}   /* 数と単位は割らない（「3 / 台」にしない） */
+.au-path{font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-sm);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.au-warn{font-style:normal;color:var(--warn-fg);font-weight:var(--fw-strong);font-size:var(--fs-sm)}
 .au-empty{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
-.au-wrap{border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface)}
-.au-table{width:100%;border-collapse:collapse;font-size:var(--fs)}
+/* 版の表。列の幅は固定（`<colgroup>`・置いている最中に操作が消えても列が動かない）。余りは「状態」の列が受ける。 */
+.au-wrap{border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface);overflow:hidden}
+.au-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:var(--fs)}
+.au-c-ver{width:7.5em}.au-c-at{width:15em}.au-c-zip{width:13em}.au-c-mb{width:6.5em}.au-c-act{width:15em}
 .au-table th{height:34px;text-align:left;font-size:var(--fs-sm);font-weight:var(--fw-strong);color:var(--ink-2);background:var(--surface-2);
  border-bottom:1px solid var(--line);padding:0 var(--space-3)}
-.au-table td{height:42px;border-bottom:1px solid var(--line-soft);padding:0 var(--space-3);vertical-align:middle;white-space:nowrap}
+.au-table td{height:42px;border-bottom:1px solid var(--line-soft);padding:0 var(--space-3);vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .au-table tbody tr:last-child td{border-bottom:0}
+/* 行は押せない（読むだけ）。一覧の共通の乗せた色と指のカーソルを出さない */
+.au-table tbody tr:hover{background:none;cursor:default}
 /* 配っている行は淡い緑の地（濃い塗りで選択中に見せない・LotScope と同じ） */
 .au-table tr.is-live td{background:color-mix(in srgb,var(--success-bg) 55%,var(--surface))}
 .au-ver{font-weight:var(--fw-strong);font-variant-numeric:tabular-nums}
+.au-by{margin-left:var(--space-3);color:var(--ink-2)}
 .au-mono{font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-sm)}
 .au-num,.au-table th.au-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* 置いている版の行（表の先頭）。進み具合は共通の帯を横1列に: 段の名前｜棒｜割合、その下に数。棒は青緑（琥珀は推奨の色に取っておく）。 */
+.au-table tr.au-busy td{height:52px;background:var(--teal-tint)}
+.au-table .wl-progress{display:grid;grid-template-columns:auto minmax(6em,1fr) auto;grid-template-areas:"t b p" "m m m";
+ align-items:center;column-gap:var(--space-2);row-gap:2px;padding:0;margin:0;background:none;border:0}
+.au-table .wl-progress-head{display:contents}
+.au-table .wl-progress-title{grid-area:t;font-size:var(--fs-sm)}
+.au-table .wl-progress-pct{grid-area:p;margin:0}
+.au-table .wl-progress-bar{grid-area:b}
+.au-table .wl-progress-bar i{background:var(--teal)}
+.au-table .wl-progress-meta{grid-area:m}
 /* 状態の札: 淡い地に濃い字の丸い札。色は意味ごとに1つ（配っている＝緑・前に配った＝灰・推奨＝琥珀・この PC＝青緑の小） */
 .au-tags{display:inline-flex;gap:6px;align-items:center}
 .au-chip{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:var(--radius-pill);font-size:var(--fs-sm);font-weight:var(--fw-strong);white-space:nowrap}
@@ -377,27 +372,35 @@
 .au-chip.is-prev{background:var(--surface-3);color:var(--ink-2)}
 .au-chip.is-rec{background:var(--warn-bg);color:var(--warn-fg);box-shadow:inset 0 0 0 1px var(--warn-border)}
 .au-chip.is-me{background:var(--teal-tint);color:var(--teal-ink)}
-/* 行の操作: 新しい版は塗りの「この版を配る」・古い版は縁取りの「この版に戻す」、▾ で配り方を選ぶ */
-.au-btn{height:28px;padding:0 var(--space-3);border-radius:var(--radius-sm);border:1px solid var(--line-mid);background:var(--surface);
+/* ボタン: 高さ30px・字は縦横の真ん中（label の ZIP の入口も同じ）。塗りは新しい版の「この版を配る」だけ */
+.au-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;line-height:1;padding:0 var(--space-3);
+ border-radius:var(--radius-sm);border:1px solid var(--line-mid);background:var(--surface);
  color:var(--teal-dark);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer;white-space:nowrap}
-.au-btn:hover{background:var(--teal-tint)}
+.au-btn:hover:not(:disabled){background:var(--teal-tint)}
+.au-btn:disabled{opacity:var(--op-disabled);cursor:default}
 .au-btn.is-go{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:var(--fw-strong)}
 .au-btn.is-go:hover{background:var(--teal-dark)}
+.au-ghost,.au-pick{color:var(--ink)}
+.au-pick i{color:var(--teal-ink)}
+.au-sm{height:28px;padding:0 var(--space-2)}
 .au-split{display:inline-flex}
 .au-split .au-btn:first-child{border-radius:var(--radius-sm) 0 0 var(--radius-sm)}
 .au-split .au-more{border-radius:0 var(--radius-sm) var(--radius-sm) 0;border-left-width:0;padding:0 var(--space-2)}
 .au-split .au-more.is-go{border-left:1px solid color-mix(in srgb,#fff 45%,var(--teal))}
-.au-btn.au-rec{border-color:var(--warn-border);color:var(--warn-fg)}
-.au-btn.au-rec:hover{background:var(--warn-bg)}
+/* 配り方（通常｜★ 推奨の更新）は2〜4択の`.mm-seg`。札の2行目（何が起きるか）は細く */
+.au-how>button{height:30px}
+.au-row .au-how>button small{color:inherit}   /* 札の2行目は札の字の色のまま（選んだ札の白字を灰で上書きしない） */
+.au-how>button:disabled{cursor:default;opacity:var(--op-disabled)}
 /* ▾ の配り方の面（器は .wl-menu）。項目は名前と一言の2行 */
-.wl-menu.au-menu{min-width:280px}
+.wl-menu.au-menu{min-width:22em}
+.wl-menu.au-menu small{white-space:nowrap}
 .wl-menu.au-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;height:auto;padding:var(--space-2) var(--space-3)}
 .wl-menu.au-menu small{color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-body)}
-/* 版の一覧の頭（数・合計の量・整理の入口）と、整理中だけ出る「消す…」（§9.584）。 */
-.au-list-head{display:flex;align-items:center;gap:var(--space-3);margin:0 0 var(--space-1);font-size:var(--fs-sm)}
-.au-list-head>b{color:var(--ink-2);font-weight:var(--fw-strong)}
-.au-list-head>.mm-btn-ghost{margin-left:auto}
-.au-tidy-note,.au-muted{color:var(--ink-2);font-size:var(--fs-sm)}
+/* 版の一覧の頭（節の見出し・数・合計の量・整理の入口）と、整理中だけ出る「消す…」（§9.584）。 */
+.au-list-head{display:flex;align-items:center;gap:var(--space-2);min-height:30px;margin-top:var(--space-2)}
+.au-list-head>b{font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink)}
+.au-list-head>small,.au-tidy-note,.au-muted{color:var(--ink-2);font-size:var(--fs-sm)}
+.au-sp{flex:1}
 .au-act{white-space:nowrap;text-align:right}
 .au-table .au-del{color:var(--danger);border-color:var(--danger-border)}
 .au-table .au-del:hover{color:var(--danger);background:var(--danger-bg);border-color:var(--danger)}

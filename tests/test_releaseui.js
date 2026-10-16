@@ -97,8 +97,11 @@ run('test_releaseui: 推奨の更新の札と控えめな知らせ（§9.609）'
   const row=v=>page.evaluate(v=>{const t=[...document.querySelectorAll('#appUpdate .au-table tbody tr')].find(r=>r.querySelector('.au-ver').textContent===v);
    return t?{札:[...t.querySelectorAll('.au-chip')].map(c=>c.textContent),操作:[...t.querySelectorAll('.au-act button')].map(b=>b.textContent.trim())}:null},v);
   const r442=await row('2.442.0'),r443=await row('2.443.0'),r441=await row('2.441.0');
-  rec('R1. 推奨の札は字で読める（配っている＋★ 推奨の更新）・配っている行で外せる（1手）',
-   !!r442&&r442.札.join()==='配っている,★ 推奨の更新'&&r442.操作.join()==='推奨を外す',JSON.stringify(r442));
+  /* §9.610: 配っている版の配り方は ② の切り替え（通常｜★ 推奨の更新）が言う。表の配っている行は札だけ（★を2回言わない）。 */
+  const how=await page.evaluate(()=>[...document.querySelectorAll('#appUpdate .au-how>button')].map(b=>({字:b.textContent.replace(/\s+/g,' ').trim(),on:b.classList.contains('is-on'),checked:b.getAttribute('aria-checked')})));
+  rec('R1. 配り方は ② の切り替えで字で読める（通常＝知らせない／★ 推奨の更新＝知らせる・いまは推奨）・表の配っている行は札だけ',
+   how.length===2&&/通常.*知らせない/.test(how[0].字)&&/推奨の更新.*使っている PC に知らせる/.test(how[1].字)&&how[1].on&&how[1].checked==='true'&&!how[0].on
+   &&!!r442&&r442.札.join()==='配っている'&&r442.操作.length===0,JSON.stringify({how,r442}));
   rec('R1. 新しい版は「この版を配る ▾」・古い版は「この版に戻す ▾」（LotScope と同じ言い分け）',
    !!r443&&r443.操作.join()==='この版を配る,▾'&&!!r441&&r441.操作.join()==='この版に戻す,▾'&&r441.札.join()==='前に配った,この PC',JSON.stringify({r443,r441}));
   /* 物差し（§9.610・直す前に測った）。版の管理の段を読んで数にする:
@@ -128,9 +131,9 @@ run('test_releaseui: 推奨の更新の札と控えめな知らせ（§9.609）'
    const 折=[...root.querySelectorAll('.au-step>*')].filter(e=>{const lh=parseFloat(getComputedStyle(e).lineHeight)||16;return e.getBoundingClientRect().height>lh*1.6}).length;
    return{字,ずれ,寄り,宙,琥珀,折};
   });
-  const flow=await page.evaluate(()=>[...document.querySelectorAll('#appUpdate .au-step')].map(x=>x.className.replace('au-step','').trim()+':'+x.textContent.replace(/\s+/g,' ').trim()));
-  rec('R1. 流れは上の線で状態を言い（済み／決めた／待ち）、③が古い版の PC の台数を言う',
-   /^is-done/.test(flow[0])&&/^is-set/.test(flow[1])&&/^is-pending/.test(flow[2])&&/古い版の PC 3台/.test(flow[2]),JSON.stringify(flow));
+  const flow=await page.evaluate(()=>[...document.querySelectorAll('#appUpdate .au-row')].map(x=>x.textContent.replace(/\s+/g,'')));
+  rec('R1. ①置く→②配り方→③各 PC→新しい PC の行（1行＝名前｜値）。③が古い版の PC の台数を言う（配る版の番号は表の「配っている」だけ）',
+   flow.length===4&&/^①版を置くZIPから版を置く/.test(flow[0])&&/^②配り方通常知らせない★推奨の更新/.test(flow[1])&&/^③各PC.*古い版のPC3台\/5台/.test(flow[2])&&/^新しいPCへ/.test(flow[3]),JSON.stringify(flow));
   for(const [w,h] of [[1728,1152],[1536,864]]){
    await page.setViewportSize({width:w,height:h});await idle();
    const cut=await page.evaluate(()=>[...document.querySelectorAll('#appUpdate td,#appUpdate .au-step>*,.mm-tab *')].filter(e=>e.children.length===0&&e.scrollWidth>e.clientWidth+1&&getComputedStyle(e).overflow!=='visible').map(e=>e.textContent.trim().slice(0,20)));
@@ -140,6 +143,17 @@ run('test_releaseui: 推奨の更新の札と控えめな知らせ（§9.609）'
    rec(`U3. ${w}px で説明の地の文は${TEXT_MAX}字以内`,m.字<=TEXT_MAX,JSON.stringify(m));
    rec(`U4. ${w}px で琥珀は推奨の札とボタンだけ・流れの段は折り返さない`,m.琥珀.length===0&&m.折===0,JSON.stringify(m));
    await shot(`manage-${w}`);
+  }
+  /* ② の「通常」を押すと推奨の札を外す（1手・確かめない＝取り返せる）。いまの側を押し直しても何も送らない。 */
+  {
+   const got=[];
+   await page.route('**/api/app/update/recommend',async r=>{got.push(JSON.parse(r.request().postData()||'{}'));await r.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'})});
+   await page.click('#appUpdate .au-how>button.is-on');
+   await page.click('#appUpdate .au-how>button:not(.is-on)');
+   await W.poll(()=>got.length,k=>k>0,5000);
+   rec('R1. ② の「通常」を1回押すと推奨を外す（いまの側の押し直しは何も送らない）',
+    JSON.stringify(got)===JSON.stringify([{version:'2.442.0',on:false,note:''}]),JSON.stringify(got));
+   await page.unroute('**/api/app/update/recommend');
   }
   /* ▾ で「推奨の更新として配る」: 一言を聞いて、配る版を決めてから札を付ける（2つの口を順に） */
   const sent=[];

@@ -46,16 +46,18 @@
  function sectionHtml(v,K){
   /* 1行＝名前｜欄｜状態（共通設定の他の段と同じ部品・§9.583）。説明は ⓘ。届くかは欄の右（状態の席）で
      言う（`paintDir()`）。道の字を欄の下にもう一度書かない（§CLAUDE 8）。 */
-  return `<div class="pc-rows">${K.row('update_dir','版の置き場',K.path('update_dir','dir','空欄なら既定の置き場'),{state:'<span class="pc-when">確かめています…</span>',
+  return `<div class="pc-rows au-col">${K.row('update_dir','版の置き場',K.path('update_dir','dir','空欄なら既定の置き場'),{state:'<span class="pc-when">確かめています…</span>',
     tip:'空欄なら既定の置き場を使います。**変えると全PCに効きます**（開いている PC は10分以内に控え、次の起動から新しい置き場を見ます）。'})}</div>
-   <p class="au-dir-note" id="auDirNote" hidden></p>
-   <div class="au" id="appUpdate" aria-live="polite"><p class="au-empty">更新の状態を読んでいます…</p></div>`;
+   <p class="au-dir-note au-col" id="auDirNote" hidden></p>
+   <div class="au au-col" id="appUpdate" aria-live="polite"><p class="au-empty">更新の状態を読んでいます…</p></div>`;
  }
  /* 置き場の欄の添え書き: 既定の字・いま効いている置き場の出どころ（共有の設定／既定／この PC だけの上書き）。 */
  const DIR_FROM={shared:'共有の設定',install:'この PC を入れた元の置き場',default:'既定',local:'この PC の config\\local.json（この PC だけの上書き）'};
  function paintDir(st){
-  const inp=document.querySelector('[data-pc-field="update_dir"]');
-  if(inp&&st.defaultDir)inp.placeholder=`空欄なら既定: ${st.defaultDir}`;
+  /* いま見ている置き場は空欄の欄の薄い字が言う（下にもう1行足さない・§9.610）。書いてあればその字が答え。 */
+  const inp=/** @type {HTMLInputElement|null} */(document.querySelector('[data-pc-field="update_dir"]'));
+  if(inp&&st.dir)inp.placeholder=st.dirSource==='local'||st.dirSource==='default'||!st.dirSource
+   ?`空欄なら既定: ${st.defaultDir||st.dir}`:`空欄 → ${st.dir}（${DIR_FROM[st.dirSource]}）`;
   const cell=document.querySelector('[data-pc-state="update_dir"]');
   if(cell){
    cell.innerHTML=st.reachable?'<span class="pc-chip is-ok">届いています</span>':'<span class="pc-chip is-bad">届きません</span>';
@@ -84,26 +86,31 @@
   panel.dataset.tabStateTone=bad?'bad':!rel?'warn':'';
   if(form&&typeof form.__mmPaintTabs==='function')form.__mmPaintTabs();
  }
- /* ① → ② → ③ の流れ。いまの値を各段に書く（図と字を結ぶ）。状態は**上の太い線**が言う（§9.609・LotScope と同じ型）:
-    ① 置いた＝灰の実線／② 配る版を決めた＝青緑の実線／③ そろうのを待っている＝薄い青緑の点線。面は塗らない。 */
- function flowHtml(st){
+ /* ① → ② → ③ と新しい PC は「1行＝名前｜値」（共通設定のほかの段と同じ形・§9.610、E の手順で選んだ V1）。数はここと表の頭で
+    1回ずつ（この PC の版は表の札だけが言う）。説明の文は ⓘ へ畳み、本文には値と次の一手だけを置く。 */
+ const tip=t=>WL.mm.tipHtml(t);   /* ⓘ は共通の1つ（`WL.popMenu.tips()`・§9.583） */
+ const lineHtml=(k,body)=>`<div class="au-row"><b>${k}</b><span>${body}</span></div>`;
+ function stepsHtml(st){
   const rel=st.release&&st.release.version;
-  const here=st.local;
-  const step3=!rel?'配る版が決まるまで、各PCはいまの版のまま'
-   :(st.pending?`この PC は次の起動で <b>${esc(here)} → ${esc(rel)}</b> にそろいます`
-                :`この PC は配る版（<b>${esc(rel)}</b>）と同じです`);
-  /* 古い版で動いている PC の台数（接続の記録から・開発者は数えない）。③が言う＝そろう相手の数（推奨にするか決める根拠）。 */
-  const sp=st.spread&&st.spread.total>0&&rel?`<span class="au-nw">古い版の PC ${Number(st.spread.behind)}台</span>・`:'';
-  return `<ol class="au-flow" aria-label="更新の流れ">
-   <li class="au-step${st.versions.length?' is-done':''}"><b>① 版を置く</b><span>${st.versions.length} 版を置いてあります</span>
-    <small>GitHub の「Download ZIP」で落とした ZIP を選ぶ</small></li>
-   <li class="au-arrow" aria-hidden="true"></li>
-   <li class="au-step${rel?' is-set':''}"><b>② 配る版を選ぶ</b><span>${rel?`配る版 <b>${esc(rel)}</b>`:'まだ決めていません'}</span>
-    <small>${rel?esc(`${st.release.setAt||''} ${st.release.setBy||''}`.trim()):'一覧の「この版を配る」で決める'}</small></li>
-   <li class="au-arrow" aria-hidden="true"></li>
-   <li class="au-step${st.pending?' is-pending':''}"><b>③ 各PCがそろう</b><span>${step3}</span>
-    <small>${sp}起動のとき、Python を起こす前にそろえます（db・config は触りません）</small></li>
-  </ol>`;
+  const put=busy?'<small>置いています（下の表の先頭の行）</small>'
+   :st.canRelease?`<label class="au-btn au-pick"><input type="file" accept=".zip,application/zip" id="auZip" hidden><i class="fa-solid fa-file-zipper" aria-hidden="true"></i>ZIP から版を置く</label>`
+     +`<small>GitHub の「Download ZIP」で落とした ZIP</small>${tip(`入るのは ${st.payload.join('・')} です（db・config は入れません）。同じ版はもう一度置けません。`)}`
+   :`<small>版を置く・配るのは開発者・メンテナンス者だけです（この端末は「${esc(st.role)}」）</small>`;
+  const give=rel?howHtml(st):'<small>配る版をまだ決めていません。下の表の「この版を配る」で決めます</small>';
+  const sp=rel&&st.spread&&st.spread.total>0?`<small class="au-nw">古い版の PC ${Number(st.spread.behind)}台 / ${Number(st.spread.total)}台</small>`:'';
+  const each=rel?`次の起動で配る版にそろう${sp}${tip('起動のとき、アプリを起こす前に配る版へそろえます。データ（db）と設定（config）はそのままです。台数は接続の記録から数えます（開発者の端末は数えません）。')}`
+   :'<small>配る版が決まるまで、各 PC はいまの版のまま</small>';
+  return `<div class="au-rows">${lineHtml('① 版を置く',put)}${lineHtml(rel?'② 配り方':'② 配る版',give)}${lineHtml('③ 各 PC',each)}${entryHtml(st)}</div>`;
+ }
+ /* 配り方（通常｜★ 推奨の更新）。**区別の意味を札の字そのものが言う**（利用者の指示「通常の更新として配る場合は控えめな通知も
+    出ない、推奨の更新の場合は通知が出る」）。部品は2〜4択の`.mm-seg`。押すと付け外し（付けるときは知らせに添える一言を聞く）。
+    変えられない端末・置いている最中は押せない形。 */
+ function howHtml(st){
+  const rel=st.release.version,on=!!(st.versions.find(v=>v.version===rel)||{}).recommend;
+  const say='通常＝知らせず、各 PC は次の起動でそろいます。★ 推奨の更新＝あわせて、古い版で使っている PC のヘッダーに控えめな札を出します（押すと開き直して更新）。';
+  const b=(k,label,sub)=>`<button type="button" role="radio" aria-checked="${k===on}"${k===on?' class="is-on"':''} data-au-recommend="${esc(rel)}" data-au-on="${k?1:0}"`
+   +`${!st.canRelease||busy?' disabled':''}>${label}<small>${sub}</small></button>`;
+  return `<span class="mm-seg au-how" role="radiogroup" aria-label="配り方">${b(false,'通常','知らせない')}${b(true,'★ 推奨の更新','使っている PC に知らせる')}</span>${tip(say)}`;
  }
  /* 消せる版（配っている版のほかの全部）。整理の入口を出すか・整理を終えるかはこの答えから決める。 */
  const deletable=st=>st.versions.filter(v=>v.version!==(st.release&&st.release.version));
@@ -116,74 +123,61 @@
  function tagsHtml(v,st){
   const rel=st.release&&st.release.version,prev=st.release&&st.release.previous,r=v.recommend;
   return [v.version===rel?chip('配っている','is-live'):'',v.version===prev?chip('前に配った','is-prev'):'',
-   r?chip('★ 推奨の更新','is-rec',`推奨の更新（${r.setAt||''} ${r.setBy||''}）${r.note?'：'+r.note:''}`):'',
+   r&&v.version!==rel?chip('★ 推奨の更新','is-rec',`推奨の更新（${r.setAt||''} ${r.setBy||''}）${r.note?'：'+r.note:''}`):'',
    v.version===st.local?chip('この PC','is-me'):''].join('');
  }
  /* 行の操作。新しい版は塗りの「この版を配る」、古い版は縁取りの「この版に戻す」（LotScope と同じ言い分け）。
-    どちらも ▾ で「推奨の更新として配る」を選べる。配っている版の行は推奨の付け外しだけ。 */
+    どちらも ▾ で「推奨の更新として配る」を選べる。配っている版の行は操作を持たない（配り方は②の切り替え）。 */
  function actHtml(v,st){
   const rel=st.release&&st.release.version;
   if(tidy)return v.version===rel?'<span class="au-muted">配っている版は消せません</span>'
-   :`<button type="button" class="mm-btn-ghost au-del" data-au-delete="${esc(v.version)}">消す…</button>`;
-  if(!st.canRelease||busy)return '';
-  if(v.version===rel)return v.recommend
-   ?`<button type="button" class="au-btn au-rec" data-au-recommend="${esc(v.version)}" data-au-on="0">推奨を外す</button>`
-   :`<button type="button" class="au-btn au-rec" data-au-recommend="${esc(v.version)}" data-au-on="1">★ 推奨にする</button>`;
+   :`<button type="button" class="au-btn au-del" data-au-delete="${esc(v.version)}">消す…</button>`;
+  if(!st.canRelease||busy||v.version===rel)return '';
   const up=!rel||vcmp(v.version,rel)>0;
   return `<span class="au-split"><button type="button" class="au-btn${up?' is-go':''}" data-au-release="${esc(v.version)}">${up?'この版を配る':'この版に戻す'}</button>`
    +`<button type="button" class="au-btn${up?' is-go':''} au-more" data-au-more="${esc(v.version)}" aria-haspopup="menu" title="配り方を選ぶ">▾</button></span>`;
  }
+ /* 置いている版の行（表の先頭・進み具合は共通の帯`WL.progress`を行の中で横1列に）。 */
+ const busyRowHtml=()=>`<tr class="au-busy"><td class="au-ver" id="auBusyVer">—</td><td colspan="4">${WL.progress.html({cls:'au-progress',title:STAGE.send})}</td>`
+  +'<td class="au-act"><small class="au-muted">置き終わると配れます</small></td></tr>';
  function rowsHtml(st){
   const rel=st.release&&st.release.version;
-  if(!st.versions.length)return `<p class="au-empty">まだ版を置いていません。上の「ZIP から版を置く…」で置いてください。</p>`;
-  const free=deletable(st),canTidy=st.canRelease&&!busy&&free.length>0;
-  if(!canTidy)tidy=false;
-  const tidyBtn=canTidy?`<button type="button" class="mm-btn-ghost" data-au-tidy>${tidy?'整理を終える':'版を整理する…'}</button>`:'';
-  /* 整理中は「消せる量」も言う（消す前に、どれだけ空けられるかが見える）。 */
-  const head=`<div class="au-list-head"><b>置いてある版 ${st.versions.length}・合計 ${MB(sumBytes(st.versions))}</b>${
-   tidy?`<span class="au-tidy-note">消せるのは ${free.length} 版・${MB(sumBytes(free))}</span><span class="au-tidy-note">整理中: 消す版の「消す…」を押してください。配っている版は消せません。</span>`:''}${tidyBtn}</div>`;
-  return `${head}<div class="au-wrap"><table class="au-table"><thead><tr><th>版</th><th>状態</th><th>置いた日時・人</th><th>元の ZIP</th><th class="au-num">大きさ</th><th></th></tr></thead><tbody>${
+  const free=deletable(st),canTidy=st.canRelease&&free.length>0;
+  if(!canTidy||busy)tidy=false;
+  /* 整理の入口は置いている最中も場所を残す（押せない形・表を動かさない）。 */
+  const tidyBtn=canTidy?`<button type="button" class="au-btn au-ghost" data-au-tidy${busy?' disabled title="置き終わってから整理できます"':''}>${tidy?'整理を終える':'版を整理する…'}</button>`:'';
+  const head=`<div class="au-list-head"><b>置いてある版</b><small>${st.versions.length} 版・${MB(sumBytes(st.versions))}</small>${
+   tidy?`<small class="au-tidy-note">整理中: 消す版の「消す…」を押します（消せるのは ${free.length} 版・${MB(sumBytes(free))}）</small>`:''}<span class="au-sp"></span>${tidyBtn}</div>`;
+  if(!st.versions.length&&!busy)return `${head}<p class="au-empty">まだ版を置いていません。上の「ZIP から版を置く」で置きます。</p>`;
+  return `${head}<div class="au-wrap"><table class="au-table"><colgroup><col class="au-c-ver"><col><col class="au-c-at"><col class="au-c-zip"><col class="au-c-mb"><col class="au-c-act"></colgroup>`
+   +`<thead><tr><th>版</th><th>状態</th><th>置いた日時・人</th><th>元の ZIP</th><th class="au-num">大きさ</th><th></th></tr></thead><tbody>${busy?busyRowHtml():''}${
    st.versions.map(v=>`<tr${v.version===rel?' class="is-live"':''}><td class="au-ver" title="${esc(`コミット ${v.commit||'—'}・${v.files} ファイル`)}">${esc(v.version)}</td>
      <td><span class="au-tags">${tagsHtml(v,st)}</span></td>
-     <td>${esc(v.placedAt)}　${esc(v.placedBy)}</td><td class="au-mono">${esc(v.source)}</td>
+     <td>${esc(v.placedAt)}<span class="au-by">${esc(v.placedBy)}</span></td><td class="au-mono">${esc(v.source)}</td>
      <td class="au-num">${MB(v.bytes)}</td><td class="au-act">${actHtml(v,st)}</td></tr>`).join('')}</tbody></table></div>`;
  }
+ let last=null;   /* 最後に描いた状態（置き始めたその場で描き直すため） */
  function render(host,st){
-  paintDir(st);
-  /* いま見ている置き場は**欄に入っていない（空欄＝既定・この PC だけの上書き）ときだけ**言う——欄に書いた道を
-     下でもう一度言うと、同じ字が2つ並んで「違うものかも」と読み比べることになる（§CLAUDE 8）。 */
-  const inp=/** @type {HTMLInputElement|null} */(document.querySelector('[data-pc-field="update_dir"]'));
-  const typed=String(inp?inp.value:'').trim();
-  const same=typed?typed===st.dir:st.dirSource==='default';
-  const where=same?'':`いま見ている置き場 <code>${esc(st.dir)}</code> <span class="au-from">（${esc(DIR_FROM[st.dirSource]||'既定')}）</span>`;
+  last=st;paintDir(st);
   if(!st.reachable){
-   host.innerHTML=`${where?`<p class="au-where">${where}</p>`:''}
-    <div class="au-bad"><b>置き場に届きません。</b>${esc(st.why)}<br>
+   host.innerHTML=`<div class="au-bad"><b>置き場に届きません。</b>${esc(st.why)}<br>
      ネットワーク（共有フォルダ）に届くか確かめてください。置き場は上の「版の置き場」の欄で変えられます。各PCは届かない間、いまの版のまま起動します。</div>`;
    return;
   }
-  const put=busy?progressHtml()
-   :st.canRelease
-   ?`<label class="mm-btn-ghost au-pick"><input type="file" accept=".zip,application/zip" id="auZip" hidden>ZIP から版を置く…</label>
-     <small>入るのは ${st.payload.map(esc).join('・')}（db・config は入れません）。同じ版はもう一度置けません。</small>`
-   :`<small>版を置く・配る版を決めるのは、開発者・メンテナンス者だけです（この端末は「${esc(st.role)}」）。</small>`;
-  host.innerHTML=`${where?`<p class="au-where">${where}</p>`:''}
-   ${flowHtml(st)}
-   ${entryHtml(st)}
-   <div class="au-put${busy?' is-busy':''}">${put}</div>
-   ${rowsHtml(st)}`;
+  host.innerHTML=stepsHtml(st)+rowsHtml(st);
  }
  /* 新しい PC へ渡すもの（§9.559、利用者の指示「初回に配布する際に、ショートカット(アドレス)だけ渡す」）。
-    配る入口のアドレスと、初回に写る共有のマスタの置き場。どちらも配る版を決めたときにサーバーが置く。 */
+    配る入口のアドレスと、初回に写る共有のマスタの置き場。どちらも配る版を決めたときにサーバーが置く。
+    行は「アドレス＋コピー」だけ、渡し方と初回に写る物は ⓘ（§9.610）。渡していない物があるときだけ字で言う。 */
  function entryHtml(st){
   const e=st.entry;
   if(!e)return '';
-  if(!e.exists)return `<p class="au-new"><b>新しい PC へ</b><span>配る版を決めると、ここに渡すアドレスが出ます（置き場の直下に入口の exe を置きます）。</span></p>`;
-  const seed=e.seed&&e.seed.master_db_path
-   ?`初回に写る共有のマスタ: <code>${esc(e.seed.master_db_path)}</code>`
-   :'<em class="au-warn">共有のマスタの置き場をまだ渡していません。config\\local.json に master_db_path を持つ PC で「この版を配る」を押してください。</em>';
-  return `<p class="au-new"><b>新しい PC へ</b><span>このアドレスを渡し、ダブルクリックしてもらいます: <code>${esc(e.path)}</code>
-   <button type="button" class="mm-btn-ghost" data-au-copy="${esc(e.path)}">アドレスをコピー</button><br><small>${seed}。アプリは %USERPROFILE%\\WaveLog へ写り、デスクトップの起動アイコンは作るかを聞きます。</small></span></p>`;
+  if(!e.exists)return lineHtml('新しい PC へ','<small>配る版を決めると、渡すアドレス（置き場の直下の入口の exe）が出ます</small>');
+  const seed=e.seed&&e.seed.master_db_path;
+  const say=`このアドレスだけを渡し、ダブルクリックしてもらいます。アプリは %USERPROFILE%\\WaveLog へ写り、デスクトップの起動アイコンは作るかを聞きます。`
+   +(seed?`初回に写る共有のマスタ: ${seed}`:'');
+  return lineHtml('新しい PC へ',`<code class="au-path">${esc(e.path)}</code><button type="button" class="au-btn au-ghost au-sm" data-au-copy="${esc(e.path)}">コピー</button>${tip(say)}`
+   +(seed?'':'<em class="au-warn">共有のマスタの置き場をまだ渡していません</em>'+tip('config\\local.json に master_db_path を持つ PC で「この版を配る」を押すと渡せます。')));
  }
  /* 状態＋古い版の PC の台数（数えるのは接続の記録・§9.609）。台数が読めない（区分で断られた・記録が無い）
     ときは`spread`を空のまま描く（台数を言わない・0台と言わない）。 */
@@ -205,21 +199,16 @@
    render(host,st);paintProgress();paintTab(st);
   }catch(e){host.innerHTML=`<div class="au-bad">更新の状態を読めません: ${esc(e.message)}</div>`;paintTab(null)}
  }
- /* ---- 置いている間の進み具合（共通の帯`WL.progress`） ---- */
- function progressHtml(){
-  return WL.progress.html({cls:'au-progress',title:STAGE.send})
-   +`<small class="au-progress-note">置き終わるまで、この画面のままお待ちください。途中で閉じても、置きかけの版は配られません。</small>`;
- }
- /* 押したその場で帯へ替える（状態を取り直してから描くと、共有に届くかの確かめのぶん反応が遅れる）。
-    置いている間は「この版を配る」も伏せる（置き終わってから選ぶ）。 */
+ /* ---- 置いている間の進み具合（表の先頭の行・共通の帯`WL.progress`） ----
+    押したその場で描き直す（状態を取り直してから描くと、共有に届くかの確かめのぶん反応が遅れる）。
+    置いている間は配る・戻す・配り方・整理を押せない（表と行の場所は動かさない）。 */
  function showBusy(){
-  const put=document.querySelector('#appUpdate .au-put');
-  if(put){put.classList.add('is-busy');put.innerHTML=progressHtml()}
-  document.querySelectorAll('#appUpdate [data-au-release],#appUpdate [data-au-delete],#appUpdate [data-au-tidy]').forEach(b=>b.remove());
+  const host=document.getElementById('appUpdate');
+  if(host&&last)render(host,last);
   paintProgress();
  }
  function paintProgress(){
-  const root=document.querySelector('#appUpdate .au-progress');if(!root||!busy)return;
+  const root=document.querySelector('#appUpdate .au-progress');if(!root||!busy)return;   /* 版の番号は行の頭（#auBusyVer）が言う */
   /* 送っている間は前の回の答え（終わった回の段・経過）を読まない */
   const p=busy.stage==='send'?{}:(busy.p||{});
   const stage=busy.stage==='send'?'send':(p.stage||'check');
@@ -231,7 +220,8 @@
    meta=`${p.version?'版 '+p.version+'・':''}${p.done||0} / ${p.total||0} ファイル・${MB(p.bytes)} / ${MB(p.totalBytes)}${secs}`;
   }else if(stage==='finish'){pct=100;meta=`${p.version?'版 '+p.version+'・':''}${p.total||0} ファイルを写しました${secs}`}
   else if(secs)meta=(what?what:'')+secs;
-  WL.progress.paint(root,{title:STAGE[stage]||STAGE.check,pct,meta});
+  WL.progress.paint(root,{title:STAGE[stage]||STAGE.check,pct,meta:meta.replace(/^版 [^・]+・/,'')});
+  const ver=document.getElementById('auBusyVer');if(ver)ver.textContent=p.version||'—';
  }
  let timer=0;
  function watch(){
@@ -319,7 +309,7 @@
   const el=document.createElement('div');
   el.className='wl-menu au-menu';
   el.innerHTML=`<button type="button" data-au-pick="plain"><b>${up?'この版を配る':'この版に戻す'}</b><small>次の起動でそろう（知らせない）</small></button>`
-   +`<button type="button" data-au-pick="rec"><b>★ 推奨の更新として配る</b><small>${esc(behindWord(st))}に「開き直して更新」を知らせる</small></button>`;
+   +`<button type="button" data-au-pick="rec"><b>★ 推奨の更新として配る</b><small>使っている PC に「開き直して更新」を知らせる</small></button>`;
   document.body.append(el);
   btn.setAttribute('aria-expanded','true');
   el.addEventListener('click',e=>{const k=e.target.closest('[data-au-pick]');if(!k)return;
@@ -356,6 +346,7 @@
   if(cp){ev.preventDefault();WL.base.copyText(cp.dataset.auCopy).then(()=>showToast&&showToast('アドレスをコピーしました',cp.dataset.auCopy,3600));return}
   if(ev.target.closest('[data-au-tidy]')){ev.preventDefault();tidy=!tidy;refresh();return}
   const d=ev.target.closest('[data-au-delete]'),m=ev.target.closest('[data-au-more]'),r=ev.target.closest('[data-au-recommend]');
+  if(r&&(r.classList.contains('is-on')||r.disabled))return;   /* いまの配り方を押し直しても何も変えない */
   const b=d||m||r||ev.target.closest('[data-au-release]');if(!b)return;
   ev.preventDefault();
   /* 押した時点の状態で確かめる（表を描いたあとに別の PC が配る版を変えているかもしれない） */

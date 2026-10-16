@@ -1,4 +1,4 @@
-# 画面の土台（65件）
+# 画面の土台（68件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -11,7 +11,10 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 推奨の更新の知らせはヘッダーの状態の札1つ（`WL.updateNotice`・★だけ琥珀・▾）。押すと`.wl-menu`の面。本文を覆わない・押しのけない | `test_releaseui.js` | [§9.609](../../docs/decisions/9.609.md) |
-| 版の管理は LotScope の型（上の線で流れの状態・丸い札・新しい版は「配る ▾」・古い版は「戻す ▾」）。琥珀は推奨の更新の意味にだけ | `test_releaseui.js`・`test_appupdateui.js` | [§9.609](../../docs/decisions/9.609.md) |
+| 【§9.610で改めた】版の管理は LotScope の型（丸い札・新しい版は「配る ▾」・古い版は「戻す ▾」）。琥珀は推奨の更新の意味にだけ | `test_releaseui.js`・`test_appupdateui.js` | [§9.609](../../docs/decisions/9.609.md) |
+| 使っている人への知らせは推奨の更新の札だけ。通常の配布では何も出さない（「新しい版あり」は外した） | `test_releaseui.js`・`test_presenceui.js` | [§9.610](../../docs/decisions/9.610.md) |
+| 版の管理は「1行＝名前｜値」（①置く②配る版③各 PC・新しい PC）＋表。説明は ⓘ。配り方は②の`.mm-seg`（通常｜★推奨） | `test_releaseui.js`・`test_appupdateui.js` | [§9.610](../../docs/decisions/9.610.md) |
+| ZIP を置いている最中は表の先頭の行で進む（列は`<colgroup>`で固定・配る系は押せない形・▾ を残さない・棒は青緑） | `test_releaseui.js` | [§9.610](../../docs/decisions/9.610.md) |
 | Enter で次の入力欄へは`WL.base.enterMoves(root)`の1箇所。Enter を自分で使う欄（`data-enter-own`等）からは奪わない | `test_entermove.js` | [§9.606](../../docs/decisions/9.606.md) |
 | 窓の小見出しはいる画面の名前（`WL.base.whereName()`）・題は中身（無ければ文の最初の1文）・決めるボタンは動詞（`confirmLabel`） | `test_modalwords.py`・`test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 同じ操作は同じ言葉: 削除の決めるボタンは「削除する」、やめる側は既定の「キャンセル」（言い換えを渡さない） | `test_modalwords.py` | [§9.604](../../docs/decisions/9.604.md) |
@@ -36,7 +39,7 @@
 | 骨組みのHTMLは`index.html`の`<template id="tpl-名前">`、複製は`WL.template()`の1箇所。Jinjaの構文の字を書かない | `test_loadorder.py` | [§9.522](../../docs/decisions/9.522.md) |
 | 状態から組む所は差し込み口`<i data-tpl-slot="名前">`で、JSが名前で渡す。渡し忘れ・余りは名前を言って止まる | `test_loadorder.py` | [§9.522](../../docs/decisions/9.522.md) |
 | 操作列の相乗り（`compactToolbar`）は**入るときだけ**。載せるかは`fitViewToolbar()`が測って決め、見張りは`ResizeObserver`の1つ | `test_headbar.js` | [§9.509](../../docs/decisions/9.509.md) |
-| 古い版の知らせは**左メニューの版のバッジの隣に字1つ**（面なし・場所を動かさない）。`null`で消さない・再起動待ちとレールでは出さない | `test_presenceui.js` | [§9.515](../../docs/decisions/9.515.md) |
+| 【§9.610で外した】古い版の知らせは**左メニューの版のバッジの隣に字1つ**（面なし・場所を動かさない）。`null`で消さない・再起動待ちとレールでは出さない | `test_presenceui.js` | [§9.515](../../docs/decisions/9.515.md) |
 | 「この端末の見え方」の3つは同じ形で読める（`WL.uiSize`／`WL.duration`／`WL.loader`） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
 | **「表示」という名のボタンは1つだけ**（ヘッダー）。画面は`WL.lookSettings.register()`で節を名乗る | `test_uisize.js`・`test_scbar.js` | [§9.444](../../docs/decisions/9.444.md) |
 | デスクトップの起動アイコンの盤は「表示」の節（`when`を持たない＝どのモードでも）。共通設定に残すのは状態と行き先だけ | `test_uisize.js`・`test_setpage.js` | [§9.445](../../docs/decisions/9.445.md) |

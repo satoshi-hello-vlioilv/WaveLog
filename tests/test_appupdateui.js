@@ -54,7 +54,9 @@ run('test_appupdateui: 版を置く間の進み具合（§9.556）・版を消�
   await page.waitForSelector('#appUpdate #auZip',{state:'attached',timeout:10000});
 
   /* ---- 0) 新しい PC へ渡すもの（§9.559）: 入口のアドレス・コピー・初回に写る共有のマスタ ---- */
-  const nw=await page.evaluate(()=>{const e=document.querySelector('#appUpdate .au-new');return e?{字:e.textContent,
+  /* §9.610: 「新しい PC へ」は1行＝名前｜値（アドレス＋コピー）。渡し方と初回に写るマスタは行の ⓘ が言う。 */
+  const nw=await page.evaluate(()=>{const e=[...document.querySelectorAll('#appUpdate .au-row')].find(r=>/新しい PC へ/.test(r.firstElementChild.textContent));
+   return e?{字:e.textContent+' '+[...e.querySelectorAll('[data-tip]')].map(t=>t.dataset.tip).join(' '),
    コピー:!!e.querySelector('[data-au-copy]'),道:(e.querySelector('[data-au-copy]')||{}).dataset?.auCopy||''}:null});
   rec('新しい PC へ渡すアドレス（配る入口）とコピーのボタンを出す',!!nw&&nw.コピー&&/WaveLog\.exe/.test(nw.道)&&/新しい PC へ/.test(nw.字),JSON.stringify(nw));
   rec('初回に写る共有のマスタの置き場を言う',!!nw&&/master\.sqlite3/.test(nw.字)&&/USERPROFILE/.test(nw.字),nw&&nw.字.slice(0,120));
@@ -113,14 +115,14 @@ run('test_appupdateui: 版を置く間の進み具合（§9.556）・版を消�
    配る:document.querySelectorAll('#appUpdate [data-au-release]').length,
    配っている行:(document.querySelector('#appUpdate tr.is-live .au-act')||{}).textContent||''}});
   const l0=await look();
-  rec('消せる版が無ければ（配っている版だけ）整理の入口を出さない',!l0.整理&&l0.消す.length===0&&/置いてある版 1/.test(l0.頭),JSON.stringify(l0));
+  rec('消せる版が無ければ（配っている版だけ）整理の入口を出さない',!l0.整理&&l0.消す.length===0&&/置いてある版\s*1 版/.test(l0.頭),JSON.stringify(l0));
   status={...STATUS,release:{...STATUS.release,previous:'2.441.0'},versions:[STATUS.versions[0],
    {...STATUS.versions[0],version:'2.441.0',commit:'3b9c1c4',bytes:16148480},{...STATUS.versions[0],version:'2.440.0',commit:'9f8e7d6',bytes:15833088}]};
   await page.evaluate(()=>WL.appUpdate.refresh());
   await W.until(page,()=>!!document.querySelector('#appUpdate [data-au-tidy]'),null,{ms:5000,what:'整理の入口が出る'});
   const l1=await look();
   rec('ふだんの行には「消す」を出さない（「この版を配る」だけ）',l1.消す.length===0&&l1.配る===2,JSON.stringify(l1));
-  rec('表の頭は置いてある版の数と合計の量を言う',/置いてある版 3・合計 45\.\d MB/.test(l1.頭),l1.頭);
+  rec('表の頭は置いてある版の数と合計の量を言う',/置いてある版\s*3 版・45\.\d MB/.test(l1.頭),l1.頭);
   await page.click('#appUpdate [data-au-tidy]');
   await W.until(page,()=>document.querySelectorAll('#appUpdate [data-au-delete]').length>0,null,{ms:5000,what:'整理中の「消す…」が出る'});
   const l2=await look();
@@ -148,7 +150,7 @@ run('test_appupdateui: 版を置く間の進み具合（§9.556）・版を消�
   await page.click('#appConfirmOk');
   await W.until(page,()=>!document.querySelector('#appUpdate [data-au-tidy]')&&document.querySelectorAll('#appUpdate [data-au-delete]').length===0,null,{ms:5000,what:'消せる版が尽きたら整理を終える'});
   const l3=await look();
-  rec('消せる版が尽きたら整理を自分で終える',!l3.整理&&/置いてある版 1/.test(l3.頭)&&!/整理中/.test(l3.頭),JSON.stringify(l3));
+  rec('消せる版が尽きたら整理を自分で終える',!l3.整理&&/置いてある版\s*1 版/.test(l3.頭)&&!/整理中/.test(l3.頭),JSON.stringify(l3));
  }finally{
   release&&release();
   for(const u of ['**/api/app/update','**/api/app/update/progress','**/api/app/update/publish**','**/api/app/update/delete'])
