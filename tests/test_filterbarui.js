@@ -74,7 +74,8 @@ H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ pag
  await page.setViewportSize({ width: 1728, height: 1152 });
  const before = await page.evaluate(() => ({ n: (document.getElementById('filterCount') || {}).textContent || '', cnt: (document.querySelector('#listToolbar .list-count,#listCount') || {}).textContent || '' }));
  await page.fill('#search', 'ZZZ_NOT_FOUND_ZZZ');
- await W.until(page, () => /0\s*件|該当/.test((document.getElementById('grid') || {}).textContent || '') || document.querySelectorAll('#grid tbody tr[data-row]').length === 0, null, { ms: 10000, what: '検索で絞る' });
+ /* 押した物そのもので待つ（§9.522）: 検索が効いて件数が「n件 / 全 N件」になるまで。前は「行が無い」で待ち、検索の前から成り立って素通りしていた。 */
+ await W.until(page, () => /件\s*\/\s*全/.test((document.getElementById('count') || {}).textContent || ''), null, { ms: 15000, what: '検索で絞る' });
  const after = await page.evaluate(() => ({ n: (document.getElementById('filterCount') || {}).textContent || '', bar: (document.getElementById('listToolbar') || {}).textContent.replace(/\s+/g, ' ').trim().slice(0, 160) }));
  rec('F4 一覧を検索の字も条件の数に入る', Number(after.n) > Number(before.n || 0), `前 ${before.n} → 後 ${after.n}`);
  rec('F5 絞ったら件数は「n件 / 全 N件」', /\d+\s*件\s*\/\s*全\s*[\d,]+\s*件/.test(after.bar), after.bar);
