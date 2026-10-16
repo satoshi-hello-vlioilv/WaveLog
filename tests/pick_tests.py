@@ -148,7 +148,7 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
 G['モーダル'] = ['test_modalkeep', 'test_mmunify', 'test_maint', 'test_master', 'test_opui', 'test_opchoice',
                  # §9.257 ②: 使用設備の設定（窓の作りは1箇所・選んでも動かない）
                  'test_eqsetup']
-G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'test_sccat',
+G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork', 'test_scsync', 'test_sccat',
                      'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
                     'test_scframe',
@@ -521,7 +521,7 @@ RULES = [
     ('backend/repositories/stop_rule_repo.py', g('test_stoprule')),
     ('backend/rule_cells.py', g('test_stoprule', 'test_bladeset', 'test_holdpick', 'test_bladepick')),
     # §9.588: 厳密モードの開始の口（一番上のロット・上の設備停止の時刻）
-    ('backend/routes/schedule_start.py', g('test_strictstart', 'test_modeguard', 'test_routesplit')),
+    ('backend/routes/schedule_start.py', g('test_strictstart', 'test_modeguard', 'test_routesplit', 'test_doneflow')),
     ('backend/schedule_history.py', g('test_schedhist', 'test_schistui')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
                                         # §9.317: 参照データが読めなくても測定は始められる
@@ -575,14 +575,14 @@ RULES = [
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
-    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread', 'test_donestops')),
+    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread', 'test_donestops', 'test_doneflow')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
-                                   'test_actualmatch', 'test_finishjoin', 'test_strictstart', 'test_boxactual', 'test_donestops')),
+                                   'test_actualmatch', 'test_finishjoin', 'test_strictstart', 'test_boxactual', 'test_donestops', 'test_doneflow')),
     # 仕掛から消えたロットの突合（§9.364・§9.365）。
     ('backend/actual_match.py', g('test_actualmatch', 'test_finishjoin',
                                   'test_datasource', 'test_dscap', 'test_boxactual')),
     # 完了突合で当たった実績を予定へ残す（開いたとき・裏の見回り・§9.595）。
-    ('backend/actual_keep.py', g('test_boxactual', 'test_actualmatch', 'test_finishjoin', 'test_donestops')),
+    ('backend/actual_keep.py', g('test_boxactual', 'test_actualmatch', 'test_finishjoin', 'test_donestops', 'test_doneflow')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),
     ('backend/schedule_watch.py', g('スケジュール')),
     # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と

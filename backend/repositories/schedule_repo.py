@@ -589,15 +589,18 @@ def plan_set_manual_times(c_share,plan_id,uid,payload,pc='',keep=False):
              [_json.dumps(payload,ensure_ascii=False),"完了",uid,pc,plan_id])
  return cur.rowcount
 
+# 「始まった」の印（[開始判定JSON]）を持てる種別（§9.588 作業・§9.611 設備停止も——終了で次の停止が始まる）。
+PLAN_START_KINDS=('作業','設備停止')
+
 def plan_set_start_flag(c_share,plan_id,uid,payload,pc=''):
- """開始判定を書く（§9.588）。**作業の親の行だけ**・**既に開始した行は書き直さない**
+ """開始判定を書く（§9.588・§9.611）。**親の作業と設備停止の行だけ**・**既に開始した行は書き直さない**
  （2台から同時に押しても、最初に開始した時刻が残る）。戻り値: 書いた行数。"""
  ensure_plan_table(c_share)
  cur=c_share.cursor()
  cur.execute(f'SELECT [種別],[{PLAN_PARENT_COLUMN}],[{PLAN_START_FLAG_COLUMN}] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
  row=cur.fetchone()
  if not row:raise ValueError('指定の予定が見つかりません。')
- if str(row[0] or '')!='作業' or row[1] is not None:raise ValueError('開始できるのは作業ロット（親の行）だけです。')
+ if str(row[0] or '') not in PLAN_START_KINDS or row[1] is not None:raise ValueError('開始できるのは作業ロット（親の行）と設備停止だけです。')
  if str(row[2] or '').strip():return 0
  cur.execute(f'UPDATE [作業予定] SET [{PLAN_START_FLAG_COLUMN}]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
              [_json.dumps(payload,ensure_ascii=False),uid,pc,plan_id])

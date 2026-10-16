@@ -14,10 +14,8 @@
     ⑦ **版と接続の記録**（§9.513）: 運用中の最新版・最新でない端末の数・接続した時刻と
        接続時間・端末ごと／利用者ごとの記録・最新でない版だけ・表をコピー（見えている表のまま）
 
-    ⑧ **古い版の端末への知らせ**（§9.515、利用者の指示「控えめな感じで邪魔にならないように」）:
-       ハートビートの応答に版の知らせが載る／左メニューの版のバッジの隣に字1つ・場所を動かさない・
-       面を持たない／押すと更新履歴の窓が「最新版・この端末の版・すること」を言う／
-       まだ分からない（null）で消さない／再起動待ちの間と最新のときは出さない／測定画面のレールには置かない
+    ⑧ 【§9.610で外した】古い版の端末への知らせ（§9.515）: 通常の配布では知らせない。ハートビートの応答に
+       運用中の最新版を載せず、版のバッジの隣に何も置かない（知らせるのは推奨の更新の札だけ・§9.609）
 
     ⑨ **最新版の判定から開発者を除く**（§9.516）: 出どころ（「開発者の端末を除く」）・開発者の端末は
        「対象外」（理由は title）・「最新でない版だけ」に入らない
@@ -259,73 +257,21 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
    /開発者の端末を除くと記録なし/.test(emptyNote),emptyNote);
 
  // ---- ⑧ 古い版の端末への知らせ（§9.515） ------------------------------
- // 本物の応答: ハートビートに版の知らせが載る（区分を問わない道）
+ /* ⑧【§9.610】通常の配布では知らせない——「運用中の最新版」の知らせ（§9.515・版のバッジの隣の「新しい版あり」）は外した。
+    ハートビートが返すのは推奨の更新の知らせの席（`update`・§9.609）だけ。中身の判定は test_appupdate.py 12・test_releaseui.js。 */
  const hbReal=await page.evaluate(async()=>{
   const r=await fetch('/api/heartbeat',{method:'POST'});return r.json();
  });
  const mine=(await page.evaluate(()=>fetch('/api/build').then(r=>r.json()))).version||'';
- /* 検証用フィクスチャのこの端末は「開発者」で、記録もこの端末だけ——開発者を除くと数える端末が無く、
-    知らせは「まだ無い（null）」が正しい答え（§9.516）。中身の判定は test_presence.py 10・11 が見る。 */
- rec('⑧ ハートビートの応答に版の知らせの席がある（まだ無ければ null・あれば最新版と古いか）',
-   hbReal.ok===true&&!!mine&&'version' in hbReal
-   &&(hbReal.version===null||(hbReal.version.myVersion===mine&&typeof hbReal.version.outdated==='boolean')),JSON.stringify(hbReal));
- /* 版の知らせは左のメニューの版のバッジの隣。マスタ管理（全幅の画面）は左のメニューを伏せるので、「戻る」で出てから見る（§9.593）。 */
+ rec('⑧ ハートビートの応答は推奨の更新の席だけ（運用中の最新版の知らせは返さない）',
+   hbReal.ok===true&&!!mine&&'update' in hbReal&&!('version' in hbReal),JSON.stringify(hbReal));
  await W.leaveFocus(page);
- // 以降はハートビートの答えを差し替える（15秒ごとの本物が、差し込んだ状態を上書きしないように）
- const hb={version:{latestVersion:'99.0.0',myVersion:mine,outdated:true}};
- await page.route('**/api/heartbeat?**',route=>route.fulfill({status:200,contentType:'application/json',
-   body:JSON.stringify({ok:true,version:hb.version})}));
- const geo=()=>page.evaluate(()=>{
-  const r=e=>{if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height}};
-  const badge=document.querySelector('.layout>aside .brand .build-badge');
-  const mark=document.querySelector('.layout>aside .brand .ver-behind');
-  const vis=mark&&!mark.hidden&&mark.getBoundingClientRect().width>0;
-  const cs=vis?getComputedStyle(mark):null;
-  return {brand:r(document.querySelector('.layout>aside .brand')),nav:r(document.querySelector('#nav')),
-   badge:r(badge),mark:vis?r(mark):null,text:vis?mark.textContent.trim():'',title:mark?mark.title:'',
-   bg:cs?cs.backgroundColor:'',border:cs?cs.borderTopWidth:'',fs:cs?parseFloat(cs.fontSize):0,
-   badgeFs:parseFloat(getComputedStyle(badge).fontSize),
-   railMarks:document.querySelectorAll('.action-rail .ver-behind').length};
- });
- const g0=await geo();
- await page.evaluate(v=>WL.versionNotice.apply(v),hb.version);
- const g1=await geo();
- rec('⑧ 古い版の端末では版のバッジの隣に「新しい版あり」の字が出る',
-   !!g1.mark&&g1.text==='新しい版あり'&&Math.abs(g1.mark.y+g1.mark.h/2-(g1.badge.y+g1.badge.h/2))<=2,JSON.stringify(g1.mark));
- rec('⑧ 出ても場所を動かさない（左メニューの題・メニューの位置が0px）',
-   g0.brand.h===g1.brand.h&&g0.nav.y===g1.nav.y,JSON.stringify([g0.brand.h,g1.brand.h,g0.nav.y,g1.nav.y]));
- rec('⑧ 控えめ: 面も縁も持たず、字はバッジより大きくしない',
-   /rgba\(0, 0, 0, 0\)|transparent/.test(g1.bg)&&parseFloat(g1.border)===0&&g1.fs<=g1.badgeFs,
-   JSON.stringify([g1.bg,g1.border,g1.fs,g1.badgeFs]));
- rec('⑧ 字に載らない事実（最新版・この端末の版）は title が言う',
-   g1.title.includes('VER99.0.0')&&g1.title.includes('VER'+mine),g1.title);
- rec('⑧ 測定画面のレールには置かない（測っている最中に中身を押し下げない）',g1.railMarks===0,String(g1.railMarks));
- await page.evaluate(()=>WL.versionNotice.apply(null));
- rec('⑧ まだ分からない（null）で知らせを消さない',!!(await geo()).mark);
- await page.click('.layout>aside .brand .ver-behind');
- await page.waitForSelector('#changelogModal:not([hidden])');
- const sub=await page.evaluate(()=>{const e=document.getElementById('changelogSub');return {t:e.textContent,on:e.classList.contains('is-behind')}});
- /* すること は「×で閉じて開き直す（起動のときに配る版へそろう）」（§9.556。§9.555 で update.bat は要らなくなった） */
- rec('⑧ 押すと更新履歴の窓が「最新版・この端末の版・すること（開き直す）」を言う',
-   sub.on&&sub.t.includes('VER99.0.0')&&sub.t.includes('VER'+mine)&&/開き直す/.test(sub.t)&&!/update\.bat/.test(sub.t)
-   &&/配布の担当者/.test(sub.t),sub.t);
- await page.click('#closeChangelog');
- const hideWhenRestart=await page.evaluate(()=>{
-  const box=document.getElementById('restartNeeded');const was=box.hidden;
-  box.hidden=false;WL.versionNotice.paint();
-  const m=document.querySelector('.layout>aside .brand .ver-behind');const hidden=!m||m.hidden;
-  box.hidden=was;WL.versionNotice.paint();return hidden;
- });
- rec('⑧ 再起動待ちの帯が出ている間は伏せる（同じ一手を2箇所で言わない）',hideWhenRestart);
- hb.version={latestVersion:mine,myVersion:mine,outdated:false};
- await page.evaluate(v=>WL.versionNotice.apply(v),hb.version);
- const g2=await geo();
  await page.evaluate(()=>document.querySelector('.layout>aside .build-badge').click());
  await page.waitForSelector('#changelogModal:not([hidden])');
- const sub2=await page.evaluate(()=>{const e=document.getElementById('changelogSub');return {t:e.textContent,on:e.classList.contains('is-behind')}});
+ const sub=await page.evaluate(()=>({t:document.getElementById('changelogSub').textContent,
+  marks:document.querySelector('.layout>aside .brand .build-badge').parentElement.children.length-1}));
  await page.click('#closeChangelog');
- rec('⑧ 最新の端末では出さない（窓の1行もふだんの言い方へ戻る）',
-   !g2.mark&&!sub2.on&&!/update\.bat/.test(sub2.t),JSON.stringify([g2.text,sub2.t]));
- await page.unroute('**/api/heartbeat?**');
+ rec('⑧ 版のバッジの隣に知らせを置かない・更新履歴の窓はいま動いている版を言う',
+   sub.marks===0&&new RegExp('VER'+mine.replace(/\./g,'\\.')).test(sub.t),JSON.stringify(sub));
 
 }, {viewport:{width:1600,height:1000}});

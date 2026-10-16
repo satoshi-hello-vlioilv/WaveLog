@@ -126,18 +126,14 @@ def install(app):
   # **書くのは裏のスレッド**で、ここは待たない(共有が遅いときに
   # ハートビートを止めない)。失敗しても ok を返す——在席が出ないことより
   # 「生きていると言えない」ことのほうが重い(§9.98)。
-  # ---- 版の知らせ(§9.515) ----
-  # 運用中の最新版を**全区分の端末へ**届ける道もここに相乗りさせる
-  # (`/api/presence`は区分で断るので、設備作業者の端末には届かない)。
-  # 返すのは裏で数えてある値だけ——ここで共有を読みに行かない。
-  notice=None
+  # 【§9.610】「運用中の最新版」の知らせ(§9.515)は外した——通常の配布では何も知らせない。
+  # 使っている人へ知らせるのは推奨の更新の札があるときだけ(下の`update`・§9.609)。
   try:
    from . import presence
    from .access_mode import current_login_id,current_pc_name,current_permission_flags,get_mode
    role=current_permission_flags().get('role','')
    presence.touch_async(current_login_id(),current_pc_name(),get_mode(),role,
                         str(request.args.get('view') or '')[:40])
-   notice=presence.version_notice(role)   # 開発者の端末は急かさない(§9.516)
   except Exception as _e:
    quiet('在席を書けない（ハートビートは受け付ける）',_e)
   # 更新の置き場の控え（§9.557）。共有の設定を変えたら、開いたままの PC も10分以内に拾い、
@@ -154,7 +150,7 @@ def install(app):
    update=app_update.notice_soon()
   except Exception as _e:
    quiet('推奨の更新の知らせを読めない（知らせは前のまま）',_e)
-  return jsonify(ok=True,version=notice,update=update)
+  return jsonify(ok=True,update=update)
 
  @app.post('/api/shutdown')
  def shutdown():

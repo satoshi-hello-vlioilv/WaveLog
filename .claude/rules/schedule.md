@@ -1,4 +1,4 @@
-# 作業スケジュール（118件）
+# 作業スケジュール（122件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 完了ロットは実績の時刻順に処理し、表も 完了（時刻順）→ 作業中 → 予定 の3群で並べる（`_settle_stop_times`・`visibleEntries`） | `test_doneflow.py`・`test_doneflowui.js` | [§9.611](../../docs/decisions/9.611.md) |
+| 設備停止も開始の印を持つ。始めた停止の終わりは「開始＋見積」と「次に始まった行の開始」の早いほう（`_settle_started_stops()`） | `test_doneflow.py` | [§9.611](../../docs/decisions/9.611.md) |
+| 行の「開始」「終了」は`/api/schedule/plan/progress`の1本（決めるのは`progress_plan()`）。終了で次の設備停止も始める | `test_doneflow.py`・`test_doneflowui.js` | [§9.611](../../docs/decisions/9.611.md) |
+| 実績時刻の列（`__acttime__`・既定は出さない）は出どころを先に固定幅で。出しているあいだ「時刻」は実績を繰り返さない（`deferredTime()`） | `test_doneflowui.js` | [§9.611](../../docs/decisions/9.611.md) |
 | 並べ替えできない理由は`reorderDeniedWhy()`の1箇所（鍵の開始の説明・掴んだときの断り）。できない端末に「並べ替えてください」と言わない | `test_strictreorder.js` | [§9.606](../../docs/decisions/9.606.md) |
 | ロットが完了したら上の設備停止へ時刻（`_settle_stop_times()`・開始と同じ分け方・出どころ「完了で自動」）。前のロットの終わりが分かるまで入れない | `test_donestops.py` | [§9.605](../../docs/decisions/9.605.md) |
 | 自動で入れる時刻は`plan_set_manual_times(keep=True)`（時刻のある行・取消は書かない）。書くのは`actual_keep.persist()` | `test_donestops.py` | [§9.605](../../docs/decisions/9.605.md) |

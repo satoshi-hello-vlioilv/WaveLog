@@ -2440,7 +2440,7 @@ function fixedToleranceValue(kind,value){const n=Number(value);if(!Number.isFini
 /* Final title guard for delayed initialization and browser history restoration. */
 function enforceApplicationTitle(){if(document.title!=='測定伝送システム')document.title='測定伝送システム'}
 enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationTitle);document.addEventListener('visibilitychange',()=>{if(!document.hidden)enforceApplicationTitle()});
-/* ハートビート（15秒ごと）。**在席と版の知らせ**のために送る（§9.272・§9.515）。
+/* ハートビート（15秒ごと）。**在席と推奨の更新の知らせ**のために送る（§9.272・§9.609）。
    以前はブラウザ版の「タブが0件で終わる」見張りのためにタブごとのIDを名乗っていたが、
    §9.548 でブラウザ版の起動の道を外したので名乗らない（終わり方は窓を閉じる・終了ボタン）。 */
 /* ハートビートは「こちらが生きている」ことを伝えるだけでなく、その応答から
@@ -2448,47 +2448,6 @@ enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationT
    明示する。サーバーが終了していても画面は普通に見えてしまい、操作して
    初めてエラーになる状態を避けるため(仕様書2.9)。
    1回の失敗では出さない(サーバー再起動中の一時断や瞬断で出さないため)。 */
-/* ---------- 古い版の端末への知らせ（§9.515、利用者の指示「控えめな感じで
-   邪魔にならないように入れてください」） ----------
-   運用中の最新版はサーバーが裏で数え（`presence.version_notice()`の1箇所）、
-   **ハートビートの応答に相乗りして全区分の端末へ**届く（接続状況の口は区分で
-   断るので、設備作業者の端末には届かない）。
-   出すのは**版のバッジの隣の小さな字1つ**——帯・窓・トーストは出さない、
-   場所も動かさない（バッジの行の空きに入る）。押すとバッジと同じ行き先
-   （更新履歴の窓）が「最新版・この端末の版・すること」を言う。
-   **まだ数えていない（`null`）は「最新」と読まない**——前の答えのまま置く。
-   `#restartNeeded`が出ている間は伏せる（打つ手＝開き直すは同じで、あちらが
-   先に言っている・画面基準8）。
-   **置くのは左メニューのバッジだけ**（`HOST`）。測定画面のレール（160px）では
-   バッジの行に入らず、測っている最中にレールの中身を1行ぶん押し下げる。 */
-WL.versionNotice=(()=>{
- const HOST='.layout>aside .brand .build-badge';
- let state=null;
- /* 推奨の更新の札が出ている間は伏せる（打つ手＝開き直すは同じで、あちらが版と理由まで言う・§9.609）。 */
- const behind=()=>!!(state&&state.outdated)&&document.getElementById('restartNeeded')?.hidden!==false&&!(WL.updateNotice&&WL.updateNotice.on());
- function paint(){
-  const on=behind();
-  document.querySelectorAll(HOST).forEach(badge=>{
-   let mark=badge.nextElementSibling;
-   if(!mark||!mark.classList.contains('ver-behind')){
-    if(!on)return;
-    mark=document.createElement('button');
-    mark.type='button';mark.className='ver-behind';mark.textContent='新しい版あり';
-    mark.onclick=()=>badge.click();
-    badge.after(mark);
-   }
-   mark.hidden=!on;
-   mark.title=on?`運用中の最新版は VER${state.latestVersion} です（この端末は VER${state.myVersion}）。押すと更新のしかたを出します。`:'';
-  });
- }
- function apply(v){
-  if(!v||!v.latestVersion)return;
-  const next={latestVersion:String(v.latestVersion),myVersion:String(v.myVersion||''),outdated:!!v.outdated};
-  if(state&&state.latestVersion===next.latestVersion&&state.myVersion===next.myVersion&&state.outdated===next.outdated)return;
-  state=next;paint();
- }
- return {apply,paint,state:()=>state,behind};
-})();
 /* ---------- 推奨の更新の知らせ（§9.609、利用者の指示「そのアップデートの版が配布されたら、表示を邪魔しない
    程度に使用中ユーザーにアップデートを促す通知を出す」） ----------
    出すかはサーバーの`app_update.notice_of()`の1箇所（配る版に推奨の札があり、この PC が違う版のとき）。答えは
@@ -2497,7 +2456,7 @@ WL.versionNotice=(()=>{
    本文を覆わない・押しのけない。押すと小さな面（器は`.wl-menu`・置き方と閉じ方は`WL.popMenu`）が「なぜ・この PC→
    新しい版・あとで｜開き直して更新」を言う。「開き直して更新」は失うもの（`WL.closeGuard`）を先に確かめてから
    窓へ頼む（`/__desktop/restart`）。窓の外（開発の入口）では押せる形にせず、閉じて開き直すと書く。
-   出ている間は「新しい版あり」（`WL.versionNotice`）を伏せる（同じことを2箇所で言わない）。 */
+   【§9.610】使っている人への知らせは**これ1つ**。通常の配布（札なし）では何も知らせない（前の「新しい版あり」・§9.515 は外した）。 */
 WL.updateNotice=(()=>{
  let state=null,pop=null;
  const chipEl=()=>document.getElementById('updateNotice');
@@ -2510,7 +2469,6 @@ WL.updateNotice=(()=>{
    document.getElementById('updateNoticeLabel').textContent=`推奨 ${state.release}`;
    c.title=`推奨の更新 ${state.release}${down?'（前の版へ戻す）':''}${state.note?'：'+state.note:''}（この PC は ${state.mine}・押すとくわしく）`;
   }else if(pop)WL.popMenu.close();
-  WL.versionNotice.paint();
  }
  function apply(u){
   const next=u&&u.release?{release:String(u.release),mine:String(u.mine||''),note:String(u.note||''),direction:u.direction==='down'?'down':'up'}:null;
@@ -2570,7 +2528,6 @@ async function sendHeartbeat(){
   if(!res.ok)throw Error('HTTP '+res.status);
   heartbeatFailures=0;setConnectionLost(false);
   const body=await res.json().catch(WL.quiet('応答を読めなくても生きている（版の知らせは前のまま）'));
-  WL.versionNotice.apply(body&&body.version);
   WL.updateNotice.apply(body&&body.update);
  }catch(e){
   heartbeatFailures++;
