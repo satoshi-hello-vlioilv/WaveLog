@@ -369,6 +369,31 @@ def version_notice(role=''):
             'outdated': counts_for_latest(role) and version_key(mine) < version_key(latest)}
 
 
+def behind_release(want, online=None, history=None, roles=None):
+    """配る版（`want`）と違う版で動いている端末の数（§9.609）。版の管理の②が「古い版の PC N台」と言う。
+
+    数えるのは`counts_for_latest()`の区分だけ（開発者の端末は配る前の版を試すので数えない・§9.516）。
+    端末ごとに**いま動いている版**（在席があれば在席・無ければ記録の最後）で比べる。→ {behind, total}。"""
+    if not want:
+        return {'behind': 0, 'total': 0}
+    by = {str(h.get('key')): str(h.get('version') or '') for h in (history or []) if h.get('key')}
+    for o in online or []:
+        if o.get('key') and o.get('version'):
+            by[str(o['key'])] = str(o['version'])
+    roles = roles or {}
+    counted = {k: v for k, v in by.items() if counts_for_latest(roles.get(k))}
+    return {'behind': sum(1 for v in counted.values() if v != str(want)), 'total': len(counted)}
+
+
+def release_spread(want):
+    """`behind_release()`を在席と記録から数える（読めなければ None・画面は台数を出さない）。"""
+    online, history = entries(), history_entries()
+    if online is None and history is None:
+        return None
+    seen = (online or []) + (history or [])
+    return behind_release(want, online, history, registered_roles(seen))
+
+
 def fleet_summary(online, history, my_version, roles=None, my_key='', placed_shell=''):
     """接続中と記録を合わせて「版の配布」の答えを作る。**ここ1箇所**（§9.163）。
 
