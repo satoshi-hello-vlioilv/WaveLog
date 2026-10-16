@@ -96,6 +96,8 @@ H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ pag
  const sx = await page.evaluate(() => ({ n: (document.getElementById('filterCount') || {}).textContent || '',
   conds: [...document.querySelectorAll('#grid .list-empty-conds li')].map(x => x.textContent.trim()),
   count: (document.getElementById('count') || {}).textContent || '', countShown: !!(document.getElementById('count') || {}).getClientRects?.().length }));
+ const pg = await page.evaluate(() => ({ p: (document.getElementById('page') || {}).textContent, prev: !!(document.getElementById('prev') || {}).disabled, next: !!(document.getElementById('next') || {}).disabled }));
+ rec('F5 スライサーで0件ならページは「0」で ‹ › は押せない（検索の0件と同じ）', pg.p === '0' && pg.prev && pg.next, JSON.stringify(pg));
  rec('F5 スライサーで0件でも件数は「0件 / 全 N件」で出る', /^0件\s*\/\s*全/.test(sx.count) && sx.countShown, JSON.stringify({ count: sx.count, shown: sx.countShown }));
  rec('F4 スライサーの選択も条件の数に入る', Number(sx.n) >= 1, `条件 ${sx.n}`);
  rec('F6a 0件の案内がスライサーを効いている条件として名乗る', sx.conds.some(t => /スライサー/.test(t)), sx.conds.join(' / '));

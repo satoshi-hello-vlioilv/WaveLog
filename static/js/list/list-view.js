@@ -2989,8 +2989,8 @@ function placeViewButton(bar){
 function renderListToolbar(){
  const bar=ensureListToolbar();if(!bar)return;
  placeViewButton(bar);
- /* 件数はここでも書く（§9.612）——最初の読み込みでは帯が表を描いたあとに作られ、0件だと描き直しが来ないので空のままだった。 */
- if(S.db&&S.table)allRowsProgress(S.rows.length,S.count);
+ /* 件数とページはここでも書く（§9.612）——最初の読み込みでは帯が表を描いたあとに作られ、0件だと描き直しが来ないので空のまま（ページは押せる形のまま）だった。 */
+ if(S.db&&S.table){allRowsProgress(S.rows.length,S.count);renderPager()}
  // 読み込んだ行間を毎回反映する(一覧を切り替えるとスコープごと変わる)。
  const gapEl=bar.querySelector('#listRowGap');
  if(gapEl){gapEl.value=String(rowGapValue);applyRowGap(rowGapValue)}
