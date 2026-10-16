@@ -1886,28 +1886,29 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(rows.length===1)addRowToSchedule(rows[0],scState.equipment);
   else addRowsToSchedule(rows,scState.equipment);
  };
- /* 仕掛一覧から伏せるロット（§9.15＋§9.368、list-view.js renderGrid()から参照）。
+ /* 仕掛一覧から伏せるロット（§9.15＋§9.368＋§9.612、list-view.js renderGrid()から参照）。
+    **比べるのはロットの鍵**（`lotKey`＝予定の行・`__lotKey`＝仕掛一覧の行）。鍵を作るのはサーバーの`lot_identity`の1箇所で、
+    決まり（鍵の列と区別の列）は設定で変えられる（`/api/schedule/lot-identity`）。画面は鍵を作らず比べるだけ。
     **2種類ある**——どちらも「この一覧に出すべきでない行」なので1つの並びで返す。
 
-     ① **予定に居るロット**（§9.15）。今開いている設備のscState.entries
-        （種別='作業'のみ。設備停止にロット番号は無い）。楽観的追加
-        （__pending）の間もすぐ消えてほしいので、pendingかどうかは見ない。
-     ② **仕掛から消えたと確かめたロット**（§9.368）。仕掛一覧の行は
-        読み込んだ時点の写しなので、予定へ入れてから外すまでの間に元データが
-        入れ替わっている（15分に1回・§9.89）ことがある。外すときに
-        1件だけ確かめて「消えている」と分かったものは、写しに残っていても
-        戻さない。
+     ① **予定に居るロット**。今開いている設備の予定の作業の行のうち、**まだ終わっていない行と、表に見えている
+        完了の行**（さかのぼりの範囲の中・`withinHistory()`）。範囲の外の昔の完了は伏せない——同じロットが
+        もう一度来たとき（2回目の工程）に一覧へ出なくなる（§9.612・利用者の指摘）。楽観的追加の間もすぐ消えてほしいので、
+        行が持つ鍵（入れたときに一覧の行から写す）で見る。
+     ② **仕掛から消えたと確かめたロット**（§9.368）。外すときに確かめて「消えている」と分かった行の鍵。
 
-    **対象外のときはnullを返す**（スケジュール画面を開いていない・
-    schedule モードでない等）。呼ぶ側は絞り込まず全件を出す。 */
+    **対象外のときはnullを返す**（スケジュール画面の中でない・一覧の板・全体を持たない等）。呼ぶ側は絞り込まず全件を出す。 */
+ const SC_LIST_DONE_STATES=new Set(['完了','取消']);
+ function listHidesEntry(e){
+  if(e.kind!=='作業'||!e.lotKey)return false;
+  return !SC_LIST_DONE_STATES.has(e.state)||withinHistory(e);
+ }
  function hiddenLotSet(){
+  if(!document.body.classList.contains('sc-mode'))return null;
   if(!scState.fullControl||scState.boardMode!=='single'||!scState.equipment)return null;
   const set=new Set();
-  scState.entries.forEach(e=>{if(e.kind==='作業'&&e.lotNo)set.add(String(e.lotNo))});
-  /* **一覧の行と同じ綴りで持つ**（§9.368）。予定の`lotNo`はもともと
-     仕掛一覧の行から取った値なので、生のまま突き合わせて一致する
-     ——ここで正規化すると、一覧側（生の値で引く）と食い違う。 */
-  scGoneLots.forEach(lot=>set.add(lot));
+  scState.entries.forEach(e=>{if(listHidesEntry(e))set.add(e.lotKey)});
+  scGoneLots.forEach(k=>set.add(k));
   return set;
  }
 
@@ -3523,7 +3524,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     あちらが危ない側だから。こちらは見せないほうが危ない）。 */
  const PRESENCE_BATCH=60;        // `starts_any`が1回で受ける上限（tables.py）
  const scInWork=new Map();       // 正規化ロット -> true(仕掛に在る)/false(消えた)
- /* 外したあと、仕掛一覧へ戻さないロット（生の綴りのまま持つ）。
+ /* 外したあと、仕掛一覧へ戻さないロット（行の鍵＝`lotKey`で持つ・§9.612）。
     **一覧を取り直したら捨てる**——取り直した一覧はもう最新なので、
     伏せる理由が無い（`forgetWorkPresence()`）。 */
  const scGoneLots=new Set();
@@ -3617,24 +3618,24 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  /* ③ 外したロットを仕掛一覧へ戻してよいか。**そのロットだけ**を見る。
     控えに無いものだけ1往復で確かめる。戻り値は「戻さないと決めたロット」。 */
- async function settleRemovedLots(lots){
-  const raw=(lots||[]).map(v=>String(v??'')).filter(Boolean);
-  if(!raw.length)return [];
-  const unknown=raw.filter(l=>inWorkOf(l)==='unknown');
+ async function settleRemovedLots(entries){
+  const list=(entries||[]).filter(e=>e&&String(e.lotNo??''));
+  if(!list.length)return [];
+  const unknown=list.map(e=>String(e.lotNo)).filter(l=>inWorkOf(l)==='unknown');
   if(unknown.length)await checkWorkPresence(unknown);
-  const gone=raw.filter(l=>inWorkOf(l)==='gone');
+  const gone=list.filter(e=>inWorkOf(String(e.lotNo))==='gone');
   if(!gone.length)return [];
-  gone.forEach(l=>scGoneLots.add(l));
+  gone.forEach(e=>{if(e.lotKey)scGoneLots.add(e.lotKey)});
   refreshScheduledLotFilter();
-  return gone;
+  return gone.map(e=>String(e.lotNo));
  }
  /* 仕掛一覧から入れたロットは、その時点で**確かに仕掛に在る**。
     往復ゼロで控えられるので控える（§9.67と同じ考え方）。 */
- function noteLotFromWorkList(lot){
+ function noteLotFromWorkList(lot,key){
   const raw=String(lot??'');
   if(!raw)return;
   noteInWork(raw,true);
-  if(scGoneLots.delete(raw))refreshScheduledLotFilter();
+  if(key&&scGoneLots.delete(key))refreshScheduledLotFilter();
  }
 
  /* ---------- 元データが変わったら取り込む（§9.375） ----------
@@ -8405,7 +8406,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     戻さないと決めたぶんは**必ず字で言う**（§3）——黙って消えると、
     「外したのに一覧にも無い」としか読めない。 */
  function noteRemovedLots(entries){
-  const lots=(entries||[]).filter(e=>e&&e.kind==='作業'&&e.lotNo).map(e=>String(e.lotNo));
+  const lots=(entries||[]).filter(e=>e&&e.kind==='作業'&&e.lotNo);
   if(!lots.length)return;
   settleRemovedLots(lots).then(gone=>{
    if(!gone.length)return;
@@ -11512,8 +11513,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    return;
   }
   if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
-  const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
-  noteLotFromWorkList(entry.lotNo);   // 仕掛一覧の行から入れた＝在席は確定（§9.368）
+  const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',lotKey:row.__lotKey||'',detail:buildScheduleDetail(row)});
+  noteLotFromWorkList(entry.lotNo,entry.lotKey);   // 仕掛一覧の行から入れた＝在席は確定（§9.368）
   const kidEntries=makeOptimisticChildren(entry,children);
   insertEntriesAt(before,[entry,...kidEntries]);
   renderTimeline();
@@ -11568,7 +11569,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const before=takeInsertBefore();
   const added=[];
   rows.forEach(row=>{
-   const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
+   const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',lotKey:row.__lotKey||'',detail:buildScheduleDetail(row)});
    const kids=childrenOf.get(row)||[];
    const kidEntries=makeOptimisticChildren(entry,kids);
    added.push(entry,...kidEntries);

@@ -420,6 +420,9 @@ def ensure_data_source_table(c):
  # データソースを差し替えたときにキーだけ前のまま残る。空欄＝既定。
  if DATA_SOURCE_TABLE in tables(c):
   add_missing_columns(c,DATA_SOURCE_TABLE,(('突合キー','TEXT'),))
+ # ロットの見分け方(§9.612)。役割「仕掛」の行が持つ（鍵の列と区別の列・空欄＝既定）。答えは`lot_identity.identity()`。
+ if DATA_SOURCE_TABLE in tables(c):
+  add_missing_columns(c,DATA_SOURCE_TABLE,(('ロット識別JSON','TEXT'),))
  # 設備ごとのファイル(§9.595)。**型を持つ行はフォルダを指す**（例: `実績_{設備}.sqlite3`）。
  # 空欄＝今までどおり1つのファイル（既存の行の動きを変えない）。
  if DATA_SOURCE_TABLE in tables(c):

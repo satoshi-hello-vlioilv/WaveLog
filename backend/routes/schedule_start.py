@@ -30,9 +30,11 @@ from datetime import datetime
 from flask import Blueprint, jsonify
 
 from .. import schedule_calc
+from .. import lot_identity
 from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import read_equipment_run_mode, write_equipment_run_mode, RUN_MODE_STRICT
-from ..access_mode import request_user_id, request_pc_name
+from ..access_mode import request_user_id, request_pc_name, current_permission_flags
+from ..repositories.master_repo import master_edit_capabilities
 from .body import body, any_
 from .schedule import _read, _write_response, line_ops_allowed, PLAN_TIMES_DENIED
 from .common import cfg_write_response
@@ -42,6 +44,9 @@ bp = Blueprint('schedule_start', __name__)
 START_PATH = '/api/schedule/plan/start'
 PROGRESS_PATH = '/api/schedule/plan/progress'
 RUN_MODE_PATH = '/api/schedule/run-mode'
+LOT_IDENTITY_PATH = '/api/schedule/lot-identity'
+LOT_IDENTITY_DENIED = ('この端末ではロットの見分け方を変えられません。変えられるのは、アクセス権限マスタの「マスタ編集」で'
+                       '管理のマスタ（データ接続）を直せる端末です。')
 RUN_MODE_DENIED = ('この端末では運用モードを切り替えられません。切り替えられるのは、この設備を並べ替えられる端末'
                    '（スケジュールモード、またはアクセス権限マスタの「現場段取り」でこの設備を持つ端末）です。')
 
@@ -161,3 +166,27 @@ def run_mode_set():
     mode, uid = x.text('mode'), request_user_id(x)
     return cfg_write_response(lambda mc: {'equipment': equipment, 'runMode': mode,
                                           'updated': write_equipment_run_mode(mc, equipment, mode, uid)})
+
+
+def _can_set_identity():
+    f = current_permission_flags()
+    return bool(master_edit_capabilities(f.get('role', ''), f.get('masterEditStored', '')).get('canEditAdminMaster'))
+
+
+@bp.get(LOT_IDENTITY_PATH)
+def lot_identity_get():
+    """ロットの見分け方（§9.612）と、この端末が変えられるか（できないなら理由）。"""
+    ok = _can_set_identity()
+    return jsonify(ok=True, identity=lot_identity.identity(), defaults=list(lot_identity.DEFAULT_KEYS),
+                   canSet=ok, deniedReason='' if ok else LOT_IDENTITY_DENIED)
+
+
+@bp.post(LOT_IDENTITY_PATH)
+def lot_identity_set():
+    """ロットの見分け方を変える（§9.612・データソースの役割「仕掛」の行の1列。**全端末に効く**）。
+    スケジュールの画面から変えるので scheduleモードへも開ける（端末は`_can_set_identity()`＝管理のマスタを直せる端末）。"""
+    x = body({'keys': any_, 'pass': any_})
+    if not _can_set_identity():
+        return jsonify(error=LOT_IDENTITY_DENIED), 403
+    uid = request_user_id(x)
+    return cfg_write_response(lambda mc: {'identity': lot_identity.write(mc, {'keys': x.get('keys') or [], 'pass': x.get('pass') or []}, uid)})

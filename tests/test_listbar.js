@@ -47,8 +47,10 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
             colsIn: (document.getElementById('listColumnBtn') || {}).parentElement?.id || '',
             order: [...(document.getElementById('filterBarSlot') || { children: [] }).children].map(e => e.id).join(',') };
   });
-  rec('スケジュールと並べたとき、一覧の帯は2段（すぐ使う操作／常に見る状態）', bar.rows <= 2, JSON.stringify(bar));
-  rec('帯の高さは90px以下（前は236px）', bar.h <= 90, `${bar.h}px（一覧の幅 ${bar.w}px）`);
+  /* §9.612（利用者の指示「ボタンが小さすぎる」「LotScope の感じ大きさ」）で押す物を26px・11px→30px・13.5px・字つきにした。
+     狭い器では絞る帯2段（検索｜プリセット／条件｜道具｜見せ方）＋状態2段（件数・元データ・ページ／伏せる・結合）＝4段まで。 */
+  rec('スケジュールと並べたとき、一覧の帯は4段まで（絞る2段／状態2段・§9.612）', bar.rows <= 4, JSON.stringify(bar));
+  rec('帯の高さは160px以下（前は236px・§9.468で90px→§9.612で字を大きくした）', bar.h <= 160, `${bar.h}px（一覧の幅 ${bar.w}px）`);
   rec('「表示列」「表の見せ方」は1段目（絞り込みのバーの席）・表示列が先',
       bar.viewIn === 'filterBarSlot' && bar.colsIn === 'filterBarSlot' && bar.order.startsWith('listColumnBtn,listViewBtn'), JSON.stringify(bar));
   await W.listView(page);
@@ -60,8 +62,10 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
   /* §9.481（利用者の報告「表示列の編集…マウスオーバーで表示文字がコントラスト不足で読めなくなる」）。
      `.wl-menu button:hover`の淡い地が塗りのボタンに勝ち、白字が 2.33 だった（離しても説明の行は 3.86）。
      字と**重ねた地**（透明なら祖先まで辿る）の比を、乗せた／離したの両方で 4.5 以上。 */
-  const contrast = () => page.evaluate(() => {
-   const b = document.getElementById('listColumnBtn');
+  /* 狭い器では「表示列」は「見せ方 ▾」に畳んである（§9.612）。そのときは見えている入口（同じ部品）で測る。 */
+  const colSel = await page.evaluate(() => { const b = document.getElementById('listColumnBtn'); return b && b.getClientRects().length ? '#listColumnBtn' : '#listFold-view'; });
+  const contrast = () => page.evaluate(sel => {
+   const b = document.querySelector(sel);
    const rgb = s => { const m = (s.match(/[\d.]+/g) || []).map(Number); return m.length < 4 ? m.concat([1]) : m; };
    const lum = c => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
      return .2126 * f(c[0]) + .7152 * f(c[1]) + .0722 * f(c[2]); };
@@ -75,9 +79,9 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
       const fg = rgb(getComputedStyle(e).color), bg = bgOf(e);
       const a = lum(fg.slice(0, 3).map((v, k) => v * op * fg[3] + bg[k] * (1 - op * fg[3]))), c = lum(bg);
       return (Math.max(a, c) + .05) / (Math.min(a, c) + .05); }));
-  });
+  }, colSel);
   const cOff = await contrast();
-  await page.hover('#listColumnBtn'); await W.paint(page);
+  await page.hover(colSel); await W.paint(page);
   const cOn = await contrast();
   await page.mouse.move(2, 2);
   rec('「表示列」の字は乗せても離しても読める（コントラスト 4.5 以上・前: 乗せて 2.33）',

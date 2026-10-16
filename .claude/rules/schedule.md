@@ -1,4 +1,4 @@
-# 作業スケジュール（122件）
+# 作業スケジュール（125件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ロットの見分け方は`lot_identity`の1箇所（鍵の列＋何回目かの列）。予定は`lotKey`・一覧は`__lotKey` | `test_lotident.py`・`test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| 仕掛一覧で伏せるのは予定・作業中と表に見えている完了だけ。スケジュール画面の外では伏せない | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| 測定の記録は時刻で予定の行へ配る（`assign_actuals()`・入れる前に終わった記録は当てない） | `test_lotident.py` | [§9.612](../../docs/decisions/9.612.md) |
 | 完了ロットは実績の時刻順に処理し、表も 完了（時刻順）→ 作業中 → 予定 の3群で並べる（`_settle_stop_times`・`visibleEntries`） | `test_doneflow.py`・`test_doneflowui.js` | [§9.611](../../docs/decisions/9.611.md) |
 | 設備停止も開始の印を持つ。始めた停止の終わりは「開始＋見積」と「次に始まった行の開始」の早いほう（`_settle_started_stops()`） | `test_doneflow.py` | [§9.611](../../docs/decisions/9.611.md) |
 | 行の「開始」「終了」は`/api/schedule/plan/progress`の1本（決めるのは`progress_plan()`）。終了で次の設備停止も始める | `test_doneflow.py`・`test_doneflowui.js` | [§9.611](../../docs/decisions/9.611.md) |
@@ -24,7 +27,7 @@
 | 固定の列の既定の幅は`scColDefaultW()`の1箇所。書式の決まった列は`sample`を見出しの行で描いて測る（太字・`w`より狭くしない） | `test_fit.js` | [§9.594](../../docs/decisions/9.594.md) |
 | 開始の状態は`startStateOf()`の1箇所（押せる／押せない／出さない）。厳密モードで押せない開始は鍵つきの灰の面で残す（半透明にしない） | `test_strictmode.js` | [§9.592](../../docs/decisions/9.592.md) |
 | 運用モードは作業スケジュールの「運用」の札（いつも出す）から切り替える。口は`/api/schedule/run-mode`、許す端末は`line_ops_allowed()` | `test_strictmode.js`・`test_strictstart.py` | [§9.592](../../docs/decisions/9.592.md) |
-| 帯の字を落とすしきい値（em）は字の大きさを変えたら測り直す（13pxで109.2em／93.4em） | `test_scbar.js` | [§9.591](../../docs/decisions/9.591.md) |
+| 帯の字を落とすしきい値（em）は字の大きさを変えたら測り直す（13.5pxで107em／89em・§9.612） | `test_scbar.js` | [§9.591](../../docs/decisions/9.591.md)・[§9.612](../../docs/decisions/9.612.md) |
 | 厳密モードの一番上のロットは`strict_top()`の1箇所（予定の応答の`strictTop`・開始の口）。画面は数え直さず押せる「開始」を一番上だけに | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 開始の口は`/api/schedule/plan/start`の1本。測定画面を開く関門が予定・帯・仕掛のどの道でも聞く（通常モードは書かない） | `test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |
 | 断るときは理由の種類と一番上のロット・次の一手（作業スケジュールを開く）。作業中のロットがあれば「作業中」で断る（並べ替えに行かせない） | `test_strictstart.py`・`test_strictmode.js` | [§9.588](../../docs/decisions/9.588.md) |

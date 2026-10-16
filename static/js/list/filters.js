@@ -264,7 +264,24 @@
      どちらの置き場も入れ替わる、という2つの困りごとになっていた。
      列構成が変わるのは**スケジュール画面の中の仕掛一覧**（品質データを
      結合する）なので、判定もそこに合わせる。 */
-  function presetMode(){return document.body.classList.contains('sc-mode')?'schedule':''}
+  /* ---------- 仕掛一覧と同じ条件で使う（§9.612、利用者の指示「仕掛一覧と、スケジュールの際に表示する仕掛一覧の
+     フィルタ条件を同じにしながら使う機能」→ 答え「切り替えで連動」） ----------
+     スケジュールの中の一覧でも、**つないでいるあいだは「元データ」の一覧の置き場**（登録・当てている条件・その場の条件・
+     既定と鍵）を使う。切るとスケジュール用の置き場へ戻る（どちらの中身も消さない）。覚えるのは利用者×一覧ごと（この端末）。
+     答えは`presetMode()`の1箇所——置き場の鍵を作る所は全部ここを通るので、切り替えたら`syncFilterContext()`で当て直すだけ。 */
+  const LINK_KEY='wl.filterLink.v1';
+  const linkScope=()=>`${S.db||''}\u001f${S.table||''}`;
+  function linkStore(){try{const x=JSON.parse(localStorage.getItem(LINK_KEY)||'{}');return x&&typeof x==='object'?x:{}}
+    catch(e){WL.quiet.note('条件のつなぎを読めない（つながないで続ける）',e);return {}}}
+  function filterLinked(){return (linkStore()[filterUserId()]||{})[linkScope()]===true}
+  function setFilterLinked(on){
+    const all=linkStore(),u=all[filterUserId()]=all[filterUserId()]||{};
+    if(on)u[linkScope()]=true;else delete u[linkScope()];
+    try{localStorage.setItem(LINK_KEY,JSON.stringify(all))}catch(e){WL.quiet.note('条件のつなぎを書けない（この画面のあいだだけ効く）',e)}
+    syncFilterContext();renderGenericFilterBar();S.page=1;WL.list.load();
+  }
+  const inScheduleList=()=>document.body.classList.contains('sc-mode');
+  function presetMode(){return inScheduleList()&&!filterLinked()?'schedule':''}
   const SCENE_LABEL={'schedule':'スケジュール作成中の仕掛一覧','':'「元データ」の一覧'};
   function sceneLabel(){return SCENE_LABEL[presetMode()]||'この一覧'}
   function usageScopeKey(){return `${S.db||''}\u001f${S.table||''}\u001f${presetMode()}`}
@@ -1225,7 +1242,12 @@
     if(withAdhoc)resetAdhoc();
     S.page=1;renderGenericFilterBar();
   }
-  async function clearAllFilters(){await dropAllFilters();WL.list.load()}
+  /* 「条件を全部外す」は**いま行を絞っている物の全部**を外す（§9.612・検索の字・スライサー・列で絞り込みも）。
+     外すのは各提供者・読み直しは1回（0件の案内の「条件を外して全件を見る」と同じ道＝`WL.list.clearNarrowing()`）。 */
+  async function clearAllFilters(){
+    if(typeof WL.list?.clearNarrowing==='function'){await WL.list.clearNarrowing();return}
+    await dropAllFilters();WL.list.load();
+  }
   function updateFilterColumns(){
     ensureGenericFilterBar();const select=$('#filterColumn');if(!select)return;const current=select.value;
     /* **表示名を付けた列は両方の名前で出す**（§9.464）。値は元の列名のまま（絞り込みは
@@ -1291,18 +1313,31 @@
   function condFullText(f){
     return `${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value+condVarNote(f)}`;
   }
+  /* 帯の「条件 N」が数えるのは**いま行を絞っている物の全部**（`WL.list.narrowingItems()`の1箇所・§9.612）——
+     登録・適用した条件と列で絞り込みに加えて、一覧を検索の字・スライサーの選択も数える（数が0件の案内と食い違わない）。 */
+  function narrowingNow(){
+    return typeof WL.list?.narrowingItems==='function'?WL.list.narrowingItems()
+      :condRows().map(r=>({source:r.kind==='adhoc'?'列で絞り込み':'条件',text:r.kind==='adhoc'?r.label:condFullText(r.f),kind:r.kind}));
+  }
   function renderActiveTokens(){
     const btn=$('#filterCondBtn'),count=$('#filterCount');if(!btn)return;
-    const rows=condRows();
-    const n=rows.length;
+    const items=narrowingNow();
+    const n=items.length;
     if(count)count.textContent=String(n);
     btn.classList.toggle('is-on',n>0);
+    let scope=btn.querySelector('.fb-cond-scope');
+    if(linkShown()){
+      if(!scope){scope=document.createElement('span');scope.className='fb-cond-scope';btn.insertBefore(scope,btn.querySelector('.hd-caret'))}
+      scope.textContent=filterLinked()?LINK_WORD.on:LINK_WORD.off;
+    }else if(scope)scope.remove();
     /* 狭い器では「条件」の字を畳む（§9.505）ので、読み上げの名前はここで持つ。 */
     btn.setAttribute('aria-label',`条件 ${n}つ`);
+    const ign=(S.genericFilters||[]).filter(f=>(S.filtersIgnored||[]).includes(f.column)).length;
+    btn.classList.toggle('is-partial',ign>0);
     /* **0でも押せる**（§9.505）——条件を足す・作る入口もこの面にある。 */
     btn.title=n
-      ? '効いている条件 '+n+'つ\n'
-        +rows.map(r=>r.kind==='adhoc'?`列で絞り込み: ${r.label}`:condFullText(r.f)).join('\n')
+      ? '効いている条件 '+n+'つ（すべてに当たる行だけを出します＝かつ）\n'+items.map(x=>`${x.source}: ${x.text}`).join('\n')
+        +(ign?`\n（うち${ign}つはこの一覧の元データに無い列なので効いていません）`:'')
         +'\n押すと中身を確かめたり、外したり、条件を足したりできます。'
       : '効いている条件はありません。押すと、条件を足す・作る入口が開きます。';
     renderCondMenu();
@@ -1319,7 +1354,10 @@
           +`<span class="fb-cond-text">${esc(r.label)}</span>`
           +'<button type="button" class="fb-cond-x" data-adhoc-clear title="列で絞り込みの入力を消して外します">×</button></div>';
       const known=!!registeredPreset(r.f);
-      return `<div class="fb-cond-row${r.locked?' is-locked':''}">`
+      /* この表に無い列（結合で足した品質データの列など）の条件は、サーバーが絞り込みに使えない（§9.612・`filtersIgnored`）。黙らせず字で言う。 */
+      const ignored=(S.filtersIgnored||[]).includes(r.f.column);
+      return `<div class="fb-cond-row${r.locked?' is-locked':''}${ignored?' is-ignored':''}">`
+        +(ignored?'<span class="fb-cond-badge is-warn" title="この一覧の元データに無い列（結合で足した列など）なので、絞り込みに効いていません。元データの列で条件を作ってください">効いていない</span>':'')
         +(r.locked?'<span class="fb-cond-badge is-lock" title="いつも適用（固定）。一覧を開くたびに入ります">\u{1F512} 固定</span>':'')
         +`<span class="fb-cond-text">${esc(r.f.column)} <b>${esc(opLabel(r.f.op))}</b>`
         +(noValueOp(r.f.op)?'':` <em>${esc(r.f.value)}</em>`)
@@ -1329,10 +1367,22 @@
           +`title="${known?'登録済み（「登録した条件とプリセット」にあります）':'この条件を登録します。登録すると組み合わせ（プリセット）に入れられます'}">${known?'★':'☆'}</button>`)
         +`<button type="button" class="fb-cond-x" data-cond-x="${r.i}" title="この条件を外します">×</button></div>`;
     };
+    /* 検索の字・スライサーの選択も**効いている条件の行**として並べる（§9.612・帯の「条件 N」と同じ顔ぶれ）。外すのはその場の × 。 */
+    const others=narrowingNow().filter(x=>x.kind==='search'||x.kind==='slicer');
+    const otherLine=x=>`<div class="fb-cond-row is-${x.kind}"><span class="fb-cond-badge">${esc(x.source)}</span>`
+      +`<span class="fb-cond-text">${esc(x.text)}</span>`
+      +`<button type="button" class="fb-cond-x" data-other-x="${x.kind}" title="${x.kind==='search'?'検索の字を消して外します':'スライサーで選んだ値を外します'}">×</button></div>`;
+    const n=rows.length+others.length;
     list.innerHTML='<p class="fb-cond-head">効いている条件'
-      +(rows.length?`<small>${rows.length}つ。この一覧に当てている絞り込みです</small>`
+      +(n?`<small>${n}つ。すべてに当たる行だけを出します（かつ）</small>`
         :'<small>まだありません。下のどれかで足せます</small>')+'</p>'
-      +rows.map(line).join('');
+      +others.map(otherLine).join('')+rows.map(line).join('')+linkSwitchHtml();
+    list.querySelectorAll('[data-link-set]').forEach(b=>b.onclick=()=>{const on=b.dataset.linkSet==='1';if(on!==filterLinked()){setFilterLinked(on);renderCondMenu()}});
+    list.querySelectorAll('[data-other-x]').forEach(b=>b.onclick=()=>{
+      if(b.dataset.otherX==='search'){const box=$('#search');if(box)box.value=''}
+      else WL.listSlicer?.clearAll?.();
+      S.page=1;WL.list.load();
+    });
     list.querySelectorAll('[data-cond-x]').forEach(b=>b.onclick=async()=>{
       const i=+b.dataset.condX,f=S.genericFilters[i];
       if(!f)return;
@@ -1347,7 +1397,7 @@
     list.querySelector('[data-adhoc-clear]')?.addEventListener('click',()=>clearAdhoc());
     /* **押しても何も起きない物を残さない**（§CLAUDE 画面基準 4）。外すのは登録・適用した条件
        （列で絞り込みは自分の × で外す）。 */
-    const clear=$('#clearGenericFilters');if(clear)clear.disabled=!S.genericFilters.length;
+    const clear=$('#clearGenericFilters');if(clear)clear.disabled=!n;
   }
   /* 面は**バーの中に常設**（`position:fixed`・§9.201）。開閉は hidden の入切だけ。 */
   function closeCondMenu(){
@@ -1553,6 +1603,17 @@
     }
   }
 
+  /* 条件のつなぎ（§9.612）は「条件」の札が字で名乗り（スケジュール用／仕掛一覧と同じ）、切り替えは「条件」の面の中（押す所は1つ）。 */
+  const LINK_WORD={off:'スケジュール用',on:'仕掛一覧と同じ'};
+  const linkShown=()=>inScheduleList()&&!!(S.db&&WL.dataSource?.isWork?.(S.db));
+  function linkSwitchHtml(){
+    if(!linkShown())return '';
+    const on=filterLinked();
+    return '<div class="fb-cond-scope-row" role="group" aria-label="この一覧の条件"><span class="fb-cond-scope-k">この一覧の条件</span>'
+      +`<span class="mm-seg"><button type="button" data-link-set="0" aria-pressed="${!on}" class="${on?'':'is-on'}">${LINK_WORD.off}</button>`
+      +`<button type="button" data-link-set="1" aria-pressed="${on}" class="${on?'is-on':''}">${LINK_WORD.on}</button></span>`
+      +`<small>${on?'「元データ」の仕掛一覧と同じ条件（登録・当てている条件・既定）で絞っています。':'スケジュールの中だけの条件で絞っています。'}切り替えてもどちらの条件も消えません。</small></div>`;
+  }
   function renderGenericFilterBar(){
     ensureGenericFilterBar();updateFilterColumns();renderPresetButton();
     renderActiveTokens();renderAdhocRow();

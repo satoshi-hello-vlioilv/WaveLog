@@ -1,4 +1,4 @@
-# 画面の土台（68件）
+# 画面の土台（69件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 畳んだ入口から本物を押したら、本物の面は畳んだ入口の下に出す（`WL.popMenu.proxy()`） | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
 | 推奨の更新の知らせはヘッダーの状態の札1つ（`WL.updateNotice`・★だけ琥珀・▾）。押すと`.wl-menu`の面。本文を覆わない・押しのけない | `test_releaseui.js` | [§9.609](../../docs/decisions/9.609.md) |
 | 【§9.610で改めた】版の管理は LotScope の型（丸い札・新しい版は「配る ▾」・古い版は「戻す ▾」）。琥珀は推奨の更新の意味にだけ | `test_releaseui.js`・`test_appupdateui.js` | [§9.609](../../docs/decisions/9.609.md) |
 | 使っている人への知らせは推奨の更新の札だけ。通常の配布では何も出さない（「新しい版あり」は外した） | `test_releaseui.js`・`test_presenceui.js` | [§9.610](../../docs/decisions/9.610.md) |

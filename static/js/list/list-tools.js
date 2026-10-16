@@ -43,7 +43,7 @@
   const slot=document.getElementById('listZoomSlot');if(!slot)return;
   if(!slot.querySelector('#listZoomRange')){
    slot.innerHTML=`<span class="lt-zoom" role="group" aria-label="一覧の拡大" title="一覧の表だけを拡大・縮小します（この窓のあいだだけ・閉じると100%）">
-    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+    <span class="lt-zoom-k">拡大</span>
     <button type="button" class="lt-zoom-btn" data-zoom="-1" aria-label="縮小">−</button>
     <input type="range" id="listZoomRange" min="${ZMIN}" max="${ZMAX}" step="${ZSTEP}" value="${zoom}" aria-label="一覧の拡大（%）">
     <button type="button" class="lt-zoom-btn" data-zoom="1" aria-label="拡大">＋</button>
@@ -155,7 +155,47 @@
   };
   inp.click();
  }
- WL.listHooks.onAfter(()=>{placeFile();placeZoom()});
- WL.listHooks.onGrid(()=>{placeFile();placeZoom()});
+ /* ---------- 畳んだ入口（§9.612・LotScope の大きさのまま狭い器に入れる） ----------
+    作業スケジュールに並べた狭い器では、帯を2段に収めるため、入口を「道具 ▾」「見せ方 ▾」へ畳む（**機能は削らない**——
+    面の項目を押すと本物のボタンを押したのと同じ。本物の面は畳んだ入口の下に出る＝`WL.popMenu.proxy`）。
+    どこで畳むかは CSS の1箇所（45-tolerance.css の`.lt-fold`）。使っている道具の数は入口の札が言う。 */
+ const FOLDS=[
+  {key:'tools',label:'道具',icon:'fa-sliders',head:'列で絞り込む・スライサー・色付け',ids:['filterAdhocToggle','listSlicerBtn','listMarkBtn'],
+   put:b=>{const c=document.getElementById('filterCondBtn');if(c&&c.nextElementSibling!==b)c.after(b)}},
+  {key:'view',label:'見せ方',icon:'fa-table-columns',head:'表示列・表の見せ方・ファイル',ids:['listColumnBtn','listViewBtn','listFileBtn'],
+   put:b=>{const s=document.getElementById('filterBarSlot');if(s&&s.lastElementChild!==b)s.appendChild(b)}},
+ ];
+ const isOn=b=>!!b&&(b.classList.contains('active')||b.classList.contains('is-active')||b.classList.contains('is-on'));
+ const nameOf=b=>((b.querySelector('.lt-tool-t,.lt-cols-t')||b).textContent||'').replace(/[▾\s]+$/,'').trim()||b.getAttribute('aria-label')||'';
+ function placeFolds(){
+  if(!document.querySelector('#genericFilterBar .filter-search-row'))return;
+  FOLDS.forEach(f=>{
+   let b=document.getElementById('listFold-'+f.key);
+   if(!b){b=document.createElement('button');b.type='button';b.id='listFold-'+f.key;b.className='lt-tool-btn lt-fold';b.dataset.fold=f.key;
+    b.setAttribute('aria-haspopup','menu');b.setAttribute('aria-expanded','false');b.onclick=()=>openFold(f,b)}
+   f.put(b);
+   const real=f.ids.map(id=>document.getElementById(id)).filter(Boolean);
+   real.forEach(r=>WL.popMenu.proxy(r,b));
+   const on=real.filter(isOn).length;
+   b.classList.toggle('is-active',on>0);
+   b.title=`${f.head}${on?`（${on}つ使っています）`:''}`;
+   b.innerHTML=`<i class="fa-solid ${f.icon}" aria-hidden="true"></i><span class="lt-tool-t">${f.label}</span>${on?`<b class="lt-n">${on}</b>`:''}<i class="hd-caret" aria-hidden="true">▾</i>`;
+  });
+ }
+ function openFold(f,btn){
+  let m=document.getElementById('listFoldMenu');
+  if(m&&!m.hidden&&m.dataset.fold===f.key){WL.popMenu.close();return}
+  if(!m){m=document.createElement('div');m.id='listFoldMenu';m.className='wl-menu lt-fold-menu';m.hidden=true;document.body.appendChild(m)}
+  m.dataset.fold=f.key;m.setAttribute('aria-label',f.head);
+  const real=f.ids.map(id=>document.getElementById(id)).filter(Boolean);
+  m.innerHTML=`<p class="lt-fold-head">${esc(f.head)}</p>`+real.map(r=>`<button type="button" data-fold-to="${esc(r.id)}" class="${isOn(r)?'is-on':''}">${esc(nameOf(r))}${isOn(r)?'<small>使っています</small>':''}</button>`).join('');
+  m.querySelectorAll('[data-fold-to]').forEach(x=>{x.onclick=()=>{const r=document.getElementById(x.dataset.foldTo);WL.popMenu.close();
+   /* 次の巡回で押す——同じクリックの中で開くと、本物の面がこのクリックを「外を押した」と読んで閉じる。 */
+   if(r)setTimeout(()=>r.click(),0)}});
+  m.hidden=false;btn.setAttribute('aria-expanded','true');
+  WL.popMenu.open(m,{anchor:btn,owner:btn,onClose:()=>{m.hidden=true;btn.setAttribute('aria-expanded','false')}});
+ }
+ WL.listHooks.onAfter(()=>{placeFile();placeZoom();placeFolds()});
+ WL.listHooks.onGrid(()=>{placeFile();placeZoom();placeFolds()});
  WL.listTools={setZoom,zoom:()=>zoom,exportXlsx,current,gather};
 })();

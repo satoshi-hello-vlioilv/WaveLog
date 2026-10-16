@@ -195,7 +195,7 @@ run('test_scbar: 操作列を1行に・親/子バッジ・差し込みの当た�
      選択「案A」（表の見せ方の要約を帯から外し、空いた幅で「追加」に字を添える）。
      前（1728×1030・個別）: 字 2種（12・10px）・押す物の高さ 3種（30・32・26px）・「追加」はアイコンだけ。
      数えないもの: 開く印「▾」と絵（字ではない）、切り替えの**中の札**（外側の枠が高さを持つ）。
-     この網の窓は1700px＝器118.7em——字を全部出して要る幅（91.8〜111.1em）より広い。 */
+     この網の窓は利用者の PC と同じ1728px（§9.612で1700から）＝器107.6em——字を全部出して要る幅（97.0〜106.4em・13.5px）より広い。 */
   const band=await page.evaluate(()=>{
    const vis=e=>{const r=e.getBoundingClientRect();return r.width>1&&r.height>1&&!e.closest('[hidden]')};
    const head=document.getElementById('scHead');
@@ -638,4 +638,4 @@ run('test_scbar: 操作列を1行に・親/子バッジ・差し込みの当た�
   }catch(e){}
 
  }
-}, {viewport:{width:1700,height:1000}});
+}, {viewport:{width:1728,height:1152}});

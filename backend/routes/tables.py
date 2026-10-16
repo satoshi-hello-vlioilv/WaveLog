@@ -12,6 +12,7 @@ import io, json, time
 from flask import Blueprint, request, jsonify, send_file
 from .body import body, flag, any_
 
+from .. import lot_identity
 from .. import query_join
 from .. import sort_order
 from .. import db_mirror
@@ -469,6 +470,32 @@ def _build_filter_where(filters):
  return parts,params
 
 
+def _ignored_filter_columns(filter_payload,cs):
+ """条件のうち、この表に無い列（結合で足した品質データの列など）。**黙って捨てない**——画面が「効いていない」と言う（§9.612）。"""
+ try:items=json.loads(filter_payload) if filter_payload else []
+ except ValueError as _e:quiet('条件の並びを読めない（効いていない列は数えない）',_e);return []
+ out=[]
+ for it in (items if isinstance(items,list) else []):
+  col=str((it or {}).get('column') or '').strip() if isinstance(it,dict) else ''
+  if col and col not in cs and col not in out:out.append(col)
+ return out
+
+
+def _table_counts(cur,t,where,params):
+ """(絞った件数, 絞る前の件数)。帯が「n件 / 全 N件」と言う（§9.612）——絞っていなければ同じ数なので数え直さない。"""
+ cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
+ if not where:return count,count
+ cur.execute(f'SELECT COUNT(*) FROM {qi(t)}');return count,int(cur.fetchone()[0])
+
+
+def _row_dicts(k,cs,rows):
+ """行を dict へ。作業の一覧の行はロットの鍵を持つ（§9.612・予定と同じ`lot_identity`の1箇所）。
+ **列を絞る前に**付ける（鍵の列を出していなくても作れる）。"""
+ out=[dict(zip(cs,r)) for r in rows]
+ if WORK_DB_KEY and k==WORK_DB_KEY:lot_identity.attach(out)
+ return out
+
+
 def _table_where(cs,q,filter_payload):
  """一覧の絞り込み（検索の字・条件）→ `(' WHERE …', 値, 効いた条件)`。一覧・スライサー・色付けの数が同じ答えを読む（§9.591）。"""
  where_parts=[];params=[]
@@ -623,9 +650,10 @@ def api_table():
    t_cols=time.perf_counter()
    cs=cols(c,t,source=cf['path']);lap('cols',t_cols)
    where,params,filters=_table_where(cs,q,filter_payload)
+   ignored=_ignored_filter_columns(filter_payload,cs)
    order,order_keys=_table_order(cs)
    t_count=time.perf_counter()
-   cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
+   cur=c.cursor();count,count_all=_table_counts(cur,t,where,params)
    lap('count',t_count)
    # そのページぶんだけ取り出す。以前は頭からpage*size件を取ってPython側で
    # 切り出しており、後ろのページほど無駄が増えていた(§9.95。「全件」は
@@ -656,12 +684,12 @@ def api_table():
   keep=set(x for x in want if x in cs) or None
   # **1つも当たらなければ絞らない**(fail-open)。列名を打ち間違えた・
   # データ側で列名が変わった場合に、空の表を黙って返すのが一番困る。
-  row_dicts=[dict(zip(cs,r)) for r in rows]
+  row_dicts=_row_dicts(k,cs,rows)
   # 名前は1つずつ(§9.113)。行はdictで同名を1つしか持てないので、列だけ
   # 2つ返すと本数が食い違い、画面では列が増えて見える。
   visible_cs=_unique_columns([x for x in cs if x not in hidden and (keep is None or x in keep)])
   if hidden or keep is not None:
-   drop=lambda col:(col in hidden) or (keep is not None and col not in keep)
+   drop=lambda col:col!=lot_identity.ROW_KEY and ((col in hidden) or (keep is not None and col not in keep))
    row_dicts=[{col:v for col,v in d.items() if not drop(col)} for d in row_dicts]
   visible_cs,row_dicts,join_list,join_info=_table_joins(k,t,visible_cs,row_dicts,lap)
   timing['server']=round((time.perf_counter()-t0)*1000)
@@ -674,8 +702,8 @@ def api_table():
   # ——別の口で取りに行くと、一覧と鮮度が別のタイミングの話になりうる。
   try:src_info=db_mirror.source_info(k,cf.get('path'))
   except Exception as _e:quiet('元データの時刻を引けない（鮮度を出さない）',_e);src_info=None
-  resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
-               filters_applied=len(filters),joinQuality=join_info,joins=join_list,
+  resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,countAll=count_all,
+               filters_applied=len(filters),filtersIgnored=ignored,joinQuality=join_info,joins=join_list,
                timing=timing,sortNote=sort_note,source=src_info,marks=marks,markCounts=mark_counts)
   # 開発者ツールのネットワーク欄でも同じ内訳が読めるようにする。
   resp.headers['Server-Timing']=','.join(

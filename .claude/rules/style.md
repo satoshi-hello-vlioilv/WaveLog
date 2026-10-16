@@ -13,7 +13,7 @@
 | 表の見出しは役割の1つ（10-roles.css・`--th-h`・上下の余白0・字の大きさはセルへ）。マスタの表に縞を付けない | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 送る列に`scrollbar-gutter:stable`を付けない（列を送れるとき一部のラベルが描かれなかった） | — | [§9.604](../../docs/decisions/9.604.md) |
 | 盤の面（盤・候補・木・表・詳細・要約の数）は枠で囲まず罫線1本。選んだ行は淡い地＋左の帯（90-state.css の束ね） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |
-| 帯（ヘッダー・一覧の帯・操作列）の寸法は`--bar-h`／`--bar-fs`／`--bar-px`（30px・13px）の1箇所 | `test_listtoolsui.js`・`test_headbar.js` | [§9.591](../../docs/decisions/9.591.md) |
+| 帯（ヘッダー・一覧の帯・操作列）の寸法は`--bar-h`／`--bar-fs`／`--bar-px`（30px・13.5px＝LotScope・§9.612）の1箇所 | `test_listtoolsui.js`・`test_headbar.js` | [§9.591](../../docs/decisions/9.591.md) |
 | `:is()`の詳細度は中のいちばん強い物。打ち消したい部品は束ねた規則に入れず自前で書く | `test_typescale.js` | [§9.591](../../docs/decisions/9.591.md) |
 | 同じファイル・同じレイヤで同じセレクタのプロパティを違う値で重ねない（後勝ちで前が死ぬ・`.bk-mini`で踏んだ）。前からの重ねは上限表で下げる方向だけ | `test_csslint.py` | [§9.573](../../docs/decisions/9.573.md) |
 | トークンと見分けられない色（ΔE<2）はトークンで書く。淡い teal の字と地は`--teal-ink`／`--teal-tint` | `test_csslint.py` | [§9.572](../../docs/decisions/9.572.md) |

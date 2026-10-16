@@ -20,6 +20,7 @@ from time import perf_counter as _perf   # `from datetime import time` と衝突
 from datetime import date, datetime, time, timedelta
 
 from . import actual_match
+from . import lot_identity
 from . import load_factor
 from . import schedule_sync
 from .repositories import schedule_repo as sr
@@ -289,7 +290,9 @@ def build_actual_index(backup_rows=None):
  return index
 
 def _build_actual_index(rows):
- index={}
+ """鍵 → 最新の実績。同じ鍵の実績は全部を時刻の順に`history`へ持つ（§9.612・同じロットが2回目に来たとき、
+ どの予定の行の記録かを時刻で決める＝`assign_actuals()`）。"""
+ index={};hist={}
  for row in rows:
   try:
    payload=json.loads(row.get('payload') or '{}')
@@ -303,13 +306,11 @@ def _build_actual_index(rows):
   if not (lot and casting and material):continue
   key=(normalize_match_key(lot),normalize_match_key(casting),normalize_match_key(material))
   updated_at=row.get('updated_at') or ''
-  existing=index.get(key)
-  if existing is not None and existing['updatedAt']>=updated_at:continue
   work_time=payload.get('workTime') or {}
   # equipment/basicも持たせるのは§9.33(計画外実績の合成)のため。実績突合
   # (§7.4)自体はstartAt/endAtしか見ないので、既存の判定には影響しない。
   settings=payload.get('settings') or {}
-  index[key]={'id':row.get('id',''),'startAt':work_time.get('startAt') or None,
+  a={'id':row.get('id',''),'startAt':work_time.get('startAt') or None,
               'endAt':work_time.get('endAt') or None,'updatedAt':updated_at,
               'equipment':str(settings.get('registeredEquipment') or payload.get('registeredEquipment')
                               or row.get('equipment') or '').strip(),
@@ -323,7 +324,44 @@ def _build_actual_index(rows):
               'updatedBy':str(row.get('updated_by') or '').strip(),
               'updatedPc':str(row.get('updated_pc') or '').strip(),
               'createdAt':str(payload.get('createdAt') or row.get('created_at') or '').strip()}
+  hist.setdefault(key,[]).append(a)
+ for key,lst in hist.items():
+  lst.sort(key=lambda a:(_record_at(a) or '',a['updatedAt']))
+  latest=max(lst,key=lambda a:a['updatedAt'])
+  index[key]=dict(latest,history=lst)
  return index
+
+def _record_at(a):
+ """記録の始まり（開始の打刻 → 入力を始めた時刻 → 更新）。比べるのは字の並び（ISO）。"""
+ return str(a.get('startAt') or a.get('createdAt') or a.get('updatedAt') or '')[:19].replace(' ','T')
+
+def _record_end(a):
+ """記録の終わり（終わっていなければ ''）。"""
+ if not record_finished(a):return ''
+ return str(a.get('endAt') or a.get('updatedAt') or '')[:19].replace(' ','T')
+
+def assign_actuals(index,plans):
+ """同じ鍵の予定の行が2本以上・記録が2件以上でも、**1件の記録は1本の予定の行にだけ**当てる（§9.612）。
+
+ plans: [(予定ID, 鍵, 入れた時刻ISO)]。戻り値: {予定ID: 記録}。決まり:
+  ・その予定の行を入れる前に**終わっていた**記録は当てない（前の回の記録＝2回目の予定をすぐ完了にしない）
+  ・当てられる行のうち、記録の始まりより前に入れた最後の行へ（無ければ当てられる最初の行）
+  ・行は当たった記録のうち最新のものを持つ"""
+ by_key={}
+ for pid,key,created in plans:
+  if key in index:by_key.setdefault(key,[]).append((str(created or '')[:19].replace(' ','T'),pid))
+ out={}
+ for key,group in by_key.items():
+  group.sort()
+  for a in index[key].get('history') or [index[key]]:
+   end,at=_record_end(a),_record_at(a)
+   ok=[(c,p) for c,p in group if not (end and c and end<c)]
+   if not ok:continue
+   before=[(c,p) for c,p in ok if not c or c<=at]
+   pid=(before[-1] if before else ok[0])[1]
+   cur=out.get(pid)
+   if cur is None or (a.get('updatedAt') or '')>=(cur.get('updatedAt') or ''):out[pid]=a
+ return out
 
 def match_actual(index,lot_no,casting_no,mfg_material):
  lot=str(lot_no or '').strip();casting=str(casting_no or '').strip();material=str(mfg_material or '').strip()
@@ -1090,15 +1128,27 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
          'historyHours':history_hours,**strict}
 
 
+def _record_key(detail,r):
+ """測定の記録と突き合わせる鍵（§7.4: ロット番号・鋳造番号・製造材質）。欠ければ None。"""
+ lot=str(detail.get('lotNo') or r[4] or '').strip();cast=str(detail.get('castingNo') or r[6] or '').strip()
+ mat=str(detail.get('mfgMaterial') or '').strip()
+ if not (lot and cast and mat):return None
+ return (normalize_match_key(lot),normalize_match_key(cast),normalize_match_key(mat))
+
 def _plan_entries(raw_rows,actual_index):
  """① 予定表の行を予定の形にし、測定データの実績・仕掛から消えたロットの扱いを当てる。
- 戻り値: (予定の並び, 実績と突き合わせた鍵の集合)。後者は計画外の実績を見分けるのに使う。"""
+ 戻り値: (予定の並び, 実績と突き合わせた鍵の集合)。後者は計画外の実績を見分けるのに使う。
+ 測定の記録は`assign_actuals()`が時刻で行へ配る（同じロットの2回目・§9.612）。行の鍵（`lotKey`）は`lot_identity`の1箇所。"""
  entries=[]
  matched_keys=set()
  lots=_lot_index(actual_index)
- for r in raw_rows:
-  entry,detail=_entry_of_row(r)
-  actual=match_actual(actual_index,detail.get('lotNo') or r[4],detail.get('castingNo') or r[6],detail.get('mfgMaterial')) if entry['kind']=='作業' else None
+ ident=lot_identity.identity()
+ parsed=[_entry_of_row(r) for r in raw_rows]
+ owned=assign_actuals(actual_index,[(e['id'],_record_key(d,r),e['createdAt']) for (e,d),r in zip(parsed,raw_rows)
+                                     if e['kind']=='作業' and _record_key(d,r)])
+ for (entry,detail),r in zip(parsed,raw_rows):
+  entry['lotKey']=lot_identity.key_of({'lotNo':entry['lotNo'],'castingNo':entry['castingNo'],**detail},ident) if entry['kind']=='作業' else ''
+  actual=owned.get(entry['id']) if entry['kind']=='作業' else None
   entry['state']=derive_state(entry['storedState'],actual)
   entry['actual']=actual
   entry['unplanned']=False
