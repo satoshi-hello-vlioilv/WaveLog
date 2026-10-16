@@ -52,6 +52,12 @@
   if(my===gen)paintAll();
  }
  WL.listHooks.onAfter(()=>{placeButton();placePane();refresh()});
+ /* 効いている条件として名乗る（§9.612）——0件の案内・帯の「条件 N」が同じ並びを数える。外すのは選んだ値だけ（カードは残す）。 */
+ WL.listHooks.onNarrow(()=>{
+  const on=setup().cards.filter(c=>(c.sel||[]).length);
+  return on.length?{items:on.map(c=>({source:'スライサー',text:`${c.column}: ${c.sel.map(v=>v||blankWord).join('・')}`,kind:'slicer'})),
+   clear:()=>clearAll()}:null;
+ });
  WL.listHooks.onTabs(()=>{placeButton();placePane()});
  /* ---------- 面 ---------- */
  function placePane(){
@@ -144,5 +150,6 @@
  const setupOf=()=>{const st=setup();return {open:st.open,cards:st.cards.map(c=>({column:c.column}))}};
  function setSetup(x){store({open:!!(x&&x.open),cards:((x&&x.cards)||[]).filter(c=>c&&c.column).map(c=>({column:String(c.column),sel:[]}))});reload()}
  const summary=()=>setup().cards.filter(c=>(c.sel||[]).length).map(c=>`${c.column}: ${c.sel.map(v=>v||blankWord).join('・')}`);
- WL.listSlicer={filters,refresh,setupOf,setSetup,summary};
+ const clearAll=()=>mutate(st=>{st.cards.forEach(c=>{c.sel=[]})});
+ WL.listSlicer={filters,refresh,setupOf,setSetup,summary,clearAll};
 })();

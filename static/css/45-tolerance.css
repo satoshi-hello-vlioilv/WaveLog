@@ -349,7 +349,8 @@
 :is(.fb-preset-key,.fb-cond-key,.lf-key){color:var(--ink-2);font-weight:var(--fw-body)}
 /* 一覧を検索（§9.505。ヘッダーから移した）。押す物と同じ高さ・枠の1種。**一覧の検索欄はこの1つの部品**
    （仕掛・品質・データ一覧・測定実績・§9.507）——帯の外でも置き場の既定（帯の寸法 `--bar-*`＝30px・13px・§9.591）で立つ。 */
-.lt-search{flex:0 1 var(--w-lg);min-width:var(--w-sm);display:inline-flex;align-items:center;gap:var(--gap-tight);
+/* 幅は LotScope の帯と同じ約300px（22em）まで。余りは食わない（§9.612・前はポップアップで450px）。 */
+.lt-search{flex:0 1 var(--w-xl);min-width:var(--w-sm);display:inline-flex;align-items:center;gap:var(--gap-tight);
   height:var(--lt-h,var(--bar-h));font-size:var(--lt-fs,var(--bar-fs));border-radius:var(--radius-sm);
   padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-strong);background:var(--surface);cursor:text}
 .lt-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
@@ -791,3 +792,27 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .sx-note{margin:0;color:var(--ink-2)}
 .sx-note.is-ng{color:var(--danger)}
 }
+
+/* ---------- 畳んだ入口・条件のつなぎ（§9.612） ----------
+   入口を畳むのは狭い器だけ（分割＝道具と見せ方・ポップアップ＝見せ方）。単独の一覧はいつも全部を並べる。
+   押すと面に本物の入口が並ぶ（list-tools.js の`openFold()`）。 */
+.lt-fold{display:none}
+.sc-split-wrap .lt-fold[data-fold="tools"],:is(.sc-split-wrap,.sc-float-body) .lt-fold[data-fold="view"]{display:inline-flex}
+.sc-split-wrap :is(#filterAdhocToggle,#listSlicerBtn,#listMarkBtn),
+:is(.sc-split-wrap,.sc-float-body) :is(#listColumnBtn,#listViewBtn,#listFileBtn){display:none}
+.lt-fold-menu{min-width:var(--w-lg);padding:var(--space-1)}
+.lt-fold-menu .lt-fold-head{margin:var(--space-1) var(--space-2);color:var(--ink-2);font-size:var(--fs-sm)}
+.lt-fold-menu button{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);width:100%;
+  height:var(--bar-h);padding:0 var(--space-2);border:0;border-radius:var(--radius-sm);background:transparent;font-size:var(--bar-fs);text-align:left}
+.lt-fold-menu button:hover,.lt-fold-menu button:focus-visible{background:var(--menu-item-hover)}
+.lt-fold-menu button small{color:var(--teal-ink);font-size:var(--fs-sm)}
+/* 状態の2行目への区切り（狭い器だけ効く・70-schedule.css）。 */
+.lt-break{display:none}
+:is(.sc-split-wrap,.sc-float-body) .lt-break{display:block}
+.lt-zoom-k{color:var(--ink-2);font-size:var(--lt-fs)}
+/* 条件のつなぎは「条件」の札の字（スケジュール用／仕掛一覧と同じ）と、条件の面の中の切り替え。 */
+.fb-cond-scope{color:var(--ink-2);font-weight:var(--fw-body);border-left:1px solid var(--line-strong);padding-left:var(--space-1);white-space:nowrap}
+.fb-cond-scope-row{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:var(--space-1) var(--space-2);
+  padding:var(--space-2);border-top:1px solid var(--line)}
+.fb-cond-scope-row>small{grid-column:1/-1;color:var(--ink-2);font-size:var(--fs-sm)}
+.fb-cond-scope-k{color:var(--ink-2);font-size:var(--fs-sm)}

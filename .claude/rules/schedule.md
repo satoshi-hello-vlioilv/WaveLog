@@ -1,4 +1,4 @@
-# 作業スケジュール（122件）
+# 作業スケジュール（125件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 同じロットの見分け方は`lot_identity`の1箇所（鍵の列＋何回目かの列・役割「仕掛」の行の`[ロット識別JSON]`）。予定は`lotKey`・一覧は`__lotKey`、画面は比べるだけ | `test_lotident.py`・`test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| 仕掛一覧で伏せるのは予定・作業中と、表に見えている完了だけ（昔の完了は伏せない）。スケジュール画面の外では伏せない。決まりと件数は札「予定と同じロットを伏せる」 | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| 測定の記録は時刻で予定の行へ配る（`assign_actuals()`）。行を入れる前に終わっていた記録は当てない・1件の記録は1本の行だけ | `test_lotident.py` | [§9.612](../../docs/decisions/9.612.md) |
 | 完了ロットは実績の時刻順に処理し、表も 完了（時刻順）→ 作業中 → 予定 の3群で並べる（`_settle_stop_times`・`visibleEntries`） | `test_doneflow.py`・`test_doneflowui.js` | [§9.611](../../docs/decisions/9.611.md) |
 | 設備停止も開始の印を持つ。始めた停止の終わりは「開始＋見積」と「次に始まった行の開始」の早いほう（`_settle_started_stops()`） | `test_doneflow.py` | [§9.611](../../docs/decisions/9.611.md) |
 | 行の「開始」「終了」は`/api/schedule/plan/progress`の1本（決めるのは`progress_plan()`）。終了で次の設備停止も始める | `test_doneflow.py`・`test_doneflowui.js` | [§9.611](../../docs/decisions/9.611.md) |

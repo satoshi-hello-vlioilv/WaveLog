@@ -124,6 +124,8 @@ JS_FILES=[
  # §9.588: 足りない設備停止の判定（純粋な関数・`WL.stopRules`）。予定の画面が描くときに呼ぶので、その前。
  'schedule/stop-rules.js',
  'schedule/schedule-view.js',
+ # §9.612: 予定に入れたロットを仕掛一覧から伏せる決まりの札と面（伏せる行は schedule-view.js の`hiddenLotSet()`が答える）。
+ 'schedule/lot-hide.js',
  # §9.368: 選んだ予定のロット番号をつないでコピーする（ICASコピー）。
  # schedule-view.js が右クリックメニューから `WL.lotCopy` を呼ぶ。
  'schedule/lot-copy.js',

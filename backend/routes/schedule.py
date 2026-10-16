@@ -24,6 +24,7 @@ from flask import Blueprint, request, jsonify, g
 
 from .. import schedule_sync
 from .. import schedule_calc
+from .. import lot_identity
 from .. import query_join
 from .. import load_factor
 from ..repositories import schedule_repo as sr
@@ -451,6 +452,8 @@ def plan_list():
                 # さかのぼりの起点(§9.366)。**画面はこの日時で絞る**（None＝制限しない）。
                 historyKey=result.get('historyKey'),historyFrom=result.get('historyFrom'),
                 actualColumns=actual_columns,
+                # ロットの見分け方(§9.612)。仕掛一覧で伏せる決まりを画面が名乗る（鍵は行の`lotKey`・一覧の`__lotKey`）。
+                lotIdentity=lot_identity.identity(),
                 # さかのぼりの語彙(§9.366)。**画面に書かない**——増やしたときに
                 # 片方だけ古い並びを見る（§9.163と同じ理由）。**専用のルートは
                 # 作らない**——この段はもう20ルートの目安を超えている(§9.333)し、

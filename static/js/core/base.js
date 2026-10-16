@@ -19,6 +19,8 @@ const S={
   catalog:[],tables:[],           /* /api/catalog の答え（list-view.js） */
   columns:[],rows:[],page:1,count:0,  /* いま出している表（list-view.js。テストも書く） */
   joinQuality:null,               /* 品質データ結合の内訳（list-view.js。列の設定パネルが読む） */
+  countAll:0,                     /* 絞る前の件数（list-view.js・帯の「n件 / 全 N件」・§9.612） */
+  filtersIgnored:[],              /* この表に無い列の条件（結合した列など・効いていない・§9.612。帯が名指す） */
   selectedRow:null,               /* 一覧で選んでいる1行（list-view.js） */
   selectedRows:new Set(),         /* まとめて選んだ行（予定投入・§9.5） */
   t:null,                         /* 検索欄の debounce タイマー（list-view.js） */

@@ -55,7 +55,12 @@
 
  /* 画面の中へ収める。`at`＝その点から出す（右クリック）、
     `anchor`＝その要素の下に出す（ボタン）。入らなければ上へ返す。 */
- function place(el,{at,anchor}={}){
+ /* 畳んだ入口（§9.612）: 本物のボタンが見えていない（畳んだ面の中にある）ときは、畳んだ入口の下に出す。
+    名乗るのは畳む側（`proxy(本物, 入口)`）。土台は畳み方を知らない。 */
+ const proxies=new WeakMap();
+ const shownAnchor=a=>(a&&a.getClientRects&&!a.getClientRects().length&&proxies.get(a))||a;
+ function place(el,{at,anchor:a0}={}){
+  const anchor=shownAnchor(a0);
   const w=el.offsetWidth,h=el.offsetHeight;
   const maxL=innerWidth-w-EDGE, maxT=innerHeight-h-EDGE;
   let left,top;
@@ -133,6 +138,7 @@
   /* いま開いているのがこの器か（呼ぶ側の「2度押しで閉じる」に使う）。 */
   isOpen:el=>!!open&&(el?open.family.has(el):true),
   place,
+  proxy(real,shown){if(real&&shown)proxies.set(real,shown)},
   close(){close()},
   suggest,
   peek,closePeek,tips,

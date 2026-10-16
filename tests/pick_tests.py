@@ -83,7 +83,9 @@ G['一覧'] = ['test_nav', 'test_navwords', 'test_popmenu', 'test_listcache', 't
              # §9.468: 一覧の道具の帯は2段（すぐ使う操作／常に見る状態）・「☰ 表示」
              'test_listbar',
              # §9.591: 一覧の道具（スライサー・色付け・拡大・ファイル）
-             'test_listtools', 'test_listtoolsui']
+             'test_listtools', 'test_listtoolsui',
+             # §9.612: 絞り込みの帯（LotScope の型）・予定に入れたロットを伏せる決まり
+             'test_filterbarui', 'test_lotident']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice', 'test_oplimit', 'test_oprange', 'test_opmother', 'test_opunit',
@@ -308,7 +310,7 @@ RULES = [
     ('static/js/list/list-slicer.js', g('一覧')),
     ('static/js/list/list-marks.js', g('一覧')),
     ('static/js/list/list-tools.js', g('一覧')),
-    ('static/js/list/filters.js', g('モーダル', 'フィルタ',
+    ('static/js/list/filters.js', g('モーダル', 'フィルタ', 'test_filterbarui',
                                'test_listcache', 'test_allrows', 'test_nav')),
     # §9.302: 設備の使える機能で予定の設備の候補を絞る
     # §9.502: 段「履歴」の画面
@@ -504,7 +506,7 @@ RULES = [
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
-    ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_colscache', 'test_colsripple',
+    ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_lotident', 'test_filterbarui', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     # §9.333で段（`equipment.py`/`operation.py`…）へ分けた。**末尾の`/`で丸ごと**
     # 見る——段ごとに書き分けると、段を1つ足したときだけ当たらずに全件へ倒れる。
@@ -577,7 +579,10 @@ RULES = [
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread', 'test_donestops', 'test_doneflow')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
-                                   'test_actualmatch', 'test_finishjoin', 'test_strictstart', 'test_boxactual', 'test_donestops', 'test_doneflow')),
+                                   'test_actualmatch', 'test_finishjoin', 'test_strictstart', 'test_boxactual', 'test_donestops', 'test_doneflow',
+                                   'test_lotident')),
+    # ロットの見分け方（§9.612）。予定の行の鍵・一覧の行の鍵・測定の記録を時刻で配る。
+    ('backend/lot_identity.py', g('test_lotident', 'test_filterbarui', 'test_doneflow', 'test_actualmatch')),
     # 仕掛から消えたロットの突合（§9.364・§9.365）。
     ('backend/actual_match.py', g('test_actualmatch', 'test_finishjoin',
                                   'test_datasource', 'test_dscap', 'test_boxactual')),

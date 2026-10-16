@@ -1337,8 +1337,9 @@ function applyTableData(d){
  /* 元データの素性（§9.286 ④）。**一覧と同じ応答から取る**——別の口で
     取りに行くと、一覧と鮮度が別のタイミングの話になりうる。 */
  if(d&&Object.prototype.hasOwnProperty.call(d,'source'))listSourceInfo=d.source||null;
- Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});
+ Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count,countAll:Number.isFinite(d.countAll)?d.countAll:d.count});
  S.joinQuality=d.joinQuality||null;
+ S.filtersIgnored=Array.isArray(d.filtersIgnored)?d.filtersIgnored:[];
  runListHooks('data',{d,offset:0});
  const info=(S.catalog||[]).find(x=>x.key===S.db)||{};
  // 主は画面名(仕掛一覧/品質データ)、副にファイル名。以前はファイル名だけを
@@ -1433,11 +1434,17 @@ function renderPager(){
  prev.title=prev.disabled?'これが最初のページです':`前のページ（${Math.max(1,S.page-1)} / ${pages}）`;
  next.title=next.disabled?'これが最後のページです':`次のページ（${Math.min(pages,S.page+1)} / ${pages}）`;
 }
+/* 件数の字（§9.507・§9.612）。絞っていれば「n件 / 全 N件」（N＝絞る前）。「件」は行の数だけに使う。 */
+let listHiddenRows=0;   // いま伏せている行の数（予定に入れたロット・`renderGrid()`が数える）
+function countText(total){
+ const all=Math.max(S.countAll|0,total|0),n=Math.max(0,(total|0)-listHiddenRows);
+ return (all&&all>n)?`${n.toLocaleString()}件 / 全 ${all.toLocaleString()}件`:`全 ${n.toLocaleString()}件`;
+}
 function allRowsProgress(loaded,total){
  const el=$('#count');if(!el)return;
  el.textContent=(isAllRows()&&total&&loaded<total)
-   ? `全 ${total.toLocaleString()}件（${loaded.toLocaleString()}件まで読み込み済み…）`
-   : `全 ${(total||loaded||0).toLocaleString()}件`;
+   ? `${countText(total)}（${loaded.toLocaleString()}件まで読み込み済み…）`
+   : countText(total||loaded||0);
 }
 async function continueAllRows(key){
  const run=++allRowsRun;
@@ -1467,7 +1474,7 @@ async function continueAllRows(key){
  keepGridScroll();             // 読み終わった拍子に先頭へ飛ばさない
  S.rows=rows;
  // 取り直したときに使い回せるよう、キャッシュも全件の形へ入れ替える。
- tableCacheSet(key,{columns:S.columns,rows,count:S.count,joinQuality:S.joinQuality});
+ tableCacheSet(key,{columns:S.columns,rows,count:S.count,countAll:S.countAll,filtersIgnored:S.filtersIgnored,joinQuality:S.joinQuality});
  /* 全件読み終わりは**利用者の操作と無関係に**（数秒〜数十秒後に）来る。
     列幅を掴んでいる最中に表を作り直すと手が空を切るので待たせる（§9.211 ①）。 */
  WL.columnResize.defer('grid:allRows',()=>renderGrid());
@@ -1995,16 +2002,23 @@ WL.virtualColumnLabel=k=>(VIRTUAL_COLUMNS[k]||{}).label||k;
    気づけない——実際に「仕掛一覧が出ない」の原因がそれだった（§9.452）。
    名乗るのは登録口（`onNarrow`）の各提供者。検索欄はこのファイルが持つので自分で名乗る。 */
 let narrowClears=[];
-function narrowingParts(){
- const items=[];narrowClears=[];
+/* いま行を絞っている物の全部（検索の字＋各提供者の名乗り）。**「効いている条件」の答えはここだけ**——
+   0件の案内も、帯の「条件 N」の数も同じ並びを数える（§9.612。前は帯が検索の字とスライサーを数えず、数が食い違った）。 */
+function narrowingAll(){
+ const items=[],clears=[];
  const box=$('#search'),sv=String(box&&box.value||'').trim();
- if(sv){items.push({source:'一覧を検索',text:`「${sv}」`});narrowClears.push(()=>{box.value=''})}
+ if(sv){items.push({source:'一覧を検索',text:`「${sv}」`,kind:'search'});clears.push(()=>{box.value=''})}
  listHooks.narrow.forEach(fn=>{
-  try{const r=fn();if(r&&(r.items||[]).length){items.push(...r.items);if(r.clear)narrowClears.push(r.clear)}}
+  try{const r=fn();if(r&&(r.items||[]).length){items.push(...r.items);if(r.clear)clears.push(r.clear)}}
   catch(e){console.error('一覧のnarrowフックで例外',e)}
  });
+ return {items,clears};
+}
+function narrowingParts(){
+ const {items,clears}=narrowingAll();narrowClears=clears;
  return items;
 }
+const narrowingItems=()=>narrowingAll().items;
 function narrowedNote(label){
  const items=narrowingParts();
  const locked=items.some(x=>x.locked);
@@ -2022,6 +2036,8 @@ function narrowedNote(label){
 }
 /* 外すのは各提供者、読み直しはここで1回だけ（提供者ごとに読み直すと往復が重なる）。 */
 async function clearNarrowing(){
+ /* 外す物は**押したときの顔ぶれ**で決め直す（案内を描いたあとに条件が変わっていても取りこぼさない）。 */
+ narrowClears=narrowingAll().clears;
  for(const fn of narrowClears){
   try{await fn()}catch(e){console.error('絞り込みを外せませんでした',e)}
  }
@@ -2106,7 +2122,8 @@ function gridScope(){
     の2つを1つの並びで返す。対象外（スケジュール画面を開いていない・
     schedule モードでない等）では`null`が返り、絞り込まない（全件表示）。 */
  const scheduledLots=canPlan?WL.scheduleView?.hiddenLotSet?.():null;
- const allVisibleRows=(scheduledLots&&scheduledLots.size)?S.rows.filter(r=>!scheduledLots.has(pick(r,'lotNo'))):S.rows;
+ const allVisibleRows=(scheduledLots&&scheduledLots.size)?S.rows.filter(r=>!scheduledLots.has(r.__lotKey)):S.rows;
+ listHiddenRows=S.rows.length-allVisibleRows.length;   // 件数の字が「伏せたぶん」も引く（§9.612）
  /* ---------- 分割ありの子ロットは親の直下へ畳む(§9.239 ⑤-2、利用者の指示) ----------
     「分割ありのものについて、親や子の情報が表示されますが、分割ありの子に
      ついては分割ありの対象の親の直下に添える形でたたみこんで表示するように
@@ -2214,7 +2231,7 @@ function exportTable(rows){
  const header=cols.map(c=>WL.columnLayout.label(g.layoutTarget,c));
  /* 一覧で伏せているロット（予定に居る・仕掛から消えた・§9.368）は書き出しでも伏せる（画面と同じ行）。 */
  const hide=g.canPlan?WL.scheduleView?.hiddenLotSet?.():null;
- const list=(hide&&hide.size)?(rows||[]).filter(r=>!hide.has(pick(r,'lotNo'))):(rows||[]);
+ const list=(hide&&hide.size)?(rows||[]).filter(r=>!hide.has(r.__lotKey)):(rows||[]);
  const body=list.map(r=>cols.map(c=>{
   const calc=g.colCalc.get(c),nr=g.namedRow(r);
   return exportCell(WL.cellFormat.cell({raw:calc?calc.run(nr):r[c],format:g.colFmt.get(c),rule:g.colRule.get(c),row:nr,column:c,view:g.ruleView}).text);
@@ -2857,6 +2874,7 @@ function listToolbarHtml(){
    <button type="button" class="list-tint-chip" id="listTintChip" hidden></button>
    <span class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" hidden></span>
    <!-- 右端＝見ている範囲を動かす道具（§9.591・LotScope と同じ並び）: 一覧の拡大 → ページめくり。 -->
+   <i class="lt-break" aria-hidden="true"></i>
    <span class="lt-state-right">
     <span class="lt-zoom-slot" id="listZoomSlot"></span>
     <span class="list-pager" id="listPager">
@@ -3486,5 +3504,5 @@ async function openReloadMenu(anchor){
 WL.list={init,load,renderGrid,renderGridInner,renderTabs,renderDbNav,selectDb,exportTable,
  listLayoutTarget,listColumnKeys,fmtStamp,applyTableData,estimateColumnWidth,
  tableCacheGet,tableCacheSet,checkParentLookupRows,checkSplitRowsForMissingChildren,
- setSplitCellText};
+ setSplitCellText,narrowingItems,clearNarrowing};
 })();
