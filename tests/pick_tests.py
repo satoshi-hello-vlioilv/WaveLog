@@ -151,7 +151,7 @@ G['モーダル'] = ['test_modalkeep', 'test_mmunify', 'test_maint', 'test_maste
                  # §9.257 ②: 使用設備の設定（窓の作りは1箇所・選んでも動かない）
                  'test_eqsetup']
 G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork', 'test_scsync', 'test_sccat',
-                     'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
+                     'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scdndhold', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
                     'test_scframe',
                      'test_wkbg', 'test_orphan', 'test_histdel', 'test_sclock',
@@ -596,7 +596,7 @@ RULES = [
                                     'スケジュール')),
     ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
-                                   'test_screorder', 'test_atomicio', 'test_scsession',
+                                   'test_screorder', 'test_scdndhold', 'test_atomicio', 'test_scsession',
                                    'test_scwho', 'test_scowner')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd', 'test_lfpoints', 'test_lfui')),
     ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore',

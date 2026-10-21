@@ -269,8 +269,10 @@ def _write_response(apply_fn):
  relayed=_relay_write(x.raw)
  if relayed is not None:return relayed
  try:
-  result=schedule_sync.with_write(current_login_id(),current_pc_name(),uid,apply_fn)
+  result,revision=schedule_sync.with_write(current_login_id(),current_pc_name(),uid,apply_fn,with_revision=True)
   out=dict(result or {})
+  # 書いたあとの改訂番号（§9.613）。画面はこれより古い読みを「書く前の並び」として当てない。
+  out['revision']=revision
   # 持ち主へ頼めなかったときは**自分で書いたことを黙らない**(§9.192)。
   # 画面はこれを見て「書込役へ届いていません」と言える。
   note=getattr(g,'relay_fallback',None)
@@ -334,6 +336,8 @@ def _relay_write(payload):
  # だけが古いままになる（他の端末は見張りが気づく）。
  if status<400:
   try:
+   # 書込役が答えた改訂番号へ写しが届くまでは、写した直後の休みを当てにしない（§9.613）。
+   schedule_sync.expect_revision((out or {}).get('revision'))
    schedule_watch.schedule_watch_once();schedule_watch.wake()
   except Exception as _e:quiet('共有の取り込みを起こせない（次の巡回で取り込む）',_e)
  payload=dict(out or {})
@@ -423,8 +427,12 @@ def plan_list():
  # 「展開」で桁が違うので、どれか1つでも分かれば打つ手が決まる。
  timings={}
  t_all=time.perf_counter()
- result,stale,err=_read(lambda c:schedule_calc.expand_plan(
-  c,equipment,history_hours=history_hours,history=history),timings)
+ # 読んだ写しの改訂番号も持ち帰る（§9.613）。書いたあとに古い写しを読んだのかを画面が見分ける。
+ read_rev={}
+ def _plan(c):
+  read_rev['n']=schedule_sync.revision_of(c)
+  return schedule_calc.expand_plan(c,equipment,history_hours=history_hours,history=history)
+ result,stale,err=_read(_plan,timings)
  if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,entries=[],anchor=None,warnings=[])
  if err:return jsonify(error=err),503
  warnings=list(result.get('warnings') or [])
@@ -447,6 +455,8 @@ def plan_list():
  times_ok=line_ops_allowed(equipment)
  return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),
                 anchorRounded=result.get('anchorRounded'),
+                # 読んだ写しの改訂番号（§9.613）。自分が書いた番号より古ければ、画面は当てずに読み直す。
+                revision=read_rev.get('n'),
                 loadFactor=result.get('loadFactor'),
                 historyHours=(result.get('historyHours') if history is not None else history_hours),
                 # さかのぼりの起点(§9.366)。**画面はこの日時で絞る**（None＝制限しない）。

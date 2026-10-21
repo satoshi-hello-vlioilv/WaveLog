@@ -1,4 +1,4 @@
-# 作業スケジュール（125件）
+# 作業スケジュール（128件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 動かせる予定（固定していない・未着手の親）どうしは予定の並びで出す（`keepPlanOrder()`）。時刻で決めた席は残し、中身を配列の順で埋める | `test_scdndhold.js` | [§9.613](../../docs/decisions/9.613.md) |
+| 書込の応答と予定の読みは共有の改訂番号（`revision`）を持つ。自分が書いた番号より古い読みは当てずに読み直す（`planBehind()`・待ち切れたら字で言う） | `test_scdndhold.js` | [§9.613](../../docs/decisions/9.613.md) |
+| 書込が残っている間・掴んでいる最中に出た読みは当てない（書込の列の終わり／離したあとに読み直す） | `test_scdndhold.js` | [§9.613](../../docs/decisions/9.613.md) |
 | ロットの見分け方は`lot_identity`の1箇所（鍵の列＋何回目かの列）。予定は`lotKey`・一覧は`__lotKey` | `test_lotident.py`・`test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
 | 仕掛一覧で伏せるのは予定・作業中と表に見えている完了だけ。スケジュール画面の外では伏せない | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
 | 測定の記録は時刻で予定の行へ配る（`assign_actuals()`・入れる前に終わった記録は当てない） | `test_lotident.py` | [§9.612](../../docs/decisions/9.612.md) |

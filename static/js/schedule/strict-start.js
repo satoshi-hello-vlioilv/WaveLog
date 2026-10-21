@@ -61,6 +61,7 @@
    if (e && e.status === 409 && e.code) { await refuse(e); return false; }
    return (await cannotCheck(e)) ? undefined : false;
   }
+  WL.scheduleView?.noteWriteRevision?.(r);
   if (r && r.strict && r.stops && r.stops.length && typeof showToast === 'function')
    showToast('開始しました（厳密モード）', `上の設備停止 ${r.stops.length}件に実際の時刻を入れました: ${stopsText(r.stops)}`, 8000);
   return undefined;
