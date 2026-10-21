@@ -717,7 +717,7 @@
   /* ============================================================
      窓: 保存したフィルタを直す（名前・条件・見える人・いつも適用）
      ============================================================ */
-  const HOW_OPTIONS=[['in','値を選ぶ'],['not_in','値以外（選んだ値を除く）'],...OPS];
+  const HOW_OPTIONS=[['in','値を選ぶ'],['not_in','値以外'],...OPS];
   async function openEditDialog(p){
     const st={name:p.name,conds:structuredClone(p.filters||[]),shared:!p.owner,always:isAlwaysOnPreset(p),err:'',del:false};
     const cols=[...new Set([...(S.columns||[]).filter(c=>!String(c).startsWith('__')),...st.conds.map(f=>f.column)])];

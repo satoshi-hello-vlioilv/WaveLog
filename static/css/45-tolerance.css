@@ -551,7 +551,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
   padding:0 var(--space-1);border-radius:var(--radius-sm);cursor:pointer}
 .flt-cp-item:hover{background:var(--menu-item-hover)}
 .flt-cp-item>input{margin:0;accent-color:var(--teal)}
-.flt-cp-only{visibility:hidden;height:auto;padding:0 var(--space-1);border:0;border-radius:var(--radius-xs);background:transparent;color:var(--teal-ink);font-size:var(--fs-sm);cursor:pointer}
+.flt-cp-only{visibility:hidden;height:auto;padding:0 var(--space-1);border:1px solid var(--teal-soft);border-radius:var(--radius-xs);background:var(--surface);color:var(--teal-ink);font-size:var(--fs-sm);font-style:normal;cursor:pointer}
 .flt-cp-item:is(:hover,:focus-within) .flt-cp-only{visibility:visible}
 .flt-cp-only:hover{background:var(--teal-tint)}
 .flt-cp-item.is-all{font-weight:var(--fw-strong);border-bottom:1px solid var(--line-soft);border-radius:0}
