@@ -1,4 +1,4 @@
-# 一覧と列（173件）
+# 一覧と列（180件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,17 +10,24 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 絞り込みの帯は「一覧を検索」→「フィルタ 名前 ▾」の1つ→保存と違うときだけ「変更あり｜上書き保存｜別名で保存｜戻す」。効いている条件は件数の右の札（押す＝選び直す・×＝外す） | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
+| 条件を作る入口は列の値の一覧の1つ（`openColumnPop()`・見出しの ▼／＋ 条件／札）。値はほかの絞り込みに当たる行で数え、件数を添える | `test_filtersavedui.js`・`test_listtools.py` | [§9.614](../../docs/decisions/9.614.md) |
+| 値のチェックは**した操作のまま**持つ（全部から外した＝`not_in`・すべて選ぶを外して選んだ＝`in`）。数の少ないほうへ持ち替えない | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
+| 保存したフィルタとの差は`diffState()`の1箇所（帯の「変更あり」・札の 足した／変えた／外した・面の札）。外した札を押すと戻る | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
+| 保存したフィルタは名前＋条件の1行。前の組み合わせは読むとき条件へ展開（`expand_members()`）・直す口は`/update` | `test_filtersaved.py` | [§9.614](../../docs/decisions/9.614.md) |
+| 保存したフィルタを直す・書き出す・取り込むは確認の窓の1枚（`confirmModal({wide})`）。窓の上の値の一覧は窓より手前（`.is-over-modal`） | `test_filter.js`・`test_filterio.js` | [§9.614](../../docs/decisions/9.614.md) |
+| 見出しの ▼ は席を1つ（`HEAD_FUNNEL_EM`）。乗せたとき・焦点のときだけ見せ（`visibility`）、絞っている列は塗って残す | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
 | 帯の押す物は LotScope と同じ 30px・13.5px。狭い器でも縮めず、入らないぶんは入口を畳む（`.lt-fold`）。検索欄は 22em まで | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
-| 「条件 N」・0件の案内・全部外すは同じ顔ぶれ（`WL.list.narrowingItems()`の1箇所）。件数は「n件 / 全 N件」 | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| 【§9.614で改めた】条件は帯の札。0件の案内・すべて外すは同じ顔ぶれ（`WL.list.narrowingItems()`）。件数は「n件 / 全 N件」 | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
 | この表に無い列の条件は黙って捨てず`filtersIgnored`で返し、条件の面が「効いていない」と言う | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
-| スケジュールの仕掛一覧の条件は「仕掛一覧と同じ」につなげる（`presetMode()`の1箇所・切り替えは条件の面） | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
+| スケジュールの仕掛一覧の条件は「仕掛一覧と同じ」につなげる（`presetMode()`の1箇所・切り替えは「フィルタ ▾」の面・つないでいる間は帯の札が名乗る・§9.614） | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
 | 完了突合が予定へ残す値は`take_of()`の1箇所（時刻だけ／選んだ列も／すべて）。作業時間の列は外せない（`take_columns()`がいつも足す） | `test_boxactual.py`・`test_qjoinui.js` | [§9.605](../../docs/decisions/9.605.md) |
 | 相手が設備ごとのファイルの「一覧に足す」行は`definition_issue()`が名指し、仕掛一覧は当てない（毎回のエラーにしない） | `test_boxactual.py` | [§9.605](../../docs/decisions/9.605.md) |
 | 完了突合の窓の右は流れの図（作業スケジュールの予定→探す→完了→作業時間→残す）。欄に入ると同じ節が光る（`data-qj-jump-to`＝`data-qj-node`） | `test_qjoinui.js` | [§9.605](../../docs/decisions/9.605.md) |
 | 完了突合の窓は決める順の4節＋右に「いまの設定」の文（札で欄へ）と「いまの予定で試す」。用途で変わる字は`QJ_WORDS`の1箇所 | `test_qjoinui.js` | [§9.596](../../docs/decisions/9.596.md) |
 | 完了突合の②は（§9.596で③から）「いつ完了にするか」の札＋開始→終了の列＋見本の箱。数えるのは`probe_finish`（重なりはファイルごと） | `test_qjoinui.js`・`test_boxactual.py` | [§9.595](../../docs/decisions/9.595.md) |
 | 自動の幅の見積りは描かずに数える。半角は書体で測った表（`calibrateCharEm()`）、余白は計算済みのpx（`gridMetrics()`） | `test_listperf.js` | [§9.594](../../docs/decisions/9.594.md) |
-| 帯は1段目＝絞る（検索→プリセット→条件→列→スライサー→色付け）｜見せ方、2段目＝状態｜拡大・ページ | `test_listtoolsui.js`・`test_listbar.js` | [§9.591](../../docs/decisions/9.591.md) |
+| 【§9.614で改めた】帯は1段目＝絞る（検索→フィルタ ▾→変えたことの扱い→スライサー→色付け）｜見せ方、2段目＝状態（件数→条件の札）｜拡大・ページ | `test_listtoolsui.js`・`test_listbar.js` | [§9.591](../../docs/decisions/9.591.md) |
 | スライサー・色付けの数はサーバーが一覧と同じ絞り込み（`_table_where`）の全件で数える。スライサーは自分の列を外す | `test_listtools.py` | [§9.591](../../docs/decisions/9.591.md) |
 | スライサーの値は`filters`へ`in`で足すだけ（絞り込みの条件・表示の設定のファイルに焼き付けない） | `test_listtoolsui.js` | [§9.591](../../docs/decisions/9.591.md) |
 | 一覧の拡大は表に`zoom`（60〜200%・この窓のあいだ）。空行は拡大前の高さ。並べた狭い器では拡大しない | `test_listtoolsui.js` | [§9.591](../../docs/decisions/9.591.md) |
@@ -35,8 +42,8 @@
 | 並べ替えを持たない表（`sort:false`）でも④の段は出し、**理由を1文**書く（口の`sortOff`）。黙って消さない | `test_sctimecols.js` | [§9.484](../../docs/decisions/9.484.md) |
 | 列の設定パネルで列の生の値に答えるのは`rawOfDraft()`の1箇所（式の列は下書きの式）。口の`valueOf`は式を知らない | `test_colpreset.js` | [§9.483](../../docs/decisions/9.483.md) |
 | 帯は**1面1サイズ**——字・押す物の高さ・角丸は置き場（`--lt-h`／`--lt-fs`）の1つ。差は太さと濃さ。狭い器は置き場の値だけ宣言し直す | `test_listbar.js` | [§9.505](../../docs/decisions/9.505.md) |
-| 帯の並びは左に**絞り込む**（一覧を検索→プリセット→条件→列で絞り込む）、右端に**見せ方**（表示列→表の見せ方）。群は近さで分ける | `test_listbar.js` | [§9.505](../../docs/decisions/9.505.md) |
-| 条件の数は「条件 N」（「件」は行の数にだけ使う）。条件の操作（足す・作る・開く・全部外す）は「条件」の面の1つ（⋯は持たない） | `test_filtergroup.js`・`test_filter.js` | [§9.505](../../docs/decisions/9.505.md) |
+| 【§9.614で改めた】帯の並びは左に**絞り込む**（一覧を検索→フィルタ ▾）、右端に**見せ方**（表示列→表の見せ方）。群は近さで分ける | `test_listbar.js` | [§9.505](../../docs/decisions/9.505.md) |
+| 【§9.614で撤回】条件の数は「条件 N」・条件の操作は「条件」の面の1つ（条件は帯の札・作るのは列の値の一覧） | `test_filter.js` | [§9.505](../../docs/decisions/9.505.md) |
 | 一覧から開く面は**字1種**（見出し800／項目700／説明400で薄く）。余白は動かさない（高さは中身なり・§9.449）。字は器でなく中身へ当てる | `test_listbar.js`・`test_popmenu.js` | [§9.505](../../docs/decisions/9.505.md) |
 | 「一覧を検索」は帯の先頭（ヘッダーに置かない——一覧の無い画面に出て、打っても何も起きなかった） | `test_filter.js` | [§9.505](../../docs/decisions/9.505.md) |
 | 一覧の検索欄は**4つとも`.lt-search`の1つ**（仕掛・品質・データ一覧・測定実績）。欄の中の ✕ で消す（「検索解除」のボタンを並べない） | `test_reccols.js`・`test_actuals.js`・`test_listbar.js` | [§9.507](../../docs/decisions/9.507.md) |
@@ -106,7 +113,7 @@
 | 子ロットの折りたたみバッジは列を選べる。既定はロット番号 | `test_scbar.js`・`test_scprint.js` | [§9.235](../../docs/decisions/9.235.md) |
 | 印刷は「画面のさわやかな見た目」に寄せる: 枠線ON/OFF・列の範囲・幅は自然体 | `test_scprint.js` | [§9.236](../../docs/decisions/9.236.md) |
 | 予定から外す受け皿は掴んでいる間だけ出す | `test_scdrop.js` | [§9.116](../../docs/decisions/9.116.md) |
-| その場フィルタは登録もトークン化もしない | `test_adhoc.js` | [§9.238](../../docs/decisions/9.238.md) |
+| 【§9.614で撤回】その場フィルタは登録もトークン化もしない（列の値の一覧に畳んだ） | — | [§9.238](../../docs/decisions/9.238.md) |
 | 並びに載っている列は全部掴める。幅の下限をCSSで持たない | — | [§9.239](../../docs/decisions/9.239.md) |
 | 子ロットは畳んでいる間DOMを作らない | `test_gridchild.js` | [§9.239](../../docs/decisions/9.239.md) |
 | 表の揃えは`WL.columnAlign`の1箇所が答える | — | [§9.239](../../docs/decisions/9.239.md) |
@@ -128,8 +135,8 @@
 | まとめて入れる／まとめて外すは対で持つ | `test_scpick.js` | [§9.170](../../docs/decisions/9.170.md) |
 | フィルタの持ち出し・取り込みは「フィルタだけ」 | `test_filterio.js` | [§9.171](../../docs/decisions/9.171.md) |
 | 適用中のフィルタは端末に覚える | `test_filteractive.js` | [§9.175](../../docs/decisions/9.175.md) |
-| 登録一覧は「組み合わせごとの節」。作るのは2手（選ぶ→名前を付ける） | `test_filtergroup.js` | [§9.287](../../docs/decisions/9.287.md) |
-| 【主動線は§9.287で作り替えた】群＝プリセットの入れ物 | — | [§9.287](../../docs/decisions/9.287.md) |
+| 【§9.614で撤回】登録一覧は「組み合わせごとの節」。作るのは2手（保存したフィルタ＝名前＋条件の1行にした） | — | [§9.287](../../docs/decisions/9.287.md) |
+| 【§9.614で撤回】群＝プリセットの入れ物 | — | [§9.287](../../docs/decisions/9.287.md) |
 | ページめくりは一覧ツールバーが持つ | — | [§9.286](../../docs/decisions/9.286.md) |
 | スケジュール表の列も全部が列レイアウトマスタに乗る | `test_sctimecols.js` | [§9.176](../../docs/decisions/9.176.md) |
 | 列の設定もファイルへ持ち出せる | `test_colio.js` | [§9.178](../../docs/decisions/9.178.md) |

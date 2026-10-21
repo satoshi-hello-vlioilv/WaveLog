@@ -69,11 +69,11 @@ run('test_filteruser: フィルタを個人単位で記録する（§9.172）', 
   const r=await fetch('/api/filter-presets?user='+encodeURIComponent(u));
   return (await r.json()).items||[];
  },user);
- const openPresets=async page=>{
-  /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterCondBtn');
-  await page.click('#openFilterPresets');
-  await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000});
+ /* 保存したフィルタの面（帯の「フィルタ ▾」・§9.614）を開き、自分の行が出るまで待つ。 */
+ const openPresets=async (page,name)=>{
+  await page.evaluate(()=>WL.filters.reload());
+  await page.click('#filterSavedBtn');
+  await W.until(page,n=>[...document.querySelectorAll('#filterSavedMenu .flt-saved-name b')].some(b=>b.textContent===n),name,{ms:10000,what:'保存したフィルタの面'});
   await idleOf.get(page)();
  };
  let t1=null,t2=null;
@@ -150,18 +150,21 @@ run('test_filteruser: フィルタを個人単位で記録する（§9.172）', 
       !(await seen(t1.page,B)).some(x=>x.id===a1.id)
       &&(await seen(t1.page,A)).some(x=>x.id===a1.id));
 
-  /* ---- 画面: 誰の設定を見ているのかが読める ---- */
-  await openPresets(t1.page);
-  const ui=await t1.page.evaluate(()=>({
-   summary:(document.getElementById('filterPresetSummary')||{}).textContent||'',
-   owns:[...document.querySelectorAll('.filter-preset-item .fp-own')].map(x=>x.textContent),
-  }));
-  rec('誰の設定かを画面に書く',ui.summary.includes(`${'u-'}`)&&/自分だけ/.test(ui.summary)&&/みんな/.test(ui.summary),
-      ui.summary.trim().slice(0,90));
-  /* **色だけで持ち主を伝えない。** 言葉をそのまま出す。 */
-  rec('1件ごとに持ち主を言葉で出す',
-      ui.owns.length>0&&ui.owns.every(t=>t==='自分だけ'||t==='みんな'),ui.owns.join('、'));
-  await t1.page.evaluate(()=>{document.getElementById('filterPresetModal').hidden=true});
+  /* ---- 画面: 誰の設定を見ているのかが読める（§9.614 で「フィルタ ▾」の面へ移した） ---- */
+  await post(t1.page,'/api/filter-presets/owner',{id:a1.id,user:A,shared:false});
+  await openPresets(t1.page,`${TAG}-S1`);
+  const ui=await t1.page.evaluate(tag=>({
+   head:(document.querySelector('#filterSavedMenu .flt-menu-head')||{}).textContent||'',
+   rows:Object.fromEntries([...document.querySelectorAll('#filterSavedMenu .flt-saved-row')]
+     .map(r=>[(r.querySelector('.flt-saved-name b')||{}).textContent||'',[...r.querySelectorAll('.flt-tag')].map(t=>t.textContent)])
+     .filter(([n])=>n.startsWith(tag))),
+  }),TAG);
+  rec('誰の設定かを画面に書く（面の頭に利用者）',ui.head.includes(A),ui.head.trim().slice(0,90));
+  /* **色だけで持ち主を伝えない。** みんなのものは字の札で言う（自分のものは札なし＝面の頭が「自分の」と言う）。 */
+  rec('みんなのものは1件ごとに「みんなの」の字で出す',
+      (ui.rows[`${TAG}-S1`]||[]).includes('みんなの')&&!(ui.rows[`${TAG}-A1`]||[]).includes('みんなの'),JSON.stringify(ui.rows));
+  rec('他人の個人フィルタは面にも出ない',!(`${TAG}-B1` in ui.rows),Object.keys(ui.rows).join('、'));
+  await t1.page.keyboard.press('Escape');
 
   /* ---- 6) 端末に残っていた古い印は一度だけ移る ---- */
   const c=await mk(`${TAG}-C1`,A);

@@ -35,8 +35,8 @@ const PANES=[
  ['同期の状態','access-mode-menu sc-sync-menu',''],
  ['表の切り替え','access-mode-menu hd-table-menu',''],
  ['再読込','access-mode-menu reload-menu',''],
- ['組み合わせ','access-mode-menu fb-preset-menu',''],
- ['条件','access-mode-menu fb-cond-menu',''],
+ ['保存したフィルタ','flt-saved-menu',''],
+ ['列の値の一覧','flt-col-pop',''],
  ['説明のヒント','access-mode-menu mm-hint-menu',''],
  ['見本の情報','access-mode-menu op-prev-info-pop',''],
  ['表示','access-mode-menu ui-size-menu',''],
@@ -72,6 +72,8 @@ run('test_popmenu: 浮きメニュー（§9.448・§9.449）', async ({page,rec,
   if(!b){diffs.push(`${name} 面が無い`);continue}
   for(const f of Object.keys(a))if(a[f]!==b[f])diffs.push(`${name}.${f} ${a[f]}→${b[f]}`);
  }
+ /* 控えに無い面は黙って通さない（測った値を出す——意図して足した面なら、この値を控えへ書く）。 */
+ for(const [name] of PANES)if(!LOOK[name])diffs.push(`${name} 控えに無い: ${JSON.stringify(now[name])}`);
  rec('13面の見た目が控えと1つも違わない（§9.449。揃えるのは値ではなく置き場）',
      diffs.length===0, `${diffs.length}件: `+diffs.join(' / '));  // 全部出す（§9.449「動かした値は全部数えて出す」）
 

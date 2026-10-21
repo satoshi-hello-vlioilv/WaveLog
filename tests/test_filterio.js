@@ -18,6 +18,8 @@
 
    後片付けは finally で必ず行う（このテストが作った登録だけを消す。
    名前に実行ごとの印を入れて、他のテストの登録を巻き込まない）。
+   §9.614 でフィルタを作り直し、入口は「フィルタ ▾」の面の「書き出す・取り込む…」、中身は確認の窓
+   （#appConfirmModal）の1つにした。決めるボタン（#appConfirmOk）が「N件を書き出す／取り込む」を言う。
    ============================================================ */
 'use strict';
 const {run}=require('./lib/harness.js');
@@ -36,7 +38,7 @@ const OTHER_DB='SIKALOTDEF',OTHER_TBL='品質';
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['フィルタプリセットマスタ','フィルタ個人設定マスタ'];
 let snapM=null;
-run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171）', async ({page,rec,idle,errs})=>{
+run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171）', async ({page,rec,idle,errs,W})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
  const post=(p,body)=>page.evaluate(async a=>{
   const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -49,9 +51,14 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
   return (await r.json()).items||[];
  },{m:mode||'',u:USER});
  const settle=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+ const P='#appConfirmBody';
  const openIo=async kind=>{
-  await page.click(kind==='export'?'#exportFilterPresets':'#importFilterPresets');
-  await page.waitForSelector('#filterIoRun',{timeout:10000});
+  await page.evaluate(()=>WL.filters.reload());
+  await page.click('#filterSavedBtn');
+  await page.waitForSelector('#filterSavedMenu [data-io]',{timeout:10000});
+  await page.click('#filterSavedMenu [data-io]');
+  await page.waitForSelector(`${P} .fp-io`,{timeout:10000});
+  if(kind==='import')await page.click(`${P} [data-kind="import"]`);
   await settle();
  };
  const fs=require('fs'),os=require('os'),path=require('path');
@@ -80,23 +87,18 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
      印は**その人のもの**になったので、画面と同じAPIで付ける(§9.172)。 */
   const targetId=(await listPresets('')).find(x=>x.name===`${TAG}-A`)?.id;
   await post('/api/filter-presets/marks',{user:USER,id:targetId,isDefault:true,isLocked:true});
-  await page.evaluate(()=>document.getElementById('reloadFilterPresets')?.click());
-
-  /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterCondBtn');
-  await page.click('#openFilterPresets');
-  await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000});
-  await idle();  // 登録一覧の取り直し（reloadFilterPresets）が済むまで
+  await idle();
 
   /* ---- 1) 書き出し: 既定は「いま開いている一覧」だけ ---- */
   await openIo('export');
   const ex0=await page.evaluate(()=>{
-   const boxes=[...document.querySelectorAll('#filterIoPanel [data-io-group]')];
+   const B=document.getElementById('appConfirmBody');
+   const boxes=[...B.querySelectorAll('[data-io-group]')];
    return {groups:boxes.length,checked:boxes.filter(x=>x.checked).length,
-           run:document.getElementById('filterIoRun').textContent,
-           note:document.querySelector('#filterIoPanel .fp-io-note').textContent,
-           current:document.querySelectorAll('#filterIoPanel .fp-io-now').length,
-           hint:document.querySelector('#filterIoPanel .fp-io-hint').textContent.replace(/\s+/g,' ')};
+           run:document.getElementById('appConfirmOk').textContent,
+           note:B.querySelector('.fp-io-note').textContent,
+           current:B.querySelectorAll('.fp-io-now').length,
+           hint:B.querySelector('.fp-io-hint').textContent.replace(/\s+/g,' ')};
   });
   rec('書き出しは一覧ごとに選べる（今の一覧が既定）',
       ex0.groups>=2&&ex0.checked===1&&ex0.current===1,
@@ -110,10 +112,10 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
       ex0.hint.slice(0,80));
 
   /* ---- 2) 「すべての一覧」で全部 ---- */
-  await page.click('#filterIoPanel [data-io-quick="all"]');
+  await page.click(`${P} [data-io-quick="all"]`);
   await settle();
   const exAll=await page.evaluate(()=>{
-   const boxes=[...document.querySelectorAll('#filterIoPanel [data-io-group]')];
+   const boxes=[...document.querySelectorAll('#appConfirmBody [data-io-group]')];
    return {checked:boxes.filter(x=>x.checked).length,all:boxes.length};
   });
   rec('「すべての一覧」ひと押しで全部選べる',exAll.checked===exAll.all&&exAll.all>=2,
@@ -128,7 +130,7 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
     return orig.apply(this,arguments);
    };
   });
-  await page.click('#filterIoRun');
+  await page.click('#appConfirmOk');
   await page.waitForFunction(()=>!!window.__dlHref,null,{timeout:8000});
   const dumped=await page.evaluate(async()=>({
    name:window.__dlName,text:await (await fetch(window.__dlHref)).text()}));
@@ -137,13 +139,13 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
   const mine=((grp||{}).presets||[]).filter(p=>p.name.startsWith(TAG));
   rec('ファイル名に日付が入る',/^wavelog-filters-\d{8}\.json$/.test(dumped.name||''),dumped.name);
   rec('書き出したJSONは形式と版を名乗る',
-      doc.format==='wavelog-filter-presets'&&doc.version===1&&Array.isArray(doc.groups),
+      doc.format==='wavelog-filter-presets'&&doc.version===2&&Array.isArray(doc.groups),
       `${doc.format} v${doc.version} / ${(doc.groups||[]).length}群`);
   rec('別の一覧のぶんも一緒に出せる',
       (doc.groups||[]).some(g=>g.db===OTHER_DB&&g.table===OTHER_TBL),
       (doc.groups||[]).map(g=>g.db+'/'+g.table).join('、'));
   const marked=mine.find(p=>p.name===`${TAG}-A`);
-  rec('「デフォルト」「鍵」の印は名前に付いて出る',
+  rec('「いつも適用」（デフォルト・鍵の2つの印）は名前に付いて出る',
       !!marked&&marked.isDefault===true&&marked.isLocked===true,JSON.stringify(marked||{}).slice(0,90));
   /* **統計は運ばない。** 出ていたら、別のPCで意味の無い数字が並ぶ。 */
   rec('使用回数・IDは書き出さない',
@@ -156,19 +158,17 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
   const before=await listPresets('');
   const bId=before.find(x=>x.name===`${TAG}-B`)?.id;
   await post('/api/filter-presets/delete',{id:bId});
-  await page.evaluate(()=>document.getElementById('reloadFilterPresets').click());
-  await idle();
   await openIo('import');
-  await page.setInputFiles('#filterIoFile',tmp);
-  await page.waitForSelector('#filterIoPanel .fp-io-groups',{timeout:8000});
+  await page.setInputFiles(`${P} [data-io-file]`,tmp);
+  await page.waitForSelector(`${P} .fp-io-groups`,{timeout:8000});
   await settle();
   const im=await page.evaluate(()=>({
-   read:(document.querySelector('#filterIoPanel .fp-io-read')||{}).textContent||'',
-   counts:[...document.querySelectorAll('#filterIoPanel .fp-io-count')].map(x=>x.textContent),
-   checked:[...document.querySelectorAll('#filterIoPanel [data-io-group]')].filter(x=>x.checked).length,
-   run:document.getElementById('filterIoRun').textContent,
-   marks:!!document.getElementById('fpIoMarks'),
-   dup:document.querySelectorAll('#filterIoPanel [name="fpIoDup"]').length}));
+   read:(document.querySelector('#appConfirmBody .fp-io-read')||{}).textContent||'',
+   counts:[...document.querySelectorAll('#appConfirmBody .fp-io-count')].map(x=>x.textContent),
+   checked:[...document.querySelectorAll('#appConfirmBody [data-io-group]')].filter(x=>x.checked).length,
+   run:document.getElementById('appConfirmOk').textContent,
+   marks:!!document.querySelector('#appConfirmBody [data-io-marks]'),
+   dup:document.querySelectorAll('#appConfirmBody [name="fpIoDup"]').length}));
   rec('取り込む前に件数と一覧の数が読める',/\d+件/.test(im.read)&&/つの一覧/.test(im.read),im.read.trim());
   rec('新規と同名を数えて見せる',
       im.counts.some(t=>/新しく入る\d+件/.test(t))&&im.counts.some(t=>/同じ名前が\d+件/.test(t)),
@@ -181,13 +181,15 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
   await post('/api/filter-presets',{name:`${TAG}-A`,db:DB,table:TBL,mode:'',user:USER,
     filters:[{column:'書き換えた印',op:'eq',value:'KEEP'}]});
   await page.evaluate(()=>{
-   const keep=[...document.querySelectorAll('#filterIoPanel [name="fpIoDup"]')]
+   const keep=[...document.querySelectorAll('#appConfirmBody [name="fpIoDup"]')]
      .find(x=>x.value==='keep');
    keep.checked=true;keep.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.click('#filterIoRun');
-  await page.waitForSelector('#filterIoPanel',{state:'hidden',timeout:15000});
-  await idle();  // 取り込みの書き込みが済むまで
+  await page.click('#appConfirmOk');
+  await page.waitForSelector('#appConfirmModal',{state:'hidden',timeout:15000});
+  /* 取り込みの書き込みは窓を閉じてから1件ずつ。終わりの知らせ（再読込）が済むまで待つ。 */
+  await W.poll(()=>listPresets(''),l=>l.some(x=>x.name===`${TAG}-B`),15000);
+  await idle();
   const after=await listPresets('');
   const a=after.find(x=>x.name===`${TAG}-A`);
   rec('「そのままにする」なら同名を上書きしない',
@@ -204,18 +206,19 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
      だと、取り込んだ人が別のPCへ移った瞬間に印だけ消える。 */
   const reread=await listPresets('');
   const ra=reread.find(x=>x.name===`${TAG}-A`);
-  rec('「デフォルト」「鍵」の印も名前で当て直される（マスタに残る）',
+  rec('「いつも適用」の印も名前で当て直される（マスタに残る）',
       !!ra&&ra.isDefault===true&&ra.isLocked===true,
       JSON.stringify(ra&&{d:ra.isDefault,l:ra.isLocked}));
 
   /* ---- 7) 壊れたファイルは断る ---- */
   fs.writeFileSync(bad,'{"format":"something-else","groups":[]}');
   await openIo('import');
-  await page.setInputFiles('#filterIoFile',bad);
-  await page.waitForSelector('#filterIoPanel .fp-io-error',{timeout:8000});
+  await page.setInputFiles(`${P} [data-io-file]`,bad);
+  await page.waitForSelector(`${P} .fp-io-error`,{timeout:8000});
   const err=await page.evaluate(()=>({
-   msg:document.querySelector('#filterIoPanel .fp-io-error').textContent,
-   run:document.getElementById('filterIoRun').disabled}));
+   msg:document.querySelector('#appConfirmBody .fp-io-error').textContent,
+   run:document.getElementById('appConfirmOk').disabled}));
+  await page.click('#appConfirmCancel');
   rec('別のファイルを選んだら理由を書いて断る',
       /WaveLog/.test(err.msg)&&err.run===true,err.msg.slice(0,70));
 

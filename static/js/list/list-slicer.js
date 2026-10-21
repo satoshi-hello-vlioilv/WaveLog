@@ -133,7 +133,7 @@
   if(!b){b=document.createElement('button');b.type='button';b.id='listSlicerBtn';b.className='lt-tool-btn sx-entry';
    b.title='スライサー: 列の値の一覧と件数を一覧の上に出し、押した値で絞ります';
    b.onclick=()=>{mutate(st=>{st.open=!st.open});if(setup().open)refresh();else paintAll()}}
-  const after=document.getElementById('filterAdhocToggle');
+  const after=document.getElementById('filterToolsAt');   // 絞り込みの帯の目印（filters.js の骨組み・§9.614）
   if(after&&b.previousElementSibling!==after)after.after(b);
   paintButton();
  }

@@ -12,6 +12,8 @@
  5. 前の版の組み合わせ（`[メンバーJSON]`）は、読むときに条件へ展開して1件の保存したフィルタとして返す
  6. 条件を直したら`[メンバーJSON]`は空になる（前の版の画面が古い部品で読まない）
  7. 条件の上限（60件）を越えたぶんは黙って捨てず、効いていない条件として名乗る
+ 8. 列の値の一覧の「除く（not_in）」: 選んだ値の行を除き、空欄（NULL）の行は残す。空欄そのものを除くこともできる。
+    値が無い「除く」は絞らない／値が無い「選ぶ（in）」は1行も出さない
 
 実際のマスタ（検証用フィクスチャ）へ書くので、**作った行は最後に物理的に消す**（削除の口は論理削除）。
 ============================================================
@@ -110,6 +112,32 @@ try:
     ign = tb._ignored_filter_columns(json.dumps(many), ['a'])
     rec('7: 上限まで当て、越えたぶんは効いていない条件として名乗る',
         len(kept) == tb.FILTERS_MAX and any('越えた3件' in x for x in ign), (len(kept), ign))
+    # ---- 8 ----
+    import tempfile, os
+    from backend import sqlite_io
+    fd, tmp = tempfile.mkstemp(suffix='.sqlite3'); os.close(fd)
+    try:
+        with sqlite_io.connect(pathlib.Path(tmp)) as c:
+            c.execute('CREATE TABLE t (k TEXT)')
+            c.executemany('INSERT INTO t VALUES (?)', [('A',), ('B',), ('C',), (None,), ('',)])
+            c.commit()
+            def hits(filters):
+                w, prm = tb._build_filter_where(filters)
+                sql = 'SELECT k FROM t' + (' WHERE ' + w if w else '')
+                return sorted(['∅' if r[0] is None else r[0] for r in c.execute(sql, prm).fetchall()])
+            got = {
+                'not_in_A_B': hits([{'column': 'k', 'op': 'not_in', 'value': ['A', 'B']}]),
+                'not_in_blank': hits([{'column': 'k', 'op': 'not_in', 'value': ['']}]),
+                'not_in_none': hits([{'column': 'k', 'op': 'not_in', 'value': []}]),
+                'in_none': hits([{'column': 'k', 'op': 'in', 'value': []}]),
+                'in_A': hits([{'column': 'k', 'op': 'in', 'value': ['A']}]),
+            }
+        rec('8: 除く（not_in）は選んだ値だけを除き、空欄の行は残す', got['not_in_A_B'] == ['', 'C', '∅'], got['not_in_A_B'])
+        rec('8: 空欄を除くと空欄（NULL と空の字）の行が消える', got['not_in_blank'] == ['A', 'B', 'C'], got['not_in_blank'])
+        rec('8: 値の無い「除く」は絞らない・値の無い「選ぶ」は1行も出さない', len(got['not_in_none']) == 5 and got['in_none'] == [] and got['in_A'] == ['A'], got)
+        rec('8: not_in は効く条件として受け付ける（捨てない）', len(tb._safe_filters(json.dumps([{'column': 'k', 'op': 'not_in', 'value': ['A']}]), ['k'])) == 1)
+    finally:
+        os.remove(tmp)
 finally:
     if made:
         with db_access.connect(db_access.DBS['MASTER']['path'], False) as c:

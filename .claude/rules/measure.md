@@ -43,7 +43,7 @@
 | 見本のロットは器の上限まで埋める | `test_rbsample.js` | [§9.254](../../docs/decisions/9.254.md) |
 | 操業データの「自動」項目は式で作れる。評価器は増やさない | `test_opauto.js`・`test_opformula.js` | [§9.256](../../docs/decisions/9.256.md) |
 | 設定窓の見本は`WL.opData.buildPreviewField()`の1本で作る | — | [§9.276](../../docs/decisions/9.276.md) |
-| フィルタの「組み合わせ（プリセット）」は行そのもの。条件は何回でも使える | `test_filtergroup.js` | [§9.288](../../docs/decisions/9.288.md) |
+| 【§9.614で撤回】フィルタの「組み合わせ（プリセット）」は行そのもの。条件は何回でも使える | — | [§9.288](../../docs/decisions/9.288.md) |
 | 選ばせ方の顔ぶれを網へ直に書かない | `test_oppad.js`・`test_opui.js` | [§9.288](../../docs/decisions/9.288.md) |
 | 操業データ項目の設定モーダルは「見本＝上の帯（高さ固定）／設定＝多段組み」 | — | [§9.288](../../docs/decisions/9.288.md) |
 | ロールを見分けるのは6つ（設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考）で1本 | `test_roll.js`・`test_rollio.py` | [§9.246](../../docs/decisions/9.246.md)・[§9.257](../../docs/decisions/9.257.md) |
@@ -52,8 +52,8 @@
 | ロールの見分けにくい相手は`rollConfusions()`の1箇所（`rollMatches()`を通す・倍数2まで・同じ設備の中） | `test_roll.js` | [§9.537](../../docs/decisions/9.537.md) |
 | ロールマスタの表の1周の長さ・帯・見分けにくい相手は`master-roll.js`が計算の列として名乗る（帯は全行で同じ目盛り） | `test_roll.js` | [§9.537](../../docs/decisions/9.537.md) |
 | ロールマスタは1ロール1設備。判定は`WL.defect.rollMatches`の1箇所 | `test_roll.js` | [§9.239](../../docs/decisions/9.239.md) |
-| フィルタは「条件 → その組み合わせ」の2層。バーに出すのは組み合わせだけ | — | [§9.287](../../docs/decisions/9.287.md) |
-| 効いている条件は「アイコン＋件数」の1バッジ。中身はポップオーバー | — | [§9.287](../../docs/decisions/9.287.md) |
+| 【§9.614で撤回】フィルタは「条件 → その組み合わせ」の2層。バーに出すのは組み合わせだけ | — | [§9.287](../../docs/decisions/9.287.md) |
+| 【§9.614で撤回】効いている条件は「アイコン＋件数」の1バッジ（帯の札で出す） | — | [§9.287](../../docs/decisions/9.287.md) |
 | 「選ばない」の札の字は`WL.optionBlankLabel`の1箇所 | — | [§9.287](../../docs/decisions/9.287.md) |
 | 操業データ項目の保存は`opSaveItem()`の`body`に全部載せる | — | [§9.287](../../docs/decisions/9.287.md) |
 | 「誰が・どの端末で」は登録と更新を分けて持つ | `test_audittrail.js` | [§9.180](../../docs/decisions/9.180.md) |

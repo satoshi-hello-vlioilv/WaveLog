@@ -123,7 +123,7 @@
  function current(){
   const target=WL.list.listLayoutTarget();
   return {target,columns:target?WL.columnLayout.get(target):null,slicer:WL.listSlicer?WL.listSlicer.setupOf():null,
-   marks:WL.listMarks?WL.listMarks.setupOf():null,filters:(S.genericFilters||[]).slice(),
+   marks:WL.listMarks?WL.listMarks.setupOf():null,filters:(S.genericFilters||[]).filter(f=>!f.locked).map(({locked:_l,...f})=>f),
    pageSize:valueOf('pageSize'),rowGap:valueOf('listRowGap')};
  }
  function saveDisplay(){
@@ -146,7 +146,8 @@
    }
    if(it.slicer&&WL.listSlicer){WL.listSlicer.setSetup(it.slicer);done.push('スライサー')}
    if(it.marks&&WL.listMarks){WL.listMarks.setSetup(it.marks);done.push('色付け')}
-   if(Array.isArray(it.filters)){S.genericFilters=it.filters.filter(c=>c&&c.column);done.push('絞り込み条件')}
+   /* いつも適用の条件は残す（§9.614。前は丸ごと置き換えて、鍵付きの条件が黙って外れていた）。 */
+   if(Array.isArray(it.filters)){WL.filters.replace(it.filters);done.push('絞り込み条件')}
    const ps=document.getElementById('pageSize');if(ps&&it.pageSize&&[...ps.options].some(o=>o.value===it.pageSize)){ps.value=it.pageSize;done.push('表示件数')}
    const rg=document.getElementById('listRowGap');if(rg&&it.rowGap){rg.value=it.rowGap;rg.dispatchEvent(new Event('input'));rg.dispatchEvent(new Event('change'));done.push('行間')}
    S.page=1;await WL.list.load();
@@ -160,8 +161,8 @@
     面の項目を押すと本物のボタンを押したのと同じ。本物の面は畳んだ入口の下に出る＝`WL.popMenu.proxy`）。
     どこで畳むかは CSS の1箇所（45-tolerance.css の`.lt-fold`）。使っている道具の数は入口の札が言う。 */
  const FOLDS=[
-  {key:'tools',label:'道具',icon:'fa-sliders',head:'列で絞り込む・スライサー・色付け',ids:['filterAdhocToggle','listSlicerBtn','listMarkBtn'],
-   put:b=>{const c=document.getElementById('filterCondBtn');if(c&&c.nextElementSibling!==b)c.after(b)}},
+  {key:'tools',label:'道具',icon:'fa-sliders',head:'スライサー・色付け',ids:['listSlicerBtn','listMarkBtn'],
+   put:b=>{const c=document.getElementById('filterToolsAt');if(c&&c.previousElementSibling!==b)c.before(b)}},
   {key:'view',label:'見せ方',icon:'fa-table-columns',head:'表示列・表の見せ方・ファイル',ids:['listColumnBtn','listViewBtn','listFileBtn'],
    put:b=>{const s=document.getElementById('filterBarSlot');if(s&&s.lastElementChild!==b)s.appendChild(b)}},
  ];

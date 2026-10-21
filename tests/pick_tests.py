@@ -75,7 +75,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 G = {}
 G['一覧'] = ['test_nav', 'test_navwords', 'test_popmenu', 'test_listcache', 'test_listperf', 'test_allrows',
              'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
-             'test_filterlock', 'test_adhoc',
+             'test_filterlock',
              'test_cols', 'test_headbar', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache',
              # §9.239 ⑤: 子ロットの畳み込みと列の一時的な色
@@ -256,10 +256,9 @@ G['権限'] = ['test_modeguard', 'test_fieldreorder', 'test_strictreorder', 'tes
              # **サーバーと画面の両方**——片方だけでは、サーバーが正しく
              # 答えていても画面が引かない状態を素通りさせる。
              'test_roleperm', 'test_roleui']
-# §9.286 ①: 登録フィルタの群・プリセット中心のバー
-G['フィルタ'] = ['test_filtersaved', 'test_filter', 'test_adhoc', 'test_filterio', 'test_filteruser',
-                 'test_filteractive', 'test_filterkeep', 'test_filterlock',
-                 'test_filtergroup', 'test_listbar']
+# §9.614: 一覧の絞り込み（保存したフィルタ・列の値の一覧・条件の札）。ゼロから作り直した
+G['フィルタ'] = ['test_filtersaved', 'test_filtersavedui', 'test_filter', 'test_filterio', 'test_filteruser',
+                 'test_filteractive', 'test_filterkeep', 'test_filterlock', 'test_listbar']
 # §9.316: 起動の状況をアプリから取れる（`/api/boot-report`＋ログ・診断の帯）。
 # 置き場は`paths`が解決した実物を出すので、起動まわりを触ったら一緒に回す。
 G['ログ'] = ['test_logs', 'test_logview', 'test_error', 'test_bootreport', 'test_saveio']
@@ -299,7 +298,7 @@ RULES = [
     ('backend/config.py', [ALL]),
 
     # --- 画面(JS) ----------------------------------------------------
-    ('static/js/list/list-view.js', g('一覧', '列', 'test_fit', 'test_uiux', '更新履歴')),
+    ('static/js/list/list-view.js', g('一覧', '列', 'フィルタ', 'test_fit', 'test_uiux', '更新履歴')),
     ('static/js/list/list-columns.js', g('列', 'test_sccontent',
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list/list-rules.js', g('列')),
@@ -307,9 +306,9 @@ RULES = [
     ('static/js/list/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
                                     'test_opformula')),
     # §9.591: 一覧の道具（スライサー・色付け・拡大・Excel に出力・表示の設定）
-    ('static/js/list/list-slicer.js', g('一覧')),
-    ('static/js/list/list-marks.js', g('一覧')),
-    ('static/js/list/list-tools.js', g('一覧')),
+    ('static/js/list/list-slicer.js', g('一覧', 'test_filtersavedui')),
+    ('static/js/list/list-marks.js', g('一覧', 'test_filtersavedui')),
+    ('static/js/list/list-tools.js', g('一覧', 'test_filtersavedui')),
     ('static/js/list/filters.js', g('モーダル', 'フィルタ', 'test_filterbarui',
                                'test_listcache', 'test_allrows', 'test_nav')),
     # §9.302: 設備の使える機能で予定の設備の候補を絞る
@@ -475,6 +474,8 @@ RULES = [
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
                                       'test_scbalance', 'test_scprint')),
     ('static/css/35-split.css', g('見た目', '異常位置', 'test_split_layout')),
+    # §9.614: 一覧の帯と絞り込みの面（`.flt-*`・見出しの ▼）
+    ('static/css/45-tolerance.css', g('見た目', '一覧', 'フィルタ')),
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel',
                                      'test_eqscope')),
     ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_rbmodal',

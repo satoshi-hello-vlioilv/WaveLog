@@ -8,14 +8,15 @@
     F1 押す物の高さ・字（LotScope の帯＝30px・13.5px。どちらの器でも同じ寸法）
     F2 検索欄の幅は LotScope の 300px 以下（伸びて余りを食わない）
     F3 帯の押す物が帯の中に収まる（切れて押せない物が無い・1536 と 1728）
-    F4 条件の数は「一覧を検索」の字とスライサーの選択も数える（効いている物が1つの数で読める）
+    F4 【§9.614で改めた】効いている物（条件・一覧を検索の字・スライサー）は1つの顔ぶれ（`narrowingItems()`）で、条件は帯の札で読める
     F5 件数は絞ったら「n件 / 全 N件」
     F6 スライサーだけで0件にしても「条件を外して全件を見る」で戻る
     F7 色付けの下書きが今の一覧に無い列なら、押す前に今の一覧の列へ戻っている（黙って空振りしない）
     F8 この表に無い列（結合した列など）の条件は黙って捨てず、応答が「効いていない」と言う
     H1 作業スケジュールの仕掛一覧は、予定に入れた（まだ終わっていない）ロットを伏せる（比べるのは鍵 __lotKey）
     H2 伏せている決まりと件数が帯の札で見える（押すと見分け方の列・伏せたロットの面）
-    H3 「仕掛一覧と同じ条件」で、元データの一覧で当てた条件がスケジュールの仕掛一覧にも効く（切ると戻る）
+    H3 「仕掛一覧と同じ条件」で、元データの一覧で当てた条件がスケジュールの仕掛一覧にも効く（切ると戻る）。
+       §9.614 から切り替えは「フィルタ ▾」の面、つないでいる間は帯の札「仕掛一覧と同じ」
     H4 スケジュールを出たら、左メニューの仕掛一覧は何も伏せない
    WAVELOG_SHOT=<dir> を付けたときだけ帯を撮る（見た目の確かめ用）。
    ============================================================ */
@@ -72,12 +73,11 @@ H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ pag
  }
  /* ---------- 状態の見え方（F4・F5） ---------- */
  await page.setViewportSize({ width: 1728, height: 1152 });
- const before = await page.evaluate(() => ({ n: (document.getElementById('filterCount') || {}).textContent || '', cnt: (document.querySelector('#listToolbar .list-count,#listCount') || {}).textContent || '' }));
  await page.fill('#search', 'ZZZ_NOT_FOUND_ZZZ');
- /* 押した物そのもので待つ（§9.522）: 検索が効いて件数が「n件 / 全 N件」になるまで。前は「行が無い」で待ち、検索の前から成り立って素通りしていた。 */
+ /* 押した物そのもので待つ（§9.522）: 検索が効いて件数が「n件 / 全 N件」になるまで。 */
  await W.until(page, () => /件\s*\/\s*全/.test((document.getElementById('count') || {}).textContent || ''), null, { ms: 15000, what: '検索で絞る' });
- const after = await page.evaluate(() => ({ n: (document.getElementById('filterCount') || {}).textContent || '', bar: (document.getElementById('listToolbar') || {}).textContent.replace(/\s+/g, ' ').trim().slice(0, 160) }));
- rec('F4 一覧を検索の字も条件の数に入る', Number(after.n) > Number(before.n || 0), `前 ${before.n} → 後 ${after.n}`);
+ const after = await page.evaluate(() => ({ srcs: WL.list.narrowingItems().map(x => x.source), bar: (document.getElementById('listToolbar') || {}).textContent.replace(/\s+/g, ' ').trim().slice(0, 160) }));
+ rec('F4 一覧を検索の字も効いている物の顔ぶれに入る', after.srcs.includes('一覧を検索'), after.srcs.join(','));
  rec('F5 絞ったら件数は「n件 / 全 N件」', /\d+\s*件\s*\/\s*全\s*[\d,]+\s*件/.test(after.bar), after.bar);
  await shot('state_search');
  await page.fill('#search', '');
@@ -93,13 +93,13 @@ H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ pag
  await page.reload({ waitUntil: 'domcontentloaded' }); await W.booted(page);
  await page.click('[data-db-key="SIKALOTNOW"]');
  await W.until(page, () => !!document.querySelector('#grid [data-empty-clear]'), null, { ms: 30000, what: 'スライサーで0件' });
- const sx = await page.evaluate(() => ({ n: (document.getElementById('filterCount') || {}).textContent || '',
+ const sx = await page.evaluate(() => ({ srcs: WL.list.narrowingItems().map(x => x.source),
   conds: [...document.querySelectorAll('#grid .list-empty-conds li')].map(x => x.textContent.trim()),
   count: (document.getElementById('count') || {}).textContent || '', countShown: !!(document.getElementById('count') || {}).getClientRects?.().length }));
  const pg = await page.evaluate(() => ({ p: (document.getElementById('page') || {}).textContent, prev: !!(document.getElementById('prev') || {}).disabled, next: !!(document.getElementById('next') || {}).disabled }));
  rec('F5 スライサーで0件ならページは「0」で ‹ › は押せない（検索の0件と同じ）', pg.p === '0' && pg.prev && pg.next, JSON.stringify(pg));
  rec('F5 スライサーで0件でも件数は「0件 / 全 N件」で出る', /^0件\s*\/\s*全/.test(sx.count) && sx.countShown, JSON.stringify({ count: sx.count, shown: sx.countShown }));
- rec('F4 スライサーの選択も条件の数に入る', Number(sx.n) >= 1, `条件 ${sx.n}`);
+ rec('F4 スライサーの選択も効いている物の顔ぶれに入る', sx.srcs.includes('スライサー'), sx.srcs.join(','));
  rec('F6a 0件の案内がスライサーを効いている条件として名乗る', sx.conds.some(t => /スライサー/.test(t)), sx.conds.join(' / '));
  await shot('state_slicer0');
  await page.click('#grid [data-empty-clear]');
@@ -170,19 +170,21 @@ H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ pag
   await shot('lothide_panel');
   await page.keyboard.press('Escape');
  }
- /* ---------- H3: 仕掛一覧と同じ条件（「条件」の札が字で名乗り、面の中で切り替える） ---------- */
- const scope0 = await page.evaluate(() => (document.querySelector('#filterCondBtn .fb-cond-scope') || {}).textContent || '');
- rec('H3 「条件」の札がいまの条件の置き場を字で言う（スケジュール用）', scope0 === 'スケジュール用', scope0);
- await page.click('#filterCondBtn');
- await W.until(page, () => !!document.querySelector('#filterCondMenu:not([hidden]) [data-link-set="1"]'), null, { ms: 8000, what: '条件の面のつなぎ' });
- await page.click('#filterCondMenu [data-link-set="1"]');
- await W.until(page, () => ((document.querySelector('#filterCondBtn .fb-cond-scope') || {}).textContent || '') === '仕掛一覧と同じ', null, { ms: 8000, what: 'つないだ' });
+ /* ---------- H3: 仕掛一覧と同じ条件（「フィルタ ▾」の面で切り替え、つないでいる間は帯の札が名乗る・§9.614） ---------- */
+ const tags = () => page.evaluate(() => (document.getElementById('filterSavedTags') || {}).textContent || '');
+ rec('H3 既定はスケジュール用（帯に「仕掛一覧と同じ」の札が無い）', !/仕掛一覧と同じ/.test(await tags()), await tags());
+ const link = async v => {
+  await page.click('#filterSavedBtn');
+  await W.until(page, x => !!document.querySelector(`#filterSavedMenu [data-link="${x}"]`), v, { ms: 8000, what: 'フィルタの面の置き場' });
+  await page.click(`#filterSavedMenu [data-link="${v}"]`);
+ };
+ await link('1');
+ await W.until(page, () => /仕掛一覧と同じ/.test((document.getElementById('filterSavedTags') || {}).textContent || ''), null, { ms: 8000, what: 'つないだ' });
  const linkedKey = await page.evaluate(() => JSON.parse(localStorage.getItem('wl.filterLink.v1') || '{}'));
- rec('H3 面の中で「仕掛一覧と同じ」に切り替わり、利用者×一覧ごとに覚える', JSON.stringify(linkedKey).includes('true'), JSON.stringify(linkedKey));
- await page.click('#filterCondMenu [data-link-set="0"]').catch(async () => { await page.click('#filterCondBtn'); await page.click('#filterCondMenu [data-link-set="0"]'); });
- await W.until(page, () => ((document.querySelector('#filterCondBtn .fb-cond-scope') || {}).textContent || '') === 'スケジュール用', null, { ms: 8000, what: '切った' });
+ rec('H3 面の中で「仕掛一覧と同じ」に切り替わり、帯の札が名乗り、利用者×一覧ごとに覚える', JSON.stringify(linkedKey).includes('true'), JSON.stringify(linkedKey));
+ await link('0');
+ await W.until(page, () => !/仕掛一覧と同じ/.test((document.getElementById('filterSavedTags') || {}).textContent || ''), null, { ms: 8000, what: '切った' });
  rec('H3 切るとスケジュール用に戻る', true);
- await page.keyboard.press('Escape');
  /* ---------- H4: スケジュールを出たら伏せない ---------- */
  await page.click('[data-db-key="SIKALOTNOW"]');
  await W.until(page, () => !document.body.classList.contains('sc-mode') && document.querySelectorAll('#grid tbody tr').length > 0, null, { ms: 30000, what: '左メニューの仕掛一覧' });
