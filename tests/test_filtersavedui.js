@@ -218,6 +218,7 @@ H.run('test_filtersavedui: 一覧の絞り込み（§9.614）', async ({ page, r
    /* 作業スケジュールに並べた狭い仕掛一覧（分割）も撮る */
    await page.evaluate(() => { localStorage.setItem('AccessMeasurementConfiguredEquipment', 'テスト設備A');
     localStorage.setItem('scLayoutPrefsV1', JSON.stringify({ swap: false, open: 'split' })); });
+   await setMode('schedule');
    for (const vp of [{ width: 1728, height: 1152 }, { width: 1536, height: 864 }]) {
     await page.setViewportSize(vp);
     await page.goto(B + '/', { waitUntil: 'domcontentloaded' }); await W.booted(page);
@@ -225,6 +226,7 @@ H.run('test_filtersavedui: 一覧の絞り込み（§9.614）', async ({ page, r
     await W.until(page, () => document.querySelectorAll('#grid tbody tr').length > 0, null, { ms: 30000, what: 'スケジュールの仕掛一覧' });
     await shot(`split_${vp.width}`);
    }
+   await setMode('edit');
   }
  } finally {
   if (made.length) await page.evaluate(async ids => { for (const id of ids) await fetch('/api/filter-presets/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).catch(() => {}); }, made);

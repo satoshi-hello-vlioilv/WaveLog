@@ -470,7 +470,15 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .flt-btn.is-danger-ghost:hover{border-color:transparent}
 .flt-add{border-style:dashed;color:var(--teal-ink)}
 /* 効いている条件の札（件数の段・`#count`の右）。押すとその列の値の一覧、×で外す。 */
-.flt-chips{display:inline-flex;align-items:center;flex-wrap:wrap;gap:var(--gap-tight);min-width:0}
+.flt-chips,.flt-chip-list{display:inline-flex;align-items:center;flex-wrap:wrap;gap:var(--gap-tight);min-width:0}
+.flt-chip-list:empty{display:none}
+/* 分割（幅380px）: 「＋ 条件」は「道具 ▾」から。札は条件があるときだけ自分の1行（件数の行を押し出さない）。
+   ポップアップ（広い器）: 札は件数のすぐ右（並びの順は 70-schedule.css の`order`・件数と同じ 1）。 */
+.sc-split-wrap #filterAddCond{display:none}
+.sc-split-wrap .lt-state>#filterChips:not(.has-chips){display:none}
+.sc-split-wrap .lt-state>#filterChips{order:3;flex:1 1 100%}
+.sc-split-wrap .lt-state:has(>#filterChips.has-chips)>.lt-break{display:none}
+.sc-float-body .lt-state>#filterChips{order:1}
 .flt-chip{display:inline-flex;align-items:center;flex:none;max-width:calc(var(--w-xl) * 1.1);height:var(--lt-h,var(--bar-h));
   border:1px solid var(--teal-soft);border-radius:var(--radius-sm);background:var(--teal-tint);color:var(--teal-ink);
   font-size:var(--lt-fs,var(--bar-fs))}
@@ -506,7 +514,9 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .flt-saved-name>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .flt-saved-sum{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2);font-size:var(--fs-sm)}
 .flt-saved-n{grid-row:1/3;grid-column:3;color:var(--ink-2);font-size:var(--fs-sm);font-variant-numeric:tabular-nums;white-space:nowrap}
-.flt-saved-menu .flt-edit{height:var(--ctl-h-sm);padding:0 var(--space-2);font-size:var(--fs-sm)}
+/* 面の中のボタンは面の字の大きさ（字1種・§9.505）。帯の大きさ（13.5px）を持ち込まない。 */
+:is(.flt-saved-menu,.flt-col-pop,.flt-col-pick) .flt-btn{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.flt-saved-menu .flt-edit{padding:0 var(--space-2)}
 .flt-menu-empty{margin:var(--space-2);color:var(--ink-2);font-size:var(--fs-sm)}
 .flt-menu-scene,.flt-menu-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-2);
   margin-top:var(--space-1);padding:var(--space-2);border-top:1px solid var(--line-soft);font-size:var(--fs-sm)}
@@ -520,7 +530,6 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .flt-cp-head>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .flt-cp-head>small{flex:none;color:var(--ink-2)}
 .flt-cp-sort{display:flex;gap:var(--gap-tight);padding:0 var(--space-3)}
-.flt-cp-sort .flt-btn{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 .flt-cp-find{display:flex;margin:var(--space-2) var(--space-3) var(--space-1)}
 .flt-cp-find>input{flex:1;min-width:0;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-strong);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
 .flt-cp-list,.flt-pick-list{max-height:min(46vh,calc(var(--ctl-h-sm) * 11));overflow:auto;margin:0 var(--space-2);padding:2px 0;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
@@ -544,10 +553,9 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .flt-cp-cond-row{display:flex;flex-wrap:wrap;gap:var(--gap-tight);margin-top:var(--space-1)}
 .flt-cp-cond-row>:is(select,input){height:var(--ctl-h-sm);padding-block:0;font-size:var(--fs-sm)}
 .flt-cp-cond-row>input{flex:1 1 8em;min-width:0}
-.flt-cp-cond-row .flt-var{height:var(--ctl-h-xs);font-size:var(--fs-sm)}
+.flt-cp-cond-row .flt-var{height:var(--ctl-h-xs)}
 .flt-cp-foot{display:flex;align-items:center;gap:var(--gap-tight);margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-top:1px solid var(--line-soft)}
 .flt-cp-foot>span{flex:1}
-.flt-cp-foot .flt-btn{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 /* 保存したフィルタを直す窓（`confirmModal({wide})`）。ラベル列は固定幅・右揃え（基準9）。 */
 .flt-ed{display:grid;grid-template-columns:calc(var(--fs) * 7) minmax(0,1fr);gap:var(--space-3) var(--space-3);align-items:center}
 .flt-ed-k{justify-self:end;color:var(--ink-2);font-weight:var(--fw-ui);text-align:right}

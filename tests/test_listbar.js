@@ -112,7 +112,7 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
      §9.614 から下の窓は「保存したフィルタを直す」窓、上の面はその中の「＋ 値」で開く値の一覧。 */
   const pid = await page.evaluate(async () => {
    const r = await fetch('/api/filter-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'Esc網_' + Date.now(), db: S.db, table: S.table, mode: '', user: currentUserId(), user_id: currentUserId(),
+    body: JSON.stringify({ name: 'Esc網_' + Date.now(), db: S.db, table: S.table, mode: WL.filters.state().mode, user: currentUserId(), user_id: currentUserId(),
      filters: (c => [{ column: c, op: 'in', value: [String((S.rows[0] || {})[c] ?? '')] }])(S.columns.find(c => !c.startsWith('__'))) }) });
    return (await r.json()).id;
   });

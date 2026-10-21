@@ -479,12 +479,16 @@
     box.hidden=!box.innerHTML;
     renderChips(d);
   }
-  /* 2段目の札（件数の段の右）。並びは今の条件の順、外した条件は最後に「外した」で（押すと戻る）。 */
+  /* 2段目の札（件数の段の右）。並びは今の条件の順、外した条件は最後に「外した」で（押すと戻る）。
+     「＋ 条件」と「すべて外す」は**作り直さない**（狭い器では「道具 ▾」から押す——畳んだ入口は本物の要素で結ぶ・§9.612）。 */
   function chipsHost(){
     const count=$('#count');if(!count)return null;
     let h=$('#filterChips');
     if(!h){
       h=document.createElement('span');h.id='filterChips';h.className='flt-chips';h.setAttribute('role','group');h.setAttribute('aria-label','効いている条件');
+      h.innerHTML='<span class="flt-chip-list"></span>'
+        +'<button type="button" class="flt-btn flt-add" id="filterAddCond" title="列を選んで、その列の値の一覧から絞り込みます">＋ 条件</button>'
+        +'<button type="button" class="flt-btn is-ghost" id="clearGenericFilters" title="条件を全部外します（いつも適用の条件は確かめてから）" hidden>すべて外す</button>';
       h.addEventListener('click',onChipClick);
     }
     if(h.previousElementSibling!==count)count.after(h);
@@ -505,10 +509,9 @@
     };
     const list=S.genericFilters.map(f=>{const k=filterKey(f);return chip(f,d.added.has(k)?'added':d.changed.has(k)?'changed':'')})
       .concat(d.removed.map(f=>chip(f,'removed')));
-    const any=S.genericFilters.length>0;
-    h.innerHTML=list.join('')
-      +'<button type="button" class="flt-btn flt-add" id="filterAddCond" title="列を選んで、その列の値の一覧から絞り込みます">＋ 条件</button>'
-      +(any?'<button type="button" class="flt-btn is-ghost" id="clearGenericFilters" title="条件を全部外します（いつも適用の条件は確かめてから）">すべて外す</button>':'');
+    h.querySelector('.flt-chip-list').innerHTML=list.join('');
+    h.classList.toggle('has-chips',list.length>0);
+    $('#clearGenericFilters').hidden=!S.genericFilters.length;
   }
   function onChipClick(e){
     const x=e.target.closest('[data-x]');if(x){removeCond(x.dataset.x);return}
@@ -554,7 +557,7 @@
       if(io){WL.popMenu.close();openIo();return}
       if(pick){WL.popMenu.close();const p=presetById(pick.dataset.pick);if(p)selectSaved(p);else selectNone()}
     });
-    WL.popMenu.open(m,{anchor,owner:anchor,onClose:()=>{m.remove();savedMenu=null;anchor.setAttribute('aria-expanded','false')}});
+    WL.popMenu.open(m,{anchor,owner:anchor,align:'start',onClose:()=>{m.remove();savedMenu=null;anchor.setAttribute('aria-expanded','false')}});
     fillSavedCounts(m,list);
   }
   /* 件数は開いてから裏で数える（1件ずつ・待たせない）。 */
@@ -624,7 +627,7 @@
       const allBox=m.querySelector('[data-all]');if(allBox)allBox.indeterminate=!allOn&&someOn;
       const find=m.querySelector('.flt-cp-find input');
       if(find)WL.base.onTyped(find,()=>{st.q=find.value;if(st.truncated)load();else paintKeep(find)});
-      WL.popMenu.place(m,{anchor});
+      WL.popMenu.place(m,{anchor,align:'start'});
     };
     const paintKeep=inp=>{const pos=inp.selectionStart;paint();const n=m.querySelector('.flt-cp-find input');if(n){n.focus();n.setSelectionRange(pos,pos)}};
     const load=async()=>{
@@ -668,7 +671,7 @@
     });
     m.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('input[type=text],input[type=search]')){e.preventDefault();m.querySelector('[data-act="ok"]').click()}});
     paint();
-    WL.popMenu.open(m,{anchor,owner:anchor,onClose:()=>{m.remove();if(colPop&&colPop.m===m)colPop=null}});
+    WL.popMenu.open(m,{anchor,owner:anchor,align:'start',onClose:()=>{m.remove();if(colPop&&colPop.m===m)colPop=null}});
     load();
   }
   /* 「＋ 条件」: 列を選ぶ（探せる）→ その列の値の一覧。 */
@@ -685,7 +688,7 @@
     document.body.append(m);paint('');
     const inp=m.querySelector('input');WL.base.onTyped(inp,()=>paint(inp.value));
     m.addEventListener('click',e=>{const b=e.target.closest('[data-col]');if(b){const c=b.dataset.col;WL.popMenu.close();setTimeout(()=>openColumnPop(c,anchor),0)}});
-    WL.popMenu.open(m,{anchor,owner:anchor,onClose:()=>m.remove()});
+    WL.popMenu.open(m,{anchor,owner:anchor,align:'start',onClose:()=>m.remove()});
     requestAnimationFrame(()=>inp.focus());
   }
   /* 見出しの ▼（list-view.js が描く`.col-funnel`）。並び替え（見出しのクリック）へ渡さない。 */
@@ -991,7 +994,7 @@
     canFilter:col=>!!col&&!String(col).startsWith('__')&&(S.columns||[]).includes(col),
     filteredColumns:()=>new Set(S.genericFilters.map(f=>f.column)),
     replace:replaceFilters,
-    state:()=>{const d=diffState();return {selected:d.sel?{id:d.sel.id,name:d.sel.name}:null,dirty:d.dirty,
+    state:()=>{const d=diffState();return {mode:presetMode(),selected:d.sel?{id:d.sel.id,name:d.sel.name}:null,dirty:d.dirty,
       added:[...d.added],changed:[...d.changed],removed:d.removed.map(filterKey),conds:S.genericFilters.map(f=>({...f,key:filterKey(f)}))}},
     reload:()=>loadMasterPresets(),
   };

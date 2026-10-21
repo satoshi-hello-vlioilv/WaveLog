@@ -161,7 +161,7 @@
     面の項目を押すと本物のボタンを押したのと同じ。本物の面は畳んだ入口の下に出る＝`WL.popMenu.proxy`）。
     どこで畳むかは CSS の1箇所（45-tolerance.css の`.lt-fold`）。使っている道具の数は入口の札が言う。 */
  const FOLDS=[
-  {key:'tools',label:'道具',icon:'fa-sliders',head:'スライサー・色付け',ids:['listSlicerBtn','listMarkBtn'],
+  {key:'tools',label:'道具',icon:'fa-sliders',head:'条件・スライサー・色付け',ids:['filterAddCond','listSlicerBtn','listMarkBtn'],
    put:b=>{const c=document.getElementById('filterToolsAt');if(c&&c.previousElementSibling!==b)c.before(b)}},
   {key:'view',label:'見せ方',icon:'fa-table-columns',head:'表示列・表の見せ方・ファイル',ids:['listColumnBtn','listViewBtn','listFileBtn'],
    put:b=>{const s=document.getElementById('filterBarSlot');if(s&&s.lastElementChild!==b)s.appendChild(b)}},

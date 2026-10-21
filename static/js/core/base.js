@@ -579,7 +579,9 @@ function keepModalOpen(modal){
  modal.addEventListener('click',e=>{if(e.target===modal)nudgeModal(modal)});
  return modal;
 }
-function escClosesModal(e){return e.key==='Escape'&&!e.isComposing&&e.keyCode!==229}
+/* 1回のEscで閉じるのは1枚（§9.471）。窓の上に浮く面（`WL.popMenu`）が開いていれば、そちらが先に閉じる
+   （どちらも document の捕まえる段で聞くので、登録の早い窓が先に動いてしまう・§9.614 で踏んだ）。 */
+function escClosesModal(e){return e.key==='Escape'&&!e.isComposing&&e.keyCode!==229&&!e.defaultPrevented&&!(WL.popMenu&&WL.popMenu.isOpen())}
 WL.modal={keepOpen:keepModalOpen,nudge:nudgeModal,escCloses:escClosesModal};
 /* ---------- 画面の骨組みは HTML に置く（§9.522・REVIEW 3-7） ----------
    動かない部分は`templates/index.html`の`<template id="tpl-名前">`に置き、画面のJSは
