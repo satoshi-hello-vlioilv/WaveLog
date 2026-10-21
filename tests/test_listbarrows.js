@@ -141,6 +141,10 @@ H.run('test_listbarrows: スケジュールの仕掛一覧の帯は2段まで（
   const r1 = await page.evaluate(() => [...document.querySelectorAll('#genericFilterBar .filter-search-row>*')].filter(e => e.getClientRects().length)
    .map(e => { const b = e.getBoundingClientRect(); return `${e.id || e.className.split(' ')[0]}:${Math.round(b.left)}-${Math.round(b.right)}`; }).join(' '));
   row1[v.key] = r1;
+  const fit = await page.evaluate(() => document.querySelector('#listToolbar .lt-state').className);
+  console.log('FIT ' + v.key + ' ' + fit);
+  /* 遅くない狭い器は「元データ」の名前まで残る（名前を外すのは遅いの札が加わって入らないときだけ）。 */
+  if (v.noSlow) rec(`R9 遅くないときは元データの名前が残る（${v.key}）`, !/fit-key/.test(fit), fit);
   const hide = await page.evaluate(() => { const h = document.querySelector('#listStateBtn .lt-cnt-hide'); return h ? { shown: !!h.getClientRects().length, text: h.textContent } : null; });
   rec(`R5 伏せの数は件数の札の中に出ている（${v.key}）`, hide && hide.shown, JSON.stringify(hide));
   rec(`R1 帯は2段まで（${v.key}）`, m.rows <= 2, `${m.rows}段・帯 ${m.barH}px・表に見える行 ${m.shown}`);

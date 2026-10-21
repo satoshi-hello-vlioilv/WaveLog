@@ -203,7 +203,7 @@
     押すと面に**本物の札を貸し出す**（伏せる・スライサーと色付けの選択・結合・色）。閉じたら元の席へ返す。
     帯に出す字は件数と伏せの数だけ（どの場面でも同じ場所・§9.397）。 */
  const LEND=['listToolSums','listJoinChip','listTintChip'];
- const LEND_NAME={listToolSums:'絞り込み',listJoinChip:'結合',listTintChip:'列の色'};
+ const LEND_NAME={listToolSums:'絞り込み',listJoinChip:'足した列',listTintChip:'列の色'};   // 札の字（「結合 …」「色 …」）と重ねない
  const countShort=t=>{const m=/^([\d,]+)件 \/ 全 ([\d,]+)件$/.exec(t);return m?`${m[1]}/${m[2]}件`:t};
  function placeState(){
   const st=document.querySelector('#listToolbar .lt-state');if(!st)return;

@@ -138,7 +138,7 @@
 .list-fresh-chip:hover{border-color:var(--teal);background:var(--surface)}
 .list-fresh-chip .lf-val{color:var(--ink);font-weight:var(--fw-strong);font-variant-numeric:tabular-nums}
 /* 印は字と同じ大きさの段のまま拡げて見せる（字の大きさは帯の1種・§9.505。回る印の`transform`と重ならない`scale`）。 */
-.list-fresh-chip .lf-act{display:inline-block;color:var(--teal);font-weight:var(--fw-strong);scale:1.25;margin-left:var(--gap-tight)}
+.list-fresh-chip .lf-act{display:inline-block;color:var(--teal);font-weight:var(--fw-strong);scale:1.25;margin-left:var(--gap-hair)}
 /* 読み取れなかったことは**色だけで伝えない**（§CLAUDE 3）。文字は
    「時刻不明」と出したうえで、控えめな色にする。 */
 .list-fresh-chip.is-unknown .lf-val{color:var(--muted)}

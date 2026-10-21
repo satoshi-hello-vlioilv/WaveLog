@@ -441,7 +441,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .lt-state-menu .lt-state-k{color:var(--ink-2);font-weight:var(--fw-body)}
 .lt-state-menu .lt-state-row b{color:var(--ink);font-weight:var(--fw-strong);font-variant-numeric:tabular-nums}
 .lt-state-menu .lt-state-lend>:not(.lt-state-k){display:inline-flex;flex-wrap:wrap;gap:var(--gap-tight);white-space:nowrap}
-.lt-state-menu #lotHideChip{gap:var(--space-1)}
+.lt-state-menu #lotHideChip>i:first-child{margin-right:var(--space-1)}
 /* 遅いの札は内訳の入口（押すと再読込のメニュー）。▾ は詰める順の2つ目で外す。 */
 .list-load-chip{gap:var(--gap-tight)}
 .list-load-chip::after{content:'▾';font-size:.8em;opacity:.8}
