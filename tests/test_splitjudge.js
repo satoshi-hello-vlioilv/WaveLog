@@ -161,4 +161,33 @@ run('test_splitjudge: 分割ロットの板幅の判定は並びの子ロット�
  const j6b=await reviewNg();
  rec('J6b. 並べ替えたあとの完了前の確認の公差外も新しい並びで数える',JSON.stringify(j6b)===JSON.stringify(wantNg(j5)),
   JSON.stringify({数えた条:j6b,正:wantNg(j5)}));
+
+ /* J7: 子ロットの公差が無い形にする（割当と候補の控えの両方から公差を外す＝その形で開き直した記録と同じ）。
+    期待: 基準は子ロットの板幅・幅は親ロットの公差（+1/-0）。 */
+ const parentSpec=SPEC[LOT];
+ const wantOf=lot=>{const s=SPEC[lot];return s?[s.w-parentSpec.m,s.w+parentSpec.p]:null};
+ await page.evaluate(()=>{
+  const st=S.measure.settings;
+  (st.splitGroups||[]).forEach(g=>{g.tol=null});
+  (st.splitSourcesCache||[]).forEach(s=>{if(s.tolData)s.tolData={thickness:{},width:{}}});
+  WL.measureView.rejudgeInputs();WL.measureView.updateMeasurementHeading();
+ });
+ await idle(200);
+ const j7=await page.evaluate(()=>{
+  const seq=S.measure.settings.splitSequence||[];
+  return seq.map((lot,j)=>{const el=document.querySelector(`input[data-mkey="width"][data-j="${j}"]`);
+   return{j,lot,値:el?el.value:'',公差:WL.measureInput.toleranceDetail('width',j,'板幅')?.range||null,NG:!!el&&el.classList.contains('ng')}});
+ });
+ const j7bad=j7.filter(x=>{const w=wantOf(x.lot),v=Number(x.値);
+  const okR=w&&x.公差&&Math.abs(x.公差[0]-w[0])<1e-9&&Math.abs(x.公差[1]-w[1])<1e-9;
+  const wantNg=x.値!==''&&w?(v<w[0]||v>w[1]):false;return!(okR&&wantNg===x.NG)});
+ rec('J7. 子ロットに公差が無くても、基準は条の子ロットの板幅（幅は親の公差）で判定する（食い違い 0）',j7.length===2&&j7bad.length===0,
+  JSON.stringify({食い違い:j7bad.length,条:j7}));
+ /* 見出しの公差の札は「いま入れている条」の範囲（1条目へ移ってから読む）。 */
+ const pill=await page.evaluate(()=>{S.measure.settings.wStep=0;S.measure.settings.dimKey='width';WL.measureView.updateMeasurementHeading();
+  return [...document.querySelectorAll('#measurementPanel .tol-pill,.measure-head .tol-pill,#toleranceSummary .tol-pill')].map(e=>e.textContent.trim()).join(' | ')});
+ const w0=wantOf(j7[0]&&j7[0].lot)||[0,0];
+ rec('J7b. 測定の見出しの公差の札は、いまの条の子ロットの範囲を言う（親の範囲を言わない）',
+  pill.includes(String(w0[0].toFixed(2)))&&!pill.includes(String((parentSpec.w-parentSpec.m).toFixed(2))),
+  JSON.stringify({札:pill,正:w0}));
 },{viewport:{width:1728,height:1152}});

@@ -1547,7 +1547,11 @@ function updateMeasurementHeadingCore(){
     記号のボタン（`.flat-pick-group`）がすぐ隣に並ぶので、ここに要るのは
     「〇が合格」という約束だけ。 */
  if(type==='フラットネス')return pill('is-mark','〇=OK','条ごとに記号を入力してください。〇がOK、△と×はどちらもNGです。');
- const kind=WL.measureItem.kindOf(type),detail=WL.measureInput.toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
+ /* **いま入れている条の公差**（§9.617）。分割ロットは条ごとに子ロットの基準が違うので、位置を省く（0＝1条目）と
+    別の条の範囲を言う。基準値も提供者の値（分割時は子ロットの寸法）を先に読む。 */
+ const kind=WL.measureItem.kindOf(type),step=Number(S.measure.settings?.[kind==='thickness'?'tStep':'wStep'])||0,
+  detail=WL.measureInput.toleranceDetail(kind,step),
+  base=Number.isFinite(detail?.base)?detail.base:Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
  /* **上下限を持つものだけが「公差」**（§9.242 ⑤、利用者の指示）。片側の
     目標しか無い項目（ラテラルボー・バリ・テレスコープ・巻ずれ）で「公差」と
     書くと、下限もあるかのように読める。言葉は`WL.measureItem`の1箇所。 */
