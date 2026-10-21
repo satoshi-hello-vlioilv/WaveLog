@@ -137,7 +137,8 @@
   border:1px solid var(--line-strong);background:var(--surface)}
 .list-fresh-chip:hover{border-color:var(--teal);background:var(--surface)}
 .list-fresh-chip .lf-val{color:var(--ink);font-weight:var(--fw-strong);font-variant-numeric:tabular-nums}
-.list-fresh-chip .lf-act{color:var(--teal);font-weight:var(--fw-strong)}
+/* 印は字と同じ大きさの段のまま拡げて見せる（字の大きさは帯の1種・§9.505。回る印の`transform`と重ならない`scale`）。 */
+.list-fresh-chip .lf-act{display:inline-block;color:var(--teal);font-weight:var(--fw-strong);scale:1.25;margin-left:var(--gap-hair)}
 /* 読み取れなかったことは**色だけで伝えない**（§CLAUDE 3）。文字は
    「時刻不明」と出したうえで、控えめな色にする。 */
 .list-fresh-chip.is-unknown .lf-val{color:var(--muted)}
@@ -160,7 +161,7 @@
    REVIEW 4-1 ④）——速いときは`hidden`で消える（作業スケジュールと同じ約束・
    §9.198）。出ている＝遅い、なので素の見た目も警告色でよい。 */
 .list-load-chip{display:inline-flex;align-items:center;
- padding:0 var(--ctl-pad-x-sm);cursor:help;font-weight:var(--fw-strong);color:var(--muted);background:var(--surface-2);
+ padding:0 var(--ctl-pad-x-sm);cursor:pointer;font-weight:var(--fw-strong);color:var(--muted);background:var(--surface-2);
  border:1px solid var(--line-soft)}
 .list-load-chip.is-slow{color:var(--warn-fg);background:var(--warn-bg);border-color:var(--warn-border)}
 /* 列に一時的な色を付けていることを常時出す(§9.239 ⑤-3・§9.175)。

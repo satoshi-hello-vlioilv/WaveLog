@@ -606,12 +606,6 @@
     return children;
   }
 
-  function describeTol(entry){
-    if(entry.missing)return '子ロット情報を取得できませんでした';
-    const w=entry.tolData?.width?.manufacturing||entry.tolData?.width?.order;
-    if(!w||!Number.isFinite(entry.base?.width))return '公差情報なし';
-    return `幅${entry.base.width} (+${w.plus}/-${w.minus})`;
-  }
 
   // 子ロットの条数(この子ロットが実際に何条分を占めるか)は、親ロット側の
   // 子カード配列から推測した値(childCount、YK*系フィールドが無ければ
@@ -627,13 +621,12 @@
     const children=buildCandidateList(),out=[];
     for(const c of children){
       const row=await fetchChildLotRow(c.lot);
-      if(!row){out.push({lot:c.lot,count:c.count,width:'',tol:'子ロット情報を取得できませんでした',missing:true});continue}
+      if(!row){out.push({lot:c.lot,count:c.count,width:'',missing:true});continue}
       const entry={lot:c.lot,count:childOwnCount(row,c.count),missing:false,
         base:{thickness:baseFromRow(row,'thickness'),width:baseFromRow(row,'width')},
         tolData:{thickness:{manufacturing:toleranceFromRow(row,'thickness','manufacturing'),order:toleranceFromRow(row,'thickness','order')},
              width:{manufacturing:toleranceFromRow(row,'width','manufacturing'),order:toleranceFromRow(row,'width','order')}}};
       entry.width=Number.isFinite(entry.base.width)?entry.base.width:'';
-      entry.tol=describeTol(entry);
       out.push(entry);
     }
     return out;
@@ -672,7 +665,7 @@
     const count=Math.max(1,Math.min(40,+($('#horizontalCount')?.value)||1));
     const w=m.basic?.mfgWidth;
     const width=(w===undefined||w===null||w==='')?'':String(w);
-    return [{lot:lot||'（このロット）',count,width,tol:'',
+    return [{lot:lot||'（このロット）',count,width,
              base:{width:w},tolData:null,missing:false,self:true}];
   }
   /* 図だけを出す（編集面は出さない）。**器は`renderSplit()`と同じ関数**を
@@ -710,19 +703,10 @@
       if(had){had.count+=count;return}
       byLot.set(lot,{lot,count,
         width:g.base&&g.base.width!==undefined&&g.base.width!==null?String(g.base.width):'',
-        tol:splitTolText(g),base:g.base||{},tolData:g.tol||null,
+        base:g.base||{},tolData:g.tol||null,
         missing:!!g.missing,fromApplied:true});
     });
     return [...byLot.values()];
-  }
-  /* 帯の`title`に出す公差の文。確定済みの割当が持つ公差から組む
-     （候補側の`tol`と同じ書式にする——同じ場所に出るので形が違うと別物に見える）。 */
-  function splitTolText(g){
-    const t=g&&g.tol&&g.tol.width&&(g.tol.width.manufacturing||g.tol.width.order);
-    if(!t)return '';
-    const p=t.plus,m=t.minus;
-    if(p===undefined&&m===undefined)return '';
-    return (p!==undefined?`+${p}`:'')+(m!==undefined?`/-${m}`:'');
   }
   window.splitSourceRows=splitSourceRows;
   /* 再編集などで測定を開き直すたびに、子ロットの詳細をAccessへ毎回
@@ -1094,7 +1078,7 @@
     if(selectedStrip>=total||(selectedStrip>=0&&!seq[selectedStrip]))selectStrip(-1);
     const layout=computeVisualLayout(seq,sources);
     splitVisualLayout=layout;
-    const widthMap=Object.fromEntries(sources.map(s=>[s.lot,s.width])),tolMap=Object.fromEntries(sources.map(s=>[s.lot,s.tol]));
+    const widthMap=Object.fromEntries(sources.map(s=>[s.lot,s.width])),tolMap=Object.fromEntries(sources.map(s=>[s.lot,sourceTolNote(s)]));
     /* **異幅切断か**（§9.213）。狭い条で出す桁数を決める材料——異幅は
        ロットの種類が増えるので、下2桁だと違うロットが同じに見える。
        幅の分からない条は数に入れない（空欄を1種類として数えると、
@@ -1266,7 +1250,7 @@
     const lot=seq[idx];if(!lot)return '';
     const src=(sources||[]).find(s=>s.lot===lot);
     const w=src&&src.width!==''&&src.width!==undefined?src.width:'—';
-    return `${idx+1}条目 ／ ${lot} ／ 幅${w} ／ ${(src&&src.tol)||'公差情報なし'}`;
+    return `${idx+1}条目 ／ ${lot} ／ 幅${w} ／ ${sourceTolNote(src)||'公差情報なし'}`;
   }
   // 屑幅(両耳合計)を条ストリップの両端へ「動かせない帯」として描画する
   // (#splitVisualScrapOs/Ds、条とは違いドラッグ操作の対象外)。
@@ -1533,7 +1517,7 @@
         <span class="split-candidate-swatch" style="background:${colorMap[s.lot]||LOT_COLOR_NEUTRAL}"></span>
         <span class="split-candidate-body">
           <span class="split-candidate-head"><b>${esc(s.lot)}</b><em>${n}条</em></span>
-          <span class="split-candidate-meta">${s.width!==''&&s.width!==undefined?`幅${esc(String(s.width))} ／ `:''}${esc(s.missing?'子ロット情報取得失敗':(s.tol||'—'))}</span>
+          <span class="split-candidate-meta">${s.width!==''&&s.width!==undefined?`幅${esc(String(s.width))} ／ `:''}${esc(s.missing?'子ロット情報取得失敗':(sourceTolNote(s)||'—'))}</span>
         </span>
       </div>`;
     }).join('');
@@ -1553,7 +1537,7 @@
       if(!lot){groups.push(null);return}
       const last=groups.at(-1);
       if(last&&last.lot===lot)last.count++;
-      else groups.push({lot,count:1,width:map[lot]?.width||'',tol:map[lot]?.tol||''});
+      else groups.push({lot,count:1,width:map[lot]?.width||''});
     });
     return groups.filter(Boolean);
   }
@@ -2715,18 +2699,50 @@
     const gi=posMap[index];
     return Number.isInteger(gi)?groups[gi]:null;
   }
+  /* 1つの割当（子ロット）の公差の幅（±）。**基準はいつも子ロットの寸法**で、幅だけを次の順で引く（§9.617）:
+     子ロット自身の公差（選んだ区分→製造）→ 親ロットの公差（選んだ区分→製造）。現場の子ロットは公差の値を
+     持たないことがあり、以前はそこで条の答えを諦めて、親ロットの幅（分割前の寸法）で全部の条を判定していた
+     （利用者の報告: 570 の条を 645±0.8 で NG）。どこから借りたかは`from`が言う（一覧・札の字が読む）。 */
+  function groupTolOf(g,kind){
+    const requested=typeof WL.measureInput.configuredToleranceSource==='function'?WL.measureInput.configuredToleranceSource():'manufacturing';
+    const order=requested==='manufacturing'?['manufacturing']:[requested,'manufacturing'];
+    const own=src=>g&&g.tol&&g.tol[kind]&&g.tol[kind][src];
+    const parent=src=>typeof WL.measureInput.toleranceDataForSource==='function'?WL.measureInput.toleranceDataForSource(kind,src):null;
+    for(const {from,pick} of [{from:'child',pick:own},{from:'parent',pick:parent}]){
+      for(const src of order){
+        const data=pick(src);
+        if(data&&Number.isFinite(Number(data.plus))&&Number.isFinite(Number(data.minus)))
+          return{data,source:src,fallback:src!==requested,from};
+      }
+    }
+    return null;
+  }
   function groupRangeFor(kind,index,typeName){
     const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'';
     if(!WL.measureItem.isDimensional(type))return null; // 分割は板厚・板幅の条位置に対してのみ意味を持つ
     const g=groupForIndex(index);
-    if(!g||g.missing||!g.base||!g.tol)return null;
-    const base=g.base[kind];
+    if(!g||g.missing||!g.base)return null;
+    const base=Number(g.base[kind]);
     if(!Number.isFinite(base))return null;
-    let requested=typeof WL.measureInput.configuredToleranceSource==='function'?WL.measureInput.configuredToleranceSource():'manufacturing',source=requested,fallback=false;
-    let data=g.tol[kind]?.[requested];
-    if(!data&&requested!=='manufacturing'){source='manufacturing';fallback=true;data=g.tol[kind]?.manufacturing}
-    if(!data)return null;
-    return{range:[base-data.minus,base+data.plus],source,fallback,plus:data.plus,minus:data.minus,plusKey:data.plusKey,minusKey:data.minusKey,base,splitLot:g.lot};
+    const t=groupTolOf(g,kind);
+    if(!t)return null;
+    const plus=Number(t.data.plus),minus=Number(t.data.minus);
+    return{range:[base-minus,base+plus],source:t.source,fallback:t.fallback,plus,minus,plusKey:t.data.plusKey,minusKey:t.data.minusKey,
+      base,splitLot:g.lot,tolFrom:t.from};
+  }
+  /* 子ロットの材料（候補・割当から作り直した行）の公差の字。割当と同じ答え（`groupTolOf`）を読む。 */
+  function sourceTolNote(src){
+    if(!src||src.missing)return '';
+    const t=groupTolOf({base:src.base,tol:src.tolData||null},'width');
+    return t?`+${t.data.plus}/-${t.data.minus}${t.from==='parent'?'（親の公差）':''}`:'公差情報なし';
+  }
+  /* 割当1つの「目標(公差)」の字。条の公差の一覧と候補の札が同じ答えを読む（借りた公差は「親」と添える）。 */
+  function groupTolText(g,kind){
+    const base=Number(g&&g.base&&g.base[kind]);
+    if(!g||g.missing||!Number.isFinite(base))return '';
+    const t=groupTolOf(g,kind);
+    if(!t)return `${base}`;
+    return `${base} (+${t.data.plus}/-${t.data.minus}${t.from==='parent'?'・親':''})`;
   }
   /* 提供者として登録する（§9.348）。分割の条に当たらなければ自分の答えでは
      ない（undefined＝次の提供者へ）。以前はここが`WL.measureInput.toleranceDetail`を包み、
@@ -2794,9 +2810,8 @@
     const rows=groups.map((g,gi)=>{
       const end=start+g.count-1,range=`${start}〜${end}条`,startIdx=start-1;start=end+1;
       const isCurrent=wStep>=startIdx&&wStep<startIdx+g.count;
-      const w=g.tol?.width?.manufacturing||g.tol?.width?.order,t=g.tol?.thickness?.manufacturing||g.tol?.thickness?.order;
-      const wText=g.missing?'取得失敗':(w&&Number.isFinite(g.base?.width)?`${g.base.width} (+${w.plus}/-${w.minus})`:'—');
-      const tText=g.missing?'—':(t&&Number.isFinite(g.base?.thickness)?`${g.base.thickness} (+${t.plus}/-${t.minus})`:'—');
+      const wText=g.missing?'取得失敗':(groupTolText(g,'width')||'—');
+      const tText=g.missing?'—':(groupTolText(g,'thickness')||'—');
       const cls=[g.missing?'split-legend-missing':'',isCurrent?'split-legend-current':''].filter(Boolean).join(' ');
       return `<tr${cls?` class="${cls}"`:''}><td>${isCurrent?'▶ ':''}${esc(range)}</td><td>${esc(g.lot)}</td><td>${esc(wText)}</td><td>${esc(tText)}</td></tr>`;
     });

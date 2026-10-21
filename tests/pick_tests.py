@@ -85,7 +85,7 @@ G['一覧'] = ['test_nav', 'test_navwords', 'test_popmenu', 'test_listcache', 't
              # §9.591: 一覧の道具（スライサー・色付け・拡大・ファイル）
              'test_listtools', 'test_listtoolsui',
              # §9.612: 絞り込みの帯（LotScope の型）・予定に入れたロットを伏せる決まり
-             'test_filterbarui', 'test_lotident']
+             'test_filterbarui', 'test_lotident', 'test_listbarrows']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice', 'test_oplimit', 'test_oprange', 'test_opmother', 'test_opunit',

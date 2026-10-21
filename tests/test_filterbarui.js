@@ -163,6 +163,11 @@ H.run('test_filterbarui: 一覧の絞り込みの帯（§9.612）', async ({ pag
  const chip = await page.evaluate(() => { const c = document.getElementById('lotHideChip'); return c && !c.hidden ? c.textContent.replace(/\s+/g, ' ').trim() : ''; });
  rec('H2 帯に「予定と同じロットを伏せる N件」の札', /予定と同じロットを伏せる\s*\d+/.test(chip), chip);
  if (chip) {
+  /* 狭い器では伏せる札は件数の札（▾）の面にある（§9.617・本物を貸す）。 */
+  if (!(await page.evaluate(() => !!document.getElementById('lotHideChip').getClientRects().length))) {
+   await page.click('#listStateBtn');
+   await W.until(page, () => { const b = document.getElementById('lotHideChip'); return b && b.closest('#listStateMenu') && b.getClientRects().length; }, null, { ms: 5000, what: '件数の面の伏せる札' });
+  }
   await page.click('#lotHideChip');
   await W.until(page, () => { const m = document.getElementById('lotHidePanel'); return m && !m.hidden && /同じロットとみなす列/.test(m.textContent); }, null, { ms: 8000, what: '見分け方の面' });
   const panel = await page.evaluate(() => document.getElementById('lotHidePanel').textContent.replace(/\s+/g, ' ').trim());

@@ -62,8 +62,8 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
   /* §9.481（利用者の報告「表示列の編集…マウスオーバーで表示文字がコントラスト不足で読めなくなる」）。
      `.wl-menu button:hover`の淡い地が塗りのボタンに勝ち、白字が 2.33 だった（離しても説明の行は 3.86）。
      字と**重ねた地**（透明なら祖先まで辿る）の比を、乗せた／離したの両方で 4.5 以上。 */
-  /* 狭い器では「表示列」は「見せ方 ▾」に畳んである（§9.612）。そのときは見えている入口（同じ部品）で測る。 */
-  const colSel = await page.evaluate(() => { const b = document.getElementById('listColumnBtn'); return b && b.getClientRects().length ? '#listColumnBtn' : '#listFold-view'; });
+  /* 狭い器では「表示列」は「道具・見せ方 ▾」に畳んである（§9.612・§9.617）。そのときは見えている入口（同じ部品）で測る。 */
+  const colSel = await page.evaluate(() => { const b = document.getElementById('listColumnBtn'); return b && b.getClientRects().length ? '#listColumnBtn' : '#listFold-all'; });
   const contrast = () => page.evaluate(sel => {
    const b = document.querySelector(sel);
    const rgb = s => { const m = (s.match(/[\d.]+/g) || []).map(Number); return m.length < 4 ? m.concat([1]) : m; };

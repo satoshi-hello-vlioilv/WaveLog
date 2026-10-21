@@ -149,6 +149,8 @@
     .list-fresh-chip,.list-tint-chip,.list-load-chip){
   height:var(--lt-h);font-size:var(--lt-fs);border-radius:var(--radius-sm);white-space:nowrap;
   padding-block:0;padding-inline:var(--lt-px)}
+/* 狭い器で入らないとき（詰める順の「余白」・§9.617 の`fitBars()`）は横の余白を詰める。 */
+#listToolbar .lt-state.fit-tight :is(.lt-tool-btn,.list-fresh-chip,.list-load-chip){padding-inline:var(--space-1)}
 /* 名前（「フィルタ」「元データ」）は**薄く細く**、値は濃く太く。 */
 :is(.flt-saved-key,.lf-key){color:var(--ink-2);font-weight:var(--fw-body)}
 /* 一覧を検索（§9.505。ヘッダーから移した）。押す物と同じ高さ・枠の1種。**一覧の検索欄はこの1つの部品**
@@ -413,22 +415,36 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .sx-v.is-zero{color:var(--muted)}
 .sx-note{margin:0;color:var(--ink-2)}
 .sx-note.is-ng{color:var(--danger)}
-/* ---------- 畳んだ入口・条件のつなぎ（§9.612） ----------
-   入口を畳むのは狭い器だけ（分割＝道具と見せ方・ポップアップ＝見せ方）。単独の一覧はいつも全部を並べる。
-   押すと面に本物の入口が並ぶ（list-tools.js の`openFold()`）。 */
-.lt-fold{display:none}
-:is(.sc-split-wrap,.sc-float-body) .lt-fold:is([data-fold="tools"],[data-fold="view"]){display:inline-flex}
-:is(.sc-split-wrap,.sc-float-body) :is(#filterAddCond,#listSlicerBtn,#listMarkBtn),
-:is(.sc-split-wrap,.sc-float-body) :is(#listColumnBtn,#listViewBtn,#listFileBtn){display:none}
+/* ---------- 畳んだ入口（§9.612・§9.617） ----------
+   入口を畳むのは狭い器だけ（分割・ポップアップ＝「道具・見せ方 ▾」の1つ）。単独の一覧はいつも全部を並べる。
+   押すと面に本物の入口が並ぶ（list-tools.js の`openFold()`）。件数の札（`#listStateBtn`）も狭い器だけ。 */
+.lt-fold,.lt-state-btn,.flt-saved-cnd{display:none}
+:is(.sc-split-wrap,.sc-float-body) :is(.lt-fold[data-fold="all"],.lt-state-btn){display:inline-flex}
+:is(.sc-split-wrap,.sc-float-body) .flt-saved-cnd:not([hidden]){display:inline-flex;align-items:center;gap:var(--gap-tight);flex:none}
+:is(.sc-split-wrap,.sc-float-body) :is(#listSlicerBtn,#listMarkBtn){display:none}
 .lt-fold-menu{min-width:var(--w-lg);padding:var(--space-1)}
-.lt-fold-menu .lt-fold-head{margin:var(--space-1) var(--space-2);color:var(--ink-2);font-size:var(--fs-sm)}
+.lt-fold-menu .lt-fold-head,.lt-state-menu .lt-fold-head{margin:var(--space-1) var(--space-2);color:var(--ink-2);font-size:var(--fs-sm)}
 .lt-fold-menu button{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);width:100%;
   height:var(--bar-h);padding:0 var(--space-2);border:0;border-radius:var(--radius-sm);background:transparent;font-size:var(--bar-fs);text-align:left}
 .lt-fold-menu button:hover,.lt-fold-menu button:focus-visible{background:var(--menu-item-hover)}
 .lt-fold-menu button small{color:var(--teal-ink);font-size:var(--fs-sm)}
-/* 状態の2行目への区切り（狭い器だけ効く・70-schedule.css）。 */
-.lt-break{display:none}
-:is(.sc-split-wrap,.sc-float-body) .lt-break{display:block}
+/* 件数の札: 「件数 · 伏せ N ▾」。数は濃く、名前は薄く（「名前 値」の型・§9.508）。 */
+.lt-state-btn{align-items:center;gap:var(--gap-tight);min-width:0;font-variant-numeric:tabular-nums}
+.lt-state-btn .lt-cnt{color:var(--ink);font-weight:var(--fw-strong)}
+.lt-state-btn .lt-cnt-hide{color:var(--ink-2);font-weight:var(--fw-body)}
+.lt-state-btn .lt-cnt-hide b{color:var(--ink);font-weight:var(--fw-strong)}
+.lt-dot{margin:0 var(--gap-hair);color:var(--muted);font-style:normal}
+/* 件数の面: 本物の札を1行ずつ（折り返さない・面の幅は中身から）。 */
+.lt-state-menu{width:max-content;max-width:calc(100vw - var(--space-4));padding:var(--space-1) var(--space-1) var(--space-2)}
+.lt-state-menu .lt-state-row{display:grid;grid-template-columns:var(--w-sm) auto;justify-content:start;column-gap:var(--space-2);
+  min-height:var(--bar-h);padding:var(--gap-hair) var(--space-2);align-items:center;font-size:var(--bar-fs);white-space:nowrap}
+.lt-state-menu .lt-state-k{color:var(--ink-2);font-weight:var(--fw-body)}
+.lt-state-menu .lt-state-row b{color:var(--ink);font-weight:var(--fw-strong);font-variant-numeric:tabular-nums}
+.lt-state-menu .lt-state-lend>:not(.lt-state-k){display:inline-flex;flex-wrap:wrap;gap:var(--gap-tight);white-space:nowrap}
+.lt-state-menu #lotHideChip>i:first-child{margin-right:var(--space-1)}
+/* 遅いの札は内訳の入口（押すと再読込のメニュー）。▾ は詰める順の2つ目で外す。 */
+.list-load-chip{gap:var(--gap-tight)}
+.list-load-chip::after{content:'▾';font-size:.8em;opacity:.8}
 .lt-zoom-k{color:var(--ink-2);font-size:var(--lt-fs)}
 /* ============================================================
    一覧の絞り込み（§9.614・ゼロから作り直した。5案×3回の採点で O）
@@ -482,12 +498,16 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 /* 札の行は**自分の中で**折り返す（件数の段の右の物——元データ・拡大・ページ——を次の行へ押し出さない）。 */
 .lt-state>#filterChips{flex:0 1 auto}
 .flt-chip-list:empty{display:none}
-/* 分割（幅380px）: 「＋ 条件」は「道具 ▾」から。札は条件があるときだけ自分の1行（件数の行を押し出さない）。
-   ポップアップ（広い器）: 札は件数のすぐ右（並びの順は 70-schedule.css の`order`・件数と同じ 1）。 */
-.sc-split-wrap .lt-state>#filterChips:not(.has-chips){display:none}
-.sc-split-wrap .lt-state>#filterChips{order:3;flex:1 1 100%}
-.sc-split-wrap .lt-state:has(>#filterChips.has-chips)>.lt-break{display:none}
-.sc-float-body .lt-state>#filterChips{order:1}
+/* 狭い器（§9.617）: 札は帯に並べず「フィルタ ▾」の面へ貸す（filters.js の`openSavedMenu()`）。面の中では折り返して並べる。 */
+/* 札は縦に1枚ずつ（幅は面いっぱい・値の字は省略で切る）。`.wl-menu button`（項目用の`display:block;width:100%`）を札の部品では打ち消す。 */
+.flt-saved-menu .flt-chips{display:flex;flex-direction:column;align-items:stretch;gap:var(--gap-tight);padding:0 var(--space-2) var(--space-1)}
+.flt-saved-menu .flt-chip-list{display:flex;flex-direction:column;align-items:stretch}
+.flt-saved-menu .flt-chip{max-width:none;width:100%}
+.flt-saved-menu .flt-chip .flt-chip-main{display:inline-flex;flex:1 1 auto;width:auto;min-width:0;padding:0 var(--space-1) 0 var(--space-2);background:transparent}
+.flt-saved-menu .flt-chip .flt-chip-x{display:grid;width:1.7em;padding:0}
+.flt-saved-menu .flt-chips>.flt-btn{align-self:flex-start}
+.flt-saved-menu .flt-change{padding-left:0;border-left:0}
+.flt-menu-cond-acts{display:flex;gap:var(--gap-tight);padding:0 var(--space-2) var(--space-2)}
 .flt-chip{display:inline-flex;align-items:center;flex:none;max-width:calc(var(--w-xl) * 1.1);height:var(--lt-h,var(--bar-h));
   border:1px solid var(--teal-soft);border-radius:var(--radius-sm);background:var(--teal-tint);color:var(--teal-ink);
   font-size:var(--lt-fs,var(--bar-fs))}
