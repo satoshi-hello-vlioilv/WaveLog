@@ -1,4 +1,4 @@
-# 測定画面（114件）
+# 測定画面（116件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 分割ロットの条は並びの割当で判定する。割当から作り直す材料も候補と同じ形（公差は`tolData`・子ロットごとに1行） | `test_splitjudge.js` | [§9.616](../../docs/decisions/9.616.md) |
+| 欄の判定範囲は`WL.measureInput.toleranceRangeAt(key,j)`の1箇所（印・札・完了前の確認）。条の位置を必ず渡す | `test_splitjudge.js` | [§9.616](../../docs/decisions/9.616.md) |
 | 公差の図の行は表の大きさが変わるたびに測り直す（`alignToleranceChart()`・表ごとの`ResizeObserver`）。描いた時の1回で済ませない | `test_dimboth.js` | [§9.608](../../docs/decisions/9.608.md) |
 | 測定データ分析の MIN／MAX は数の幅のまま並べ、入らなければ下の段へ折り返す（2つに割った枠へ押し込まない） | `test_dimboth.js` | [§9.608](../../docs/decisions/9.608.md) |
 | 板厚と板幅は1つの項目「板厚・板幅」。表は鍵ごとに1枚を上下に重ね丈位置の列をそろえる（`WL.measureItem`の`keysOf()`・`dimKey()`） | `test_dimboth.js`・`test_msteps.js` | [§9.607](../../docs/decisions/9.607.md) |

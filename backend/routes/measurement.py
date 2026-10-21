@@ -5,7 +5,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 import json
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, cfg, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_plan, records_paths_holding, note_records_written, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
+from ..db_access import DBS, cfg, MEAS_DB, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_plan, records_paths_holding, note_records_written, records_shared, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
 from ..access_mode import request_user_id, request_pc_name
 from .body import body, flag, any_
 # 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
@@ -336,7 +336,7 @@ def backup_summary():
   paths=[str(p) for p in records_paths_all()]
   slim=[{k:v for k,v in r.items() if k!='payload'} for r in items]
   return jsonify(ok=True,items=slim,count=len(slim),table_exists=bool(items),
-                 meas_path=str(MEAS_DB),meas_paths=paths)
+                 meas_path=str(MEAS_DB),meas_paths=paths,shared=records_shared())
  except Exception as e:
   # 一覧そのものは端末内のデータで出せるので、ここで500にしても画面は壊さない。
   app_logger().warning('/api/measurement/backup/summary で失敗: %s',e)
@@ -590,13 +590,17 @@ def backup_export_now():
 
 @bp.get('/api/measurement/backup/list-view')
 def backup_list_view():
- # 閲覧モード用: 追加バックアップ出力先(config/local.jsonの
- # records_backup_export_path、Box等)に複製されたrecords.sqlite3を読む。
- # 未設定の場合はconfigured=falseを返し、フロント側で案内を出す。
+ """閲覧・スケジュールモードのデータ一覧（§9.616）。**編集モードの一覧と同じ読み先**——全設備の共有の測定
+ データ（写し）・この端末の分・閲覧用の複製を`merged_backup_rows()`の1箇所で結ぶ。
+
+ 以前は閲覧用の複製（records_backup_export_path）1本だけを読んでいた。共有の置き場（§9.258）を決めると複製は
+ 役目を終えて止まるので、**他の PC で完了した記録がこの一覧に届かなかった**（利用者の報告「測定したPCでしか
+ 閲覧できない」）。`configured`は「この端末の分のほかに読む先があるか」（無ければ画面が置き場の案内を出す）。
+ """
  try:
-  if RECORDS_BACKUP_EXPORT_PATH is None:
-   return jsonify(ok=True,configured=False,items=[],count=0,table_exists=False,meas_path=None)
-  items,path=read_backup_rows(RECORDS_BACKUP_EXPORT_PATH)
-  if items is None:return jsonify(ok=True,configured=True,items=[],count=0,table_exists=False,meas_path=str(path))
-  return jsonify(ok=True,configured=True,items=items,count=len(items),table_exists=True,meas_path=str(path))
- except Exception as e:return jsonify(error=f'閲覧用データ読込失敗: {e}',meas_path=str(RECORDS_BACKUP_EXPORT_PATH)),500
+  items=merged_backup_rows()
+  paths=[str(p) for p in records_paths_all()]
+  configured=records_shared() or len(paths)>1
+  return jsonify(ok=True,configured=configured,shared=records_shared(),items=items,count=len(items),
+                 table_exists=bool(items),meas_path=str(MEAS_DB),meas_paths=paths)
+ except Exception as e:return jsonify(error=f'測定データの一覧を読めませんでした: {e}',meas_path=str(MEAS_DB)),500

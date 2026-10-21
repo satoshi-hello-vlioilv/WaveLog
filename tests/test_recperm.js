@@ -4,7 +4,7 @@
    あるのに見えない形になります。データはあるけど見えないではなく、権限が
    ないので見えないという正しい事実を理解できるような表示表現にしてほしい。」
 
-   edit以外のモードでは、この一覧が読むのは**共有された閲覧用データ**だけで、
+   edit以外のモードでは、この一覧が読むのは**共有の測定データ**（§9.616 で閲覧用の複製1本から全設備の共有へ改めた）だけで、
    端末内(IndexedDB)の編集中データは開かない(その端末は測定データを書かない
    前提のため)。ところが0件のとき「表示できるデータがありません」とだけ
    出していたので、**手元にあるのに消えたように見えた**。
@@ -27,8 +27,8 @@ run('test_recperm: 「データが無い」と「このモードでは見せら�
  try{
   await post('/api/access-mode',{mode:'edit'});
 
-  /* 閲覧用バックアップの中身はテスト側で決める。実物(パス設定マスタの
-     records_backup_export_path)はサーバー起動時に1回だけ確定するため、
+  /* 一覧の中身はテスト側で決める。実物(パス設定マスタの共有の置き場
+     records_share_dir)はサーバー起動時に1回だけ確定するため、
      ここを差し替えるにはサーバー再起動が要る。見たいのは**画面の表現**
      なので、返す中身だけを差し替える。 */
   let viewPayload={ok:true,configured:false,items:[],count:0,table_exists:false,meas_path:null};
@@ -75,7 +75,7 @@ run('test_recperm: 「データが無い」と「このモードでは見せら�
    };
   });
 
-  /* ===== (A) 閲覧用データの置き場が未設定 ===== */
+  /* ===== (A) 測定データの共有の置き場が未設定 ===== */
   await openList();
   let v=await view();
   rec('(A)モードの案内が一覧の中に出る',!!v.notice&&/スケジュールモード/.test(v.notice),String(v.notice).slice(0,120));
@@ -85,7 +85,7 @@ run('test_recperm: 「データが無い」と「このモードでは見せら�
     !!v.empty&&!/^表示できるデータがありません/.test(v.empty),String(v.empty).slice(0,160));
   rec('(A)理由が「未設定」だと分かる',!!v.empty&&/未設定/.test(v.empty),String(v.empty).slice(0,200));
   rec('(A)編集モードへ戻す導線がある',v.hasSwitch===true,'switch='+v.hasSwitch);
-  rec('(A)副題も「共有された閲覧用データ」だと言う',/閲覧用/.test(v.sub),v.sub);
+  rec('(A)副題も「共有の測定データ」だと言う',/共有の測定データ/.test(v.sub),v.sub);
 
   /* ===== (B) 置き場はあるが該当0件 ===== */
   viewPayload={ok:true,configured:true,items:[],count:0,table_exists:true,meas_path:'/tmp/dummy.sqlite3'};
@@ -94,7 +94,7 @@ run('test_recperm: 「データが無い」と「このモードでは見せら�
   rec('(B)未設定とは違う理由を出す',!!v.empty&&/条件に合うもの/.test(v.empty)&&!/未設定/.test(v.empty),String(v.empty).slice(0,200));
   rec('(B)権限の話であることは変わらず伝える',!!v.empty&&/権限/.test(v.empty),String(v.empty).slice(0,200));
 
-  /* ===== (C) 共有された閲覧用データが1件ある ===== */
+  /* ===== (C) 共有の測定データが1件ある ===== */
   const shared=JSON.stringify({id:TAG+'-remote',status:'編集中',
     basic:{lotNo:LOT+'-REMOTE',inspectionNo:'INS-R'},
     registeredEquipment:EQ,updatedAt:new Date().toISOString()});
@@ -105,7 +105,7 @@ run('test_recperm: 「データが無い」と「このモードでは見せら�
   v=await view();
   rec('(C)共有された分はちゃんと出る',v.rows===1,'rows='+v.rows);
   rec('(C)行が出ていても「ここに出るのは共有分だけ」と添える',
-    !!v.notice&&/共有された閲覧用データ/.test(v.notice),String(v.notice).slice(0,120));
+    !!v.notice&&/共有の測定データ/.test(v.notice),String(v.notice).slice(0,120));
   rec('(C)行が出ているときは0件の本文を出さない',v.empty===null,String(v.empty));
 
   /* ===== (D) 導線を押すと編集モードへ戻り、手元のデータが出る ===== */

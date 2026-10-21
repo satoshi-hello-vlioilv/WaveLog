@@ -1,9 +1,8 @@
 "use strict";
 /* access-mode.js: 編集可能モード/閲覧モード/スケジュールモードの表示・切替・入口ガード。
 
-複数の設備でこのアプリをローカル運用しており、通常は測定データの書き込みが
-1台に閉じている想定(config/local.jsonのrecords_backup_export_pathで、その
-1台がBox等へ複製した測定データを他端末が閲覧するだけ、という運用)。
+複数の設備でこのアプリを運用しており、測定データは設備ごとのファイルへ書く（§9.258。書くのは
+その設備を担当する1台だけ）。他の端末はそれを写して閲覧する（§9.268）。
 
 サーバー側(backend/access_mode.py)がログインID+PC名でアクセス権限マスタを
 照合し、起動時の初期モードと書込系APIの可否を判定・強制する。ここでは
@@ -17,8 +16,9 @@
 統一し、view/scheduleのどちらでも新規測定の開始・再開・データ書込を塞ぐ。
 
 view・schedule端末はどちらもこの端末で測定データを書き込まない前提のため、
-データ一覧はこの端末のIndexedDBではなく閲覧用バックアップ
-(records_backup_export_path、Box等)から読む。report-dashboard.jsの
+データ一覧はこの端末のIndexedDBではなく共有の測定データ（全設備の設備ごとのファイルの写し・
+閲覧用の複製・この端末の分を merged_backup_rows() で結んだもの。§9.616で閲覧用の複製1本から改めた）
+から読む。report-dashboard.jsの
 openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル側の
 1箇所を直接編集する形で連携。詳細はreport-dashboard.js側のコメント参照)。 */
 (function(){
@@ -264,11 +264,13 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
     WL.records.recordListState/openRecords/renderRecordListRowsはrecords-store.jsの
     トップレベル変数・関数(IIFE無し)のため、ここから直接参照できる。 */
  async function loadViewModeRecords(){
+  /* 読み先は編集モードの一覧と同じ（全設備の共有の測定データ・§9.616）。以前は閲覧用の複製1本だけを読んでおり、
+     共有の置き場を決めると（複製は止まる）他の PC の完了が届かなかった。 */
   const r=await api('/api/measurement/backup/list-view');
-  if(!r.configured){
+  if(!r.configured&&!(r.items||[]).length){
    // 呼び出し側が「未設定」と「読めなかった」を言い分けられるように印を付ける
    // (文言での判定は文言を直すたびに壊れる)。
-   const err=Error('閲覧用データの出力先（マスタ管理 > パス設定の records_backup_export_path）が未設定です。');
+   const err=Error('測定データの共有の置き場（共通設定 > 置き場 >「測定データ（共有）」）が未設定です。');
    err.code='unconfigured';
    throw err;
   }
@@ -281,7 +283,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
 
  /* ---------- 「データが無い」と「このモードでは見せられない」を言い分ける ----------
     §9.107。edit以外のモードでは、この端末のIndexedDBにある編集中データを
-    開かない(書き込まない端末なので、共有された閲覧用データだけを見る)。
+    開かない(書き込まない端末なので、共有の測定データだけを見る)。
     ところが一覧は0件のとき「表示できるデータがありません」とだけ出していた
     ため、**手元にデータがあるのに消えたように見えた**(スケジュールモードで
     実機から報告)。事実は「無い」ではなく「このモードでは開けない」なので、
@@ -314,7 +316,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  function viewModeNoticeHtml(counts){
   const has=localCountText(counts);
   return `<div class="record-mode-notice"><div class="rmn-head"><span class="rmn-mode">${esc(modeName())}</span>`
-   +`<b>この一覧に出るのは「共有された閲覧用データ」だけです</b></div>`
+   +`<b>この一覧に出るのは「共有の測定データ」（全設備・保存済みのもの）だけです</b></div>`
    +`<p class="rmn-body">${esc(modeName())}は測定データを読み取り専用で扱うため、<b>この端末に保存された編集中データはここに出ません。</b>`
    +(has?`（この端末には ${esc(has)} が保存されています。<b>データが無いのではなく、このモードでは開けません。</b>）`:'')
    +`</p><div class="rmn-actions">${switchHintHtml()}</div></div>`;
@@ -326,10 +328,10 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  function viewModeEmptyHtml(counts,reason,message){
   const has=localCountText(counts);
   const why=reason==='unconfigured'
-   ?`<p class="record-empty-why">共有された閲覧用データの置き場が未設定のため、${esc(modeName())}で読めるものがありません。（${esc(message||'')}）</p>`
+   ?`<p class="record-empty-why">測定データの共有の置き場が未設定のため、${esc(modeName())}で読めるものがありません。（${esc(message||'')}）</p>`
    :reason==='error'
-   ?`<p class="record-empty-why">共有された閲覧用データを読めませんでした。（${esc(message||'')}）</p>`
-   :`<p class="record-empty-why">共有された閲覧用データには、この条件に合うものがありませんでした。</p>`;
+   ?`<p class="record-empty-why">共有の測定データを読めませんでした。（${esc(message||'')}）</p>`
+   :`<p class="record-empty-why">共有の測定データには、この条件に合うものがありませんでした。</p>`;
   const head=has
    ?'<b>この端末のデータは、このモードでは表示できません。</b>'
    :'<b>表示できるデータがありません。</b>';
@@ -353,7 +355,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   else if(status==='履歴')WL.records.recordListState.statuses={editing:false,done:true};
   else if(!WL.records.recordListState.statuses)WL.records.recordListState.statuses={editing:true,done:false};
   WL.records.recordListState.query='';WL.records.recordListState.sort='updated-desc';
-  WL.records.recordListState.sourceNote=`共有された閲覧用データ（${modeName()}は読み取り専用）`;
+  WL.records.recordListState.sourceNote=`共有の測定データ（${modeName()}は読み取り専用）`;
   /* 表示列の設定（§9.162）はこちらの経路でも効かせる。読めなくても
      既定の15列で一覧は出す。 */
   await Promise.all([
@@ -361,7 +363,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    WL.displayRules.load().catch(WL.quiet('表示ルールを取れない（読み替え無しで出す）')),
   ]);
   WL.records.updateRecordListTitle();WL.records.syncStatusFilterButtons();$('#recordModal').hidden=false;
-  const list=$('#recordList');if(list)list.innerHTML='<div class="record-empty">閲覧データを読み込んでいます…</div>';
+  const list=$('#recordList');if(list)list.innerHTML='<div class="record-empty">共有の測定データを読み込んでいます…</div>';
   const counts=await localRecordCounts();
   WL.records.recordListState.notice=viewModeNoticeHtml(counts);
   let reason='',message='';

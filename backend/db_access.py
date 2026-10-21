@@ -962,6 +962,12 @@ def invalidate_records_dirs_cache():
  with _records_dirs_lock:
   _records_dirs_cache['paths']=None;_records_dirs_cache['ts']=0.0
 
+def records_shared():
+ """一覧に**他の PC の測定データも入るか**（§9.616）。入るのは共有の置き場（設備ごとのフォルダ）を決めたときだけ
+ ——未設定なら各 PC は自分の records.sqlite3 に書き、自分の分しか読まない。画面が「共有」と名乗るかを
+ 決める答えはここ1箇所（一覧の見出し・閲覧モードの一覧が同じ答えを読む）。"""
+ return RECORDS_SHARE_DIR is not None
+
 def records_share_files():
  """共有に置かれている設備ごとの測定データファイル。**この名前で公開する**
  のは`db_mirror`が写す対象を作るため（§9.268）。"""
