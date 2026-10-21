@@ -521,6 +521,7 @@ _watch={
  'last_change_at':0.0,  # 共有側の変化を見つけた時刻
  'paused_until':0.0,    # 写した直後の休み
  'running':False,
+ 'expect':0,            # 書込役が書いたと答えた改訂番号（写しがここへ届くまでは「古い」）
 }
 _watch_lock=threading.Lock()
 
@@ -540,6 +541,30 @@ def watch_pause_sec():
  try:n=int(path_config_value('schedule_watch_pause_sec',SCHEDULE_WATCH_PAUSE_SEC_DEFAULT))
  except (TypeError,ValueError):n=SCHEDULE_WATCH_PAUSE_SEC_DEFAULT
  return max(0,n)
+
+
+def expect_revision(rev):
+ """書込役（§9.192）が「改訂番号 rev まで書いた」と答えたことを覚える（§9.613）。
+
+ 中継で書いたあと、手元の写しは**まだ書く前のまま**のことがある（写した直後の休み・
+ 共有の見かけの控え・Box の同期待ち）。覚えた番号に写しが届くまでは、休みも見かけも
+ 当てにせず確かめ直す——でないと、書いた本人の画面へ書く前の並びを返す。"""
+ try:rev=int(rev)
+ except (TypeError,ValueError):return
+ with _watch_lock:_watch['expect']=max(int(_watch['expect'] or 0),rev)
+
+
+def _behind():
+ """写しが、書込役の答えた改訂番号へまだ届いていないか（§9.613）。"""
+ with _watch_lock:exp=int(_watch['expect'] or 0)
+ if not exp:return False
+ mine=local_revision()
+ return mine is None or mine<exp
+
+
+def revision_of(c):
+ """開いている接続（写し）の改訂番号。表が無ければ0（読むだけ・作らない）。"""
+ return _read_revision_only(c)
 
 
 def shared_revision():
@@ -594,6 +619,7 @@ def _snapshot_is_fresh():
  with _watch_lock:
   verified=_watch['verified_at'];sig=_watch['signature']
  if not verified:return False
+ if _behind():return False
  now_sig=_shared_signature()
  if now_sig is not None and sig is not None and now_sig!=sig:return False
  if (time.time()-verified)>watch_interval_sec():return False
@@ -625,7 +651,7 @@ def watch_check():
  with _watch_lock:
   _watch['checks']+=1
   paused=time.time()<_watch['paused_until']
- if paused:return 'paused'
+ if paused and not _behind():return 'paused'
  sig=_shared_signature()   # **読む前に**取る(§9.188)
  rev=shared_revision()
  if rev is None:
@@ -637,7 +663,7 @@ def watch_check():
  # 記録してしまうと、以後の読みが古い写しを最新だと思い込む。
  changed=(sig is not None and known is not None and sig!=known)
  mine=local_revision()
- if not changed and mine is not None and mine==rev:
+ if not changed and mine is not None and mine==rev and not _behind():
   mark_verified(revision=rev,signature=sig)
   return 'same'
  try:
@@ -813,13 +839,15 @@ def acquire_lock_deferred(login_id,pc_name,ttl_sec=None):
  return token,verify
 
 
-def with_write(login_id,pc_name,uid,apply_fn):
+def with_write(login_id,pc_name,uid,apply_fn,with_revision=False):
  """§4.2の全サイクル。apply_fn(conn)はローカルの作業コピーへ変更を加えて
  良い(コミットは呼び出し側で行うため、apply_fn内でのcommitは不要)。
  戻り値はapply_fnの戻り値。
 
  例外: ScheduleNotConfigured / LockHeldError(423想定) /
- RevisionConflictError(409想定) / ScheduleUnavailableError。"""
+ RevisionConflictError(409想定) / ScheduleUnavailableError。
+ with_revision=True なら (戻り値, 書いたあとの改訂番号) を返す（§9.613。画面が「この番号より古い
+ 読みは書く前のもの」と見分けるため）。"""
  shared=_require_configured()
  # ロックの検証待ち(既定1.5秒)は「待つ」こと自体に意味があるが、その間は
  # 何もしていない時間でもある。読み取り専用のスナップショット取得を先に
@@ -854,10 +882,10 @@ def with_write(login_id,pc_name,uid,apply_fn):
    except Exception as e:
     app_logger().warning('反映前の改訂番号確認に失敗しました(処理は続行します): %s',e)
   with _local_connection(local_path) as c:
-   bump_revision(c,uid)
+   revision=bump_revision(c,uid)
   _push(local_path,shared)
   # 反映したので**手元の写しが正**。次の読みで写し直さない(§9.188)。
   mark_verified(revision=local_revision())
-  return result
+  return (result,revision) if with_revision else result
  finally:
   release_lock(token)

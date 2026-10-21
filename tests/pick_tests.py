@@ -75,7 +75,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 G = {}
 G['一覧'] = ['test_nav', 'test_navwords', 'test_popmenu', 'test_listcache', 'test_listperf', 'test_allrows',
              'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
-             'test_filterlock', 'test_adhoc',
+             'test_filterlock',
              'test_cols', 'test_headbar', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache',
              # §9.239 ⑤: 子ロットの畳み込みと列の一時的な色
@@ -151,7 +151,7 @@ G['モーダル'] = ['test_modalkeep', 'test_mmunify', 'test_maint', 'test_maste
                  # §9.257 ②: 使用設備の設定（窓の作りは1箇所・選んでも動かない）
                  'test_eqsetup']
 G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork', 'test_scsync', 'test_sccat',
-                     'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scperm',
+                     'test_scbalance', 'test_scbatch', 'test_screorder', 'test_scdndhold', 'test_scperm',
                      'test_scperf', 'test_wkfast', 'test_scsplit', 'test_scprint', 'test_scdrop', 'test_scpick', 'test_sccontent', 'test_workable',
                     'test_scframe',
                      'test_wkbg', 'test_orphan', 'test_histdel', 'test_sclock',
@@ -256,10 +256,9 @@ G['権限'] = ['test_modeguard', 'test_fieldreorder', 'test_strictreorder', 'tes
              # **サーバーと画面の両方**——片方だけでは、サーバーが正しく
              # 答えていても画面が引かない状態を素通りさせる。
              'test_roleperm', 'test_roleui']
-# §9.286 ①: 登録フィルタの群・プリセット中心のバー
-G['フィルタ'] = ['test_filter', 'test_adhoc', 'test_filterio', 'test_filteruser',
-                 'test_filteractive', 'test_filterkeep', 'test_filterlock',
-                 'test_filtergroup', 'test_listbar']
+# §9.614: 一覧の絞り込み（保存したフィルタ・列の値の一覧・条件の札）。ゼロから作り直した
+G['フィルタ'] = ['test_filtersaved', 'test_filtersavedui', 'test_filter', 'test_filterio', 'test_filteruser',
+                 'test_filteractive', 'test_filterkeep', 'test_filterlock', 'test_listbar']
 # §9.316: 起動の状況をアプリから取れる（`/api/boot-report`＋ログ・診断の帯）。
 # 置き場は`paths`が解決した実物を出すので、起動まわりを触ったら一緒に回す。
 G['ログ'] = ['test_logs', 'test_logview', 'test_error', 'test_bootreport', 'test_saveio']
@@ -299,7 +298,7 @@ RULES = [
     ('backend/config.py', [ALL]),
 
     # --- 画面(JS) ----------------------------------------------------
-    ('static/js/list/list-view.js', g('一覧', '列', 'test_fit', 'test_uiux', '更新履歴')),
+    ('static/js/list/list-view.js', g('一覧', '列', 'フィルタ', 'test_fit', 'test_uiux', '更新履歴')),
     ('static/js/list/list-columns.js', g('列', 'test_sccontent',
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list/list-rules.js', g('列')),
@@ -307,9 +306,9 @@ RULES = [
     ('static/js/list/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
                                     'test_opformula')),
     # §9.591: 一覧の道具（スライサー・色付け・拡大・Excel に出力・表示の設定）
-    ('static/js/list/list-slicer.js', g('一覧')),
-    ('static/js/list/list-marks.js', g('一覧')),
-    ('static/js/list/list-tools.js', g('一覧')),
+    ('static/js/list/list-slicer.js', g('一覧', 'test_filtersavedui')),
+    ('static/js/list/list-marks.js', g('一覧', 'test_filtersavedui')),
+    ('static/js/list/list-tools.js', g('一覧', 'test_filtersavedui')),
     ('static/js/list/filters.js', g('モーダル', 'フィルタ', 'test_filterbarui',
                                'test_listcache', 'test_allrows', 'test_nav')),
     # §9.302: 設備の使える機能で予定の設備の候補を絞る
@@ -411,6 +410,7 @@ RULES = [
     ('backend/routes/masters/bladeset_parts.py', g('刃組', 'test_crudroutes')),
     # 設備停止の内訳・時間（§9.389）。設備停止マスタの隣なので「スケジュール」も回す。
     # §9.400: 停止内容の複製（`/duplicate`）もここ。画面は設備停止の一覧から呼ぶ。
+    ('backend/routes/masters/filters.py', g('フィルタ', 'test_modeguard', 'test_crudroutes')),
     ('backend/routes/masters/stop_detail.py', g('マスタ', 'スケジュール', 'test_crudroutes', 'test_scstop')),
     ('static/js/bladeset/blade-core.js', g('刃組')),
     ('static/js/bladeset/blade-pick.js', g('刃組', 'マスタ')),
@@ -474,6 +474,8 @@ RULES = [
     ('static/css/70-schedule.css', g('見た目', 'test_sccols', 'test_split_layout',
                                       'test_scbalance', 'test_scprint')),
     ('static/css/35-split.css', g('見た目', '異常位置', 'test_split_layout')),
+    # §9.614: 一覧の帯と絞り込みの面（`.flt-*`・見出しの ▼）
+    ('static/css/45-tolerance.css', g('見た目', '一覧', 'フィルタ')),
     ('static/css/40-records.css', g('見た目', 'test_recperm', 'test_reccols', 'test_recdel',
                                      'test_eqscope')),
     ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_rbmodal',
@@ -506,7 +508,7 @@ RULES = [
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
-    ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_lotident', 'test_filterbarui', 'test_colscache', 'test_colsripple',
+    ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_lotident', 'test_filterbarui', 'test_filtersaved', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     # §9.333で段（`equipment.py`/`operation.py`…）へ分けた。**末尾の`/`で丸ごと**
     # 見る——段ごとに書き分けると、段を1つ足したときだけ当たらずに全件へ倒れる。
@@ -572,7 +574,7 @@ RULES = [
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource', 'test_cleanup')),
     # 権限区分・マスタ編集の判定もここが持つ（§9.272/§9.322）ので「権限」ごと。
-    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart', 'test_boxactual')),
+    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart', 'test_boxactual', 'test_filtersaved')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore', 'test_seedrevise')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
@@ -596,7 +598,7 @@ RULES = [
                                     'スケジュール')),
     ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
-                                   'test_screorder', 'test_atomicio', 'test_scsession',
+                                   'test_screorder', 'test_scdndhold', 'test_atomicio', 'test_scsession',
                                    'test_scwho', 'test_scowner')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd', 'test_lfpoints', 'test_lfui')),
     ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore',

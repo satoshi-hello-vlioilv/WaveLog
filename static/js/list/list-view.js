@@ -744,6 +744,8 @@ function columnHeaderMenuHtml(col,target,hidden,nameOf){
  const shown=hidden.slice(0,RESTORE_MAX);
  return (
   `<div class="chm-head" title="${esc(col)}">${esc(nameOf(col))}</div>`
+  /* 絞り込み（§9.614）。一覧の列だけ（スケジュールの列には出さない＝押しても絞れない物を出さない）。 */
+  +(target===listLayoutTarget()&&WL.filters&&WL.filters.canFilter(col)?item('この列で絞り込む…','chm-filter'):'')
   +item('この列を隠す','chm-hide')
   /* 幅の3つの状態(§9.119)。**いまどれなのかを文で出す**——「自動に戻す」が
      押せるだけでは、今が自動なのか手動なのかが分からない。 */
@@ -795,6 +797,13 @@ function headMenuPersist(S2,target){
 }
 function wireColumnHeaderMenu(menu,col,target,S2,nameOf){
  const persist=headMenuPersist(S2,target);
+ const flt=menu.querySelector('.chm-filter');
+ if(flt)flt.onclick=()=>{
+  closeColumnHeaderMenu();
+  const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(col)}"]`);
+  /* 次の巡回で開く（このクリックを新しい面が「外を押した」と読まない）。 */
+  setTimeout(()=>WL.filters.openColumn(col,th&&th.querySelector('.col-funnel')||th),0);
+ };
  menu.querySelector('.chm-hide').onclick=async()=>{
   closeColumnHeaderMenu();
   const next=[...new Set([...S2.hiddenOf(),col])];
@@ -1806,13 +1815,16 @@ function textWidthEm(s){
    4〜5px切れる**列が出た（用途名70/74・取引先64/69で実測）。
    自動の見積りは「入り切る」ことが目的なので、近似の誤差ぶんを足す。 */
 const COL_W_SLACK=6;
-function estimateColumnWidth(label,values,fs,padX){
+/* 見出しの右に取る ▼（絞り込む）の席（§9.614）。**字に重ねない**——1回目の採点で「製造材質」の「質」が ▼ に
+   隠れて減点された。見出しの字の幅にこの席を足して見積もる（本文の値には足さない）。 */
+const HEAD_FUNNEL_EM=1.35;
+function estimateColumnWidth(label,values,fs,padX,headExtraEm=0){
  const lens=[];
  for(const v of values){const w=textWidthEm(v);if(w>0)lens.push(w)}
  lens.sort((a,b)=>a-b);
  // 90パーセンタイル(件数が少ないときは最大値のまま)
  const p90=lens.length?lens[Math.min(lens.length-1,Math.floor(lens.length*0.9))]:0;
- const em=Math.max(textWidthEm(label),p90);
+ const em=Math.max(textWidthEm(label)+headExtraEm,p90);
  return Math.round(Math.min(COL_W_MAX,Math.max(COL_W_MIN,em*fs+padX*2+2+COL_W_SLACK)));
 }
 /* 表の文字サイズと左右余白は表示サイズ(--ui-scale)で変わるので、
@@ -2030,7 +2042,7 @@ function narrowedNote(label){
   +'<div class="list-empty-body">'
   +(items.length?`<div class="record-empty-why">いま効いている条件（${items.length}件）</div><ul class="list-empty-conds">${list}</ul>`:'')
   +(locked?'<div class="record-empty-why">「いつも適用」の条件は、この一覧を開くたびに自動で入ります。'
-    +'毎回入れないようにするには、プリセットのメニューで「いつも適用」を外します。</div>':'')
+    +'毎回入れないようにするには、帯の「フィルタ ▾」→ その保存の「✎ 直す」で「いつも適用」を外します。</div>':'')
   +'</div>'
   +`<div><button type="button" data-empty-clear>条件を外して${label}の全件を見る</button></div></div>`;
 }
@@ -2114,7 +2126,8 @@ function gridScope(){
  const canPlan=isWork&&window.accessMode?.mode==='schedule';
  const g={isWork,hasLotDsp,canPlan,
   lotCol:hasLotDsp?findColumnFor('lotNo'):null,castCol:hasLotDsp?findColumnFor('castingNo'):null,
-  filteredCols:new Set((S.genericFilters||[]).map(f=>f.column))};
+  /* 絞っている列（条件・スライサー）。見出しの ▼ を塗る（§9.614）。 */
+  filteredCols:new Set([...(S.genericFilters||[]).map(f=>f.column),...(WL.listSlicer?WL.listSlicer.filters().map(f=>f.column):[])])};
  /* 一覧に出すべきでないロットは伏せる（§9.15＋§9.368）。答えるのは
     スケジュール画面の1箇所（`WL.scheduleView.hiddenLotSet()`）で、
       ・**予定に居るロット**（投入済みなので一覧に残すと二重に見える）
@@ -2253,7 +2266,7 @@ function gridColumnWidths(g){
                            // 計算で作る列は**計算した値**で幅を見積もる
                            // (生のr[k]は無いので、そのままだと見出しの幅になる)。
                            widthSample.map(r=>colCalc.has(k)?colCalc.get(k).run(namedRow(r)):r[k]),
-                           metrics.fs,metrics.padX))]));
+                           metrics.fs,metrics.padX,HEAD_FUNNEL_EM))]));
  // その列に何文字ぶん入るか(em)。これを超える値は省略記号になる。
  g.colEm=new Map(dataCols.map(c=>[c,(g.colW.get(c)-metrics.padX*2-2)/metrics.fs]));
 }
@@ -2358,7 +2371,16 @@ function gridHeadCell(g,k){
     「数値の書式を当てた列」の印として残す(等幅数字の意味)が、
     **右づめにするかどうかはもう`.col-num`が決めない**——自動のときだけ
     書式を見て右へ倒すのは`columnAlign`の役目。 */
- return `<th class="sortable-col ${g.numCol(c)?'col-num':''} ${WL.columnAlign.headClass(layoutTarget,c,colFmt.get(c)?.kind||'')} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" data-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
+ return `<th class="sortable-col ${g.numCol(c)?'col-num':''} ${WL.columnAlign.headClass(layoutTarget,c,colFmt.get(c)?.kind||'')} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" data-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${funnelHtml(c,filtered)}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
+}
+/* 見出しの ▼（§9.614・Excel 型）。押すとその列の値の一覧（filters.js の`WL.filters.openColumn`・押した物は filters.js が受ける）。
+   絞っている列は塗って出し、ほかは乗せたときだけ出す（形は 45-tolerance.css の`.col-funnel`）。 */
+function funnelHtml(c,filtered){
+ if(!WL.filters)return '';
+ const name=WL.columnLayout.label(listLayoutTarget(),c);
+ return `<button type="button" class="col-funnel${filtered?' is-on':''}" data-funnel="${esc(c)}" tabindex="-1" draggable="false"`
+  +` aria-label="${esc(name)}で絞り込む" title="${filtered?'この列で絞り込んでいます。押すと値を選び直せます':'この列の値で絞り込む'}">`
+  +'<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.6 2.6h12.8L9.4 8.2v4.3l-2.8 1.6V8.2z"/></svg></button>';
 }
 
 /* ⑤ 行。1行ぶんのセル→行の配線→子ロットの畳み、の順に組み立てる関数を返す。 */

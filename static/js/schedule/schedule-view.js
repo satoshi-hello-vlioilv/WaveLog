@@ -93,7 +93,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(first){updateHistoryFromUi();updateViewMenuUi()}
  }
  let scState={equipment:'',entries:[],anchor:null,anchorRounded:null,warnings:[],configured:true,
-              editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
+              editable:false,pickerEnabled:false,stopReasons:[],dragId:null,reloadAfterDrag:false,reloadAfterQueue:false,insertBefore:'',
               /* 設備停止の内訳と時間の選択肢（§9.389）。`stopPick`＝いま
                  右のペインに出している停止内容（§9.397で一覧と入れ替える
                  形をやめ、左右に並べた）。`null`なら右は案内だけ。
@@ -4014,6 +4014,42 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* ---------- 予定は「取得」と「描画」を分ける(§9.182) ----------
     取得だけ先に始めておいて、表示設定が揃ったところで描く。1つの関数で
     両方やると、他の取得と同時に走らせる書き方ができない。 */
+ /* ---------- 書いた改訂番号と、読んだ写しの改訂番号（§9.613） ----------
+    共有の改訂番号は書くたびに1つ上がる。**自分の書込が返した番号**を覚えておき、それより古い写しの
+    読みは「書く前のもの」として当てない。追いつくまで間を広げて読み直し、待ち切れなければ（共有の
+    同期が止まっている等）当てて、遅れていることを字で言う（黙って古い並びに戻さない）。 */
+ const scBehind={rev:0,tries:0,timer:null};
+ const SC_BEHIND_WAITS=[600,1000,1600,2500,4000,6000,8000];   // 合計およそ24秒
+ function noteWriteRevision(r){
+  const n=Number(r&&r.revision);
+  if(Number.isFinite(n)&&n>scBehind.rev)scBehind.rev=n;
+  return r;
+ }
+ function planBehind(r){
+  const n=Number(r&&r.revision);
+  return !!r&&!!r.configured&&r.revision!=null&&Number.isFinite(n)&&scBehind.rev>0&&n<scBehind.rev
+         &&scBehind.tries<SC_BEHIND_WAITS.length;
+ }
+ function retryBehindPlan(eq){
+  if(scBehind.timer)return;
+  const wait=SC_BEHIND_WAITS[scBehind.tries++];
+  scBehind.timer=setTimeout(()=>{
+   scBehind.timer=null;
+   if(scState.equipment!==eq)return;
+   const last=scBehind.tries>=SC_BEHIND_WAITS.length;
+   loadPlan(true).then(()=>{
+    if(!last)return;
+    /* 待ち切った（上の`planBehind()`が回数で通した）。遅れていることを言い、番号は手放す。 */
+    scBehind.tries=0;scBehind.rev=0;
+    showToast&&showToast('共有への反映が遅れています',
+     'さきほどの変更が、この端末の共有の写しにまだ届いていません（共有の同期待ち）。いま出ているのは共有の写しの内容です。'
+     +'しばらくしてから「再読込」で確かめてください。',9000);
+   }).catch(WL.quiet('予定を読み直せない（次の巡回で追いつく）'));
+  },wait);
+ }
+ function writesBusy(){return !!(scWriteQueue.length||scQueueRunning||scQueueFlushTimer)}
+ /* 書込のあいだに捨てた読みがあったか（あれば書込の列の終わりで必ず読み直す）。 */
+ function takeReloadAfterQueue(){const v=scState.reloadAfterQueue;scState.reloadAfterQueue=false;return v}
  function planFetch(force){
   const eq=scState.equipment;
   if(!eq)return null;
@@ -4027,7 +4063,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const timeline=$('#scTimeline');
   if(timeline&&!timeline.querySelector('.sc-row-line'))
    timeline.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
-  return {eq,gen:planGen(),
+  /* 書込がまだ残っている間に出した読みは、その書込を含まない（§9.613）。印を付けて出す。 */
+  return {eq,gen:planGen(),busy:writesBusy(),
           promise:api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
     +'&history='+encodeURIComponent(scState.historyKey))};
  }
@@ -4039,11 +4076,23 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const r=await req.promise;
    // 応答が届く前に設備が変わっていたら捨てる(古い予定を新しい設備へ描かない)
    if(scState.equipment!==req.eq)return;
+   /* 掴んでいる最中は描き直さない（§9.613）。表を組み直すと、掴んだ行と運んだ途中の並びが消える。
+      離したあと（`finishDragOrder()`）に取り直す。 */
+   if(scState.dragId!=null){scState.reloadAfterDrag=true;return}
    /* 取りに行ったあとに予定を変えていたら捨てる(§9.200)。ここで入れると、
       変更前の内容がキャッシュに残り、画面を切り替えて戻ったときに
       **並べ替えが無かったことになる**（実機で報告）。書込のあとには
       必ず取り直し(force)が走るので、捨てても取りこぼさない。 */
    if(req.gen!==undefined&&req.gen!==planGen())return;
+   /* **書いた番号より古い写しの読みは当てない**（§9.613）。書込役へ頼んだ書込（§9.192）や共有の同期待ち
+      （Box 等）では、書いた直後の読みが**書く前の並び**を返すことがある——当てると運んだ行が戻り、
+      その古い並びを土台に次を運ぶと「ほかの端末が先に並べ替えました」で断られる（実測で連鎖した）。
+      画面は書いた結果を既に出しているので、そのまま見せて読み直す。 */
+   if(planBehind(r)){retryBehindPlan(req.eq);return}
+   /* 書込が残っている間に出した読みは当てない（§9.613）。当てると、書く前の並びで運んだ行が戻る
+      （実測: 書込中の描き直しで1.5秒戻った）。書込の列が終わったところで必ず1回読み直す。 */
+   if(req.busy){scState.reloadAfterQueue=true;return}
+   scBehind.tries=0;
    if(!r.configured){
     if(timeline)timeline.innerHTML='<div class="sc-empty-note">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';
     return;
@@ -5713,7 +5762,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      残さないと、反映中の行だけ「日付未定」の箱が1つできる。 */
   /* 時刻未登録の済んだ行（§9.514）も同じく借りた時刻で束ねる（「日付未定」の箱を作らない）。 */
   rows.forEach(r=>{if((r.e.__pending||r.e.timesNeeded||(r.g===0&&rowTimeOf(r.e)===null))&&r.t!==null)r.e.__nearT=r.t;else if('__nearT' in r.e)delete r.e.__nearT});
-  return rows
+  const sorted=rows
    .sort((a,b)=>{
     if(a.g!==b.g&&a.t!==null&&b.t!==null)return a.g-b.g;
     if(a.t===null&&b.t===null)return a.i-b.i;
@@ -5721,8 +5770,28 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     if(b.t===null)return -1;
     if(a.t!==b.t)return a.t-b.t;
     return a.u===b.u?a.i-b.i:a.u-b.u;
-   })
-   .map(x=>x.e);
+   });
+  return keepPlanOrder(sorted).map(x=>x.e);
+ }
+ /* ---------- 並べ替えた予定は、並べた順のまま出す（§9.613、利用者の報告「ドラッグした位置に入らず、
+    位置を調整しても戻る。戻らない時もあるし不安定」） ----------
+    時刻順に並べると、**並べ替えた直後の行はまだ前の時刻を持っている**（新しい時刻はサーバーが
+    展開し直して初めて届く）。そのあいだに1回でも描き直すと、運んだ行が前の位置へ戻り、時刻が
+    届くとまた動く（実測: 書込中の描き直しで1.5秒戻る）。
+    **動かせる予定（固定していない・未着手の行）どうしは、時刻ではなく予定の並び（配列の順）で
+    決める。** 時刻が新しければ2つは同じ並びになる（サーバーは予定の並びの順に時刻を置く）ので、
+    ふだんは何も変わらない。固定した行・済んだ行・作業中の行が時刻で決めた席はそのまま残し、
+    その席の間を動かせる予定で配列の順に埋め直す（`commitDragOrder()`と同じ「席はそのまま・中身を
+    差し替える」作り）。 */
+ function planOrdered(e){return !!e&&e.reorderable&&!e.fixedStart&&e.state==='予定'&&e.parentId==null}
+ function keepPlanOrder(sorted){
+  const slots=[];
+  sorted.forEach((r,k)=>{if(planOrdered(r.e))slots.push(k)});
+  if(slots.length<2)return sorted;
+  const inPlan=slots.map(k=>sorted[k]).sort((a,b)=>a.i-b.i);
+  const out=sorted.slice();
+  slots.forEach((k,j)=>{out[k]=inPlan[j]});
+  return out;
  }
 
  /* ---------- まとめ方(§9.40) ----------
@@ -8165,6 +8234,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     const {op:_omit,...body}=op;
     const r=await api(path,{method:'POST',headers:{'Content-Type':'application/json'},
      body:JSON.stringify(withUserId(body))});
+    noteWriteRevision(r);
     if(onSuccess)onSuccess(r);
     return r;
    },
@@ -8248,8 +8318,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      if(batch.length>1){
       let handled=false;
       try{
-       const r=await api('/api/schedule/plan/batch',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(withUserId({ops:batch.map(b=>b.op)}))});
+       const r=noteWriteRevision(await api('/api/schedule/plan/batch',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(withUserId({ops:batch.map(b=>b.op)}))}));
        const results=r.results||[];
        batch.forEach((b,i)=>{
         const one=results[i];
@@ -8350,7 +8420,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    /* **必ず取り直す**(§9.200)。以前は`loadPlan()`(キャッシュ可)だったため、
       書込中に飛んでいた別のGETがキャッシュへ入っていると、変更前の内容を
       そのまま画面へ戻していた。 */
-   if(scState.equipment&&(timeShifted||!sessionApplicable()))await loadPlan(true);
+   if(scState.equipment&&(takeReloadAfterQueue()||timeShifted||!sessionApplicable()))await loadPlan(true);
   }
  }
  // 楽観的追加(makeOptimisticEntry)で割り当てた仮ID(tmp-N)を、書込キューでの
@@ -9034,8 +9104,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const before=scState.dragOrder0||[];
   const now=timelineRowIds();
   scState.dragOrder0=null;
-  if(!before.length)return;
-  if(before.length===now.length&&before.every((v,i)=>v===now[i]))return;
+  /* 掴んでいる間に届いた読みは捨ててある（§9.613）。動かしたなら書込のあとに取り直すので、
+     動かさなかったときだけここで取り直す。 */
+  const held=scState.reloadAfterDrag;scState.reloadAfterDrag=false;
+  const moved=before.length>0&&!(before.length===now.length&&before.every((v,i)=>v===now[i]));
+  if(!moved){if(held)loadPlan(true).catch(WL.quiet('予定を読み直せない（次の巡回で追いつく）'));return}
   commitDragOrder();
  }
  function commitDragOrder(){
@@ -10524,6 +10597,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   try{
    const r=await api('/api/schedule/plan/progress',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({equipment:scState.equipment,id:e.id,action})});
+   noteWriteRevision(r);
    const name=e.kind==='設備停止'?(e.title||'設備停止'):(e.lotNo||'ロット');
    showToast&&showToast(action==='end'?`${name} を終えました`:`${name} を始めました`,
     r&&r.next?'次の設備停止が始まりました（予定の時間が過ぎると自動で終わります）。':'',4000);
@@ -11625,6 +11699,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      **別の物へ丸ごと差し替わる**ので、「いま入れた」が参照ではなくIDで
      生きているかを見ていることを、網が**同じ口を通して**確かめられる。 */
   reloadPlan:()=>loadPlan(true),
+  /* 予定を書いたほかの口（時刻の窓・開始の関門）が、返ってきた改訂番号を渡す（§9.613）。 */
+  noteWriteRevision:r=>noteWriteRevision(r),
   /* 元データの取り込み（§9.375）の状態。**答えは1箇所**——網も報告も
      ここを読む（画面の字を数えると、言い回しを直すたびに嘘になる）。 */
   sourceSync:()=>({mode:scSourceSyncMode,keys:sourceSyncKeys(),

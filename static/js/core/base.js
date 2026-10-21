@@ -30,7 +30,6 @@ const S={
   genericFilters:[],              /* いま効いている絞り込み条件（filters.js） */
   filterPresets:[],               /* 登録フィルタ（filters.js） */
   filterPresetSource:'local',     /* 登録フィルタの出どころ master/local（filters.js） */
-  filterCondUsage:{},             /* 条件の利用回数（filters.js） */
 };
 Object.seal(S);
 /* ---------- 黙らない（§9.328、REVIEW 3-4） ----------
@@ -580,7 +579,9 @@ function keepModalOpen(modal){
  modal.addEventListener('click',e=>{if(e.target===modal)nudgeModal(modal)});
  return modal;
 }
-function escClosesModal(e){return e.key==='Escape'&&!e.isComposing&&e.keyCode!==229}
+/* 1回のEscで閉じるのは1枚（§9.471）。窓の上に浮く面（`WL.popMenu`）が開いていれば、そちらが先に閉じる
+   （どちらも document の捕まえる段で聞くので、登録の早い窓が先に動いてしまう・§9.614 で踏んだ）。 */
+function escClosesModal(e){return e.key==='Escape'&&!e.isComposing&&e.keyCode!==229&&!e.defaultPrevented&&!(WL.popMenu&&WL.popMenu.isOpen())}
 WL.modal={keepOpen:keepModalOpen,nudge:nudgeModal,escCloses:escClosesModal};
 /* ---------- 画面の骨組みは HTML に置く（§9.522・REVIEW 3-7） ----------
    動かない部分は`templates/index.html`の`<template id="tpl-名前">`に置き、画面のJSは
@@ -646,7 +647,7 @@ function ensureConfirmModal(){
  document.body.append(modal);
  return modal;
 }
-/** @param {string|{message?: string, title?: string, eyebrow?: string, bodyHtml?: string, confirmLabel?: string, cancelLabel?: string, danger?: boolean, hideCancel?: boolean, focus?: string, facts?: Array<string|{text: string, danger?: boolean}>, kind?: string}} opts 字だけなら本文 @returns {Promise<boolean>} */
+/** @param {string|{message?: string, title?: string, eyebrow?: string, bodyHtml?: string, confirmLabel?: string, cancelLabel?: string, danger?: boolean, hideCancel?: boolean, focus?: string, facts?: Array<string|{text: string, danger?: boolean}>, kind?: string, wide?: boolean}} opts 字だけなら本文 @returns {Promise<boolean>} */
 function confirmModal(opts){
  const o=typeof opts==='string'?{message:opts}:(opts||{});
  return new Promise(resolve=>{
@@ -661,8 +662,12 @@ function confirmModal(opts){
    +(o.bodyHtml!==undefined?o.bodyHtml:(split.rest?`<p class="confirm-modal-message">${esc(split.rest)}</p>`:''));
   $('#appConfirmBody').innerHTML=body;
   modal.querySelector('.confirm-modal-dialog').classList.toggle('is-titleonly',!body);
+  /* 広い窓（§9.614・保存したフィルタを直す窓のように、欄を横に並べる中身）。**毎回入れ直す**（次の確認へ持ち越さない）。 */
+  modal.querySelector('.confirm-modal-dialog').classList.toggle('is-wide',!!o.wide);
   const cancel=$('#appConfirmCancel'),ok=$('#appConfirmOk'),close=$('#closeAppConfirm');
   cancel.textContent=o.cancelLabel||'キャンセル';ok.textContent=o.confirmLabel||'続ける';ok.className=o.danger?'danger':'';
+  /* 中身が決めるボタンを押せなくすることがある（書き出す一覧を選んでいない等）。**毎回押せる形へ戻す**。 */
+  ok.disabled=false;
   /* お知らせは「やめる」を出さない。**毎回入れ直す**——前の呼び出しで
      伏せたままにすると、次の確認から選択肢が片方消える。 */
   cancel.hidden=!!o.hideCancel;

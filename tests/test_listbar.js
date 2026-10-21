@@ -108,18 +108,31 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
   await page.keyboard.press('Escape');
   await W.until(page, () => document.getElementById('listViewPanel').hidden, null, { ms: 5000, what: 'Escで「表の見せ方」が閉じる' });
   rec('「表の見せ方」はEscで閉じる', true);
-  /* **1回のEscで閉じるのは1枚だけ**（§9.471）。上に浮いた面を閉じた押下で、下の
-     条件の窓まで畳まない（畳むと一覧が伸びて、何が起きたか読めない）。 */
-  await page.evaluate(() => document.getElementById('filterToggle').click());
-  await W.until(page, () => !document.getElementById('filterBody').hidden, null, { ms: 5000, what: '条件の窓が開く' });
-  await W.listView(page);
-  await page.keyboard.press('Escape');
-  await W.until(page, () => document.getElementById('listViewPanel').hidden, null, { ms: 5000, what: 'Escで「表の見せ方」が閉じる（2回目）' });
-  rec('1回のEscで閉じるのは上の1枚だけ（下の条件の窓は開いたまま）',
-      await page.evaluate(() => !document.getElementById('filterBody').hidden));
-  await page.keyboard.press('Escape');
-  await W.until(page, () => document.getElementById('filterBody').hidden, null, { ms: 5000, what: 'もう1回のEscで条件の窓が閉じる' });
-  rec('もう1回のEscで条件の窓が閉じる', true);
+  /* **1回のEscで閉じるのは1枚だけ**（§9.471）。上に浮いた面を閉じた押下で、下の窓まで畳まない。
+     §9.614 から下の窓は「保存したフィルタを直す」窓、上の面はその中の「＋ 値」で開く値の一覧。 */
+  const pid = await page.evaluate(async () => {
+   const r = await fetch('/api/filter-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Esc網_' + Date.now(), db: S.db, table: S.table, mode: WL.filters.state().mode, user: currentUserId(), user_id: currentUserId(),
+     filters: (c => [{ column: c, op: 'in', value: [String((S.rows[0] || {})[c] ?? '')] }])(S.columns.find(c => !c.startsWith('__'))) }) });
+   return (await r.json()).id;
+  });
+  try {
+   await page.evaluate(() => WL.filters.reload());
+   await page.click('#filterSavedBtn');
+   await W.until(page, id => !!document.querySelector(`#filterSavedMenu [data-edit="${id}"]`), pid, { ms: 10000, what: '保存したフィルタの面' });
+   await page.click(`#filterSavedMenu [data-edit="${pid}"]`);
+   await W.until(page, () => !!document.querySelector('#appConfirmBody .flt-ed'), null, { ms: 8000, what: '直す窓' });
+   await page.click('#appConfirmBody [data-pickv]');
+   await W.until(page, () => !!document.getElementById('filterColPop'), null, { ms: 8000, what: '窓の上の値の一覧' });
+   await page.keyboard.press('Escape');
+   await W.until(page, () => !document.getElementById('filterColPop'), null, { ms: 5000, what: 'Escで値の一覧が閉じる' });
+   rec('1回のEscで閉じるのは上の1枚だけ（下の直す窓は開いたまま）', await page.evaluate(() => !document.getElementById('appConfirmModal').hidden));
+   await page.keyboard.press('Escape');
+   await W.until(page, () => document.getElementById('appConfirmModal').hidden, null, { ms: 5000, what: 'もう1回のEscで直す窓が閉じる' });
+   rec('もう1回のEscで直す窓が閉じる', true);
+  } finally {
+   await page.evaluate(async id => fetch('/api/filter-presets/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, user: currentUserId(), user_id: currentUserId() }) }), pid);
+  }
 
   /* ---------- 4) 帯は「1面1サイズ」（§9.505、利用者の指示） ----------
      「一覧類の上部メニューの文字がサイズ感がバラバラ…メニューの文字のサイズとボタン類のUIのサイズと
@@ -148,7 +161,7 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
   });
   rec('帯の字は1つの大きさ（前: 4種 10・11・12・14px）', uni.fs.length === 1 && uni.fs[0] >= 11, JSON.stringify(uni));
   rec('帯の押す物は1つの高さ・1つの角丸（前: 高さ2種・角丸3種）', uni.h.length === 1 && uni.r.length === 1 && uni.n >= 6, JSON.stringify(uni));
-  /* 一覧から開く面も字1種（§9.505）。「条件」の面（旧⋯の中身もここ）とプリセットの面。 */
+  /* 一覧から開く面も字1種（§9.505）。§9.614 から「フィルタ ▾」の面と列の値の一覧の2つ。 */
   const faceFs = async (btn, sel) => {
    await page.click(btn);
    await W.until(page, s => !!document.querySelector(s), sel, { ms: 5000, what: sel + 'が開く' });
@@ -158,10 +171,17 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）・1面1サイズ�
    await page.keyboard.press('Escape');
    return fs;
   };
-  const condFs = await faceFs('#filterCondBtn', '#filterCondMenu:not([hidden])');
-  rec('「条件」の面の字は1つの大きさ（前: ⋯の面 9.5・14px）', condFs.length === 1, condFs.join('/'));
-  const presetFs = await faceFs('#filterPresetBtn', '.fb-preset-menu');
-  rec('プリセットの面の字は1つの大きさ（前: 9.5・12・13・14px）', presetFs.length === 1, presetFs.join('/'));
+  const savedFs = await faceFs('#filterSavedBtn', '#filterSavedMenu');
+  rec('「フィルタ ▾」の面の字は1つの大きさ', savedFs.length === 1, savedFs.join('/'));
+  await page.click('#filterAddCond');
+  await W.until(page, () => !!document.querySelector('.flt-col-pick [data-col]'), null, { ms: 5000, what: '列を選ぶ面' });
+  await page.click('.flt-col-pick [data-col]');
+  await W.until(page, () => document.querySelectorAll('#filterColPop [data-v]').length > 0, null, { ms: 10000, what: '値の一覧' });
+  const popFs = await page.evaluate(() => [...new Set([...document.querySelectorAll('#filterColPop *')]
+   .filter(e => e.getBoundingClientRect().height > 0 && [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim()))
+   .map(e => getComputedStyle(e).fontSize))]);
+  await page.keyboard.press('Escape');
+  rec('列の値の一覧の字は1つの大きさ', popFs.length === 1, popFs.join('/'));
  } finally {
   await setMode('edit');
  }

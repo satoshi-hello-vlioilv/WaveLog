@@ -310,20 +310,17 @@
    前（§9.505〜§9.591）は狭い器だけ押す物を26px・字11pxへ縮め、字を印へ畳み、検索欄が余りを全部食っていた
    （ポップアップで450px）。**寸法は単独の一覧と同じ**（30px・13.5px・字つき）にし、入らないぶんは入口を畳む
    （分割＝「道具 ▾」「見せ方 ▾」・ポップアップ＝「見せ方 ▾」。畳み方は 45-tolerance.css の`.lt-fold`）。
-   分割は2段の格子（検索｜プリセット／条件｜道具｜見せ方）で左右の端をそろえる。状態は2行（件数・元データ・ページ／その他）。
+   分割は2段の格子（検索｜フィルタ／道具｜見せ方・§9.614）で左右の端をそろえる。ポップアップも「道具 ▾」へ畳む（§9.614・1536 で見せ方が折れた）。状態は2行（件数・元データ・ページ／その他）。
    E の手順で3回作り直して決めた（1回目 B 74・2回目 G 77・3回目 Q 82）。 */
-.sc-split-wrap .filter-search-row{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--space-1);flex-wrap:nowrap}
-.sc-split-wrap .filter-search-row>.lt-search{grid-column:1/8;max-width:none;min-width:0}
-.sc-split-wrap .filter-search-row>#filterPresetBtn{grid-column:8/13}
-.sc-split-wrap .filter-search-row>#filterCondBtn{grid-column:1/7;gap:var(--gap-tight);padding-inline:var(--space-1)}
-.sc-split-wrap .filter-search-row>#filterCondBtn>.fb-cond-icon{display:none}
-.sc-split-wrap .filter-search-row>#listFold-tools{grid-column:7/10}
-.sc-split-wrap .filter-search-row>.filter-search-row-actions{grid-column:10/13;margin:0;display:flex}
-.sc-split-wrap .filter-search-row>.filter-search-row-actions>.fb-slot{display:flex;width:100%}
-.sc-split-wrap #listFold-view{flex:1 1 auto}
+/* 1段目＝検索（残り全部）｜フィルタ（中身なり）、2段目＝道具 ▾（左端）｜見せ方 ▾（右端）。押す物は引き伸ばさない（§9.614 の採点）。 */
+.sc-split-wrap .filter-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-1);flex-wrap:nowrap}
+.sc-split-wrap .filter-search-row>.lt-search{grid-column:1;max-width:none;min-width:0}
+.sc-split-wrap .filter-search-row>#filterSavedBtn{grid-column:2;max-width:calc(var(--w-md) * 1.2)}
+.sc-split-wrap .filter-search-row>#listFold-tools{grid-column:1;justify-self:start}
+.sc-split-wrap .filter-search-row>.filter-search-row-actions{grid-column:2;margin:0;display:flex;justify-content:flex-end}
+.sc-split-wrap .filter-search-row>.filter-search-row-actions>.fb-slot{display:flex;justify-content:flex-end}
 .sc-split-wrap .filter-search-row>*{min-width:0;justify-content:center}
 .sc-split-wrap .filter-search-row>[hidden]{display:none}
-.sc-split-wrap .fb-preset-btn b{min-width:0}
 /* ポップアップは1本の並びを折り返す（1段目＝絞る・2段目＝道具と見せ方）。押す物は中身なり、見せ方の群は右端。 */
 .sc-float-body .filter-search-row{flex-wrap:wrap;row-gap:var(--space-1)}
 .sc-float-body .filter-search-row>:not(.lt-search){flex:0 0 auto}
@@ -353,25 +350,7 @@
 .sc-split-wrap .lt-state>#listFreshness{order:4}
 .sc-split-wrap .lt-state>:is(#listJoinChip,#listTintChip,#listLoadChip){order:5}
 .sc-split-wrap .lt-state>.lt-state-right{order:6}
-:is(.sc-split-wrap,.sc-float-body) .filter-token-input{padding:var(--pad-chip)}
-:is(.sc-split-wrap,.sc-float-body) .filter-token-search{height:22px;flex-basis:80px;min-width:60px}
-:is(.sc-split-wrap,.sc-float-body) .filter-quick-row{padding:var(--pad-row);gap:var(--gap-tight)}
-:is(.sc-split-wrap,.sc-float-body) .filter-quick-label{font-size:var(--fs-tiny)}
-:is(.sc-split-wrap,.sc-float-body) .suggest-chip.quick{height:calc(var(--ctl-h-xs) - 4px);padding:var(--pad-chip);font-size:var(--fs-micro)}
-:is(.sc-split-wrap,.sc-float-body) .filter-tag{height:calc(var(--ctl-h-xs) - 4px);padding:1px 3px 1px 6px}
-:is(.sc-split-wrap,.sc-float-body) .filter-tag>span{max-width:70px;font-size:var(--fs-micro)}
-:is(.sc-split-wrap,.sc-float-body) .filter-tag em{max-width:80px;font-size:var(--fs-micro)}
-:is(.sc-split-wrap,.sc-float-body) .filter-tag b{font-size:var(--fs-tiny)}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row-actions button{padding:0 7px}
-/* その場フィルタ(§9.238 ⑤)も分割表示では詰める。**1行のままで文字だけ
-   小さくする**(§9.239 ①)——器が狭くても折り返しは flex-wrap に任せる
-   （並びが「列→条件→値」の1文なので、途中で段を切ると読み順が壊れる）。 */
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-row{padding:var(--pad-row);gap:var(--gap-tight)}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-col{max-width:var(--w-sm)}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-op{max-width:var(--w-xs)}
-:is(.sc-split-wrap,.sc-float-body) .filter-adhoc-row>button{padding:0 7px}
-:is(.sc-split-wrap,.sc-float-body) .filter-body{padding:5px 6px}
-:is(.sc-split-wrap,.sc-float-body) .filter-builder{grid-template-columns:1fr;gap:var(--gap-tight)}
 /* 「内容」欄の項目ピッカー(順序つき) */
 .sc-content-chosen-head{margin:8px 0 4px;font-size:var(--fs-micro);font-weight:var(--fw-ui);color:var(--muted)}
 .sc-content-chosen{display:flex;flex-direction:column;gap:var(--gap-tight)}

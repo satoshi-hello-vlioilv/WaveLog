@@ -145,8 +145,9 @@
    if(v.endMode==='input'&&!parse(en)){err='終了の時刻を入れてください。';continue}
    if(v.endMode==='input'&&parse(en)<parse(st)){err='終わりが始まりより前です。終了を開始より後にしてください。';continue}
    try{
-    await api('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
+    const r=await api('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
      body:JSON.stringify({id:e.id,equipment:opts.equipment||'',actualStart:st,actualEnd:en})});
+    WL.scheduleView?.noteWriteRevision?.(r);
    }catch(x){err=x.message||String(x);continue}
    showToast(v.editing?'時刻を直しました':'時刻を登録しました',
     `${nameOf(e)}: ${hm(parse(st))} 〜 ${en?hm(parse(en)):`見積${v.minutes}分で終わり`}`);

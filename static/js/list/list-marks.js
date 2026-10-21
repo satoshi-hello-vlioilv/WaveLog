@@ -143,7 +143,7 @@
   if(!b){b=document.createElement('button');b.type='button';b.id='listMarkBtn';b.className='lt-tool-btn mk-entry';
    b.setAttribute('aria-haspopup','dialog');b.setAttribute('aria-expanded','false');
    b.title='色付け: 条件に当たるセル・行に色を付けます（行は減りません）';b.onclick=()=>openMenu(b)}
-  const after=document.getElementById('listSlicerBtn')||document.getElementById('filterAdhocToggle');
+  const after=document.getElementById('listSlicerBtn')||document.getElementById('filterToolsAt');
   if(after&&b.previousElementSibling!==after)after.after(b);
   paintBtn();
  }

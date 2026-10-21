@@ -405,6 +405,7 @@ def api_query_join_resolve():
   return jsonify(error=str(e)),500
 
 IN_MAX=300          # 「どれかと同じ」の値の数の上限（スライサーの1列ぶん）
+FILTERS_MAX=60      # 1回の問い合わせで当てる条件の数の上限。越えたぶんは`_ignored_filter_columns()`が名乗る（§9.614）
 SLICER_MAX=200       # スライサーが返す値の数の上限（越えたら`truncated`）
 MARK_RULES_MAX=8     # 色付けの決まりの数の上限（§9.591）
 MARK_CONDS_MAX=6     # 1つの決まりの条件の数の上限
@@ -415,14 +416,14 @@ def _safe_filters(text,columns):
  try:items=json.loads(text)
  except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);return []
  if not isinstance(items,list):return []
- allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty','in'}
+ allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty','in','not_in'}
  out=[]
- for item in items[:20]:
+ for item in items[:FILTERS_MAX]:
   if not isinstance(item,dict):continue
   col=str(item.get('column') or '').strip();op=str(item.get('op') or 'contains').strip()
   raw=item.get('value')
   # 「どれかと同じ」（`in`・§9.591 スライサー）は値の並び。字で来ても並びで来ても受け、JSONの字にそろえる。
-  value=json.dumps([str(x) for x in raw][:IN_MAX],ensure_ascii=False) if op=='in' and isinstance(raw,list) else str(raw if raw is not None else '').strip()
+  value=json.dumps([str(x) for x in raw][:IN_MAX],ensure_ascii=False) if op in ('in','not_in') and isinstance(raw,list) else str(raw if raw is not None else '').strip()
   if col in columns and op in allowed_ops:out.append({'column':col,'op':op,'value':value})
  return out
 
@@ -446,15 +447,20 @@ def _build_filter_where(filters):
     parts.append('('+' OR '.join(f'CStr({col}) LIKE ?' for _ in vals)+')')
     params += [f'{v}%' for v in vals]
   elif op=='ends':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}')
-  elif op=='in':
+  elif op in ('in','not_in'):
    # 「どれかと同じ」（§9.591 スライサー）。空の字は「空欄」（NULL も''も）。並びが読めなければ何にも当たらない。
+   # 「どれか以外」（§9.614・見出しの値の一覧で少しだけ外したとき）は**その否定**——空欄を外していなければ空欄も残す。
    try:vals=[str(x) for x in json.loads(value)][:IN_MAX] if value else []
    except (TypeError,ValueError):vals=[]
    words=[v for v in vals if v!='']
    alts=[f'CStr({col}) IN ('+','.join('?'*len(words))+')'] if words else []
    params += words
    if '' in vals:alts.append(f'({col} IS NULL OR CStr({col})=\'\')')
-   parts.append('('+' OR '.join(alts)+')' if alts else '0=1')
+   hit='('+' OR '.join(alts)+')' if alts else '0=1'
+   if op=='in':parts.append(hit)
+   elif not alts:parts.append('1=1')            # 何も外していない＝全部に当たる
+   elif '' in vals:parts.append(f'NOT {hit}')   # 空欄も外した
+   else:parts.append(f'(NOT {hit} OR {col} IS NULL)')   # NULL の NOT IN は不明になるので、空欄は残すと書く
   elif op=='empty':parts.append(f'({col} IS NULL OR CStr({col})=\'\')')
   elif op=='not_empty':parts.append(f'({col} IS NOT NULL AND CStr({col})<>\'\')')
   elif op in ('gt','gte','lt','lte'):
@@ -478,6 +484,8 @@ def _ignored_filter_columns(filter_payload,cs):
  for it in (items if isinstance(items,list) else []):
   col=str((it or {}).get('column') or '').strip() if isinstance(it,dict) else ''
   if col and col not in cs and col not in out:out.append(col)
+ # 上限を越えた条件も黙って捨てない（§9.614。前は20件目より後ろを何も言わずに落としていた）。
+ if isinstance(items,list) and len(items)>FILTERS_MAX:out.append(f'（{FILTERS_MAX}件を越えた{len(items)-FILTERS_MAX}件の条件）')
  return out
 
 
@@ -723,6 +731,8 @@ def api_table_slicer():
  try:
   k=request.args['db'];t=request.args['table'];col=str(request.args.get('column') or '').strip()
   q=request.args.get('search','').strip();cf=cfg(k)
+  # 値の一覧の中を探す字（§9.614・見出しの値の一覧）。値が多くて上限で切れる列でも、探せば出る。
+  vq=str(request.args.get('q') or '').strip()
   with connect(cf['path'],cf['role']=='readonly') as c:
    cs=cols(c,t,source=cf['path'])
    if col not in cs:return jsonify(error=f'この表に「{col}」という列はありません。',values=[]),400
@@ -730,8 +740,9 @@ def api_table_slicer():
    cond=where[len(' WHERE '):] if where else '1=1'
    x=qi(col)
    cur=c.cursor()
-   cur.execute(f'SELECT CStr({x}) v,SUM(CASE WHEN {cond} THEN 1 ELSE 0 END) n,COUNT(*) a FROM {qi(t)} '
-               f'GROUP BY 1 ORDER BY v IS NULL, NumOf(v) IS NULL, NumOf(v), v LIMIT {SLICER_MAX*2+2}',params)
+   vwhere=f' WHERE CStr({x}) LIKE ?' if vq else ''
+   cur.execute(f'SELECT CStr({x}) v,SUM(CASE WHEN {cond} THEN 1 ELSE 0 END) n,COUNT(*) a FROM {qi(t)}{vwhere} '
+               f'GROUP BY 1 ORDER BY v IS NULL, NumOf(v) IS NULL, NumOf(v), v LIMIT {SLICER_MAX*2+2}',params+([f'%{vq}%'] if vq else []))
    got={}
    order=[]
    for v,n,a in cur.fetchall():

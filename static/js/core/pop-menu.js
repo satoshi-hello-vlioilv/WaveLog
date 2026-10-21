@@ -59,14 +59,15 @@
     名乗るのは畳む側（`proxy(本物, 入口)`）。土台は畳み方を知らない。 */
  const proxies=new WeakMap();
  const shownAnchor=a=>(a&&a.getClientRects&&!a.getClientRects().length&&proxies.get(a))||a;
- function place(el,{at,anchor:a0}={}){
+ /* 既定は入口の右端にそろえる（帯の右側の入口が多い）。`align:'start'`は入口の左端（帯の左の入口・列の見出し・§9.614）。 */
+ function place(el,{at,anchor:a0,align}={}){
   const anchor=shownAnchor(a0);
   const w=el.offsetWidth,h=el.offsetHeight;
   const maxL=innerWidth-w-EDGE, maxT=innerHeight-h-EDGE;
   let left,top;
   if(anchor){
    const r=anchor.getBoundingClientRect();
-   left=r.right-w;
+   left=align==='start'?r.left:r.right-w;
    top=(r.bottom+h+8>innerHeight)?r.top-h-4:r.bottom+4;
   }else{
    left=(at&&at.x)||0; top=(at&&at.y)||0;

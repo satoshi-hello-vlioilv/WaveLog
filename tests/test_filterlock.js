@@ -18,9 +18,10 @@
 
    ここで固定するのは:
     1. scheduleモードでも印がマスタへ保存できる（403にならない）
-    2. 登録一覧の操作は「いつも適用（固定）」の1つだけ（鍵マークは無い）
+    2. 【§9.614で場所を移した】「✎ 直す」の窓の操作は「いつも適用」の1つだけ（鍵マークは無い）
     3. 画面から付けると印は**2つそろって**保存される
-    4. 外すときは確認を挟み、外すと2つそろって外れる
+    4. 外すと2つそろって外れる（窓の中のチェックを外して保存——窓そのものが確かめる手順。
+       帯の札から外すときは確認を挟む・test_filtersavedui）
     5. 控えを消して開き直しても、いつも適用の条件が自動で入る（locked付き）
     6. 利用者IDが**後から**届いても、その人の控えを空で潰さない
        （`ensureMarkMaps()`がIDごとに読み直す）
@@ -65,18 +66,21 @@ run('test_filterlock: 「いつも適用（固定）」は1つの印（§9.190�
   }
   return last;
  };
- /* 一覧が出るまで待つ。**「1件も無い」も出そろった状態**なので、
-    利用者IDが空のとき（自分だけの登録は見えない）は空のまま先へ進む。 */
- const openList=async(needItems=true)=>{
-  await page.evaluate(()=>document.querySelector('#openFilterPresets').click());
-  await page.waitForFunction(need=>{
-   const m=document.querySelector('#filterPresetModal');if(!m||m.hidden)return false;
-   const list=document.querySelector('#filterPresetList');if(!list)return false;
-   if(document.querySelectorAll('#filterPresetList .filter-preset-item').length>0)return true;
-   return !need&&/登録した条件はありません/.test(list.textContent||'');
-  },needItems,{timeout:20000});
+ /* 保存したフィルタの「✎ 直す」の窓を開く（§9.614）。保存の一覧はマスタを読み終えてから描くので、自分の行が出るまで待つ。 */
+ const openEdit=async()=>{
+  await page.evaluate(()=>WL.filters.reload());
+  await page.click('#filterSavedBtn');
+  await W.until(page,id=>!!document.querySelector(`#filterSavedMenu [data-edit="${id}"]`),pid,{ms:20000,what:'保存したフィルタの面に自分の行'});
+  await page.click(`#filterSavedMenu [data-edit="${pid}"]`);
+  await W.until(page,()=>!!document.querySelector('#appConfirmBody .flt-ed'),null,{ms:8000,what:'直す窓'});
  };
- const closeList=()=>page.evaluate(()=>{const m=document.querySelector('#filterPresetModal');if(m)m.hidden=true});
+ const setAlways=async on=>{
+  await openEdit();
+  const box=await page.$('#appConfirmBody .flt-ed-always input');
+  if(box&&(await box.isChecked())!==on)await box.click();
+  await page.click('#appConfirmOk');
+  await W.until(page,()=>document.getElementById('appConfirmModal').hidden,null,{ms:8000,what:'直す窓が閉じる'});
+ };
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
@@ -110,44 +114,28 @@ run('test_filterlock: 「いつも適用（固定）」は1つの印（§9.190�
    headers:{'Content-Type':'application/json'},
    body:JSON.stringify({user:'tester',user_id:'tester',id,isDefault:false,isLocked:false})}),pid);
 
-  /* ---- 2) 登録一覧の操作は1つだけ ---- */
-  await openList();
-  const ui=await page.evaluate(name=>{
-   const items=[...document.querySelectorAll('#filterPresetList .filter-preset-item')];
-   const mine=items.find(el=>el.querySelector('.fp-name')?.textContent.includes(name));
-   return {found:!!mine,
-           always:mine?mine.querySelectorAll('.fp-always').length:0,
-           legacy:document.querySelectorAll('#filterPresetList .fp-lock-btn,#filterPresetList .fp-default').length,
-           label:mine?(mine.querySelector('.fp-always')||{}).textContent||'':''};
-  },NAME);
-  rec('登録一覧の操作は「いつも適用（固定）」の1つだけ（鍵マークは無い）',
-      ui.found&&ui.always===1&&ui.legacy===0&&/いつも適用/.test(ui.label),JSON.stringify(ui));
+  /* ---- 2) 直す窓の操作は1つだけ ---- */
+  await openEdit();
+  const ui=await page.evaluate(()=>{
+   const b=document.getElementById('appConfirmBody');
+   return {always:b.querySelectorAll('.flt-ed-always input').length,
+           legacy:b.querySelectorAll('.fp-lock-btn,.fp-default,[data-lock]').length,
+           label:(b.querySelector('.flt-ed-always')||{}).textContent||''};
+  });
+  rec('直す窓の操作は「いつも適用」の1つだけ（鍵マークは無い）',ui.always===1&&ui.legacy===0&&/開くたびに当てる/.test(ui.label),JSON.stringify(ui));
+  await page.click('#appConfirmCancel');
 
   /* ---- 3) 画面から付けると2つそろって保存される ---- */
-  await page.evaluate(name=>{
-   const items=[...document.querySelectorAll('#filterPresetList .filter-preset-item')];
-   const mine=items.find(el=>el.querySelector('.fp-name')?.textContent.includes(name));
-   mine.querySelector('.fp-default-check').click();
-  },NAME);
+  await setAlways(true);
   const on=await waitMarks(pid,true);
   rec('画面から付けると印は2つそろって立つ',on.d&&on.l,JSON.stringify(on));
+  const applied0=await page.evaluate(()=>(S.genericFilters||[]).filter(f=>f.locked).length);
+  rec('付けたらその場で、外せない印つきの条件が入る',applied0>=1,String(applied0));
 
-  /* ---- 4) 外すときは確認を挟み、そろって外れる ---- */
-  await openList();
-  await page.evaluate(name=>{
-   const items=[...document.querySelectorAll('#filterPresetList .filter-preset-item')];
-   const mine=items.find(el=>el.querySelector('.fp-name')?.textContent.includes(name));
-   mine.querySelector('.fp-default-check').click();
-  },NAME);
-  const asked=await page.waitForFunction(()=>{
-   const m=document.querySelector('#appConfirmModal');
-   return m&&!m.hidden&&/いつも適用/.test(document.querySelector('#appConfirmBody')?.textContent||'');
-  },null,{timeout:8000}).then(()=>true).catch(()=>false);
-  rec('外すときは確認を挟む',asked);
-  if(asked)await page.evaluate(()=>document.querySelector('#appConfirmOk').click());
+  /* ---- 4) 外すと2つそろって外れる ---- */
+  await setAlways(false);
   const off=await waitMarks(pid,false);
   rec('外すと印は2つそろって外れる',!off.d&&!off.l,JSON.stringify(off));
-  await closeList();
 
   /* ---- 5) 控えを消して開き直しても自動で入る ---- */
   await page.evaluate(async id=>fetch('/api/filter-presets/marks',{method:'POST',
@@ -177,11 +165,9 @@ run('test_filterlock: 「いつも適用（固定）」は1つの印（§9.190�
      後から返るまでこの状態。§9.184）。起動のたびに消しておく。 */
   await page.addInitScript(()=>localStorage.removeItem('AccessMeasurementUserId'));
   await boot();
-  await openList(false);                          // 別のID（またはID無し）で一度動かす
-  await closeList();
+  await page.evaluate(()=>WL.filters.reload());   // 別のID（またはID無し）で一度動かす
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementUserId','tester'));
-  await openList();                               // 本人のIDが届いた
-  await closeList();
+  await page.evaluate(()=>WL.filters.reload());   // 本人のIDが届いた
   const kept=await page.evaluate(key=>{
    const all=JSON.parse(localStorage.getItem('MeasurementFilterMarksV2')||'{}');
    return {keys:Object.keys(all),other:((all.tester||{}).def||{})[key]||null};
@@ -190,23 +176,15 @@ run('test_filterlock: 「いつも適用（固定）」は1つの印（§9.190�
       !!kept.other&&kept.other.includes('999'),JSON.stringify(kept));
 
   /* ---- 7) 保存できなかったら黙らない ---- */
-  await openList();
-  await page.evaluate(name=>{
+  await page.evaluate(()=>{
    window.__markToasts=[];window.__realToast=window.showToast;window.__realFetch=window.fetch;
    window.showToast=(t,m)=>{window.__markToasts.push(String(t)+'|'+String(m||''))};
    window.fetch=(u,o)=>String(u).includes('/api/filter-presets/marks')
      ?Promise.resolve(new Response(JSON.stringify({error:'現在のモードでは、この操作は実行できません。'}),
                                    {status:403,headers:{'Content-Type':'application/json'}}))
      :window.__realFetch(u,o);
-   const items=[...document.querySelectorAll('#filterPresetList .filter-preset-item')];
-   const mine=items.find(el=>el.querySelector('.fp-name')?.textContent.includes(name));
-   if(mine)mine.querySelector('.fp-default-check').click();
-  },NAME);
-  /* いまは「いつも適用」が付いている状態なので、外す確認が出る。出たら通す。 */
-  const asked2=await page.waitForFunction(()=>{
-   const m=document.querySelector('#appConfirmModal');return m&&!m.hidden;
-  },null,{timeout:5000}).then(()=>true).catch(()=>false);
-  if(asked2)await page.evaluate(()=>document.querySelector('#appConfirmOk').click());
+  });
+  await setAlways(false);
   const noisy=await page.waitForFunction(()=>window.__markToasts&&window.__markToasts.length
     ?window.__markToasts:false,null,{timeout:10000}).then(h=>h.jsonValue()).catch(()=>[]);
   await page.evaluate(()=>{window.fetch=window.__realFetch;window.showToast=window.__realToast});

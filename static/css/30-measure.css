@@ -285,11 +285,8 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .plan-select-add{border:0;background:var(--teal);color:#fff;font-weight:var(--fw-strong);cursor:pointer;margin-left:auto}
 .plan-select-add:hover{background:var(--teal-dark)}
 .plan-select-clear{border:1px solid var(--teal);background:#fff;color:var(--teal-ink);font-weight:var(--fw-strong);cursor:pointer}
-/* フィルタ適用中の列見出し: どの列が絞り込まれているか一目で分かるよう、
-   ホバー等とは異なる暖色(アンバー)でヘッダーだけを強調する。 */
-th.col-filtered{background:#ffe6ac;color:#6b4a00}
-/* 印なので値のセルから1段だけ下げる(§9.90)。 */
-.col-filter-badge{margin-left:4px;font-size:var(--tbl-fs-mark);color:#a06b00}
+/* 絞り込み中の列見出し（§9.614）: 塗った ▼（`.col-funnel.is-on`）と同じ青緑の淡い地。琥珀は「保存と違う」にだけ使う。 */
+th.col-filtered{background:var(--teal-tint);color:var(--teal-ink)}
 /* カラムクリックソート: ホバーで操作可能なことを示し、現在のソート列は
    矢印(▲/▼)と配色で分かるようにする。フィルタ列と重なった場合も
    矢印記号自体は消えないため、どちらの状態も見失わない。 */

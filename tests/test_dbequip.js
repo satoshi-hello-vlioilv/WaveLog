@@ -66,12 +66,14 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
 
   /* ---- フィルタ条件の変数 ---- */
   await page.click('aside [data-db-key="SIKALOTNOW"]');await idle();
-  await page.evaluate(()=>document.querySelector('#filterToggle')?.click());
-  await idle();
+  await page.waitForSelector('#grid tbody tr',{timeout:20000});
+  /* 変数の挿入ボタンは列の値の一覧の「値ではなく条件で絞る」の中（§9.614）。 */
+  await page.evaluate(()=>WL.filters.openColumn('BOX設計_設備名',document.getElementById('filterSavedBtn')));
+  await page.waitForSelector('#filterColPop .flt-cp-cond',{timeout:10000});
+  await page.evaluate(()=>{document.querySelector('#filterColPop .flt-cp-cond').open=true});
   const chip=await page.evaluate(()=>{
-   const w=document.querySelector('#filterVarChips');
-   const btn=w?.querySelector('[data-var]');
-   return {exists:!!w,label:(btn?.textContent||'').trim(),token:btn?.dataset.var||'',title:btn?.title||''};
+   const btn=document.querySelector('#filterColPop [data-var]');
+   return {exists:!!btn,label:(btn?.textContent||'').trim(),token:btn?.dataset.var||'',title:btn?.title||''};
   });
   rec('変数の挿入ボタンがある',chip.exists&&chip.token==='{使用設備}',JSON.stringify(chip));
   rec('今の値をボタンの説明に出す',chip.title.includes(EQ),chip.title);
@@ -86,11 +88,10 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
   rec('変数を含まない値はそのまま',exp.plain==='ただの文字',exp.plain);
 
   // 押すと値欄へトークンが入る(手打ちさせない)
-  const typed=await page.evaluate(()=>{
-   document.querySelector('#filterVarChips [data-var]')?.click();
-   return document.querySelector('#filterValue')?.value||'';
-  });
+  await page.click('#filterColPop [data-var]');
+  const typed=await page.evaluate(()=>document.querySelector('#filterColPop .flt-cp-cond-row input')?.value||'');
   rec('ボタンを押すと値欄へ変数が入る',typed==='{使用設備}',typed);
+  await page.keyboard.press('Escape');
 
   /* ---- 使用設備を切り替えたら、その瞬間に効く（§9.285 ①） ----
      利用者の報告「フィルタの変数『使用設備』が、使用設備を切り替えても
@@ -108,20 +109,12 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
    await page.waitForFunction(()=>!document.querySelector('#grid .loading'),{timeout:20000}).catch(()=>{});
    await paint();
   };
-  /* 効いている条件は**アイコンと件数の1バッジ**に畳んだ（§9.287、利用者の指示
-     「条件式はボタンには長すぎるのでアイコンだけに。その代わりポップオーバーで
-      しっかり中身を確認できるように」）。**いまの値（`（=LS4）`）の置き場も
-     そこ**——バッジの`title`と、押して開くポップオーバーの本文の両方で読める。 */
-  const shot=()=>page.evaluate(()=>{
-   const btn=document.querySelector('#filterCondBtn');
-   const pop=document.querySelector('#filterCondMenu');
-   return {
+  /* 効いている条件は件数の右の札（§9.614）。**いまの値（`（=LS4）`）は札の字そのもの**で読める
+     （前は畳んだバッジの`title`とポップオーバーにしか無かった）。 */
+  const shot=()=>page.evaluate(()=>({
     rows:document.querySelectorAll('#grid tbody tr').length,
-    count:(document.querySelector('#filterCount')||{}).textContent||'',
-    tag:(btn&&btn.title)||'',
-    pop:pop?[...pop.querySelectorAll('.fb-cond-text')].map(x=>x.textContent).join(' / '):'',
-    eq:WL.equipment.get()};
-  });
+    tag:[...document.querySelectorAll('#filterChips .flt-chip')].map(x=>x.textContent).join(' / '),
+    eq:WL.equipment.get()}));
   await applyVarFilter();
   const before=await shot();
   rec('変数の条件が効いている（自設備の行が出る）',before.rows>0&&before.eq===EQ,JSON.stringify(before));
@@ -129,24 +122,13 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
 
   /* **設備を切り替える。読み直しは`WL.equipment.onChange`が起こす。** */
   await page.evaluate(e=>WL.equipment.set(e),OTHER);
-  await page.waitForFunction(e=>{
-   const b=document.querySelector('#filterCondBtn');
-   return !!b&&(b.title||'').includes(e);
-  },OTHER,{timeout:15000}).catch(()=>{});
+  await page.waitForFunction(e=>[...document.querySelectorAll('#filterChips .flt-chip')].some(x=>x.textContent.includes(e)),OTHER,{timeout:15000}).catch(()=>{});
   await idle();
   const after=await shot();
   rec('切り替えた瞬間に一覧が引き直される',
       after.eq===OTHER&&after.rows!==before.rows,
       JSON.stringify({前:before.rows,後:after.rows}));
   rec('絞り込みバーも新しい設備を名乗る',after.tag.includes(OTHER),after.tag);
-  /* **ポップオーバーでも読めること**（§9.287。`title`は触る画面では読めない
-     ので、それだけを見る網では「見える場所にある」ことを確かめていない）。 */
-  await page.evaluate(()=>document.querySelector('#filterCondBtn')?.click());
-  await page.waitForSelector('#filterCondMenu:not([hidden])',{timeout:5000}).catch(()=>{});
-  const popped=await shot();
-  rec('ポップオーバーでいまの値まで読める',popped.pop.includes(OTHER),popped.pop.slice(0,80));
-  await page.keyboard.press('Escape');
-
   /* 戻したら元へ戻る（片道にしない）。 */
   await page.evaluate(e=>WL.equipment.set(e),EQ);
   await page.waitForFunction(n=>document.querySelectorAll('#grid tbody tr').length===n,

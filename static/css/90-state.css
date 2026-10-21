@@ -540,7 +540,6 @@ body.sc-mode #headerContextSource{display:none}
   .lr-seg button.is-on,
   .db-presets button.active,
   .db-seg button.active,
-  .filter-adhoc-toggle.is-on,
   .hd-viewbar .db-seg button.active, .hd-viewbar .db-viewtabs button.active, .hd-viewbar .sc-mode-toggle-btn.active,
   .hd-viewbar button.active, .hd-viewbar [role="tab"].active,
   .lc-state-chip.is-on,
@@ -561,8 +560,7 @@ body.sc-mode #headerContextSource{display:none}
   .sh-seg-btn.is-on,
   .ssb-under.is-on,
   .sp-zoom-btn.is-on,
-  .status-filter-btn.active,
-  .suggest-chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
+  .status-filter-btn.active{background:var(--teal);border-color:var(--teal);color:#fff}
 
   /* 濃い面（縁なし）（9族） */
   .db-viewtabs button.active,
