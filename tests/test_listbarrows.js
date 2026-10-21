@@ -83,13 +83,15 @@ async function openScene(page, setMode, vp, listW) {
  await page.evaluate(() => {
   const cols = S.columns || [];
   const a = cols.find(c => /製造材質/.test(c)) || cols[1], b = cols.find(c => /製造調質/.test(c)) || cols[2];
-  S.genericFilters = [{ column: a, op: 'not_in', values: ['__無い値1__'], locked: true }, { column: b, op: 'not_in', values: ['__無い値2__'], locked: true }];
+  /* 札の字は利用者の画像と同じくらい長く（「…「(使用設備)(=LS4)」と一致」）。値はどの行にも無い＝一覧は絞られない。 */
+  S.genericFilters = [{ column: a, op: 'not_in', values: ['(使用設備)(=LS4)・検証用'], locked: true }, { column: b, op: 'not_in', values: ['(使用設備)(=LS4)の残コース'], locked: true }];
   WL.filters.replace([]);
  });
  await W.until(page, () => document.querySelectorAll('.flt-chip').length >= 2, null, { ms: 10000, what: '条件の札' });
  /* 利用者の画像に出ている「元データ 時刻」と読み込みの秒（遅いときだけ出る札）も出した形で測る（検証用のデータでは出ない）。 */
  await page.evaluate(() => {
   const f = document.getElementById('listFreshness'); if (f && f.hidden) { f.hidden = false; if (!f.textContent.trim()) f.innerHTML = '<span>元データ</span> <b>10/21 22:45</b> ↻'; }
+  const j = document.getElementById('listJoinChip'); if (j && !j.hidden) j.textContent = '結合 +56列';
   const l = document.getElementById('listLoadChip'); if (l && l.hidden) { l.hidden = false; l.classList.add('is-slow'); if (!l.textContent.trim()) l.textContent = '2.6秒'; }
  });
  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -125,6 +127,13 @@ H.run('test_listbarrows: スケジュールの仕掛一覧の帯は2段まで（
     const probe = await page.evaluate(() => window.__probe || '');
     if (probe) console.log('PROBE ' + probe);
     await shoot(page, `${p.key}_${v.key}`);
+    /* 案が名乗る面（▾ を押すと開く小窓）を1つずつ開いて撮る。 */
+    for (const pn of (v.key === '1728' || v.key === '1728wide') ? (p.panels || []) : []) {
+     await page.evaluate(src => { document.querySelectorAll('.px-panel').forEach(e => e.remove()); (0, eval)('(' + src + ')')(); }, typeof pn.open === 'function' ? pn.open.toString() : pn.open);
+     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+     if (SHOT) { const b = await page.evaluate(() => { const x = document.getElementById('genericFilterBar').getBoundingClientRect(); return { x: x.left, y: x.top, w: x.width }; });
+      await page.screenshot({ path: path.join(SHOT, `${p.key}_${v.key}_${pn.name}.png`), clip: { x: Math.max(0, b.x - 8), y: Math.max(0, b.y - 8), width: Math.max(b.w, 460) + 16, height: 430 } }); }
+    }
    }
   }
  }
