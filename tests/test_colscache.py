@@ -11,6 +11,8 @@ sys.path.insert(0,_ROOT)
 os.chdir(_ROOT)
 from pathlib import Path
 from backend import db_access
+# 一覧の行に添える鍵（§9.612・`__lotKey`）は列ではない（画面がロットを比べるための鍵）。名前は製品の1箇所から引く。
+from backend.lot_identity import ROW_KEY
 
 R=[]
 def rec(n,ok,d=''):
@@ -64,10 +66,11 @@ try:
             f"api={api['columns'][:4]} real={real[:4]}")
         rows=api.get('rows') or []
         if rows:
+            keys=set(rows[0].keys())-{ROW_KEY}
             rec(f'{key}: 行のキーが実スキーマの範囲に収まる',
-                set(rows[0].keys())<=set(real),
-                str(sorted(set(rows[0].keys())-set(real))[:4]))
-            rec(f'{key}: 列が欠落していない',len(rows[0])==len(real),f'{len(rows[0])}/{len(real)}')
+                keys<=set(real),
+                str(sorted(keys-set(real))[:4]))
+            rec(f'{key}: 列が欠落していない',len(keys)==len(real),f'{len(keys)}/{len(real)}')
 except Exception as e:
     rec('APIレベルの確認',False,repr(e))
 
