@@ -123,7 +123,7 @@ try:
             c.commit()
             def hits(filters):
                 w, prm = tb._build_filter_where(filters)
-                sql = 'SELECT k FROM t' + (' WHERE ' + w if w else '')
+                sql = 'SELECT k FROM t' + (' WHERE ' + ' AND '.join(w) if w else '')
                 return sorted(['∅' if r[0] is None else r[0] for r in c.execute(sql, prm).fetchall()])
             got = {
                 'not_in_A_B': hits([{'column': 'k', 'op': 'not_in', 'value': ['A', 'B']}]),

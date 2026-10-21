@@ -452,10 +452,7 @@
     /* 骨組みは index.html の`<template id="tpl-filter-bar">`（§9.522）。 */
     bar.append(WL.template('filter-bar'));
     $('#filterSavedBtn').onclick=e=>openSavedMenu(e.currentTarget);
-    bar.querySelector('#filterChange').addEventListener('click',e=>{
-      const b=e.target.closest('[data-fc]');if(!b)return;
-      ({overwrite:overwriteSaved,saveas:saveAsNew,revert:revertToSaved})[b.dataset.fc]?.();
-    });
+    $('#filterAddCond').onclick=e=>openColumnPicker(e.currentTarget);
     return bar;
   }
   const tag=(t,cls)=>`<span class="flt-tag${cls?' '+cls:''}">${esc(t)}</span>`;
@@ -470,7 +467,8 @@
     btn.title=d.sel?`保存したフィルタ「${d.sel.name}」を当てています。押すとほかの保存へ切り替え・直す・書き出しができます`
       :n?`保存したフィルタ（${n}件）から選びます。押すと一覧が開きます`:'保存したフィルタはまだありません。条件を入れて「名前を付けて保存」で作ります';
     /* 変えたことの扱い（次にすることは塗りの1つ）。選んでいない＋条件あり＝名前を付けて保存の1つだけ。 */
-    const box=$('#filterChange'),own=conditionsToSave(d.sel);
+    chipsHost();
+    const box=$('#filterChange'),own=conditionsToSave(d.sel);if(!box)return;
     box.innerHTML=d.dirty
       ?`<span class="flt-chg-word">変更あり</span><button type="button" class="flt-btn is-primary" data-fc="overwrite" title="「${esc(d.sel.name)}」をいまの条件で書き換えます">上書き保存</button>`
        +`<button type="button" class="flt-btn" data-fc="saveas" title="いまの条件を別の名前で新しく保存します（「${esc(d.sel.name)}」はそのまま）">別名で保存</button>`
@@ -479,16 +477,16 @@
     box.hidden=!box.innerHTML;
     renderChips(d);
   }
-  /* 2段目の札（件数の段の右）。並びは今の条件の順、外した条件は最後に「外した」で（押すと戻る）。
-     「＋ 条件」と「すべて外す」は**作り直さない**（狭い器では「道具 ▾」から押す——畳んだ入口は本物の要素で結ぶ・§9.612）。 */
+  /* 2段目＝いま効いている物（件数の右）。条件の札（今の条件の順・外した条件は最後に「外した」）→ すべて外す → 保存との違いの扱い。
+     器は**作り直さない**（帯の席が動かない・中の札だけ描き直す）。 */
   function chipsHost(){
     const count=$('#count');if(!count)return null;
     let h=$('#filterChips');
     if(!h){
       h=document.createElement('span');h.id='filterChips';h.className='flt-chips';h.setAttribute('role','group');h.setAttribute('aria-label','効いている条件');
       h.innerHTML='<span class="flt-chip-list"></span>'
-        +'<button type="button" class="flt-btn flt-add" id="filterAddCond" title="列を選んで、その列の値の一覧から絞り込みます">＋ 条件</button>'
-        +'<button type="button" class="flt-btn is-ghost" id="clearGenericFilters" title="条件を全部外します（いつも適用の条件は確かめてから）" hidden>すべて外す</button>';
+        +'<button type="button" class="flt-btn is-ghost" id="clearGenericFilters" title="条件を全部外します（いつも適用の条件は確かめてから）" hidden>すべて外す</button>'
+        +'<span class="flt-change" id="filterChange" role="group" aria-label="保存したフィルタから変えたこと" hidden></span>';
       h.addEventListener('click',onChipClick);
     }
     if(h.previousElementSibling!==count)count.after(h);
@@ -498,12 +496,12 @@
     const h=chipsHost();if(!h)return;
     const chip=(f,kind)=>{
       const k=filterKey(f),lock=isLockedFilter(f);
-      const mark=kind==='added'?'<em class="flt-mark">足した</em>':kind==='changed'?'<em class="flt-mark">変えた</em>':kind==='removed'?'<em class="flt-mark">外した</em>':'';
+      const mark=kind==='added'?'<em class="flt-mark">足した</em>':kind==='changed'?'<em class="flt-mark">変えた</em>':kind==='removed'?'<em class="flt-mark">↺ 外した</em>':'';
       const why=kind==='removed'?`「${d.sel.name}」にある条件を外しています。押すと戻します`
         :kind?`「${d.sel.name}」から${kind==='added'?'足した':'変えた'}条件です。押すと値を選び直せます`:'押すと値を選び直せます';
       return `<span class="flt-chip${kind?' is-'+kind:''}${lock?' is-locked':''}" data-key="${esc(k)}"${kind==='removed'?` data-restore="${esc(k)}"`:''}>`
         +`<button type="button" class="flt-chip-main" data-col="${esc(f.column)}" title="${esc(why)}">${mark}<span class="flt-chip-k">${esc(colLabel(f.column))}</span>`
-        +`<span class="flt-chip-v">${esc(condValueText(f))}</span>${lock?tag('いつも適用','is-always'):''}</button>`
+        +`<span class="flt-chip-v">${esc(condValueText(f,{max:isSet(f)&&setVals(f).join('').length>12?1:3}))}</span>${lock?tag('いつも適用','is-always'):''}</button>`
         +(kind==='removed'?'':`<button type="button" class="flt-chip-x" data-x="${esc(k)}" aria-label="${esc(condLabel(f))} を外す" title="この条件を外す">×</button>`)
         +'</span>';
     };
@@ -514,11 +512,12 @@
     $('#clearGenericFilters').hidden=!S.genericFilters.length;
   }
   function onChipClick(e){
+    const fc=e.target.closest('[data-fc]');
+    if(fc){({overwrite:overwriteSaved,saveas:saveAsNew,revert:revertToSaved})[fc.dataset.fc]?.();return}
     const x=e.target.closest('[data-x]');if(x){removeCond(x.dataset.x);return}
     const r=e.target.closest('[data-restore]');
     if(r){const d=diffState(),f=d.removed.find(z=>filterKey(z)===r.dataset.restore);if(f)restoreCond(f);return}
     const m=e.target.closest('.flt-chip-main');if(m){openColumnPop(m.dataset.col,m);return}
-    if(e.target.closest('#filterAddCond')){openColumnPicker(e.target.closest('#filterAddCond'));return}
     if(e.target.closest('#clearGenericFilters'))WL.list.clearNarrowing();
   }
 
@@ -539,19 +538,20 @@
         +`<span class="flt-saved-n" data-count="${esc(String(p.id))}"></span></button>`
         +`<button type="button" class="flt-btn flt-edit" data-edit="${esc(String(p.id))}" title="名前・条件・見える人・いつも適用を直す">✎ 直す</button></div>`;
     };
-    m.innerHTML=`<p class="flt-menu-head">保存したフィルタ<small>${filterUserId()?`${esc(filterUserId())} さんの保存と、みんなの保存。`:'利用者IDが分からないので、みんなの保存だけを出しています。'}押すと、その条件に入れ替わります（件数は保存した条件だけで絞ったとき）</small></p>`
+    m.innerHTML=`<p class="flt-menu-head" title="押すと、その条件に入れ替わります。件数は保存した条件だけで絞ったときの行の数です。">保存したフィルタ<small>${filterUserId()?`${esc(filterUserId())} さんの保存とみんなの保存`:'利用者IDが分からないので、みんなの保存だけ'}・件数は保存した条件だけで絞ったとき</small></p>`
       +`<div class="flt-saved-row${d.sel?'':' is-on'}" role="none"><button type="button" role="menuitemradio" aria-checked="${!d.sel}" class="flt-saved-pick" data-pick="">`
-      +`<i class="flt-dot" aria-hidden="true"></i><span class="flt-saved-name"><b>なし</b></span><small class="flt-saved-sum">保存したフィルタの条件を入れません（いつも適用の条件は残ります）</small><span class="flt-saved-n"></span></button></div>`
+      +`<i class="flt-dot" aria-hidden="true"></i><span class="flt-saved-name"><b>なし</b></span><small class="flt-saved-sum">保存の条件を入れない（いつも適用は残る）</small><span class="flt-saved-n"></span></button></div>`
       +(list.length?list.map(row).join(''):'<p class="flt-menu-empty">まだありません。条件を入れて「＋ 名前を付けて保存」で作ります。</p>')
       +(inScheduleList()?`<div class="flt-menu-scene"><span>置き場</span><span class="mm-seg" role="radiogroup" aria-label="条件の置き場">`
         +`<button type="button" role="radio" aria-checked="${!filterLinked()}" class="${filterLinked()?'':'is-on'}" data-link="0">スケジュール用</button>`
         +`<button type="button" role="radio" aria-checked="${filterLinked()}" class="${filterLinked()?'is-on':''}" data-link="1">仕掛一覧と同じ</button></span>`
         +'<small>「仕掛一覧と同じ」にすると、元データの仕掛一覧の保存・条件をそのまま使います</small></div>':'')
-      +'<div class="flt-menu-foot"><span>いまの条件を残すには、帯の「別名で保存」／「＋ 名前を付けて保存」</span>'
+      +`<div class="flt-menu-foot">${conditionsToSave(d.sel).length?`<button type="button" class="flt-btn" data-saveas="1" title="いまの条件（${esc(conditionsToSave(d.sel).map(condLabel).join(' ／ '))}）に名前を付けて保存します">＋ いまの条件を名前を付けて保存</button>`:'<span>条件を入れると、ここから名前を付けて保存できます</span>'}`
       +'<button type="button" class="flt-btn is-ghost" data-io="1">書き出す・取り込む…</button></div>';
     document.body.append(m);savedMenu=m;anchor.setAttribute('aria-expanded','true');
     m.addEventListener('click',e=>{
       const pick=e.target.closest('[data-pick]'),edit=e.target.closest('[data-edit]'),link=e.target.closest('[data-link]'),io=e.target.closest('[data-io]');
+      if(e.target.closest('[data-saveas]')){WL.popMenu.close();saveAsNew();return}
       if(edit){const p=presetById(edit.dataset.edit);WL.popMenu.close();if(p)openEditDialog(p);return}
       if(link){WL.popMenu.close();setFilterLinked(link.dataset.link==='1');return}
       if(io){WL.popMenu.close();openIo();return}
@@ -621,7 +621,7 @@
         +`<input type="text" aria-label="値" value="${esc(st.val)}" ${noValueOp(st.op)?'disabled placeholder="（値は要りません）"':'placeholder="値"'}>`
         +FILTER_VARS.map(v=>`<button type="button" class="flt-btn flt-var" data-var="${esc(v.token)}" title="${esc(`${v.hint}（いまは「${v.resolve()||'未設定'}」）`)}">{${esc(v.label)}}</button>`).join('')+'</div></details>'
         +(lockedHere.length?`<p class="flt-cp-lock">いつも適用の条件（${esc(lockedHere.map(f=>condValueText(f)).join('・'))}）はそのまま残ります</p>`:'')
-        +`<div class="flt-cp-foot"><button type="button" class="flt-btn is-ghost" data-act="clear">この列の条件を外す</button><span></span>`
+        +`<div class="flt-cp-foot">${mine.length?'<button type="button" class="flt-btn is-ghost" data-act="clear">この列の条件を外す</button>':''}<span></span>`
         +`<button type="button" class="flt-btn" data-act="cancel">キャンセル</button><button type="button" class="flt-btn is-primary" data-act="ok">${onPick?'決める':'絞り込む'}</button></div>`;
       /* 一部だけ選んでいるときの「すべて選ぶ」は中間の印（Excel と同じ・選んだか外したかを色でなく形で言う）。 */
       const allBox=m.querySelector('[data-all]');if(allBox)allBox.indeterminate=!allOn&&someOn;

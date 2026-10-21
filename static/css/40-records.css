@@ -313,7 +313,7 @@
 /* 題だけで言い切れる窓（短いお知らせ）は本文と頭の下の線を出さない */
 .confirm-modal-dialog.is-titleonly>header{border-bottom:0;padding-bottom:0}
 /* 広い窓（§9.614・欄を横に並べる中身。保存したフィルタを直す）。幅は中身の規格から（--w-2xl の2つ分）。 */
-.confirm-modal-dialog.is-wide{width:min(calc(var(--w-2xl) * 2.1),94vw);max-width:none}
+.confirm-modal-dialog.is-wide{width:min(calc(var(--w-2xl) * 1.55),94vw);max-width:none}
 .confirm-modal-dialog.is-titleonly #appConfirmBody{display:none}
 .confirm-modal-dialog.is-titleonly .settings-actions{margin-top:0}
 /* 決めるボタンは補助の規格（30px）。決める側は塗り（危ない操作は赤の塗り）・やめる側は白の縁 */

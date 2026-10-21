@@ -188,7 +188,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .fp-io-none{color:var(--muted)}
 .fp-io-hint,.fp-io-file-note,.fp-io-read{margin:0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
 .fp-io-pick{display:flex;align-items:center;gap:var(--gap-inline)}
-.fp-io-filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;
+.fp-io .fp-io-filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;
  height:var(--ctl-h-sm);padding:0 var(--space-3);border:1px solid var(--teal);border-radius:var(--radius-sm);
  background:var(--surface);color:var(--ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
 .fp-io-filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
@@ -196,7 +196,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .fp-io-opts{display:flex;flex-wrap:wrap;gap:var(--gap-section)}
 .fp-io-opt{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
 .fp-io-opt-label,.fp-io-opt small{color:var(--ink-2);font-size:var(--fs-sm)}
-.fp-io-opt label{display:flex;align-items:center;gap:var(--gap-tight);cursor:pointer}
+.fp-io-opt label{display:flex;align-items:center;gap:var(--gap-tight);font-weight:var(--fw-body);cursor:pointer}
 /* モーダル内オーバーレイ・ローディング（読込/削除など待ちのある操作） */
 .panel-loading{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .panel-loading[hidden]{display:none}
@@ -493,13 +493,13 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
   font-size:var(--fs-sm);font-style:normal;font-weight:var(--fw-strong);line-height:1.5}
 .flt-chip:is(.is-added,.is-changed){border-color:var(--warn-border);background:var(--look-amber-pale)}
 .flt-chip.is-removed{border-style:dashed;border-color:var(--line-strong);background:transparent;color:var(--muted)}
-.flt-chip.is-removed :is(.flt-chip-k,.flt-chip-v){color:var(--muted);font-weight:var(--fw-body);text-decoration:line-through}
+.flt-chip.is-removed :is(.flt-chip-k,.flt-chip-v){color:var(--muted);font-weight:var(--fw-body)}
 .flt-chip.is-removed .flt-mark{background:var(--surface-3);color:var(--ink-2)}
 .flt-chip.is-locked{border-color:var(--line-strong);background:var(--surface-2)}
 .flt-chip.is-mini{height:var(--ctl-h-xs);font-size:var(--fs-sm)}
 .flt-chip.is-mini>.flt-chip-v{padding-left:var(--space-2)}
 /* 保存したフィルタの面（「フィルタ ▾」）。行＝印・名前と札・保存した中身の要約・件数・✎ 直す。 */
-.flt-saved-menu{--menu-w:min(calc(var(--w-2xl) * 1.3),92vw);--menu-w-max:92vw;--menu-max-h:72vh;--menu-fs:var(--fs-sm)}
+.flt-saved-menu{--menu-w:min(var(--w-2xl),92vw);--menu-w-max:92vw;--menu-max-h:72vh;--menu-fs:var(--fs-sm)}
 /* 面の字は1種（§9.505）——見出し・項目・説明の差は太さと濃さだけ。 */
 .flt-menu-head{display:flex;flex-direction:column;gap:2px;margin:var(--space-1) var(--space-2) var(--space-2);font-size:var(--fs-sm);font-weight:var(--fw-strong)}
 .flt-menu-head>small,.flt-menu-foot>span{color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-body)}
@@ -556,7 +556,8 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .flt-cp-cond-row .flt-var{height:var(--ctl-h-xs)}
 .flt-cp-foot{display:flex;align-items:center;gap:var(--gap-tight);margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-top:1px solid var(--line-soft)}
 .flt-cp-foot>span{flex:1}
-/* 保存したフィルタを直す窓（`confirmModal({wide})`）。ラベル列は固定幅・右揃え（基準9）。 */
+/* 保存したフィルタを直す窓（`confirmModal({wide})`）。ラベル列は固定幅・右揃え（基準9）。
+   窓の中のラベルは土台の`.settings-body label`（縦積みの格子・太字）に負けないよう`.flt-ed`から当てる。 */
 .flt-ed{display:grid;grid-template-columns:calc(var(--fs) * 7) minmax(0,1fr);gap:var(--space-3) var(--space-3);align-items:center}
 .flt-ed-k{justify-self:end;color:var(--ink-2);font-weight:var(--fw-ui);text-align:right}
 .flt-ed-k.flt-ed-top{align-self:start;padding-top:var(--space-1);display:flex;flex-direction:column;align-items:flex-end}
@@ -566,7 +567,7 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .flt-ed-conds{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-1)}
 .flt-ed-row{display:flex;align-items:center;gap:var(--gap-tight);max-width:100%}
 .flt-ed-col{flex:0 0 var(--w-md)}
-.flt-ed-how{flex:0 0 var(--w-sm)}
+.flt-ed-how{flex:0 0 calc(var(--w-sm) * 1.3)}
 .flt-ed-row>select,.flt-ed-v{height:var(--ctl-h-sm);padding-block:0;font-size:var(--fs-sm);min-width:0}
 .flt-ed-val{flex:0 1 auto;display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);min-width:0}
 .flt-ed-val .flt-btn{height:var(--ctl-h-xs);font-size:var(--fs-sm)}
@@ -575,20 +576,20 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .flt-ed>.mm-seg{justify-self:start}
 .flt-ed-none{color:var(--muted);font-size:var(--fs-sm)}
 .flt-ed-add{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
-.flt-ed-always{justify-self:start;display:inline-flex;align-items:center;gap:var(--space-1);font-weight:var(--fw-body)}
-.flt-ed-always>input{flex:none;width:var(--ctl-box);height:var(--ctl-box);margin:0;accent-color:var(--teal)}
+.flt-ed .flt-ed-always{justify-self:start;display:inline-flex;align-items:center;gap:var(--space-1);font-weight:var(--fw-body)}
+.flt-ed .flt-ed-always>input{flex:none;width:var(--ctl-box);height:var(--ctl-box);margin:0;accent-color:var(--teal)}
 .flt-ed-count{grid-column:2;margin:0;color:var(--ink-2)}
 .flt-ed-count b{color:var(--ink);font-variant-numeric:tabular-nums}
 .flt-ed-danger{grid-column:2;display:flex;align-items:center;gap:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
 .flt-ed-danger>span{color:var(--danger);font-weight:var(--fw-ui)}
 .flt-ed-danger .flt-btn{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
 /* 見出しの ▼（Excel 型）。席は見出しの右端に1つ（幅の見積りが`HEAD_FUNNEL_EM`ぶん足してある・list-view.js）。
-   絞っていない列は乗せたとき・焦点が来たときだけ出す（場所は動かさない＝`visibility`）。絞っている列は塗って出す。 */
-.col-funnel{display:inline-grid;place-items:center;width:1.25em;height:1.25em;margin-left:.1em;padding:0;vertical-align:-.2em;
-  border:1px solid transparent;border-radius:var(--radius-xs);background:transparent;color:var(--ink-2);cursor:pointer;visibility:hidden}
+   いつも薄く出す（入口を探させない・§9.614 の採点）。乗せる・焦点で濃く、絞っている列は塗る。 */
+.col-funnel{display:inline-grid;place-items:center;width:1.25em;height:1.25em;margin-left:var(--space-1);padding:0;vertical-align:-.2em;
+  border:1px solid transparent;border-radius:var(--radius-xs);background:transparent;color:var(--line-strong);cursor:pointer}
 .col-funnel>svg{width:.8em;height:.8em;fill:currentColor}
-th:is(:hover,:focus-within)>.col-funnel{visibility:visible;border-color:var(--line-strong);background:var(--surface)}
+th:is(:hover,:focus-within)>.col-funnel{color:var(--ink-2);border-color:var(--line-strong);background:var(--surface)}
 .col-funnel:hover{border-color:var(--teal);color:var(--teal-ink)}
-.col-funnel.is-on{visibility:visible;border-color:var(--teal);background:var(--teal);color:var(--surface)}
+.col-funnel.is-on{border-color:var(--teal);background:var(--teal);color:var(--surface)}
 th:is(:hover,:focus-within)>.col-funnel.is-on{background:var(--teal-dark);border-color:var(--teal-dark)}
 }

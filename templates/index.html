@@ -707,8 +707,8 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
 <template id="tpl-filter-bar">
       <div class="filter-search-row">
         <!-- ---------- 一覧の絞り込み（§9.614 でゼロから作り直した・5案×3回の採点で O） ----------
-             1段目＝一覧を検索 → 保存したフィルタ（「フィルタ 名前 ▾」の1つ）→ 変えたことの扱い（変更あり｜上書き保存｜
-             別名で保存｜戻す）。条件そのものは2段目（件数の段）の札が言い、作るのは列の値の一覧（見出しの ▼・札・＋ 条件）。
+             1段目＝絞る道具（一覧を検索 → 保存したフィルタ「フィルタ 名前 ▾」→ ＋ 条件）。2段目（件数の段）＝いま効いている
+             条件の札と、保存との違いの扱い（変更あり｜上書き保存｜別名で保存｜戻す）。1段目は出し入れで動かない。
              右端は見せ方（表示列・表の見せ方・ファイル）。バッククォートを書かないこと（§9.211 ③）。 -->
         <label class="lt-search" title="この一覧の行を、どの列の字でも探します（打つとすぐ絞り込みます）">
           <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -717,7 +717,7 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
         <button id="filterSavedBtn" class="flt-saved-btn" type="button" aria-haspopup="menu" aria-expanded="false">
           <span class="flt-saved-key">フィルタ</span><b id="filterSavedName">なし</b><span id="filterSavedTags" class="flt-saved-tags"></span><i class="hd-caret" aria-hidden="true">▾</i>
         </button>
-        <span class="flt-change" id="filterChange" role="group" aria-label="保存したフィルタから変えたこと" hidden></span>
+        <button type="button" class="flt-btn flt-add" id="filterAddCond" title="列を選んで、その列の値の一覧から絞り込みます">＋ 条件</button>
         <!-- スライサー・色付けの入口はこの目印の後ろへ置かれる（list-slicer.js・list-marks.js）。 -->
         <i class="flt-tools-at" id="filterToolsAt" aria-hidden="true"></i>
         <div class="filter-search-row-actions">

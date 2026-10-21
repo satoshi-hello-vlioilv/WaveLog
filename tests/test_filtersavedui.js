@@ -90,18 +90,19 @@ async function flow(page, rec, W, shot, made) {
  const hidden0 = await page.evaluate(c => getComputedStyle(document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"] .col-funnel`)).visibility, col);
  await page.hover(`#grid thead th[data-col="${col}"]`);
  const shown = await page.evaluate(c => getComputedStyle(document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"] .col-funnel`)).visibility, col);
- rec('M1 見出しの ▼ は乗せたときだけ出る（場所は動かさない）', hidden0 === 'hidden' && shown === 'visible', `${hidden0} → ${shown}`);
+ rec('M1 見出しの ▼ は乗せる前から見えている（入口を探させない）', hidden0 === 'visible' && shown === 'visible', `${hidden0} → ${shown}`);
  await page.click(`#grid thead th[data-col="${col}"] .col-funnel`);
  await W.until(page, () => document.querySelectorAll('#filterColPop [data-v]').length > 0, null, { ms: 10000, what: '値の一覧' });
  const pop = await page.evaluate(() => [...document.querySelectorAll('#filterColPop .flt-cp-item:not(.is-all)')].map(x => ({ v: x.querySelector('[data-v]').dataset.v, n: x.querySelector('.flt-cp-n').textContent.trim(), on: x.querySelector('input').checked })));
  rec('M2 値の一覧は重複のない値と件数を出し、最初は全部選んでいる', pop.length === pc.values.length && pop.every(x => /\d/.test(x.n) && x.on), JSON.stringify(pop.slice(0, 4)));
+ rec('M5 条件の無い列の値の一覧に「この列の条件を外す」は出ない（押しても何も起きない物を置かない）', !(await page.$('#filterColPop [data-act="clear"]')));
  await shot('colpop_1728');
  await pickValues(page, W, [v1, v2]);
  await settled(page, W);
  const st1 = await page.evaluate(c => ({ chips: [...document.querySelectorAll('#filterChips .flt-chip')].map(x => x.textContent.replace(/\s+/g, ' ').trim()),
   count: document.getElementById('count').textContent.trim(), th: document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"]`).classList.contains('col-filtered'),
   on: !!document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"] .col-funnel.is-on`), conds: WL.filters.state().conds }), col);
- rec('M2 絞り込むと条件の札が1つ（列と選んだ2つの値）', st1.chips.length === 1 && st1.chips[0].includes(v1) && st1.chips[0].includes(v2), JSON.stringify(st1.chips));
+ rec('M2 絞り込むと条件の札が1つ（列と選んだ値。長ければ「ほかN」で畳み、切らない）', st1.chips.length === 1 && st1.chips[0].includes(v1) && (st1.chips[0].includes(v2) || /ほか1/.test(st1.chips[0])), JSON.stringify(st1.chips));
  rec('M2 件数は選んだ値の件数の和（n件 / 全 N件）', new RegExp('^' + want.toLocaleString() + '件\\s*/\\s*全').test(st1.count), `${st1.count}（期待 ${want}件）`);
  rec('M2 絞った列は見出しの ▼ が塗られて残る', st1.th && st1.on, JSON.stringify({ th: st1.th, on: st1.on }));
  rec('M2 条件は「値を選ぶ（in）」の1つ', st1.conds.length === 1 && st1.conds[0].op === 'in' && st1.conds[0].value.length === 2, JSON.stringify(st1.conds));
@@ -117,11 +118,15 @@ async function flow(page, rec, W, shot, made) {
  const srv = sel.selected && await savedOnServer(page, sel.selected.id);
  rec('M4 名前を付けて保存すると帯の「フィルタ」がその名前で、変更なし', !!sel.selected && !sel.dirty && await page.evaluate(() => document.getElementById('filterChange').hidden), JSON.stringify(sel));
  rec('M4 マスタに条件ごと入る', !!srv && JSON.stringify(srv.filters) === JSON.stringify(st1.conds.map(({ key: _k, ...f }) => f)), JSON.stringify(srv && srv.filters));
- /* ---- D 外した → 「外した」の札・変更あり → 札を押すと戻る ---- */
+ /* ---- D 外した → 「外した」の札・変更あり → 札を押すと戻る。1段目の席は動かない ---- */
+ const row1 = () => page.evaluate(() => ['filterSavedBtn', 'filterAddCond', 'listSlicerBtn', 'listMarkBtn'].map(id => { const e = document.getElementById(id); return e ? Math.round(e.getBoundingClientRect().left) : -1; }).join(','));
+ const r1a = await row1();
  await page.click('#filterChips .flt-chip-x');
  await settled(page, W);
  const d1 = await page.evaluate(() => ({ removed: [...document.querySelectorAll('#filterChips .flt-chip.is-removed')].map(x => x.textContent.trim()),
   word: (document.querySelector('#filterChange .flt-chg-word') || {}).textContent || '', state: WL.filters.state() }));
+ const r1b = await row1();
+ rec('D 「変更あり」が出ても1段目の押す物の席は動かない', r1a === r1b, `${r1a} → ${r1b}`);
  rec('D 外した条件は「外した」の札で残り、「変更あり」と言う', d1.removed.length === 1 && /外した/.test(d1.removed[0]) && d1.word === '変更あり' && d1.state.dirty, JSON.stringify(d1));
  await shot('dirty_removed_1728');
  await page.click('#filterChips .flt-chip.is-removed .flt-chip-main');

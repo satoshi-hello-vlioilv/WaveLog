@@ -315,11 +315,10 @@
 .sc-split-wrap .filter-search-row{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--space-1);flex-wrap:nowrap}
 .sc-split-wrap .filter-search-row>.lt-search{grid-column:1/8;max-width:none;min-width:0}
 .sc-split-wrap .filter-search-row>#filterSavedBtn{grid-column:8/13}
-.sc-split-wrap .filter-search-row>#filterChange{grid-column:1/13}
-.sc-split-wrap .filter-search-row>#listFold-tools{grid-column:1/7}
-.sc-split-wrap .filter-search-row>.filter-search-row-actions{grid-column:7/13;margin:0;display:flex}
-.sc-split-wrap .filter-search-row>.filter-search-row-actions>.fb-slot{display:flex;width:100%}
-.sc-split-wrap #listFold-view{flex:1 1 auto}
+/* 2段目の「道具 ▾」「見せ方 ▾」は中身なりの幅で左右の端へ（引き伸ばさない・§9.614 の採点）。 */
+.sc-split-wrap .filter-search-row>#listFold-tools{grid-column:1/7;justify-self:start}
+.sc-split-wrap .filter-search-row>.filter-search-row-actions{grid-column:7/13;margin:0;display:flex;justify-content:flex-end}
+.sc-split-wrap .filter-search-row>.filter-search-row-actions>.fb-slot{display:flex;justify-content:flex-end}
 .sc-split-wrap .filter-search-row>*{min-width:0;justify-content:center}
 .sc-split-wrap .filter-search-row>[hidden]{display:none}
 /* ポップアップは1本の並びを折り返す（1段目＝絞る・2段目＝道具と見せ方）。押す物は中身なり、見せ方の群は右端。 */
