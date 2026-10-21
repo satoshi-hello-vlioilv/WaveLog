@@ -43,7 +43,6 @@ function measureRows() {
   const a = boxes[i].r, b = boxes[j].r;
   if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) over.push((boxes[i].e.id || boxes[i].e.className) + '×' + (boxes[j].e.id || boxes[j].e.className));
  }
- const gr = grid.getBoundingClientRect();
  /* はみ出し＝帯の器（仕掛一覧の枠）の右端より外・器に切られて見えない物。 */
  let edge = bar.getBoundingClientRect().right;
  for (let a = bar.parentElement; a && a !== document.body; a = a.parentElement) {
@@ -55,13 +54,13 @@ function measureRows() {
  const body = grid.closest('.table-wrap,.grid-wrap') || grid.parentElement;
  const vb = body.getBoundingClientRect();
  const shown = [...grid.querySelectorAll('tbody tr')].filter(tr => { const r = tr.getBoundingClientRect(); return r.height > 4 && r.top >= vb.top && r.bottom <= Math.min(vb.bottom, window.innerHeight); }).length;
- /* 機能の入口: 見えているか・畳んだ入口（data-fold）が持つか。 */
- const has = (ids, words) => ids.some(id => { const x = document.getElementById(id); return x && vis(x); })
-   || [...document.querySelectorAll('[data-fold],[data-fold-items]')].some(x => vis(x) && words.some(w => (x.dataset.foldItems || x.title || x.getAttribute('aria-label') || x.textContent || '').includes(w)));
  /* 字で探す範囲＝帯と表の上の器（見えている字＋押す物の title／畳んだ入口の名乗り）。 */
  const host = bar.parentElement;
- const text = host.innerText.slice(0, 4000) + ' ' + [...host.querySelectorAll('[title],[data-fold-items]')].filter(e => vis(e) && e.getBoundingClientRect().bottom <= gridTop + 2)
+ const named = [...host.querySelectorAll('[title],[data-fold-items]')].filter(e => vis(e) && e.getBoundingClientRect().bottom <= gridTop + 2)
    .map(e => (e.title || '') + ' ' + (e.dataset.foldItems || '')).join(' ');
+ const text = host.innerText.slice(0, 4000) + ' ' + named;
+ /* 機能の入口: 見えているか・帯の押す物が名乗っているか（畳んだ入口・件数の札・フィルタ ▾ の title）。 */
+ const has = (ids, words) => ids.some(id => { const x = document.getElementById(id); return x && vis(x); }) || words.some(w => named.includes(w));
  const feats = {
   検索: has(['search'], ['検索']), フィルタ: has(['filterSavedBtn', 'filterPresetBtn'], ['フィルタ']), 条件を足す: has(['filterAddCond'], ['条件']),
   スライサー: has(['listSlicerBtn'], ['スライサー']), 色付け: has(['listMarkBtn'], ['色付け']), 表示列: has(['listColumnBtn'], ['表示列']),
@@ -93,9 +92,10 @@ async function openScene(page, setMode, vp, listW, noSlow) {
  await page.evaluate(n => { window.__noSlow = !!n; }, noSlow);
  /* 利用者の画像に出ている「元データ 時刻」と読み込みの秒（遅いときだけ出る札）も出した形で測る（検証用のデータでは出ない）。 */
  await page.evaluate(() => {
-  const f = document.getElementById('listFreshness'); if (f && f.hidden) { f.hidden = false; if (!f.textContent.trim()) f.innerHTML = '<span>元データ</span> <b>10/21 22:45</b> ↻'; }
+  /* 字の形は製品と同じ（list-view.js の`updateListFreshness()`・`renderLoadChip()`。日・秒・名前は詰める順で外す単位）。 */
+  const f = document.getElementById('listFreshness'); if (f && f.hidden) { f.hidden = false; if (!f.title) f.title = '元データの 10/21 22:45 時点の内容です。押すと再読込'; if (!f.textContent.trim()) f.innerHTML = '<span class="lf-key">元データ</span><b class="lf-val"><span class="lf-day">10/21 </span>22:45</b><span class="lf-act">⟳</span>'; }
   const j = document.getElementById('listJoinChip'); if (j && !j.hidden) j.textContent = '結合 +56列';
-  const l = document.getElementById('listLoadChip'); if (l && l.hidden && !window.__noSlow) { l.hidden = false; l.classList.add('is-slow'); if (!l.textContent.trim()) l.textContent = '2.6秒'; }
+  const l = document.getElementById('listLoadChip'); if (l && l.hidden && !window.__noSlow) { l.hidden = false; l.classList.add('is-slow'); if (!l.textContent.trim()) l.innerHTML = '<span class="lc-w">遅い</span><span class="lc-sec">2.6秒</span>'; if (f) f.classList.add('has-slow'); }
  });
  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
@@ -107,18 +107,49 @@ async function shoot(page, name) {
  await page.screenshot({ path: path.join(SHOT, name + '_full.png') });
 }
 
+/* 畳んだ入口の面を開き、中に本物の入口があることを見る（機能を削っていない）。開いた面も撮る。 */
+async function openPanels(page, rec, key) {
+ const PANELS = [
+  { name: 'filter', btn: '#filterSavedBtn', menu: '#filterSavedMenu', want: ['#filterSavedMenu .flt-chip', '#filterSavedMenu [data-addcond]', '#filterSavedMenu #clearGenericFilters'] },
+  { name: 'state', btn: '#listStateBtn', menu: '#listStateMenu', want: ['#listStateMenu #lotHideChip', '#listStateMenu #listJoinChip'] },
+  { name: 'tools', btn: '#listFold-all', menu: '#listFoldMenu', want: ['#listFoldMenu [data-fold-to="listSlicerBtn"]', '#listFoldMenu [data-fold-to="listMarkBtn"]', '#listFoldMenu [data-fold-to="listColumnBtn"]', '#listFoldMenu [data-fold-to="listViewBtn"]'] },
+ ];
+ for (const p of PANELS) {
+  await page.click(p.btn);
+  await W.until(page, sel => { const m = document.querySelector(sel); return m && !m.hidden && m.getClientRects().length; }, p.menu, { ms: 5000, what: p.name + ' の面' });
+  const got = await page.evaluate(ws => ws.filter(w => { const e = document.querySelector(w); return e && e.getClientRects().length; }), p.want);
+  rec(`R7 ${p.name} の面に本物の入口がある（${key}）`, got.length === p.want.length, `ある ${got.length}/${p.want.length}: ${got.join(' ')}`);
+  if (process.env.WAVELOG_SHOT) { const b = await page.evaluate(sel => { const x = document.getElementById('genericFilterBar').getBoundingClientRect(), m = document.querySelector(sel).getBoundingClientRect();
+    return { x: Math.min(x.left, m.left), y: x.top, w: Math.max(x.right, m.right) - Math.min(x.left, m.left), h: Math.max(m.bottom, x.bottom) - x.top }; }, p.menu);
+   await page.screenshot({ path: path.join(SHOT, `now_${key}_${p.name}.png`), clip: { x: Math.max(0, b.x - 8), y: Math.max(0, b.y - 8), width: b.w + 16, height: b.h + 16 } }); }
+  await page.keyboard.press('Escape');
+  await W.until(page, sel => { const m = document.querySelector(sel); return !m || m.hidden || !m.getClientRects().length; }, p.menu, { ms: 5000, what: p.name + ' の面が閉じる' });
+ }
+ /* 閉じたら貸した札は元の席（件数の隣）へ戻る。 */
+ const back = await page.evaluate(() => ({ chips: !!document.querySelector('#listToolbar .lt-state>#filterChips'), sums: !!document.querySelector('#listToolbar .lt-state>#listToolSums') }));
+ rec(`R8 面を閉じたら貸した札は帯の席へ戻る（${key}）`, back.chips && back.sums, JSON.stringify(back));
+}
 H.run('test_listbarrows: スケジュールの仕掛一覧の帯は2段まで（§9.617）', async ({ page, rec, setMode }) => {
+ const row1 = {};
  const VPS = [{ key: '1728', vp: { width: 1728, height: 1152 } }, { key: '1728wide', vp: { width: 1728, height: 1152 }, listW: '740px' },
               { key: '1536', vp: { width: 1536, height: 864 } }, { key: '1728fast', vp: { width: 1728, height: 1152 }, noSlow: true }];
  for (const v of VPS) {
   await openScene(page, setMode, v.vp, v.listW, v.noSlow);
   const m = await page.evaluate(measureRows);
   console.log('MEASURE ' + v.key + ' ' + JSON.stringify(m));
+  /* 1段目の押す物の位置（遅いかどうかで動かない・§9.397）と、件数の札の伏せ（最後の手まで使わずに入るか）。 */
+  const r1 = await page.evaluate(() => [...document.querySelectorAll('#genericFilterBar .filter-search-row>*')].filter(e => e.getClientRects().length)
+   .map(e => { const b = e.getBoundingClientRect(); return `${e.id || e.className.split(' ')[0]}:${Math.round(b.left)}-${Math.round(b.right)}`; }).join(' '));
+  row1[v.key] = r1;
+  const hide = await page.evaluate(() => { const h = document.querySelector('#listStateBtn .lt-cnt-hide'); return h ? { shown: !!h.getClientRects().length, text: h.textContent } : null; });
+  rec(`R5 伏せの数は件数の札の中に出ている（${v.key}）`, hide && hide.shown, JSON.stringify(hide));
   rec(`R1 帯は2段まで（${v.key}）`, m.rows <= 2, `${m.rows}段・帯 ${m.barH}px・表に見える行 ${m.shown}`);
   rec(`R3 機能の入口が全部ある（${v.key}）`, !m.missing.length, '無い: ' + JSON.stringify(m.missing));
   rec(`R4 押す物が重ならない・はみ出さない（${v.key}）`, !m.over.length && !m.cut.length, JSON.stringify({ 重なり: m.over, はみ出し: m.cut }));
   await shoot(page, 'now_' + v.key);
+  if (v.key === '1728' || v.key === '1728wide') await openPanels(page, rec, v.key);
  }
+ rec('R6 1段目の押す物の位置は遅いかどうかで変わらない（1728 と 1728fast）', row1['1728'] === row1['1728fast'], `${row1['1728']} ／ ${row1['1728fast']}`);
  if (process.env.WAVELOG_PROPOSALS && SHOT) {
   for (const p of require(process.env.WAVELOG_PROPOSALS)) {
    for (const v of VPS) {

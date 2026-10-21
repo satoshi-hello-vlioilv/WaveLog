@@ -160,7 +160,7 @@
    REVIEW 4-1 ④）——速いときは`hidden`で消える（作業スケジュールと同じ約束・
    §9.198）。出ている＝遅い、なので素の見た目も警告色でよい。 */
 .list-load-chip{display:inline-flex;align-items:center;
- padding:0 var(--ctl-pad-x-sm);cursor:help;font-weight:var(--fw-strong);color:var(--muted);background:var(--surface-2);
+ padding:0 var(--ctl-pad-x-sm);cursor:pointer;font-weight:var(--fw-strong);color:var(--muted);background:var(--surface-2);
  border:1px solid var(--line-soft)}
 .list-load-chip.is-slow{color:var(--warn-fg);background:var(--warn-bg);border-color:var(--warn-border)}
 /* 列に一時的な色を付けていることを常時出す(§9.239 ⑤-3・§9.175)。

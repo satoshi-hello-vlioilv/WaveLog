@@ -2708,7 +2708,7 @@
     const order=requested==='manufacturing'?['manufacturing']:[requested,'manufacturing'];
     const own=src=>g&&g.tol&&g.tol[kind]&&g.tol[kind][src];
     const parent=src=>typeof WL.measureInput.toleranceDataForSource==='function'?WL.measureInput.toleranceDataForSource(kind,src):null;
-    for(const [from,pick] of [['child',own],['parent',parent]]){
+    for(const {from,pick} of [{from:'child',pick:own},{from:'parent',pick:parent}]){
       for(const src of order){
         const data=pick(src);
         if(data&&Number.isFinite(Number(data.plus))&&Number.isFinite(Number(data.minus)))

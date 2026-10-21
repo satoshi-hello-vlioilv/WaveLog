@@ -1317,7 +1317,8 @@ function updateListFreshness(at){
  /* 元に**写していない新しい版**がある（手動のとき・§9.463）。色だけで言わない。 */
  const newer=!!(info&&info.newer);
  el.innerHTML=`<span class="lf-key">元データ</span>`
-   +`<b class="lf-val">${esc(stamp||'時刻不明')}</b>`
+   /* 日と時刻を分けて持つ（狭い器が入らないときは日を外す・§9.617。全文は`title`）。 */
+   +`<b class="lf-val">${stamp?stamp.replace(/^(\S+) /,(_,d)=>`<span class="lf-day">${esc(d)} </span>`):'時刻不明'}</b>`
    +(newer?`<span class="lf-new">新しい版あり</span>`:'')
    +`<span class="lf-act" aria-hidden="true">⟳</span>`;
  el.classList.toggle('is-unknown',!stamp);
@@ -1427,7 +1428,7 @@ function renderPager(){
  if(!page||!prev||!next)return;
  const size=effectivePageSize(),total=S.count|0;
  if(isAllRows()){
-  page.textContent='全件';
+  page.textContent='全件';page.dataset.short='全件';
   page.title='「全件」ではページに分けません。表示件数を選ぶとページめくりが使えます。';
   prev.disabled=next.disabled=true;
   prev.title=next.title='「全件」ではページに分けません';
@@ -1438,6 +1439,8 @@ function renderPager(){
  const pages=Math.max(1,Math.ceil(total/size));
  page.textContent=total?`${from.toLocaleString()}–${to.toLocaleString()}`:'0';
  page.title=`${S.page} / ${pages}ページ（1ページ ${size.toLocaleString()}件）`;
+ /* 狭い器が入らないときの短い名乗り（§9.617）。 */
+ page.dataset.short=total?`${S.page}/${pages}`:'0';
  prev.disabled=S.page<=1;
  next.disabled=S.page>=pages;
  prev.title=prev.disabled?'これが最初のページです':`前のページ（${Math.max(1,S.page-1)} / ${pages}）`;
@@ -1667,11 +1670,18 @@ function renderLoadChip(){
  const chip=document.getElementById('listLoadChip');
  const b=lastLoadBreakdown;
  if(!chip)return;
- if(!b||loadTotalMs(b)<WL.slowLoadMs){chip.hidden=true;return}
+ if(!b||loadTotalMs(b)<WL.slowLoadMs){chip.hidden=true;paintFreshJoin();return}
  chip.hidden=false;
  chip.className='list-load-chip is-slow';
- chip.textContent=`${(loadTotalMs(b)/1000).toFixed(1)}秒`;
- chip.title=loadBreakdownLines(b).join('\n');
+ /* 「遅い 2.6秒」と字で言い（色だけにしない）、押すと内訳（再読込のメニュー・§9.617）。秒は狭い器が入らないときに外す。 */
+ chip.innerHTML=`<span class="lc-w">遅い</span><span class="lc-sec">${(loadTotalMs(b)/1000).toFixed(1)}秒</span>`;
+ chip.title=loadBreakdownLines(b).join('\n')+'\n（押すと内訳）';
+ paintFreshJoin();
+}
+/* 元データと遅いの札は1つの塊（隣り合う縁を1本にする）。遅いが出ているかは札の`hidden`だけが答える。 */
+function paintFreshJoin(){
+ const f=document.getElementById('listFreshness'),c=document.getElementById('listLoadChip');
+ if(f)f.classList.toggle('has-slow',!!c&&!c.hidden);
 }
 /* データベース切替→テーブル選択は、実際に目視できる2段階で待機表示する
    (テーブル構成の確認→列情報・一覧データの取得)。以前は3段階だったが、
@@ -2894,9 +2904,8 @@ function listToolbarHtml(){
    <span class="lt-sums" id="listToolSums"></span>
    <span class="list-join-chip" id="listJoinChip" hidden></span>
    <button type="button" class="list-tint-chip" id="listTintChip" hidden></button>
-   <span class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" hidden></span>
+   <button type="button" class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" aria-haspopup="true" hidden></button>
    <!-- 右端＝見ている範囲を動かす道具（§9.591・LotScope と同じ並び）: 一覧の拡大 → ページめくり。 -->
-   <i class="lt-break" aria-hidden="true"></i>
    <span class="lt-state-right">
     <span class="lt-zoom-slot" id="listZoomSlot"></span>
     <span class="list-pager" id="listPager">
@@ -2942,6 +2951,11 @@ function ensureListToolbar(){
   /* 鮮度のチップは**押すと再読込のメニューが開く**（§9.286 ④）。
      「いつのデータか」と「取り直す」は同じ関心事なので、読む場所と
      打つ手を同じ場所に置く（§CLAUDE 画面基準 2）。 */
+  /* 遅いの札は内訳の入口（再読込のメニューの頭が内訳を持つ）。メニューは元データの札の下に出す。 */
+  bar.querySelector('#listLoadChip').onclick=()=>{
+   if(document.getElementById('reloadMenu')){closeReloadMenu();return}
+   openReloadMenu(bar.querySelector('#listFreshness'));
+  };
   bar.querySelector('#listFreshness').onclick=e=>{
    if(document.getElementById('reloadMenu')){closeReloadMenu();return}
    openReloadMenu(e.currentTarget);
@@ -3464,7 +3478,7 @@ function closeReloadMenu(){
 }
 function onReloadOutside(e){
  const menu=document.getElementById('reloadMenu');
- if(menu&&!menu.contains(e.target)&&!e.target.closest('#listFreshness'))closeReloadMenu();
+ if(menu&&!menu.contains(e.target)&&!e.target.closest('#listFreshness,#listLoadChip'))closeReloadMenu();
 }
 async function openReloadMenu(anchor){
  closeReloadMenu();

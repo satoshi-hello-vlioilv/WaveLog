@@ -1,4 +1,4 @@
-# 測定画面（116件）
+# 測定画面（117件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 分割ロットの条の基準はいつも子ロットの寸法。幅（±）は`groupTolOf()`の1箇所（子の公差→親の公差・借りたら「親」と添える）。見出しの公差の札はいまの条 | `test_splitjudge.js` | [§9.617](../../docs/decisions/9.617.md) |
 | 分割ロットの条は並びの割当で判定する。割当から作り直す材料も候補と同じ形（公差は`tolData`・子ロットごとに1行） | `test_splitjudge.js` | [§9.616](../../docs/decisions/9.616.md) |
 | 欄の判定範囲は`WL.measureInput.toleranceRangeAt(key,j)`の1箇所（印・札・完了前の確認）。条の位置を必ず渡す | `test_splitjudge.js` | [§9.616](../../docs/decisions/9.616.md) |
 | 公差の図の行は表の大きさが変わるたびに測り直す（`alignToleranceChart()`・表ごとの`ResizeObserver`）。描いた時の1回で済ませない | `test_dimboth.js` | [§9.608](../../docs/decisions/9.608.md) |

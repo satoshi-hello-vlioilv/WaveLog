@@ -464,8 +464,12 @@
     /* スケジュールの仕掛一覧で「仕掛一覧と同じ」につないでいるときは、帯で言う（面を開かないと分からない、にしない）。 */
     $('#filterSavedTags').innerHTML=(d.sel?presetTags(d.sel):'')+(inScheduleList()&&filterLinked()?tag('仕掛一覧と同じ','is-link'):'');
     btn.classList.toggle('is-on',!!d.sel);
+    /* 狭い器では条件の札を「フィルタ ▾」の面へしまうので、ボタンが条件の数と変更ありを言う（§9.617・広い器は札が言うので出さない＝CSS）。 */
+    const cnd=$('#filterSavedCnd'),nc=S.genericFilters.length;
+    if(cnd){cnd.innerHTML=(nc?`<i class="lt-dot" aria-hidden="true">·</i>条件<b class="lt-n">${nc}</b>`:'')+(d.dirty?tag('変更あり','is-dirty'):'');cnd.hidden=!cnd.innerHTML}
     btn.title=d.sel?`保存したフィルタ「${d.sel.name}」を当てています。押すとほかの保存へ切り替え・直す・書き出しができます`
       :n?`保存したフィルタ（${n}件）から選びます。押すと一覧が開きます`:'保存したフィルタはまだありません。条件を入れて「名前を付けて保存」で作ります';
+    if(btn.closest('.sc-split-wrap,.sc-float-body'))btn.title+='。効いている条件の札（× で外す・すべて外す）と「＋ 条件」もこの面にあります';
     /* 変えたことの扱い（次にすることは塗りの1つ）。選んでいない＋条件あり＝名前を付けて保存の1つだけ。 */
     chipsHost();
     const box=$('#filterChange'),own=conditionsToSave(d.sel);if(!box)return;
@@ -488,7 +492,7 @@
         +'<span class="flt-change" id="filterChange" role="group" aria-label="保存したフィルタから変えたこと" hidden></span>';
       h.addEventListener('click',onChipClick);
     }
-    if(h.previousElementSibling!==count)count.after(h);
+    if(!h.closest('.flt-saved-menu')&&h.previousElementSibling!==count)count.after(h);
     return h;
   }
   function renderChips(d){
@@ -537,6 +541,8 @@
   function openSavedMenu(anchor){
     if(savedMenu){WL.popMenu.close();return}
     const d=diffState(),list=currentPresets();
+    /* 狭い器（§9.617）: 帯の2段目に札を並べないので、本物の札の器（`#filterChips`）をこの面へ貸し、閉じたら件数の隣へ返す。 */
+    const narrow=!!anchor.closest('.sc-split-wrap,.sc-float-body');
     const m=document.createElement('div');m.className='wl-menu flt-saved-menu';m.id='filterSavedMenu';m.setAttribute('role','menu');m.setAttribute('aria-label','保存したフィルタ');
     const row=p=>{
       const on=d.sel&&String(d.sel.id)===String(p.id);
@@ -551,6 +557,8 @@
       +`<div class="flt-saved-row${d.sel?'':' is-on'}" role="none"><button type="button" role="menuitemradio" aria-checked="${!d.sel}" class="flt-saved-pick" data-pick="">`
       +`<i class="flt-dot" aria-hidden="true"></i><span class="flt-saved-name"><b>なし</b></span><small class="flt-saved-sum">保存した条件を外す（いつも適用の条件は残ります）</small><span class="flt-saved-n"></span></button></div>`
       +(list.length?list.map(row).join(''):'<p class="flt-menu-empty">保存したフィルタはまだありません。</p>')
+      +(narrow?`<div class="flt-menu-conds"><p class="flt-menu-head">効いている条件 ${S.genericFilters.length}<small>押すと値を選び直す・× で外す</small></p><div data-chips-at></div>`
+        +'<div class="flt-menu-cond-acts"><button type="button" class="flt-btn flt-add" data-addcond="1" title="列を選んで、その列の値の一覧から絞り込みます">＋ 条件</button></div></div>':'')
       +(inScheduleList()?`<div class="flt-menu-scene"><span>置き場</span><span class="mm-seg" role="radiogroup" aria-label="条件の置き場">`
         +`<button type="button" role="radio" aria-checked="${!filterLinked()}" class="${filterLinked()?'':'is-on'}" data-link="0">スケジュール用</button>`
         +`<button type="button" role="radio" aria-checked="${filterLinked()}" class="${filterLinked()?'is-on':''}" data-link="1">仕掛一覧と同じ</button></span>`
@@ -558,7 +566,10 @@
       +`<div class="flt-menu-foot">${conditionsToSave(d.sel).length?`<button type="button" class="flt-btn" data-saveas="1" title="いまの条件（${esc(conditionsToSave(d.sel).map(condLabel).join(' ／ '))}）に名前を付けて保存します">＋ いまの条件を名前を付けて保存</button>`:'<span>条件を入れると、ここから名前を付けて保存できます</span>'}`
       +'<button type="button" class="flt-btn is-ghost" data-io="1">書き出す・取り込む…</button></div>';
     document.body.append(m);savedMenu=m;anchor.setAttribute('aria-expanded','true');
+    const chips=narrow?chipsHost():null;
+    if(chips){m.querySelector('[data-chips-at]').append(chips);chips.querySelectorAll('button').forEach(b=>WL.popMenu.proxy(b,anchor))}
     m.addEventListener('click',e=>{
+      if(e.target.closest('[data-addcond]')){WL.popMenu.close();openColumnPicker(anchor);return}
       const pick=e.target.closest('[data-pick]'),edit=e.target.closest('[data-edit]'),link=e.target.closest('[data-link]'),io=e.target.closest('[data-io]');
       if(e.target.closest('[data-saveas]')){WL.popMenu.close();saveAsNew();return}
       if(edit){const p=presetById(edit.dataset.edit);WL.popMenu.close();if(p)openEditDialog(p);return}
@@ -566,7 +577,7 @@
       if(io){WL.popMenu.close();openIo();return}
       if(pick){WL.popMenu.close();const p=presetById(pick.dataset.pick);if(p)selectSaved(p);else selectNone()}
     });
-    WL.popMenu.open(m,{anchor,owner:anchor,align:'start',onClose:()=>{m.remove();savedMenu=null;anchor.setAttribute('aria-expanded','false')}});
+    WL.popMenu.open(m,{anchor,owner:anchor,align:'start',onClose:()=>{if(chips)$('#count')?.after(chips);m.remove();savedMenu=null;anchor.setAttribute('aria-expanded','false')}});
     fillSavedCounts(m,list);
   }
   /* 件数は開いてから裏で数える（1件ずつ・待たせない）。 */
