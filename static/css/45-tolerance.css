@@ -469,7 +469,8 @@ label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;o
 .flt-btn.is-danger-ghost{border-color:transparent;background:transparent;color:var(--danger);--menu-item-hover:var(--danger-bg)}
 .flt-btn.is-danger-ghost:hover{border-color:transparent}
 .flt-add{border-style:dashed;color:var(--teal-ink)}
-.flt-btn:disabled{opacity:var(--op-disabled);cursor:not-allowed}
+/* 押せない形は塗りをやめて灰の縁取り（字は灰色の段で控えめに・読める明るさ。塗りの上に灰の字を置くと溶けて読めなかった）。 */
+:is(.flt-btn,.wl-menu .flt-btn):disabled{border-color:var(--line-mid);background:var(--surface-2);color:var(--muted);font-weight:var(--fw-ui);cursor:not-allowed}
 /* 「上書き保存 ▾」は1枚の枠を割った形（主の操作1つ＋ほかの扱いは ▾ の面）。 */
 .flt-split{display:inline-flex}
 .flt-split>.flt-btn:first-child{border-start-end-radius:0;border-end-end-radius:0}

@@ -547,9 +547,9 @@
         +`<span class="flt-saved-n" data-count="${esc(String(p.id))}"></span></button>`
         +`<button type="button" class="flt-btn flt-edit" data-edit="${esc(String(p.id))}" title="名前・条件・見える人・いつも適用を直す">✎ 直す</button></div>`;
     };
-    m.innerHTML=`<p class="flt-menu-head" title="押すと、その条件に入れ替わります。件数は保存した条件だけで絞ったときの行の数です。">保存したフィルタ<small>${filterUserId()?`${esc(filterUserId())} さんの保存とみんなの保存`:'利用者IDが分からないので、みんなの保存だけ'}・件数＝その条件だけで絞った行の数</small></p>`
+    m.innerHTML=`<p class="flt-menu-head" title="押すと、その条件に入れ替わります。件数は保存した条件だけで絞ったときの行の数です。">保存したフィルタ${list.length?`<small>${filterUserId()?`${esc(filterUserId())} さんの保存とみんなの保存`:'利用者IDが分からないので、みんなの保存だけ'}・件数＝その条件だけで絞った行の数</small>`:''}</p>`
       +`<div class="flt-saved-row${d.sel?'':' is-on'}" role="none"><button type="button" role="menuitemradio" aria-checked="${!d.sel}" class="flt-saved-pick" data-pick="">`
-      +`<i class="flt-dot" aria-hidden="true"></i><span class="flt-saved-name"><b>なし</b></span><small class="flt-saved-sum">保存の条件を入れない（いつも適用は残る）</small><span class="flt-saved-n"></span></button></div>`
+      +`<i class="flt-dot" aria-hidden="true"></i><span class="flt-saved-name"><b>なし</b></span><small class="flt-saved-sum">保存した条件を外す（いつも適用の条件は残ります）</small><span class="flt-saved-n"></span></button></div>`
       +(list.length?list.map(row).join(''):'<p class="flt-menu-empty">保存したフィルタはまだありません。</p>')
       +(inScheduleList()?`<div class="flt-menu-scene"><span>置き場</span><span class="mm-seg" role="radiogroup" aria-label="条件の置き場">`
         +`<button type="button" role="radio" aria-checked="${!filterLinked()}" class="${filterLinked()?'':'is-on'}" data-link="0">スケジュール用</button>`
@@ -622,7 +622,7 @@
         +(vs.length?`<label class="flt-cp-item is-all"><input type="checkbox" data-all ${allOn?'checked':''}><span>すべて選ぶ</span><span class="flt-cp-n">${vs.reduce((a,x)=>a+(x.count||0),0).toLocaleString()}件</span></label>`:'')
         +vs.map(x=>`<label class="flt-cp-item"><input type="checkbox" data-v="${esc(x.value)}" ${checked(x.value)?'checked':''}>`
           +`<span class="flt-cp-v">${esc(valWord(x.value))}</span><button type="button" class="flt-cp-only" data-only="${esc(x.value)}" title="「${esc(valWord(x.value))}」だけを選ぶ（ほかは外す）">だけ</button>`
-          +`<span class="flt-cp-n"><i class="flt-cp-bar" style="width:${Math.max(2,Math.round((x.count||0)/max*48))}px"></i>${(x.count||0).toLocaleString()}</span></label>`).join('')
+          +`<span class="flt-cp-n"><i class="flt-cp-bar" style="width:${Math.max(4,Math.round((x.count||0)/max*48))}px"></i>${(x.count||0).toLocaleString()}</span></label>`).join('')
         +(!st.loading&&!vs.length?'<p class="flt-cp-none">当たる値がありません</p>':'')
         +(st.truncated?'<p class="flt-cp-more">値が多いので先頭だけ出しています。探す欄に打つと、その字を含む値を数え直します。</p>':'')
         +'</div>'
@@ -717,7 +717,7 @@
   /* ============================================================
      窓: 保存したフィルタを直す（名前・条件・見える人・いつも適用）
      ============================================================ */
-  const HOW_OPTIONS=[['in','値を選ぶ'],['not_in','値を除く'],...OPS];
+  const HOW_OPTIONS=[['in','値を選ぶ'],['not_in','値以外（選んだ値を除く）'],...OPS];
   async function openEditDialog(p){
     const st={name:p.name,conds:structuredClone(p.filters||[]),shared:!p.owner,always:isAlwaysOnPreset(p),err:'',del:false};
     const cols=[...new Set([...(S.columns||[]).filter(c=>!String(c).startsWith('__')),...st.conds.map(f=>f.column)])];

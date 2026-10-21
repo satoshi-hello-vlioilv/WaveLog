@@ -99,7 +99,9 @@ async function flow(page, rec, W, shot, made) {
  rec('M5 何も変えていないうちは「絞り込む」を押せない形', await page.evaluate(() => document.querySelector('#filterColPop [data-act="ok"]').disabled));
  /* 「だけ」の近道: 値に乗せて「だけ」→ その値だけを選ぶ（すべて選ぶを外す手が要らない） */
  await page.hover(`#filterColPop [data-v="${v1}"]`);
+ await shot('colpop_hover_1728');
  await page.click(`#filterColPop [data-only="${v1}"]`);
+ await shot('colpop_only_1728');
  const only = await page.evaluate(() => [...document.querySelectorAll('#filterColPop [data-v]')].filter(x => x.checked).map(x => x.dataset.v));
  rec('M2 「だけ」でその値だけが選ばれ、「絞り込む」が押せる形になる', only.length === 1 && only[0] === v1 && await page.evaluate(() => !document.querySelector('#filterColPop [data-act="ok"]').disabled), JSON.stringify(only));
  await page.click('#filterColPop [data-act="cancel"]');
