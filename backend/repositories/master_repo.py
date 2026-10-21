@@ -888,6 +888,17 @@ def filter_preset_members(raw):
   if n not in out:out.append(n)
  return out
 
+def expand_members(members,parts_by_id):
+ """組み合わせ（§9.288 ②）のメンバーを条件の並びへ展開する（§9.614）。同じ条件は1つ・消えた部品は飛ばす。"""
+ out=[];seen=set()
+ for mid in members or []:
+  for f in parts_by_id.get(int(mid),[]) or []:
+   if not isinstance(f,dict):continue
+   k=json.dumps([f.get('column'),f.get('op'),f.get('value')],ensure_ascii=False)
+   if k in seen:continue
+   seen.add(k);out.append(f)
+ return out
+
 def filter_preset_rows(c):
  ensure_filter_preset_table(c)
  cur=c.cursor()
@@ -1276,6 +1287,7 @@ MASTER_EDIT_EXEMPT_ENDPOINTS=(
  'masters.sort_preset_register','masters.sort_preset_use','masters.sort_preset_delete',
  'masters.filter_preset_register','masters.filter_preset_use','masters.filter_preset_delete',
  'masters.filter_preset_marks','masters.filter_preset_owner','masters.filter_preset_combo',
+ 'masters.filter_preset_update',
  'masters.schedule_column_master_save','masters.schedule_content_master_save')
 # 測定画面からの間接登録（§9.322、利用者の指示「測定作業時、汎用カスタム部分の
 # 選択肢でリストにないものを登録できるモード設定があった場合に測定画面から

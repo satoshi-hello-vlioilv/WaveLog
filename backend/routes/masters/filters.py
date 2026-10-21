@@ -19,6 +19,7 @@ from ...repositories.master_repo import (
  ensure_filter_preset_table,
  filter_preset_rows,
  filter_preset_members,
+ expand_members,
  ensure_filter_personal_table,
  filter_personal_marks,
  filter_personal_set,
@@ -66,10 +67,19 @@ def filter_preset_list():
    before=FILTER_PRESET_TABLE in tables(c);rows=filter_preset_rows(c)
    marks=filter_personal_marks(c,uid)
    items=[]
+   # 組み合わせ（§9.288 ②・メンバーの行）は**条件へ展開して1件の保存したフィルタとして返す**（§9.614）。
+   # 画面は「名前＋条件の並び」の1つの形だけを読む（2層の組み立てをやめた）。前の版の画面のためにメンバーも返す。
+   parts_by_id={}
+   for r in rows:
+    try:fs=json.loads(r[4] or '[]')
+    except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);fs=[]
+    parts_by_id[int(r[0])]=fs if isinstance(fs,list) else []
    for r in rows:
     try:filters=json.loads(r[4] or '[]')
     except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);filters=[]
     if not isinstance(filters,list):filters=[]
+    members=filter_preset_members(r[13] if len(r)>13 else None)
+    if members and not filters:filters=expand_members(members,parts_by_id)
     owner=(str(r[11]).strip() if len(r)>11 and r[11] else '')
     if not _preset_visible_to(owner,uid):continue
     mk=marks.get(int(r[0]),{})
@@ -82,7 +92,7 @@ def filter_preset_list():
                   # メンバー(§9.288 ②)。**空＝ふつうの「登録した条件」**、
                   # 1件以上＝「組み合わせ（プリセット）」。同じ条件のIDは
                   # 何本の組み合わせにも現れてよい＝使い回せる。
-                  'members':filter_preset_members(r[13] if len(r)>13 else None),
+                  'members':members,
                   'isDefault':bool(mk.get('isDefault')),'isLocked':bool(mk.get('isLocked'))})
   # ファイル(DB)＆テーブルごとに個別管理するため、対象DB/対象テーブルが
   # 空欄のプリセット(=以前の実装が汎用として扱っていたもの)であっても、
@@ -107,7 +117,7 @@ def filter_preset_list():
 def filter_preset_register():
  try:
   x=body({'db': any_, 'filters': any_, 'group': any_, 'members': any_, 'mode': any_, 
-          'name': any_, 'owner': any_, 'shared': any_, 'table': any_});name=x.text('name');uid=request_user_id(x)
+          'name': any_, 'owner': any_, 'shared': any_, 'table': any_, 'onExists': str});name=x.text('name');uid=request_user_id(x)
   if not name:return jsonify(error='フィルタ名を入力してください。'),400
   filters=x.get('filters') or []
   # 組み合わせ(§9.288 ②)は条件を持たない行なので、**メンバーがあれば
@@ -135,6 +145,9 @@ def filter_preset_register():
    target=normalize_equipment_name(name)
    existing=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key and str(r[3] or '')==table and str(r[4] or '')==mode and str(r[5] or '')==owner),None)
    mem_json=json.dumps(members) if members is not None else None
+   # 「名前を付けて保存」（§9.614）は**同じ名前を黙って上書きしない**。画面が名前を変えるか上書きするかを聞く。
+   if existing and x.text('onExists')=='error':
+    return jsonify(error=f'「{name}」という名前の保存したフィルタがすでにあります。',code='nameTaken',id=existing[0]),409
    if existing:
     sets='[条件JSON]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now()';args=[payload,uid]
     if has_group:sets='[条件JSON]=?,[グループ]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now()';args=[payload,group,uid]
@@ -148,6 +161,43 @@ def filter_preset_register():
    c.commit()
   return jsonify(ok=True,name=name,id=preset_id,registered=registered,owner=owner,mine=bool(owner),group=group,members=members or [],updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
  except Exception as e:return jsonify(error=f'フィルタプリセット登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
+
+@bp.post('/api/filter-presets/update')
+@api_guard('保存したフィルタを直せませんでした')
+def filter_preset_update():
+ """保存したフィルタを**IDで**直す（§9.614、利用者の指摘「登録したフィルタの再編集もできないため、使えない」）。
+ 送った項目だけ書く（name・filters）。持ち主の判定は`/owner`・`/delete`と同じ（他人の個人フィルタは直せない）。
+ 条件を書いたら`[メンバーJSON]`は空にする——前の版の画面が古い部品の組み合わせとして読まないように。"""
+ x=body({'id': any_, 'name': any_, 'filters': any_});uid=request_user_id(x)
+ pid=x.get('id')
+ if pid is None:return jsonify(error='直す保存したフィルタのIDがありません。'),400
+ requester=_filter_preset_user(x) or uid
+ has_name='name' in x;name=x.text('name')[:100]
+ filters=x.get('filters') if 'filters' in x else None
+ if has_name and not name:return jsonify(error='名前を入れてください。'),400
+ if filters is not None and (not isinstance(filters,list) or not filters):
+  return jsonify(error='条件が1つもありません（すべて外すなら、このフィルタを削除してください）。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  ensure_filter_preset_table(c);cur=c.cursor()
+  cur.execute('SELECT [所有者ID],[対象DB],[対象テーブル],[対象モード],[有効] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
+  row=cur.fetchone()
+  if row is None or (row[4] is not None and not bool(row[4])):return jsonify(error='その保存したフィルタは見つかりません（ほかの端末で消された可能性があります）。'),404
+  if not _preset_visible_to(row[0],requester):
+   return jsonify(error='この保存したフィルタは別の人のものです。持ち主だけが直せます。'),403
+  if has_name:
+   cur.execute('SELECT [プリセットID],[名称] FROM [フィルタプリセットマスタ] WHERE [対象DB]=? AND [対象テーブル]=? AND Nz([対象モード],\'\')=? AND Nz([所有者ID],\'\')=? AND ([有効] IS NULL OR [有効]<>0) AND [プリセットID]<>?',
+               [row[1] or '',row[2] or '',row[3] or '',row[0] or '',pid])
+   target=normalize_equipment_name(name)
+   if any(normalize_equipment_name(r[1])==target for r in cur.fetchall()):
+    return jsonify(error=f'「{name}」という名前の保存したフィルタがすでにあります。',code='nameTaken'),409
+  sets=[];vals=[]
+  if has_name:sets.append('[名称]=?');vals.append(name)
+  if filters is not None:sets += ['[条件JSON]=?','[メンバーJSON]=?'];vals += [json.dumps(filters,ensure_ascii=False),'[]']
+  if not sets:return jsonify(ok=True,id=pid,changed=False)
+  cur.execute(f'UPDATE [フィルタプリセットマスタ] SET {",".join(sets)},[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',vals+[uid,pid])
+  c.commit()
+ return jsonify(ok=True,id=pid,changed=True,updated_by=uid)
 
 @bp.post('/api/filter-presets/use')
 @api_guard('使用回数更新失敗')

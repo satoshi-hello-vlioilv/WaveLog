@@ -257,7 +257,7 @@ G['権限'] = ['test_modeguard', 'test_fieldreorder', 'test_strictreorder', 'tes
              # 答えていても画面が引かない状態を素通りさせる。
              'test_roleperm', 'test_roleui']
 # §9.286 ①: 登録フィルタの群・プリセット中心のバー
-G['フィルタ'] = ['test_filter', 'test_adhoc', 'test_filterio', 'test_filteruser',
+G['フィルタ'] = ['test_filtersaved', 'test_filter', 'test_adhoc', 'test_filterio', 'test_filteruser',
                  'test_filteractive', 'test_filterkeep', 'test_filterlock',
                  'test_filtergroup', 'test_listbar']
 # §9.316: 起動の状況をアプリから取れる（`/api/boot-report`＋ログ・診断の帯）。
@@ -411,6 +411,7 @@ RULES = [
     ('backend/routes/masters/bladeset_parts.py', g('刃組', 'test_crudroutes')),
     # 設備停止の内訳・時間（§9.389）。設備停止マスタの隣なので「スケジュール」も回す。
     # §9.400: 停止内容の複製（`/duplicate`）もここ。画面は設備停止の一覧から呼ぶ。
+    ('backend/routes/masters/filters.py', g('フィルタ', 'test_modeguard', 'test_crudroutes')),
     ('backend/routes/masters/stop_detail.py', g('マスタ', 'スケジュール', 'test_crudroutes', 'test_scstop')),
     ('static/js/bladeset/blade-core.js', g('刃組')),
     ('static/js/bladeset/blade-pick.js', g('刃組', 'マスタ')),
@@ -506,7 +507,7 @@ RULES = [
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
-    ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_lotident', 'test_filterbarui', 'test_colscache', 'test_colsripple',
+    ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_lotident', 'test_filterbarui', 'test_filtersaved', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     # §9.333で段（`equipment.py`/`operation.py`…）へ分けた。**末尾の`/`で丸ごと**
     # 見る——段ごとに書き分けると、段を1つ足したときだけ当たらずに全件へ倒れる。
@@ -572,7 +573,7 @@ RULES = [
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource', 'test_cleanup')),
     # 権限区分・マスタ編集の判定もここが持つ（§9.272/§9.322）ので「権限」ごと。
-    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart', 'test_boxactual')),
+    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit', 'test_strictstart', 'test_boxactual', 'test_filtersaved')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore', 'test_seedrevise')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),

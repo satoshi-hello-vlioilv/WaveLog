@@ -405,6 +405,7 @@ def api_query_join_resolve():
   return jsonify(error=str(e)),500
 
 IN_MAX=300          # 「どれかと同じ」の値の数の上限（スライサーの1列ぶん）
+FILTERS_MAX=60      # 1回の問い合わせで当てる条件の数の上限。越えたぶんは`_ignored_filter_columns()`が名乗る（§9.614）
 SLICER_MAX=200       # スライサーが返す値の数の上限（越えたら`truncated`）
 MARK_RULES_MAX=8     # 色付けの決まりの数の上限（§9.591）
 MARK_CONDS_MAX=6     # 1つの決まりの条件の数の上限
@@ -417,7 +418,7 @@ def _safe_filters(text,columns):
  if not isinstance(items,list):return []
  allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty','in'}
  out=[]
- for item in items[:20]:
+ for item in items[:FILTERS_MAX]:
   if not isinstance(item,dict):continue
   col=str(item.get('column') or '').strip();op=str(item.get('op') or 'contains').strip()
   raw=item.get('value')
@@ -478,6 +479,8 @@ def _ignored_filter_columns(filter_payload,cs):
  for it in (items if isinstance(items,list) else []):
   col=str((it or {}).get('column') or '').strip() if isinstance(it,dict) else ''
   if col and col not in cs and col not in out:out.append(col)
+ # 上限を越えた条件も黙って捨てない（§9.614。前は20件目より後ろを何も言わずに落としていた）。
+ if isinstance(items,list) and len(items)>FILTERS_MAX:out.append(f'（{FILTERS_MAX}件を越えた{len(items)-FILTERS_MAX}件の条件）')
  return out
 
 
