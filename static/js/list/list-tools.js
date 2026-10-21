@@ -203,6 +203,7 @@
     押すと面に**本物の札を貸し出す**（伏せる・スライサーと色付けの選択・結合・色）。閉じたら元の席へ返す。
     帯に出す字は件数と伏せの数だけ（どの場面でも同じ場所・§9.397）。 */
  const LEND=['listToolSums','listJoinChip','listTintChip'];
+ const LEND_NAME={listToolSums:'絞り込み',listJoinChip:'結合',listTintChip:'列の色'};
  const countShort=t=>{const m=/^([\d,]+)件 \/ 全 ([\d,]+)件$/.exec(t);return m?`${m[1]}/${m[2]}件`:t};
  function placeState(){
   const st=document.querySelector('#listToolbar .lt-state');if(!st)return;
@@ -225,13 +226,16 @@
  function openState(btn){
   if(btn.getAttribute('aria-expanded')==='true'){WL.popMenu.close();return}
   const m=document.createElement('div');m.id='listStateMenu';m.className='wl-menu lt-state-menu';m.setAttribute('role','dialog');m.setAttribute('aria-label','いま見ている一覧');
-  const count=((document.getElementById('count')||{}).textContent||'').trim();
-  m.innerHTML=`<p class="lt-fold-head">いま見ている一覧</p><div class="lt-state-row"><span>件数</span><b>${esc(count)}</b></div>`;
+  /* 件数は札と同じ字（札が短い名乗りのときは面も同じ）。行は「名前｜中身」で、名前の列は固定幅。 */
+  const cnt=btn.querySelector('.lt-cnt'),short=!!btn.closest('.fit-cnt');
+  const count=cnt?(short?cnt.dataset.short:cnt.textContent):'';
+  m.innerHTML=`<p class="lt-fold-head">いま見ている一覧</p><div class="lt-state-row"><span class="lt-state-k">件数</span><b>${esc(count||'')}</b></div>`;
   /* 本物を貸す（席には目印を残し、閉じたら同じ席へ返す）。押した本物の面はこの札の下に出す。 */
   const back=[];
   LEND.map(id=>document.getElementById(id)).filter(x=>x&&!x.hidden&&x.textContent.trim()).forEach(x=>{
    const mark=document.createComment('lend:'+x.id);x.before(mark);back.push([x,mark]);
-   const row=document.createElement('div');row.className='lt-state-lend';row.append(x);m.append(row);
+   const row=document.createElement('div');row.className='lt-state-row lt-state-lend';
+   row.innerHTML=`<span class="lt-state-k">${esc(LEND_NAME[x.id]||'')}</span>`;row.append(x);m.append(row);
    x.querySelectorAll('button').forEach(r=>WL.popMenu.proxy(r,btn));
   });
   document.body.append(m);btn.setAttribute('aria-expanded','true');
@@ -243,7 +247,7 @@
     最後の手（伏せを件数の面へ）は、どの段も入らなかったときだけ。 */
  const FIT={
   row1:{sel:'#genericFilterBar .filter-search-row',steps:['fit-short']},
-  row2:{sel:'#listToolbar .lt-state',steps:['fit-cnt','fit-tight','fit-caret','fit-page','fit-day','fit-sec','fit-key','fit-hide']},
+  row2:{sel:'#listToolbar .lt-state',steps:['fit-cnt','fit-tight','fit-page','fit-day','fit-sec','fit-key','fit-caret','fit-hide']},
  };
  const allSteps=Object.values(FIT).flatMap(x=>x.steps);
  function fitRow(row,steps){

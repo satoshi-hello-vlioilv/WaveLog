@@ -307,7 +307,7 @@
 }
 /* ---------- 狭い器（分割・ポップアップ）の帯は2段まで（§9.617、利用者の指示「スケジュールモードではボタン類だけで５段にもなり…
    ボタン類の機能は２段までの範囲で納める…階層化表示を上手に使って」） ----------
-   前（§9.612・§9.614）は 1段目が2行の格子・2段目が条件の札の行と状態の2行で、条件が2つ・遅い読み込みのとき**5段**（帯 196px）。
+   前（§9.612・§9.614）は 1段目が2行の格子・2段目が条件の札（1枚1行）と状態の行で、条件が2つ・遅い読み込みのとき**8段**（帯 292px）。
    1段目＝検索（残り全部）｜フィルタ ▾（保存・条件の数・変更あり）｜道具・見せ方 ▾、2段目＝件数の札 ▾｜元データ（遅い）｜ページ。
    条件の札は「フィルタ ▾」の面、伏せる・結合・色は件数の面（どちらも本物を貸す・list-tools.js）。**寸法は単独の一覧と同じ**
    （30px・13.5px）。入らないぶんは`fitBars()`の「詰める順」（下の`.fit-*`）。E の手順で5回作り直して決めた（S2・84点）。 */
@@ -336,8 +336,8 @@
 /* 短い名乗り（`data-short`・全文は`title`と面）。 */
 :is(.sc-split-wrap,.sc-float-body) :is(.fit-short .lt-fold .lt-tool-t,.fit-cnt .lt-cnt,.fit-page .list-pager>b)[data-short]{font-size:0}
 :is(.sc-split-wrap,.sc-float-body) :is(.fit-short .lt-fold .lt-tool-t,.fit-cnt .lt-cnt,.fit-page .list-pager>b)[data-short]::after{content:attr(data-short);font-size:var(--lt-fs)}
-/* 詰める順（`fitBars()`が入るまで1つずつ当てる）: 件数を短く → 余白 → 遅いの ▾ → ページを「1/3」→ 元データの日 → 遅いの秒 →
-   元データの字 →（最後の手）伏せ。帯の寸法の規則（45-tolerance.css・IDつき）より強く書く。 */
+/* 詰める順（`fitBars()`が入るまで1つずつ当てる）: 件数を短く → 余白 → ページを「1/3」→ 元データの日 → 遅いの秒 →
+   元データの字 → 遅いの ▾ →（最後の手）伏せ。帯の寸法の規則（45-tolerance.css・IDつき）より強く書く。 */
 #listToolbar .lt-state.fit-tight{--lt-gap:var(--gap-hair)}
 #listToolbar .lt-state.fit-tight>.lt-state-right{gap:var(--gap-hair)}
 #listToolbar .lt-state.fit-tight .list-page-btn{padding-inline:0;min-width:calc(var(--lt-h) - 10px)}
