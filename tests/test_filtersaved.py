@@ -122,7 +122,8 @@ try:
             c.executemany('INSERT INTO t VALUES (?)', [('A',), ('B',), ('C',), (None,), ('',)])
             c.commit()
             def hits(filters):
-                w, prm = tb._build_filter_where(filters)
+                # 本番と同じ道（画面から来た条件は`_safe_filters()`が整えてから WHERE になる）
+                w, prm = tb._build_filter_where(tb._safe_filters(json.dumps(filters), ['k']))
                 sql = 'SELECT k FROM t' + (' WHERE ' + ' AND '.join(w) if w else '')
                 return sorted(['∅' if r[0] is None else r[0] for r in c.execute(sql, prm).fetchall()])
             got = {
