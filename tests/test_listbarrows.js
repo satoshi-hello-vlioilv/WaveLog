@@ -49,7 +49,9 @@ function measureRows() {
  for (let a = bar.parentElement; a && a !== document.body; a = a.parentElement) {
   const ov = getComputedStyle(a).overflowX; if (ov !== 'visible') edge = Math.min(edge, a.getBoundingClientRect().right);
  }
- const cut = zone.filter(e => e.getBoundingClientRect().right > edge + 1).map(e => e.id || e.className);
+ /* 押す物ごとに、切る器（overflow が見えない祖先）の右端と比べる（行の中で切れた物も数える）。 */
+ const clipRight = e => { let r = edge; for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) { if (getComputedStyle(a).overflowX !== 'visible') r = Math.min(r, a.getBoundingClientRect().right); } return r; };
+ const cut = zone.filter(e => e.getBoundingClientRect().right > clipRight(e) + 1).map(e => e.id || e.className);
  const body = grid.closest('.table-wrap,.grid-wrap') || grid.parentElement;
  const vb = body.getBoundingClientRect();
  const shown = [...grid.querySelectorAll('tbody tr')].filter(tr => { const r = tr.getBoundingClientRect(); return r.height > 4 && r.top >= vb.top && r.bottom <= Math.min(vb.bottom, window.innerHeight); }).length;
@@ -71,7 +73,7 @@ function measureRows() {
   missing: Object.keys(feats).filter(k => !feats[k]) };
 }
 
-async function openScene(page, setMode, vp, listW) {
+async function openScene(page, setMode, vp, listW, noSlow) {
  await page.setViewportSize(vp);
  await setMode('schedule');
  await page.goto(B + '/', { waitUntil: 'domcontentloaded' }); await W.booted(page);
@@ -88,11 +90,12 @@ async function openScene(page, setMode, vp, listW) {
   WL.filters.replace([]);
  });
  await W.until(page, () => document.querySelectorAll('.flt-chip').length >= 2, null, { ms: 10000, what: '条件の札' });
+ await page.evaluate(n => { window.__noSlow = !!n; }, noSlow);
  /* 利用者の画像に出ている「元データ 時刻」と読み込みの秒（遅いときだけ出る札）も出した形で測る（検証用のデータでは出ない）。 */
  await page.evaluate(() => {
   const f = document.getElementById('listFreshness'); if (f && f.hidden) { f.hidden = false; if (!f.textContent.trim()) f.innerHTML = '<span>元データ</span> <b>10/21 22:45</b> ↻'; }
   const j = document.getElementById('listJoinChip'); if (j && !j.hidden) j.textContent = '結合 +56列';
-  const l = document.getElementById('listLoadChip'); if (l && l.hidden) { l.hidden = false; l.classList.add('is-slow'); if (!l.textContent.trim()) l.textContent = '2.6秒'; }
+  const l = document.getElementById('listLoadChip'); if (l && l.hidden && !window.__noSlow) { l.hidden = false; l.classList.add('is-slow'); if (!l.textContent.trim()) l.textContent = '2.6秒'; }
  });
  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
@@ -106,9 +109,9 @@ async function shoot(page, name) {
 
 H.run('test_listbarrows: スケジュールの仕掛一覧の帯は2段まで（§9.617）', async ({ page, rec, setMode }) => {
  const VPS = [{ key: '1728', vp: { width: 1728, height: 1152 } }, { key: '1728wide', vp: { width: 1728, height: 1152 }, listW: '740px' },
-              { key: '1536', vp: { width: 1536, height: 864 } }];
+              { key: '1536', vp: { width: 1536, height: 864 } }, { key: '1728fast', vp: { width: 1728, height: 1152 }, noSlow: true }];
  for (const v of VPS) {
-  await openScene(page, setMode, v.vp, v.listW);
+  await openScene(page, setMode, v.vp, v.listW, v.noSlow);
   const m = await page.evaluate(measureRows);
   console.log('MEASURE ' + v.key + ' ' + JSON.stringify(m));
   rec(`R1 帯は2段まで（${v.key}）`, m.rows <= 2, `${m.rows}段・帯 ${m.barH}px・表に見える行 ${m.shown}`);
@@ -119,7 +122,7 @@ H.run('test_listbarrows: スケジュールの仕掛一覧の帯は2段まで（
  if (process.env.WAVELOG_PROPOSALS && SHOT) {
   for (const p of require(process.env.WAVELOG_PROPOSALS)) {
    for (const v of VPS) {
-    await openScene(page, setMode, v.vp, v.listW);
+    await openScene(page, setMode, v.vp, v.listW, v.noSlow);
     await page.evaluate(({ css, apply }) => { const st = document.createElement('style'); st.textContent = css || ''; document.head.appendChild(st);
      if (apply) (0, eval)('(' + apply + ')')(); }, { css: p.css, apply: typeof p.apply === 'function' ? p.apply.toString() : p.apply });
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -128,7 +131,7 @@ H.run('test_listbarrows: スケジュールの仕掛一覧の帯は2段まで（
     if (probe) console.log('PROBE ' + probe);
     await shoot(page, `${p.key}_${v.key}`);
     /* 案が名乗る面（▾ を押すと開く小窓）を1つずつ開いて撮る。 */
-    for (const pn of (v.key === '1728' || v.key === '1728wide') ? (p.panels || []) : []) {
+    for (const pn of (v.key === '1728' || v.key === '1728wide' || v.key === '1728fast') ? (p.panels || []) : []) {
      await page.evaluate(src => { document.querySelectorAll('.px-panel').forEach(e => e.remove()); (0, eval)('(' + src + ')')(); }, typeof pn.open === 'function' ? pn.open.toString() : pn.open);
      await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
      if (SHOT) { const b = await page.evaluate(() => { const x = document.getElementById('genericFilterBar').getBoundingClientRect(); return { x: x.left, y: x.top, w: x.width }; });
