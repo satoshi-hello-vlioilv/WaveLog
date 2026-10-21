@@ -56,7 +56,8 @@
     ok("40 本同時でも、それぞれの答えが届く", all.every((x, i) => x.r.ok && (i % 2 ? JSON.parse(x.text).version : x.by === "shell")));
 
     // 6b) バイナリの本文（版の ZIP と同じ十数MB・§9.615）。画面はバイト列で送る（master-update.js）。
-    //     File／Blob を本文にした場合に何バイト届くかも添える（WebView2 が中身を渡さず空で届いた）。
+    //     メモリ上の File／Blob で何バイト届くかも添える（2026-10-21 の CI ではどれも全部届いた。利用者の窓で0バイトに
+    //     なったのは、ファイルを選ぶ窓で選んだディスクの File。それはここでは作れない）。
     const zipLike = new Uint8Array(16 * 1024 * 1024).map((_, i) => (i < 2 ? [0x50, 0x4b][i] : i & 255));
     const echo = async (body) => JSON.parse((await get("/__desktop/echo", { method: "POST", headers: { "Content-Type": "application/zip" }, body })).text);
     const asBytes = await echo(zipLike.buffer);

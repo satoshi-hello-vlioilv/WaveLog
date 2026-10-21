@@ -10,7 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 画面から窓へバイナリを送る本文はバイト列（`arrayBuffer()`）。`File`／`Blob`を本文にしない（WebView2 が空で渡す）。自己診断が16MBで測る | — | [§9.615](../../docs/decisions/9.615.md) |
+| 選んだファイルを送る本文はバイト列（`arrayBuffer()`）。`File`をそのまま本文にしない（窓で0バイトで届いた） | — | [§9.615](../../docs/decisions/9.615.md) |
 | 推奨の更新の札は置き場の`recommend.json`（版ごと・書くのは`set_recommend()`）。窓の読む`release.json`に入れない | `test_appupdate.py` | [§9.609](../../docs/decisions/9.609.md) |
 | 推奨の更新を知らせるかは`app_update.notice_of()`の1箇所（配る版に札・この PC が違う版・開発の作業ツリーでは出さない） | `test_appupdate.py`・`test_releaseui.js` | [§9.609](../../docs/decisions/9.609.md) |
 | 画面の「開き直して更新」は窓の`/__desktop/restart`（`launch::restart()`・いまの exe を`--after-pid`で起こし直す） | `test_releaseui.js` | [§9.609](../../docs/decisions/9.609.md) |

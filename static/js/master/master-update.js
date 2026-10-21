@@ -243,8 +243,8 @@
   busy={name:file.name,size:file.size,stage:'send',mine:true};
   showBusy();watch();
   try{
-   // 本文はバイト列で渡す。デスクトップ版の窓（WebView2）はファイル（File/Blob）を本文にすると中身を渡さず、
-   // サーバーには空で届く（「ZIP ファイルが届いていません」・§9.615）。読むのは選んだ1つの ZIP だけ（十数MB）。
+   // 本文はバイト列で渡す。デスクトップ版の窓で、選んだファイル（ディスクを指す File）をそのまま本文にすると
+   // サーバーに0バイトで届いた（「ZIP ファイルが届いていません」・§9.615）。読むのは選んだ1つの ZIP だけ（十数MB）。
    const bytes=await file.arrayBuffer();
    const r=await fetch('/api/app/update/publish?name='+encodeURIComponent(file.name),
      {method:'POST',headers:{'Content-Type':'application/zip'},body:bytes});
