@@ -110,7 +110,7 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
                    'test_choicelinkui']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 # §9.319-C: 紙の異常位置判定とピッチ判定（塊を分ける・文字を本文並みに）
-G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
+G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_splitjudge', 'test_scsplit',
                  'test_rpdefect',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
                  'test_roll', 'test_mmfold',
@@ -215,7 +215,7 @@ G['マスタ'] = ['test_master', 'test_mmshell', 'test_mmpane', 'test_mmlist', '
                'test_equse',
                # §9.588: 設備停止の挿入条件の盤（設備停止マスタの下の全幅の節）
                'test_stoprulemaster']
-G['測定'] = ['test_course', 'test_tolscale', 'test_lateraljudge', 'test_entermove', 'test_qualitynote', 'test_dimboth', 'test_defect', 'test_share', 'test_flows',
+G['測定'] = ['test_course', 'test_tolscale', 'test_lateraljudge', 'test_entermove', 'test_qualitynote', 'test_dimboth', 'test_defect', 'test_share', 'test_recshareui', 'test_flows',
              # §9.392: 設備ごとに使う入力内容（選択肢とチップから伏せる）
              'test_measitems',
              # §9.286 ⑥: 未入力・未選択の配色と、増やした色
@@ -242,7 +242,7 @@ G['起動'] = ['test_boot', 'test_bootui', 'test_splashorder', 'test_planstrip',
              'test_shortcut',
              # §9.544: デスクトップ版の窓口（標準入出力・ポートなし）。起動の背景処理を共有する
              'test_sidecar']
-G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
+G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_recshare', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
              # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）

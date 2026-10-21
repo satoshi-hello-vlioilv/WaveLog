@@ -1205,7 +1205,7 @@ function judgeInput(el,key,value,index){
   return;
  }
  const raw=String(el.value??'').trim(),num=Number(raw);
- const tol=WL.measureInput.toleranceDetail(key==='thickness'?'thickness':'width',index,WL.measureItem.typeOfKey(key))?.range||null;
+ const tol=WL.measureInput.toleranceRangeAt(key,index);
  if(raw!==''&&Number.isFinite(num)){el.classList.add('complete');if(tol&&(num<tol[0]||num>tol[1]))el.classList.add('ng')}
  const wrap=el.closest('.strip-input-wrap.is-judged');
  if(!wrap)return;

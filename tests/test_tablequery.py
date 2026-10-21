@@ -30,6 +30,8 @@ sys.path.insert(0, str(ROOT))
 import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
 import app as flask_app          # noqa: E402
 from backend import db_access    # noqa: E402
+# 一覧の行に添える鍵（§9.612・`__lotKey`）は列ではない（画面がロットを比べるための鍵）。名前は製品の1箇所から引く。
+from backend.lot_identity import ROW_KEY  # noqa: E402
 
 R = []
 def rec(name, ok, detail=''):
@@ -62,7 +64,9 @@ def main():
     st, d = get(table='仕掛', page=1, page_size=5, include_hidden=1, columns=lot)
     rec('columns= で指定した列だけが返る', st == 200 and d['columns'] == [lot],
         json.dumps(d.get('columns'), ensure_ascii=False))
+    # 行に添える鍵（ROW_KEY）は列ではないので数えない。
     keys = set().union(*[set(r) for r in d['rows']]) if d.get('rows') else set()
+    keys.discard(ROW_KEY)
     rec('行の中身も指定した列だけになる（量が減るのが目的）', keys == {lot},
         json.dumps(sorted(keys), ensure_ascii=False)[:120])
     rec('件数は絞られない（表示する列の話でしかない）', d.get('count') == base.get('count'),
@@ -151,7 +155,7 @@ def main():
             f'{len(cs)}列' + (f' / 重複 {dupes[:4]}' if dupes else ''))
         # 行のキーは列の部分集合であること（列だけ増えていないことの裏取り）。
         rows = (d or {}).get('rows') or []
-        extra = sorted({k for r in rows for k in r} - set(cs))
+        extra = sorted({k for r in rows for k in r} - set(cs) - {ROW_KEY})
         rec(f'行のキーが列に無い、が起きない（{label}）', not extra, str(extra[:4]))
 
     # 重複した列名を渡したら1つに畳むこと（この関数が実際の防波堤）。

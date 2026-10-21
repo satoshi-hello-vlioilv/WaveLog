@@ -181,18 +181,23 @@ function outOfToleranceOf(m){
   if(excluded.has(def.name))return;
   const hits=[];let judged=false,filledAny=false;
   def.keys.forEach(key=>{
-   let range=null;
-   /* **項目名を渡す。** 渡さないと画面でいま選ばれている項目の公差が
-      全項目に当たる（ラッパーが`#measureType`を見るため）。 */
-   try{range=WL.measureInput.toleranceDetail(key==='thickness'?'thickness':'width',0,def.name)?.range||null}catch(e){WL.quiet.note('公差を引けない（範囲なしとして数える）',e)}
-   if(range)judged=true;
+   const n=key==='thickness'?3:c.horizontal;
+   /* **条の位置ごとに引く**（§9.616）。分割ロットは条ごとに子ロットの公差が違うので、位置0の1つで
+      全部の条を数えると1条目の子ロットで判定してしまう。範囲は丈によらないので条ごとに1回だけ引く。
+      **項目名も渡す**——渡さないと画面でいま選ばれている項目の公差が全項目に当たる。 */
+   const ranges=Array.from({length:n},(_,j)=>{
+    try{return WL.measureInput.toleranceRangeAt(key,j,def.name)}
+    catch(e){WL.quiet.note('公差を引けない（範囲なしとして数える）',e);return null}
+   });
+   if(ranges.some(Boolean))judged=true;
    const rows=(m.measurements||{})[key]||[];
    for(let li=0;li<c.lengthSlots;li++){
-    const row=rows[li]||[],n=key==='thickness'?3:c.horizontal;
+    const row=rows[li]||[];
     for(let j=0;j<n;j++){
      const raw=String(row[j]??'').trim();
      if(raw==='')continue;
      filledAny=true;
+     const range=ranges[j];
      if(!range)continue;
      const num=Number(raw);
      if(!Number.isFinite(num))continue;

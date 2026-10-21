@@ -673,7 +673,7 @@
     const w=m.basic?.mfgWidth;
     const width=(w===undefined||w===null||w==='')?'':String(w);
     return [{lot:lot||'（このロット）',count,width,tol:'',
-             base:{width:w},tolObj:null,missing:false,self:true}];
+             base:{width:w},tolData:null,missing:false,self:true}];
   }
   /* 図だけを出す（編集面は出さない）。**器は`renderSplit()`と同じ関数**を
      通す——別の組み立てを作ると、分割ありと無しで図の形が変わる。 */
@@ -695,15 +695,25 @@
     const seq=Array.from({length:total},()=>rows[0].lot);
     renderSplitVisual(rows,seq,splitLotColorMap(rows));
   }
+  /* 材料は候補（`buildSplitSources()`）と**同じ形**で返す——公差は`tolData`。以前はここだけ`tolObj`と
+     別の名前で持っており、`applySplit()`が読む`tolData`が空だった。一時保存した記録を開き直す・
+     ページを読み直すと控えが無いのでこの道を通り、**並べ替えた瞬間に全部の条の公差が消えて
+     親ロットの幅（分割前の幅）で判定されていた**（§9.616、利用者の報告。実測 2条中2条が食い違い）。
+     割当は「連続した区間」なので、並べ替えたあとは同じ子ロットが2区間に分かれる（A,B,A）。材料は
+     **子ロットごとに1行**へ束ねる（候補と同じ。区間のまま返すと同じロットが候補に2回並ぶ）。 */
   function rowsFromAppliedGroups(){
     const groups=S.measure?.settings?.splitGroups;
     if(!Array.isArray(groups)||!groups.length)return [];
-    return groups.map(g=>({
-      lot:String(g.lot||''),count:Math.max(1,Number(g.count)||1),
-      width:g.base&&g.base.width!==undefined&&g.base.width!==null?String(g.base.width):'',
-      tol:splitTolText(g),base:g.base||{},tolObj:g.tol||null,
-      missing:!!g.missing,fromApplied:true,
-    }));
+    const byLot=new Map();
+    groups.forEach(g=>{
+      const lot=String(g.lot||''),count=Math.max(1,Number(g.count)||1),had=byLot.get(lot);
+      if(had){had.count+=count;return}
+      byLot.set(lot,{lot,count,
+        width:g.base&&g.base.width!==undefined&&g.base.width!==null?String(g.base.width):'',
+        tol:splitTolText(g),base:g.base||{},tolData:g.tol||null,
+        missing:!!g.missing,fromApplied:true});
+    });
+    return [...byLot.values()];
   }
   /* 帯の`title`に出す公差の文。確定済みの割当が持つ公差から組む
      （候補側の`tol`と同じ書式にする——同じ場所に出るので形が違うと別物に見える）。 */

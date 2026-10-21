@@ -571,9 +571,16 @@ function bindMeasureInputsCore(){
   el.onblur=event=>{if(previousBlur)previousBlur.call(el,event);const formatted=WL.measureRound.settle(el.dataset.mkey,el.value);if(el.value!==formatted){el.value=formatted;S.measure.measurements[el.dataset.mkey][+el.dataset.i][+el.dataset.j]=formatted;WL.measureView.judgeInput(el,el.dataset.mkey,Number(formatted),+el.dataset.j);renderStats();markDirty()}}
  });
 }
+/* 1つの欄（測定値の鍵×条の位置）の判定範囲（§9.616）。**答えはここ1箇所**——欄の印（`judgeInput`）・描くときの札
+   （`toleranceInfoFor`）・完了前の確認（`outOfToleranceOf`）が同じ答えを読む。条の位置を必ず渡す: 分割ロットは条ごとに
+   子ロットの公差が違い、以前は完了前の確認だけが位置を0で固定して**全部の条を1条目の子ロットで数えていた**
+   （並べ替えて1条目が替わると、NG の件数がまるごと入れ替わった）。項目名は省くと欄の鍵から引く。 */
+function toleranceRangeAt(key,index,typeName){
+ return toleranceDetail(key==='thickness'?'thickness':'width',index,typeName||WL.measureItem.typeOfKey(key))?.range||null;
+}
 function toleranceInfoFor(key,index,value){
  if(key==='flatness'){const v=String(value||'').trim();return v===''?{tol:null,state:'wait',pos:50}:{tol:null,state:v==='〇'?'ok':'ng',pos:50}}
- const tol=toleranceDetail(key==='thickness'?'thickness':'width',index,WL.measureItem.typeOfKey(key))?.range||null,num=Number(value);if(!tol||!Number.isFinite(num))return{tol,state:'wait',pos:50};const low=tol[0],high=tol[1],span=Math.max(Math.abs(high-low),.000001),viewLow=low-span*.25,viewHigh=high+span*.25,pos=Math.max(0,Math.min(100,(viewHigh-num)/(viewHigh-viewLow)*100));return{tol,state:num<low||num>high?'ng':'ok',pos}}
+ const tol=toleranceRangeAt(key,index),num=Number(value);if(!tol||!Number.isFinite(num))return{tol,state:'wait',pos:50};const low=tol[0],high=tol[1],span=Math.max(Math.abs(high-low),.000001),viewLow=low-span*.25,viewHigh=high+span*.25,pos=Math.max(0,Math.min(100,(viewHigh-num)/(viewHigh-viewLow)*100));return{tol,state:num<low||num>high?'ng':'ok',pos}}
 /* 印は**公差外だけ**（§9.137の②の約束「セル背景で公差内の位置を示す案は
    却下。公差外の赤だけ」）。全セルに「OK」を添えると、24条×5丈で120個の
    OKが並んで**読むべき赤が埋もれる**うえ、印は入力欄の上に重なるので
@@ -1668,7 +1675,7 @@ Object.assign(window.WL,{toleranceAxisView});
 WL.measureInput={
  renderMeasureGrid,renderStats,applyInputProtection,updateReceiveState,
  deviceParse,activeMeasureKey,
- toleranceDetail,toleranceFor,compactToleranceData,compactToleranceFacts,
+ toleranceDetail,toleranceFor,toleranceRangeAt,compactToleranceData,compactToleranceFacts,
  configuredToleranceSource,orderToleranceAvailability,toleranceDataForSource,
  /* 網が「受信中」「測定器から1点入った」を作るための口（§9.359）。
     画面の中だけでは足りない——網が内部を掘らずに同じ道を通れるようにする。 */

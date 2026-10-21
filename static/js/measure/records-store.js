@@ -622,11 +622,27 @@ async function resumeStoredMeasureCore(saved,row=null){S.current=row||saved.sour
    →仕掛等の参照データ取得(Access経由・低速)という実際の所要時間の境目に
    合わせて、ここで待機表示をステップ2へ切り替える(呼び出し元のopenMeasurement
    がステップ1を出している)。 */
+/* このロットのいちばん新しい記録（§9.616）。**記録IDはロットから決まる**（`lotKey()`）ので、在るのに空の記録を作ると
+   同じIDで上書きになる——以前は手元の未完了しか探さず、**別の PC で完了した記録を空の「編集中」で共有へ送り、
+   完了がまるごと消えていた**（この PC で完了した記録も同じ）。手元（未完了→同じID）と共有の1件を比べ、新しいほうを返す
+   （共有が新しければこの端末へ取り込む＝一覧から開くときと同じ道）。共有が読めなければ手元の分で決める。 */
+async function latestRecordFor(row){
+ const draft=await findDraftForRow(row);
+ const id=draft?.id||WL.base.lotKey(row);
+ const mine=draft||await reliableGet(id).catch(e=>{WL.quiet.note('この端末の記録を読めない（無いものとして続ける）',e);return null});
+ let head=null;
+ try{head=(await api('/api/measurement/backup/get?id='+encodeURIComponent(id)))?.item||null}
+ catch(e){WL.quiet.note('共有の記録を確かめられない（この端末の分で開く）',e)}
+ if(head&&(!mine||remoteIsNewer(head,mine)))return importRemoteRecord(id,head);
+ return mine||null;
+}
 async function openMeasurementCore(row){
- if(!row)throw Error('対象データがありません');S.current=row;const found=await findDraftForRow(row);
+ if(!row)throw Error('対象データがありません');S.current=row;const found=await latestRecordFor(row);
  const lot=pick(row,'lotNo')||'選択ロット';
  updateWaiting(`ロット ${lot} の仕掛情報を取得中`,'仕掛・公差・品質等級・品質情報を読み込んでいます',2);
  await WL.base.nextPaint();
+ /* 完了した記録は一覧から開くときと同じく、再編集するかを先に聞く（断れば何も書かない）。 */
+ if(found&&found.status==='完了'&&!await unlockCompletedForEdit(found))return;
  if(found){await resumeStoredMeasure(found,row);showToast(found.status==='測定値NG'?'NG登録データを直接再開しました':'編集中データを直接再開しました',`${found.basic?.lotNo||pick(row,'lotNo')} / ${found.updatedAt?new Date(found.updatedAt).toLocaleString('ja-JP'):''}`);return}
  const m=WL.measureView.blankMeasure(row);m.id=WL.base.lotKey(row)||crypto.randomUUID();S.measure=WL.measureView.ensureMeasureShape(m);WL.measureView.renderMeasurement();$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(true);
  const first=WL.measureView.collect();await reliablePut(first);
@@ -940,7 +956,8 @@ async function mergedRecords(){
  try{
   const r=await api('/api/measurement/backup/summary');
   remote=(r&&r.items)||[];
- }catch(e){WL.quiet.note('共有が読めなくても端末内のぶんは出す',e)}
+  recordListState.shared=typeof r?.shared==='boolean'?r.shared:null;
+ }catch(e){recordListState.shared=null;WL.quiet.note('共有が読めなくても端末内のぶんは出す',e)}
  if(!remote.length)return local;
  const byId=new Map(local.map(x=>[x.id,x]));
  for(const row of remote){
@@ -949,6 +966,10 @@ async function mergedRecords(){
    // 共有側のほうが新しければ、一覧では共有側の更新日時と状態で見せる
    // (中身は開くときに取り込む)。
    if(remoteIsNewer(row,mine)){
+    /* **状態も共有側で見せる**（§9.616）。以前は印と時刻だけ足して状態は手元のまま——別の PC で完了した記録が
+       この PC では「編集中」の側に入り、完了の一覧に出なかった。一覧の中の写しだけを変える（開くときは
+       取り込んでから・`resumeRecordFromList`。手元の保存は書き換えない）。 */
+    if(row.status)mine.status=row.status;
     mine.remoteNewer=true;mine.remoteUpdatedAt=row.record_updated_at||row.updated_at;
     mine.remoteEquipment=row.equipment||'';
     mine.remoteUpdatedBy=row.updated_by||'';mine.remoteUpdatedPc=row.updated_pc||'';
@@ -984,9 +1005,8 @@ async function mergedRecords(){
 }
 /* 共有DBにしか無い1件を、この端末へ取り込む。取り込んでから開く
    (取り込まないと編集の保存先が無い)。 */
-async function importRemoteRecord(id){
- const r=await api('/api/measurement/backup/get?id='+encodeURIComponent(id));
- const item=r&&r.item;
+async function importRemoteRecord(id,got){
+ const item=got||(await api('/api/measurement/backup/get?id='+encodeURIComponent(id)))?.item;
  if(!item)throw Error('共有データに見つかりませんでした。');
  if(item.codec!=='json-full-v32')
   throw Error(`この形式(${item.codec||'不明'})は取り込めません。`);
@@ -999,6 +1019,13 @@ window.importRemoteRecord=importRemoteRecord;
 async function refreshRecordList(){
  recordListState.items=await mergedRecords();
  renderRecordListRows();
+}
+/* 一覧に何が入っているか（§9.616）。**置き場が未設定ならこの端末の分だけ**——「共有」と名乗ると、
+   他の PC の完了が無いのを「同期されていない」と読むことになる。直す場所も一緒に言う。分からなければ言い切らない。 */
+function recordSourceText(shared){
+ if(shared===true)return 'この端末と共有の測定データ（全設備・他の PC の分も）';
+ if(shared===false)return 'この端末で測ったぶんだけ（他の PC の分は 共通設定 > 置き場 >「測定データ（共有）」を決めると届きます）';
+ return 'この端末の測定データ（共有を読めませんでした）';
 }
 async function openRecords(status){
  const gated=await WL.measureHooks.through('openRecords',status);  // 閲覧モードは関門が別の一覧を開く（§9.352）
@@ -1019,7 +1046,7 @@ async function openRecords(status){
  recordListState.items=allRecords;recordListState.query='';recordListState.sort='updated-desc';
  // 未同期件数の表示にも今読んだ配列を渡す(渡さないと全件読みがもう1回走る)
  updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI(allRecords);
- WL.base.setHeaderContext('測定データ一覧','この端末と共有DBの測定データ');
+ WL.base.setHeaderContext('測定データ一覧',recordSourceText(recordListState.shared));
  const search=$('#recordSearch'),sort=$('#recordSort');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}
  bindRecordColumnsBtn();
  renderRecordListRows();requestAnimationFrame(()=>search?.focus())
