@@ -175,6 +175,11 @@ fn native(app: AppHandle, info: serde_json::Value) -> Native {
         }
         ("GET", "/__desktop/info") => Some(json_reply(&info)),
         ("GET", "/__desktop/downloads") => Some(json_reply(&json!(downloads().lock().map(|v| v.clone()).unwrap_or_default()))),
+        // 自己診断が本文の届き方を測る受け口（届いたバイト数と頭の4バイトを返すだけ・§9.615）
+        ("POST", "/__desktop/echo") => {
+            let head: String = body.iter().take(4).map(|b| format!("{b:02x}")).collect();
+            Some(json_reply(&json!({"bytes": body.len(), "head": head})))
+        }
         ("POST", "/__desktop/selftest") => {
             let result: serde_json::Value = serde_json::from_slice(body).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
             selftest_finish(&app, &result);

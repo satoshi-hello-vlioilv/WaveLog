@@ -243,8 +243,11 @@
   busy={name:file.name,size:file.size,stage:'send',mine:true};
   showBusy();watch();
   try{
+   // 本文はバイト列で渡す。デスクトップ版の窓で、選んだファイル（ディスクを指す File）をそのまま本文にすると
+   // サーバーに0バイトで届いた（「ZIP ファイルが届いていません」・§9.615）。読むのは選んだ1つの ZIP だけ（十数MB）。
+   const bytes=await file.arrayBuffer();
    const r=await fetch('/api/app/update/publish?name='+encodeURIComponent(file.name),
-     {method:'POST',headers:{'Content-Type':'application/zip'},body:file});
+     {method:'POST',headers:{'Content-Type':'application/zip'},body:bytes});
    const j=await r.json().catch(()=>({error:`置けませんでした（${r.status}）`}));
    if(!r.ok||!j.ok)throw new Error(j.error||`置けませんでした（${r.status}）`);
    showToast&&showToast(`版 ${j.version} を置きました`,`${j.files} ファイル・${MB(j.bytes)}。配るときは一覧の「この版を配る」を押してください。`,6000);

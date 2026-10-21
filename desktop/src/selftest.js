@@ -55,6 +55,17 @@
     const all = await Promise.all(paths.map((p) => get(p)));
     ok("40 本同時でも、それぞれの答えが届く", all.every((x, i) => x.r.ok && (i % 2 ? JSON.parse(x.text).version : x.by === "shell")));
 
+    // 6b) バイナリの本文（版の ZIP と同じ十数MB・§9.615）。画面はバイト列で送る（master-update.js）。
+    //     メモリ上の File／Blob で何バイト届くかも添える（2026-10-21 の CI ではどれも全部届いた。利用者の窓で0バイトに
+    //     なったのは、ファイルを選ぶ窓で選んだディスクの File。それはここでは作れない）。
+    const zipLike = new Uint8Array(16 * 1024 * 1024).map((_, i) => (i < 2 ? [0x50, 0x4b][i] : i & 255));
+    const echo = async (body) => JSON.parse((await get("/__desktop/echo", { method: "POST", headers: { "Content-Type": "application/zip" }, body })).text);
+    const asBytes = await echo(zipLike.buffer);
+    const asBlob = await echo(new Blob([zipLike]));
+    const asFile = await echo(new File([zipLike], "WaveLog-main.zip", { type: "application/zip" }));
+    ok("16MB のバイト列の本文が欠けずに届く（版を置く）", asBytes.bytes === zipLike.length && asBytes.head === "504b0203",
+       `バイト列 ${asBytes.bytes}・Blob ${asBlob.bytes}・File ${asFile.bytes}（送った ${zipLike.length}）`);
+
     // 7) 安全な文脈・保存領域
     ok("安全な文脈（クリップボードへ写せる）", window.isSecureContext && !!(navigator.clipboard && navigator.clipboard.writeText),
        `isSecureContext=${window.isSecureContext}`);
