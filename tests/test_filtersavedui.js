@@ -96,6 +96,15 @@ async function flow(page, rec, W, shot, made) {
  const pop = await page.evaluate(() => [...document.querySelectorAll('#filterColPop .flt-cp-item:not(.is-all)')].map(x => ({ v: x.querySelector('[data-v]').dataset.v, n: x.querySelector('.flt-cp-n').textContent.trim(), on: x.querySelector('input').checked })));
  rec('M2 値の一覧は重複のない値と件数を出し、最初は全部選んでいる', pop.length === pc.values.length && pop.every(x => /\d/.test(x.n) && x.on), JSON.stringify(pop.slice(0, 4)));
  rec('M5 条件の無い列の値の一覧に「この列の条件を外す」は出ない（押しても何も起きない物を置かない）', !(await page.$('#filterColPop [data-act="clear"]')));
+ rec('M5 何も変えていないうちは「絞り込む」を押せない形', await page.evaluate(() => document.querySelector('#filterColPop [data-act="ok"]').disabled));
+ /* 「だけ」の近道: 値に乗せて「だけ」→ その値だけを選ぶ（すべて選ぶを外す手が要らない） */
+ await page.hover(`#filterColPop [data-v="${v1}"]`);
+ await page.click(`#filterColPop [data-only="${v1}"]`);
+ const only = await page.evaluate(() => [...document.querySelectorAll('#filterColPop [data-v]')].filter(x => x.checked).map(x => x.dataset.v));
+ rec('M2 「だけ」でその値だけが選ばれ、「絞り込む」が押せる形になる', only.length === 1 && only[0] === v1 && await page.evaluate(() => !document.querySelector('#filterColPop [data-act="ok"]').disabled), JSON.stringify(only));
+ await page.click('#filterColPop [data-act="cancel"]');
+ await page.click(`#grid thead th[data-col="${col}"] .col-funnel`);
+ await W.until(page, () => document.querySelectorAll('#filterColPop [data-v]').length > 0, null, { ms: 10000, what: '値の一覧（開き直し）' });
  await shot('colpop_1728');
  await pickValues(page, W, [v1, v2]);
  await settled(page, W);
@@ -156,7 +165,9 @@ async function flow(page, rec, W, shot, made) {
  /* ---- 戻す ---- */
  await page.click('#filterChips .flt-chip-x');
  await settled(page, W);
- await page.click('#filterChange [data-fc="revert"]');
+ await page.click('#filterChange [data-fc="more"]');
+ await W.until(page, isShown, '.flt-change-menu', { ms: 5000, what: '上書き保存 ▾ の面' });
+ await page.click('.flt-change-menu [data-c="revert"]');
  await settled(page, W);
  const d4 = await page.evaluate(() => WL.filters.state());
  rec('「戻す」で保存した条件へ戻る', !d4.dirty && d4.conds.length === 2, JSON.stringify(d4));

@@ -161,8 +161,8 @@ run('test_filteruser: フィルタを個人単位で記録する（§9.172）', 
   }),TAG);
   rec('誰の設定かを画面に書く（面の頭に利用者）',ui.head.includes(A),ui.head.trim().slice(0,90));
   /* **色だけで持ち主を伝えない。** みんなのものは字の札で言う（自分のものは札なし＝面の頭が「自分の」と言う）。 */
-  rec('みんなのものは1件ごとに「みんなの」の字で出す',
-      (ui.rows[`${TAG}-S1`]||[]).includes('みんなの')&&!(ui.rows[`${TAG}-A1`]||[]).includes('みんなの'),JSON.stringify(ui.rows));
+  rec('みんなのものは1件ごとに「みんな」の字で出す',
+      (ui.rows[`${TAG}-S1`]||[]).includes('みんな')&&!(ui.rows[`${TAG}-A1`]||[]).includes('みんな'),JSON.stringify(ui.rows));
   rec('他人の個人フィルタは面にも出ない',!(`${TAG}-B1` in ui.rows),Object.keys(ui.rows).join('、'));
   await t1.page.keyboard.press('Escape');
 

@@ -10,13 +10,13 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 帯の1段目＝絞る道具（一覧を検索→フィルタ ▾→＋ 条件・席は動かない）、2段目＝効いている物（条件の札→すべて外す→変更あり｜上書き保存｜別名で保存｜戻す） | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
+| 帯の1段目＝絞る道具（一覧を検索→フィルタ ▾→＋ 条件・席は動かない）、2段目＝効いている物（条件の札→すべて外す→変更あり｜上書き保存 ▾）。札の行は自分の中で折り返す | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
 | 条件を作る入口は列の値の一覧の1つ（`openColumnPop()`・見出しの ▼／＋ 条件／札）。値はほかの絞り込みに当たる行で数え、件数を添える | `test_filtersavedui.js`・`test_listtools.py` | [§9.614](../../docs/decisions/9.614.md) |
 | 値のチェックは**した操作のまま**持つ（全部から外した＝`not_in`・すべて選ぶを外して選んだ＝`in`）。数の少ないほうへ持ち替えない | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
 | 保存したフィルタとの差は`diffState()`の1箇所（帯の「変更あり」・札の 足した／変えた／外した・面の札）。外した札を押すと戻る | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
 | 保存したフィルタは名前＋条件の1行。前の組み合わせは読むとき条件へ展開（`expand_members()`）・直す口は`/update` | `test_filtersaved.py` | [§9.614](../../docs/decisions/9.614.md) |
 | 保存したフィルタを直す・書き出す・取り込むは確認の窓の1枚（`confirmModal({wide})`）。窓の上の値の一覧は窓より手前（`.is-over-modal`） | `test_filter.js`・`test_filterio.js` | [§9.614](../../docs/decisions/9.614.md) |
-| 見出しの ▼ は席を1つ（`HEAD_FUNNEL_EM`）。いつも薄く出し、乗せる・焦点で濃く、絞っている列は塗る | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
+| 見出しの ▼ は右端に固定の席（`HEAD_FUNNEL_EM`・字が切れても残る）。いつも薄く出し、乗せる・焦点で濃く、絞っている列は塗る | `test_filtersavedui.js` | [§9.614](../../docs/decisions/9.614.md) |
 | 帯の押す物は LotScope と同じ 30px・13.5px。狭い器でも縮めず、入らないぶんは入口を畳む（`.lt-fold`）。検索欄は 22em まで | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
 | 【§9.614で改めた】条件は帯の札。0件の案内・すべて外すは同じ顔ぶれ（`WL.list.narrowingItems()`）。件数は「n件 / 全 N件」 | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |
 | この表に無い列の条件は黙って捨てず`filtersIgnored`で返し、条件の面が「効いていない」と言う | `test_filterbarui.js` | [§9.612](../../docs/decisions/9.612.md) |

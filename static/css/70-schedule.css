@@ -310,14 +310,14 @@
    前（§9.505〜§9.591）は狭い器だけ押す物を26px・字11pxへ縮め、字を印へ畳み、検索欄が余りを全部食っていた
    （ポップアップで450px）。**寸法は単独の一覧と同じ**（30px・13.5px・字つき）にし、入らないぶんは入口を畳む
    （分割＝「道具 ▾」「見せ方 ▾」・ポップアップ＝「見せ方 ▾」。畳み方は 45-tolerance.css の`.lt-fold`）。
-   分割は2段の格子（検索｜フィルタ／道具｜見せ方・§9.614）で左右の端をそろえる。状態は2行（件数・元データ・ページ／その他）。
+   分割は2段の格子（検索｜フィルタ／道具｜見せ方・§9.614）で左右の端をそろえる。ポップアップも「道具 ▾」へ畳む（§9.614・1536 で見せ方が折れた）。状態は2行（件数・元データ・ページ／その他）。
    E の手順で3回作り直して決めた（1回目 B 74・2回目 G 77・3回目 Q 82）。 */
-.sc-split-wrap .filter-search-row{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--space-1);flex-wrap:nowrap}
-.sc-split-wrap .filter-search-row>.lt-search{grid-column:1/8;max-width:none;min-width:0}
-.sc-split-wrap .filter-search-row>#filterSavedBtn{grid-column:8/13}
-/* 2段目の「道具 ▾」「見せ方 ▾」は中身なりの幅で左右の端へ（引き伸ばさない・§9.614 の採点）。 */
-.sc-split-wrap .filter-search-row>#listFold-tools{grid-column:1/7;justify-self:start}
-.sc-split-wrap .filter-search-row>.filter-search-row-actions{grid-column:7/13;margin:0;display:flex;justify-content:flex-end}
+/* 1段目＝検索（残り全部）｜フィルタ（中身なり）、2段目＝道具 ▾（左端）｜見せ方 ▾（右端）。押す物は引き伸ばさない（§9.614 の採点）。 */
+.sc-split-wrap .filter-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-1);flex-wrap:nowrap}
+.sc-split-wrap .filter-search-row>.lt-search{grid-column:1;max-width:none;min-width:0}
+.sc-split-wrap .filter-search-row>#filterSavedBtn{grid-column:2;max-width:calc(var(--w-md) * 1.2)}
+.sc-split-wrap .filter-search-row>#listFold-tools{grid-column:1;justify-self:start}
+.sc-split-wrap .filter-search-row>.filter-search-row-actions{grid-column:2;margin:0;display:flex;justify-content:flex-end}
 .sc-split-wrap .filter-search-row>.filter-search-row-actions>.fb-slot{display:flex;justify-content:flex-end}
 .sc-split-wrap .filter-search-row>*{min-width:0;justify-content:center}
 .sc-split-wrap .filter-search-row>[hidden]{display:none}
