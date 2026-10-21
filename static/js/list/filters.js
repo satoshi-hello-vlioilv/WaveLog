@@ -667,7 +667,9 @@
       if(t.matches('[data-v]')){toggle(t.dataset.v,t.checked);paint();return}
       if(t.matches('.flt-cp-cond-row select')){st.op=t.value;st.condOpen=true;paint();return}
     });
-    m.addEventListener('input',e=>{if(e.target.matches('.flt-cp-cond-row input')){st.val=e.target.value;st.condOpen=true}});
+    /* 打っている途中は描き直さない（焦点と字を保つ）。押せるかだけ塗り直す。 */
+    const paintOk=()=>{const ok=m.querySelector('[data-act="ok"]');if(!ok)return;ok.disabled=same();ok.title=ok.disabled?'まだ何も変えていません':''};
+    m.addEventListener('input',e=>{if(e.target.matches('.flt-cp-cond-row input')){st.val=e.target.value;st.condOpen=true;paintOk()}});
     m.addEventListener('toggle',e=>{if(e.target.matches('.flt-cp-cond'))st.condOpen=e.target.open},true);
     m.addEventListener('click',e=>{
       const b=e.target.closest('button');if(!b)return;
