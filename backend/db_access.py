@@ -973,6 +973,19 @@ def records_share_files():
  のは`db_mirror`が写す対象を作るため（§9.268）。"""
  return _records_share_files()
 
+def _holds_records(folder):
+ """そのフォルダが測定データのファイルを持つか（§9.620）。**無いと分かったフォルダだけ外す**——置き場には
+ 設備のフォルダのほかに、接続の記録（`presence`）など別の役目のフォルダも並ぶ（マスタと同じ置き場にしたとき）。
+ 前は全部を設備とみなし、`presence`を「まだ写せていない1本」と数えて、届かないと警告し続けていた。
+ 確かめられない（権限・ネットワーク）なら外さない（写しの係が理由を言う）。"""
+ try:
+  (folder/RECORDS_FILE_NAME).stat()
+  return True
+ except FileNotFoundError:
+  return False
+ except OSError:
+  return True
+
 def _records_share_files():
  if RECORDS_SHARE_DIR is None:return []
  now=time.time()
@@ -984,7 +997,7 @@ def _records_share_files():
  try:
   for entry in sorted(RECORDS_SHARE_DIR.iterdir(),key=lambda e:e.name):
    try:
-    if entry.is_dir():found.append(entry/RECORDS_FILE_NAME)
+    if entry.is_dir() and _holds_records(entry):found.append(entry/RECORDS_FILE_NAME)
    except Exception as _e:quiet('共有の中を辿れない（この項目を飛ばす）',_e);continue
  except Exception as e:
   # **読めなかったことを「1件も無い」と同じに扱わない**(§9.211 ②)。

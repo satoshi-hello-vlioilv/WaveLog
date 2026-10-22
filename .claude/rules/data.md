@@ -1,4 +1,4 @@
-# データの置き場と共有（91件）
+# データの置き場と共有（92件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 測定データの設備のフォルダは records.sqlite3 を持つものだけ（`_holds_records()`・無いと分かったら外す・確かめられないなら残す） | `test_reccopyreason.py` | [§9.620](../../docs/decisions/9.620.md) |
 | 写せない理由は`db_mirror.explain()`の1箇所（種類・人の言葉・次の一手）。設備ごとの読み方は`records_copy_report()` | `test_reccopyreason.py`・`test_reccopyui.js` | [§9.619](../../docs/decisions/9.619.md) |
 | 測定データの`-journal`が元ごと同じ形で60秒残ったら写す（`_stale_marks()`）。`-wal`等は見送る・R8は変えない | `test_reccopyreason.py` | [§9.619](../../docs/decisions/9.619.md) |
 | 写せない理由のログは変わったときと写せるようになったときに1行ずつ（`_log_change()`の1箇所） | `test_reccopyreason.py` | [§9.619](../../docs/decisions/9.619.md) |
