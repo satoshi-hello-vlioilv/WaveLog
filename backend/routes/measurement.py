@@ -5,7 +5,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 import json
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, cfg, MEAS_DB, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_plan, records_paths_holding, note_records_written, records_shared, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
+from ..db_access import DBS, cfg, MEAS_DB, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, fresh_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_plan, records_paths_holding, note_records_written, records_shared, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
 from ..access_mode import request_user_id, request_pc_name
 from .body import body, flag, any_
 # 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
@@ -331,8 +331,8 @@ def backup_summary():
  """
  try:
   # **読むのは全設備ぶん**(§9.258。閲覧は全設備の測定データが見られること)。
-  # 結合(記録IDごとに新しい方)はmerged_backup_rows()の1箇所が持つ。
-  items=merged_backup_rows()
+  # 結合(記録IDごとに新しい方)はmerged_backup_rows()の1箇所が持つ。**開いたその時の写しで答える**(§9.618)。
+  items=fresh_backup_rows()
   paths=[str(p) for p in records_paths_all()]
   slim=[{k:v for k,v in r.items() if k!='payload'} for r in items]
   return jsonify(ok=True,items=slim,count=len(slim),table_exists=bool(items),
@@ -417,7 +417,7 @@ def backup_get():
  rid=str(request.args.get('id') or '').strip()
  if not rid:return jsonify(error='記録IDがありません。'),400
  try:
-  items=merged_backup_rows()
+  items=fresh_backup_rows()
   hit=next((r for r in items if r.get('id')==rid),None)
   return jsonify(ok=True,item=hit,table_exists=bool(items),meas_path=str(MEAS_DB))
  except Exception as e:return jsonify(error=str(e)),500
@@ -598,7 +598,7 @@ def backup_list_view():
  閲覧できない」）。`configured`は「この端末の分のほかに読む先があるか」（無ければ画面が置き場の案内を出す）。
  """
  try:
-  items=merged_backup_rows()
+  items=fresh_backup_rows()
   paths=[str(p) for p in records_paths_all()]
   configured=records_shared() or len(paths)>1
   return jsonify(ok=True,configured=configured,shared=records_shared(),items=items,count=len(items),
