@@ -95,6 +95,10 @@ CONTRACT_VERSION = 1
 RETRY_AFTER_BUSY_SEC = 5
 # 休まず一気に写す（開いている時間を短くする・R4）。
 COPY_CHUNK = 4 * 1024 * 1024
+# 測定データの書き手（WaveLog の保存）は1件の書込を一瞬で終える。`-journal`が**同じ形のまま**この秒数
+# 残っているなら書き手は作業中ではない（落ちた書込・同期ソフトの残り）とみて写す（§9.619）。時刻は
+# この端末の時計で数える（共有の更新時刻は書いた PC の時計なので比べない）。
+STALE_MARK_SEC = 60
 
 
 class NotCopiedYet(RuntimeError):
@@ -108,6 +112,8 @@ _wake = threading.Event()
 # 同時に走ると、同じ世代番号・同じ`.tmp`へ2本が書き、片方が相手の書きかけを
 # 消したり検査に落ちたりする（実測: 2本並べて20回中5〜13回が失敗か古いまま）。
 _refresh_lock = threading.Lock()
+# 書き手の印を初めて見た時（キー -> (印の形, この端末の時刻)）。`_stale_marks()`だけが読み書きする。
+_marks_seen: dict[str, tuple] = {}
 # 起動して最初の周回が済んだか（§9.463）。済むまでは読む側が待つ——前回の起動の
 # 写しを出してしまうと、利用者は「起動したのに古い」を見る（実測: 起動後3.0秒）。
 _first = threading.Event()
@@ -361,15 +367,52 @@ def _copy_shared(remote, tmp):
   shutil.copyfileobj(src, dst, COPY_CHUNK)
 
 
-def _settled(remote, sig):
- """写し終えた後も、元が写す前と同じで、書き手の印も無いか（R5）。ダメなら見送る理由、良ければNone。"""
+def _settled(remote, sig, stale=()):
+ """写し終えた後も、元が写す前と同じで、書き手の印も無いか（R5）。ダメなら見送る理由、良ければNone。
+ `stale`は写す前から同じ形のまま残っていた印（`_stale_marks()`）——それだけなら書き手は作業中でない。"""
  after, _ = _remote_stat(remote, retry=False)
  if after != sig:
   return '写しているあいだに元ファイルが入れ替わったため、見送りました。少し空けて写し直します'
- marks = writer_marks(remote)
+ marks = [n for n in writer_marks(remote) if n not in stale]
  if marks:
   return f'写しているあいだに書き手が書き始めたため、見送りました（{marks[0]}）。少し空けて写し直します'
  return None
+
+
+def _mark_print(remote, marks, sig):
+ """印の形（名前・大きさ・更新時刻）と元の印。どれかが動けば書き手は動いている。"""
+ folder, out = Path(remote).parent, []
+ for n in marks:
+  try:
+   st = (folder / n).stat()
+   out.append((n, st.st_size, st.st_mtime_ns))
+  except OSError:
+   out.append((n, None, None))
+ return (tuple(out), json.dumps(sig, sort_keys=True, default=str))
+
+
+def _stale_marks(key, remote, marks, sig):
+ """測定データの`-journal`だけが、元ごと同じ形のまま`STALE_MARK_SEC`以上残っているか（§9.619）。
+
+ 測定データの書き手は1件を一瞬で書き終えるので、印が動かずに残るのは落ちた書込・同期ソフト（Box 等）の残り。
+ そのまま見送り続けると、そのファイルの記録は**いつまでも一覧に入らない**（実際に完了ロットが他の PC から
+ 見えなかった）。**測定データ以外・`-wal`・取込の書きかけ（`.incoming`）は見送り続ける**（中身が実物に無い）。"""
+ if not marks or not key.startswith(RECORDS_KEY_PREFIX) or not all(n.lower().endswith('-journal') for n in marks):
+  with _lock:
+   _marks_seen.pop(key, None)
+  return False
+ shape = _mark_print(remote, marks, sig)
+ now = time.time()
+ with _lock:
+  seen = _marks_seen.get(key)
+  if not seen or seen[0] != shape:
+   _marks_seen[key] = (shape, now)
+   return False
+  return now - seen[1] >= STALE_MARK_SEC
+
+
+def _stale_note(marks):
+ return f'書き手の印（{marks[0]}）が{STALE_MARK_SEC}秒以上同じ形のまま残っているため、書き手は作業中でないとみて写しました'
 
 
 def _verify(tmp):
@@ -423,7 +466,8 @@ def refresh_one(key, remote, retry=None):
   _record(key, result)
   return result
  marks = writer_marks(remote)
- if marks:
+ stale = _stale_marks(key, remote, marks, sig)
+ if marks and not stale:
   return _busy(key, result, f'書き手が公開している途中のため、写すのを見送りました（{marks[0]}）。少し空けて写し直します')
 
  cache_dir().mkdir(parents=True, exist_ok=True)
@@ -436,11 +480,10 @@ def refresh_one(key, remote, retry=None):
   _copy_shared(remote, tmp)
  except Exception as e:
   result['reason'] = f'写せませんでした: {e}'
-  app_logger().warning('%s の写しを作れませんでした: %s', key, e)
   _cleanup(tmp)
   _record(key, result)
   return result
- moved = _settled(remote, sig)
+ moved = _settled(remote, sig, marks if stale else ())
  if moved:
   _cleanup(tmp)
   return _busy(key, result, moved)
@@ -449,7 +492,6 @@ def refresh_one(key, remote, retry=None):
  if bad:
   # **壊れた写しは採用しない。** 前の写しをそのまま使い続ける。
   result['reason'] = f'写しが正しくないため見送りました({bad})'
-  app_logger().warning('%s の写しを見送りました: %s', key, bad)
   _cleanup(tmp)
   _record(key, result)
   return result
@@ -464,7 +506,6 @@ def refresh_one(key, remote, retry=None):
   result['reason'] = f'写しを置き換えられませんでした: {e}'
   if hint:
    result['reason'] += f'（写しの置き場が{hint}の中にあります。同期中は掴まれるため、db_dirを実ローカルへ移してください）'
-  app_logger().warning('%s の写しを置き換えられませんでした: %s', key, e)
   _cleanup(tmp)
   _record(key, result)
   return result
@@ -472,6 +513,8 @@ def refresh_one(key, remote, retry=None):
  _save_entry(key, sig, target.name)
  result['local'] = str(target)
  result.update(updated=True, how='copy', newer=False, reason='写しを更新しました')
+ if stale:
+  result['note'] = _stale_note(marks)
  app_logger().info('%s: 共有から手元へ写しました(%d bytes, %s)', key, sig.get('size', 0), target.name)
  _sweep_old_generations(key, target)
  _record(key, result)
@@ -486,6 +529,46 @@ def _busy(key, result, reason):
   _retry_at = time.time() + RETRY_AFTER_BUSY_SEC
  _record(key, result)
  return result
+
+
+# 写せない理由の種類 -> (人の言葉の一文, 次の一手の札, 自動で直るか)。理由の字（`reason`）は技術の言葉を含むので、
+# 画面はこの一文を主に出し、元の字は詳しく（ⓘ）へ回す（§9.619）。判定は`explain()`の1箇所。
+EXPLAIN = {
+ 'busy': ('ほかの PC が書いている途中です', '自動で写し直します', True),
+ 'changing': ('写しているあいだにファイルが変わりました', '自動で写し直します', True),
+ 'denied': ('共有のファイルを読む権限がありません', '要対応: 読む権限', False),
+ 'unreachable': ('共有のファイルに届きません', '要対応: つながり', False),
+ 'broken': ('共有のファイルを SQLite として読めません（壊れているか書きかけです）', '要対応: 書いた PC で確かめる', False),
+ 'local': ('手元へ写せません（この PC の写しの置き場に書けません）', '要対応: この PC の置き場', False),
+}
+EXPLAIN_HINT = {
+ 'denied': '読み取り権限を、この PC の Windows アカウントに付けてもらってください。',
+ 'unreachable': 'ネットワークと共有フォルダの場所を確かめてください（つながれば自動で写します）。',
+ 'broken': 'そのファイルを書いた PC で一覧が開けるかを確かめてください。',
+ 'local': '共通設定の「作り直せるファイル」の置き場に書けるかを確かめてください。',
+}
+_DENIED_WORDS = ('winerror 5]', 'errno 13', 'permission', 'アクセスが拒否', 'access is denied')
+
+
+def explain(result):
+ """直近の結果（`refresh_one`の戻り）が写せていないなら、その種類と人の言葉（§9.619）。写せていれば None。"""
+ if not result or result.get('updated') or result.get('skipped') or not result.get('reason'):
+  return None
+ why = str(result.get('reason') or '')
+ if result.get('unreachable'):
+  low = (str(result.get('error') or '') + why).lower()
+  kind = 'denied' if any(w in low for w in _DENIED_WORDS) else 'unreachable'
+ elif result.get('busy'):
+  kind = 'changing' if '入れ替わった' in why else 'busy'
+ elif why.startswith('写しが正しくない'):
+  kind = 'broken'
+ elif why.startswith('写せませんでした'):
+  low = why.lower()
+  kind = 'denied' if any(w in low for w in _DENIED_WORDS) else 'local'
+ else:
+  kind = 'local'
+ say, act, auto = EXPLAIN[kind]
+ return {'kind': kind, 'say': say, 'act': act, 'auto': auto, 'hint': EXPLAIN_HINT.get(kind, ''), 'detail': why}
 
 
 def _next_generation(key):
@@ -526,7 +609,30 @@ def _cleanup(tmp):
 
 def _record(key, result):
  with _lock:
+  prev = _state.get(key) or {}
   _state[key] = result
+ _log_change(key, prev, result)
+
+
+def _ok(result):
+ return bool(result.get('updated') or result.get('skipped'))
+
+
+def _log_change(key, prev, result):
+ """写せない理由が**変わったときだけ**ログへ1行（§9.619）。同じ理由を周回ごとに積まない（見たい行が埋もれる）。
+ 写せるようになったときも1行——いつから・なぜ写せなかったかを、後からログだけで追える。
+ 届かない（`_unreachable`）は自分で書く（OSの答えまで比べて重ねない）。"""
+ if result.get('unreachable'):
+  return
+ if _ok(result):
+  if prev and not _ok(prev) and prev.get('reason'):
+   app_logger().info('%s: 写せるようになりました（前の理由: %s）— 元: %s', key, prev.get('reason'), result.get('remote'))
+  if result.get('note') and result.get('note') != prev.get('note'):
+   app_logger().warning('%s: %s — 元: %s', key, result['note'], result.get('remote'))
+  return
+ why = result.get('reason') or ''
+ if why and (_ok(prev) or why != prev.get('reason')):
+  app_logger().warning('%s: 写せません: %s — 元: %s', key, why, result.get('remote'))
 
 
 def source_info(key, path=None):
@@ -627,12 +733,13 @@ def records_targets():
  return out
 
 
-def refresh_records():
+def refresh_records(manual=False):
  """ほかの端末が書く測定データの写しを**いま**確かめる（§9.618・一覧を開いたとき）。写し直したファイルの数を返す。
 
  周回を待たずに同じ道（`refresh_one`・変わった元だけ写す）を通す。届かない元は待たない（前の写しで答える）。
- 手動（`update_mode()`が manual）と、写して読むのを切った端末は何もしない（その約束を一覧が破らない）。"""
- if not enabled() or update_mode() != 'auto':
+ 手動（`update_mode()`が manual）と、写して読むのを切った端末は何もしない（その約束を一覧が破らない）。
+ `manual`は人が「写し直す」を押したとき（§9.619）——手動の設定でも写す（押したこと自体が手動の合図）。"""
+ if not enabled() or (update_mode() != 'auto' and not manual):
   return 0
  n = 0
  with _refresh_lock:

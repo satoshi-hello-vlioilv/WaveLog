@@ -1069,6 +1069,29 @@ def records_read_plan():
   else:out.append((real,real))
  return out
 
+def records_copy_report():
+ """共有の測定データの1ファイルごとの読み方と、写せない理由（§9.619・共通設定の「置き場」の行が出す）。
+
+ `state`: `mine`＝この端末が書く（実物を読む）／`copied`＝写しを読む／`waiting`＝まだ写せていない（一覧に入らない）。
+ `reason`は直近に写せなかった理由の元の字、`why`はその種類と人の言葉（`db_mirror.explain()`）。写しを読んでいても、
+ 新しい版を写せていなければ言う。
+ 以前は本数だけを言い、どのファイルがなぜ写せないかがどこにも出ていなかった。"""
+ if RECORDS_SHARE_DIR is None:return []
+ from . import db_mirror  # 遅延: db_mirror は起動時にこのモジュールの設定を読む（循環を避ける）
+ use=dict((str(r),u) for r,u in records_read_plan())
+ keys={str(remote):key for key,remote in db_mirror.records_targets()}
+ last=db_mirror.status()
+ out=[]
+ for real in _records_share_files():
+  key=keys.get(str(real))
+  s=(last.get(key) or {}) if key else {}
+  state='mine' if key is None else ('waiting' if use.get(str(real)) is None else 'copied')
+  why=db_mirror.explain(s) if key else None
+  out.append({'equipment':real.parent.name,'path':str(real),'state':state,
+              'reason':why['detail'] if why else '','why':why,
+              'note':str(s.get('note') or ''),'at':s.get('at')})
+ return out
+
 def records_read_paths():
  """測定データを**読む**ときに実際に開くファイル（§9.268）。まだ写せていない置き場は入らない
  （数は`records_read_plan()`が答える）。同じファイルは1回だけ。"""

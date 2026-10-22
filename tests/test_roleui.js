@@ -23,7 +23,7 @@ const B='http://127.0.0.1:5029';
 
 /* 管理のマスタの綴りは**サーバーが答える**ものをそのまま流す（画面はこれを
    読むだけ、が守れているかを見たいので、網の側でも表を作らない）。 */
-const ADMIN=['accessPermission','pathConfig','dataSource','queryJoin','measStorage',
+const ADMIN=['accessPermission','pathConfig','dataSource','queryJoin',
              'cleanup','rawTable'];
 const FAKE=(role,level)=>({ok:true,mode:'edit',canEdit:true,canSchedule:false,
  canFieldReorder:false,fieldReorderEquipment:'',loginId:'me',pcName:'PC-ME',

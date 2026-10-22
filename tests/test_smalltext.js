@@ -82,7 +82,7 @@ run('test_smalltext: 読ませる字は 12px 以上（§9.560）',async({page,re
  /* 段2（§9.565）: マスタ管理のほかのタブ・ダッシュボード・カレンダー */
  for(const k of ['opItem','opChoice','choiceLink','recordLayout','reportLayout','reportBlock','roll','bladesetStandard','bladesetBlade',
    'bladesetSpacer','bladesetRing','bladesetFinger','bladesetPick','bladesetHold','stopReason','stopMinutes','shiftMaster','loadFactor',
-   'accessPermission','presence','measStorage','importBackup','dataSource','queryJoin','cleanup'])
+   'accessPermission','presence','importBackup','dataSource','queryJoin','cleanup'])
   await visit('マスタ管理・'+k,()=>page.click(`#masterMaintNav [data-master="${k}"]`));
  await visit('ダッシュボード',()=>W.nav(page,'#openDashboard'));
  await visit('カレンダー',()=>W.nav(page,'#openCalendar'));

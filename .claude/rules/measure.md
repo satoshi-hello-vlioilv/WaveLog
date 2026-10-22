@@ -90,7 +90,7 @@
 | 入れ物の大きさは中身の長さから決める | `test_msteps.js` | [§9.130](../../docs/decisions/9.130.md) |
 | ①準備は役割でまとめ、③確認は完了前の確認表を持つ | `test_msteps.js` | [§9.125](../../docs/decisions/9.125.md) |
 | 測定中は受信欄(`#deviceInput`)のDOMを作り直さない・動かさない | `test_mcore.js` | [§9.122](../../docs/decisions/9.122.md) |
-| 測定データの置き場は3段 | `test_measstore.js` | [§9.202](../../docs/decisions/9.202.md) |
+| 【§9.619で画面を外した】測定データの置き場は3段 | — | [§9.202](../../docs/decisions/9.202.md) |
 | 揃いは「選んで記録」。4桁の揃いコードは廃止した | — | [§9.203](../../docs/decisions/9.203.md) |
 | 揃いの合否は切断面等級から出す | — | [§9.204](../../docs/decisions/9.204.md) |
 | 測定の手で打つ数値欄は`WL.numericInput`に乗せる | — | [§9.208](../../docs/decisions/9.208.md) |

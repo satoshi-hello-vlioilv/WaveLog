@@ -261,6 +261,8 @@ _ENDPOINT_EXTRA_MODES={
 # 除外せず表に載せるのは、あとで本物の書込を足したときに無防備にならない
 # ようにするため(CLAUDE.md「読み取り専用のPOSTしか持たないBlueprintも宣言する」)。
 _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
+                           # 測定データの写し直し(§9.619)。共有を手元へ写すだけ。
+                           'measurement.records_recopy',
                            'path_config.data_source_master_probe',
                            # クエリ結合(§9.193)。**読むだけ**——渡された鍵の値に
                            # 相手のデータを当てて返す。POSTなのはキーの組を

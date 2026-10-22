@@ -2,7 +2,7 @@
 /* master-data.js: マスタ管理の専用画面——データと接続・作業スケジュール・管理
    ============================================================
    §9.324 R3 で master-maint.js から切り出した（中身はそのまま）。
-   測定データの保存（§9.202）・データ引継ぎ・
+   データ引継ぎ・
    データ接続（§9.168）・クエリ結合（§9.193）・共通設定（§9.208 ⑨）・
    勤務形態・不要ファイル掃除（§9.249 ①）・テーブル生データ（§9.249 ②）・
    接続状況（§9.272）。
@@ -13,7 +13,7 @@
  const {CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,editorMore,ensureMaintEditor,firstVisibleDefKey,fmtDT,hintHtml,listBar,loadMaint,maintState,numFieldHtml,numRaw,openActMenu,pageFoldHtml,pageTabsHtml,paintFootState,renderMaintNav,requireMaintUser,setHeadActs,setMaintLoading,syncNav,tipHtml}=WL.mm;
 
  /* ---------- 設定型の画面の型（§9.601・ステップ3） ----------
-    測定データの保存・データ引継ぎ・データ接続・クエリ結合・接続状況・不要ファイル掃除の6画面は、共通設定と同じ骨組みに載せる:
+    データ引継ぎ・データ接続・クエリ結合・接続状況・不要ファイル掃除の5画面は（測定データの保存は§9.619で消した）、共通設定と同じ骨組みに載せる:
     頭の行（画面名＋ⓘ＋用途の1行・範囲の札・右に ⋯ と主の操作1つ）→ 頭のすぐ下に全幅の状態の図（どの段を開いても見える）→
     段が2つ以上なら左の段（共通設定と同じ札が状態を名乗る）→ 段の中身（1行＝名前｜値｜状態、または表）→ 段の下端の足元。
     表はステップ2の型（札の行＋見出し＋行・行を押すと直す）。**行ごとに危ない操作を並べない**（窓や行のメニューの ⋯ の先）。
@@ -54,8 +54,6 @@
  /* 1行＝名前（＋ⓘ）｜値・欄｜状態（共通設定の`pcKit().row`そのもの）。 */
  const setRow=(label,ctl,o)=>pcKit({}).row((o&&o.key)||'',label,ctl,o);
  const setRowsHtml=rows=>`<div class="pc-rows">${rows.filter(Boolean).join('')}</div>`;
- /* 直す場所へ連れて行く字の札（置き場を決めるのは共通設定の1箇所・§9.267）。 */
- const setGotoHtml=(attr,label)=>`<button type="button" class="mm-set-link" ${attr}>${esc(label)} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>`;
  /* 量の帯（図）: 部分ごとの長さ＋凡例（名前と数を字で・色だけで言わない）。`right`＝右端の HTML（呼ぶ側が逃がす）。 */
  function setBarHtml(parts,right,label){
   return `<div class="mm-set-bar" role="img" aria-label="${esc(label)}"><div class="mm-set-bar-track">${
@@ -129,7 +127,7 @@
  /* 保存していない変更があるか（離れる前に聞く・`registerSpecial(key,{dirty})`・§9.598）。 */
  const setDirty=()=>[...document.querySelectorAll('#masterMaintForm.mm-set [data-set-field]')]
   .some(f=>f.dataset.setInit!=null&&f.value!==f.dataset.setInit);
- /* 置き場の設定（パス設定マスタ）へ**送った鍵だけ**書く（§9.192）。測定データの保存・不要ファイル掃除の足元が使う。 */
+ /* 置き場の設定（パス設定マスタ）へ**送った鍵だけ**書く（§9.192）。不要ファイル掃除の足元が使う。 */
  async function savePathSettings(body,done,after){
   try{
    setMaintLoading(true,'保存しています…');
@@ -139,200 +137,6 @@
    showToast&&showToast('保存しました',done,5000);
   }catch(e){showToast&&showToast('保存できませんでした',e.message,7000)}
   finally{setMaintLoading(false);after()}
- }
- /* ---------- 測定データの保存(§9.202、利用者の指示) ----------
-    「入力したのに完了へ反映されない」「測定バックアップの設定部分が無い」
-    「『DBに同期』の使い方が分からない」は、**3つの置き場の関係が
-    どこにも書かれていない**ことが元だった。ここで1枚にまとめる。
-
-     ① この端末のブラウザ (IndexedDB＋localStorageの控え)
-        …入力の実体。**「保存」を押すまで入らない**（打っている最中は
-          画面の中だけ）。この端末を替えると見えない。
-     ② この端末のDB       (db/records.sqlite3)
-        …①を保存するたびに自動で送る。**他のPCから続きを開けるのはここ**。
-     ③ 閲覧用の複製       (Box等・読むだけ)
-        …②が変わったら間隔ごとに丸ごと写す。閲覧モードはここを読む。
-
-    守っていること:
-     ・**流れの順に左から右**へ置く（視覚導線と作業導線を一致させる。§14）
-     ・**いま何件どこにあるか**を数字で出す。数えられなければ「—」にして
-       0件と言い切らない（§9.107と同じ約束）
-     ・**次にすることを1つだけ指す**（未送信があるときだけ「今すぐ送る」を
-       強調する。§2）
-     ・設定はこの画面だけが持つ（共通設定からは移動した。§9.168） */
- let measStorageState={loaded:false,server:null,local:null,err:''};
- async function loadMeasStorageMaint(force){
-  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  if(!force&&measStorageState.loaded){renderMeasStorage();return}
-  form.innerHTML='';list.innerHTML='<div class="mm-empty">測定データの置き場を調べています…</div>';
-  try{
-   /* ①はブラウザの中なのでサーバーからは見えない。**画面側が数える**。
-      読めなくても画面は出す（数えられなかったことを書く）。 */
-   const [srv,cfg,localItems]=await Promise.all([
-    api('/api/measurement/storage'),
-    api('/api/path-config-master'),
-    (typeof WL.records.reliableAll==='function'?WL.records.reliableAll():Promise.resolve(null)).catch(()=>null),
-   ]);
-   measStorageState.server=srv;
-   measStorageState.cfg=cfg;
-   measStorageState.local=localItems;
-   measStorageState.loaded=true;measStorageState.err='';
-   renderMeasStorage();
-  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
- }
- function msNum(n){return (n===null||n===undefined)?'—':String(n)}
- function msWhen(v){
-  if(!v)return '—';
-  const t=typeof v==='number'?v*1000:Date.parse(String(v).replace(' ','T'));
-  if(!Number.isFinite(t))return String(v);
-  const min=Math.round((Date.now()-t)/60000);
-  const stamp=new Date(t).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-  if(min<1)return `${stamp}（たった今）`;
-  if(min<60)return `${stamp}（${min}分前）`;
-  return `${stamp}（${Math.round(min/60)}時間前）`;
- }
- /* 閲覧が手元の写しから読めているか（§9.268）。**「写している」だけでなく、
-    実物のまま読んでいる本数も出す**——写しがまだ無いあいだは実物を読む
-    （fail-open）ので、そこを黙ると「もう写しから読んでいる」と誤解される。 */
- function msMirrorText(m){
-  if(!m)return '—';
-  if(m.enabled===null)return '確かめられません';
-  if(m.enabled===false)return '共有を直接読む（写しは無効）';
-  const mins=Math.max(1,Math.round(Number(m.intervalSec||60)/60));
-  /* まだ写せていない置き場は共有を直接読まず、写し終えるまで一覧に入らない（§9.582）。本数で言う。 */
-  const wait=m.waiting?` ／ まだ写せていない${m.waiting}本（写し終えると一覧に入ります）`:'';
-  if(!m.mirrored)return `写しの用意中（あと${mins}分以内）`+wait;
-  return `写し${m.mirrored}本`+(m.direct?` ／ この端末が書く${m.direct}本`:'')+wait;
- }
- function msSize(n){return (n===null||n===undefined)?'—':(n/1048576).toFixed(1)+'MB'}
- /* 頭の下の図＝①→②→③の流れ（どの段を開いても見える・§9.601）。左から右へ流れ、矢印が「いつ動くか」を字で言う。
-    以前は段「いまの状態」の中に縦に積んでいた（§9.261: 狭い盤で値が切れたため）——図を全幅に出せば1段に十分な幅がある。 */
- function renderMeasStorage(){
-  const F=msFacts(),{exp,loc,unsent}=F,canExport=exp.configured&&!exp.retired;
-  /* 次の一手は頭の主ボタン1つ（未送信があるときだけ・§CLAUDE 2）。たまに使う物は ⋯。 */
-  setHeadActs({primary:unsent?{id:'msSyncNow',label:`未送信 ${unsent}件を今すぐ送る`,plus:false,
-    title:'①のうち②へ送れていないものを、まとめて送ります',onClick:msSyncNow}:null,
-   more:[{label:'状態を読み直す',data:{msAct:'reload'},onClick:msReload},
-    ...(canExport?[{label:'いま複製する',note:'間隔を待たずに②を③へ写します',data:{msAct:'export'},onClick:msExportNow}]:[])]});
-  const form=mountSetPage({key:'measStorage',figure:msFlowHtml(F),secs:[
-   {key:'place',name:'置き場と引っ越し',icon:'fa-folder-tree',sub:'② の置き場',body:msPlaceHtml(F),state:loc.perEquipment?'設備ごと':'正常'},
-   {key:'export',name:'閲覧用の複製',icon:'fa-copy',sub:'③ Box 等へ',body:msExportHtml(F),foot:setFootHtml('変更なし',SET_SAVE_BTNS),
-    state:exp.retired?'使いません':exp.lastError?'失敗':canExport?'複製あり':'未設定',tone:exp.lastError?'bad':''}]});
-  if(!form)return;
-  form.querySelectorAll('[data-ms-goto]').forEach(b=>{b.onclick=()=>msGoto(b.dataset.msGoto)});
-  wireMsSplit();
-  wireSetSave(setPanel(form,'export'),body=>savePathSettings(body,'複製先を変えた場合は、アプリを再起動すると反映されます',
-   ()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)}),'msSaveCfg');
- }
- /* 測定データの保存の画面に出す事実（§9.522 で`renderMeasStorage()`から切り出した）。①の件数は画面が数える。 */
- function msFacts(){
-  const srv=measStorageState.server||{},exp=srv.export||{},loc=srv.local||{};
-  const items=measStorageState.local;
-  const draft=items?items.filter(x=>x.status!=='完了').length:null;
-  const done=items?items.filter(x=>x.status==='完了').length:null;
-  const unsent=items?items.filter(x=>(x.syncState&&x.syncState.status)!=='synced').length:null;
-  const v=(measStorageState.cfg&&measStorageState.cfg.values)||{};
-  const mins=Math.max(1,Math.round(Number(exp.intervalSec||600)/60));
-  return { exp, loc, draft, done, unsent, v, mins };
- }
- /* 段の1つ（図の箱）: 番号・名前（ⓘ に役目）・何か（小さな字）・いまの数。数えられない欄は「—」（0件と言い切らない・§9.107）。 */
- const msStage=(no,name,sub,rows,tip,cls)=>`<div class="ms-stage${cls?' '+cls:''}">
-    <div class="ms-stage-head"><span class="ms-no">${no}</span><b>${esc(name)}</b>${tipHtml(tip)}</div><small class="ms-stage-sub">${sub}</small>
-    <dl class="ms-kv">${rows.map(([k,val,warn])=>`<dt>${esc(k)}</dt><dd${warn?' class="is-warn"':''}>${val}</dd>`).join('')}</dl></div>`;
- /* 矢印の字は1行（「いつ・どう」）。未設定は③の箱が言う（同じ字を2か所に出さない）。 */
- const msArrow=(a,b)=>`<div class="ms-arrow"><span>${esc(b&&b!=='未設定'&&b!=='—'?`${a}・${b}`:a)}</span><i aria-hidden="true"></i></div>`;
- const msCount=n=>msNum(n)+(n===null||n===undefined?'':'件');
- function msFlowHtml(F){
-  const { exp, loc, draft, done, unsent, mins } = F;
-  const off=exp.retired||!exp.configured,per=!!loc.perEquipment;
-  const tip2=per
-   ?`**設備ごとに1ファイル**に分けています——書くのはその設備の担当端末だけなので、同じファイルを2台が変えることがありません。一覧は**全設備ぶん**を読みますが、**開くのは手元の写し**です（自分が書いたぶんだけは実物を読むので、自分の記録はすぐ見えます）。置き場: ${loc.shareDir||'—'}`
-   :`**他のPCから続きを開けるのはここ**です（データ一覧はここも読みます）。${loc.path||''}`;
-  const tip3=exp.retired?exp.retired:exp.configured
-   ?`閲覧モードの端末はここを読みます。書き戻しはしません。${exp.path||''}${exp.lastError?` 前回の複製に失敗しました: ${exp.lastError}`:''}`
-   :'設定すると、②の中身をまるごと Box 等へ写します。**測定・共有には必要ありません**——閲覧専用の端末に見せたいときだけ設定します。';
-  return `<div class="ms-flow">
-    ${msStage('①','この端末のブラウザ','IndexedDB＋控え',[['編集中',msCount(draft)],['完了',msCount(done)],['②へ未送信',msCount(unsent),!!unsent]],
-     '入力した値の実体です。**この端末でしか見えません**。ブラウザのデータを消すと失われます。**打っている最中はまだどこにも入っていません**——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。',
-     unsent?'is-warn':'')}
-    ${msArrow('保存のたび','自動')}
-    ${msStage('②',per?'測定データのDB':'この端末のDB',per?'共有・設備ごとに1ファイル':`<span title="${esc(loc.path||'')}">db/records.sqlite3</span>`,
-     [['記録',msCount(loc.count)],['最終書込',msWhen(loc.lastWriteAt)],['大きさ',msSize(loc.size)]]
-      .concat(per?[['読む先',(loc.readPaths||[]).length+'ファイル'],['読み方',msMirrorText(loc.mirrored)]]:[]),tip2)}
-    ${msArrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
-    ${msStage('③','閲覧用の複製','Box等・読むだけ',[
-      ['状態',exp.retired?'使いません':(exp.configured?(exp.lastError?'前回は失敗':(exp.exists===false?'まだ作られていません':'複製しています')):'未設定（複製しません）'),!off&&!!exp.lastError],
-      ['最終複製',off?'—':msWhen(exp.lastOkAt)],['未反映の変更',off?'—':(exp.pending?'あり':'なし')]],tip3,off?'is-off':(exp.lastError?'is-warn':''))}
-   </div>`;
- }
- /* 段「置き場と引っ越し」。置き場を決めるのは共通設定の1箇所（§9.267・§9.207「入口を2つにしない」）——ここは**いまどこか**を言って
-    直す場所へ連れて行くだけ。引っ越しは「どうなるか見る → 振り分ける」の2段（§9.193・下見を見るまで振り分ける物を出さない）。 */
- function msPlaceHtml(F){
-  const { loc, v } = F;
-  return setRowsHtml([
-   setRow('② の置き場',`<code class="ms-where-path" title="${esc(v.records_share_dir||'')}">${esc(v.records_share_dir||'（未設定：この端末の db/records.sqlite3 に貯めています）')}</code>`,
-    {tip:'決めた置き場の下に**設備の名前のフォルダ**を作り、その中に records.sqlite3 を置きます。書くのはその設備を担当する端末だけなので、**同じファイルを2台が変えることがありません**。空欄なら今までどおり、この端末の db/records.sqlite3 1本に貯めます。**変えたときはアプリの再起動が必要です**。設定しても今までの記録は消えません（読むときは旧い置き場も一緒に見ます）。',
-     state:setGotoHtml('data-ms-goto="pathConfig"','共通設定で決める')}),
-   setRow('設備ごとに分ける',loc.perEquipment?'<button type="button" id="msSplitPreview" class="mm-btn-ghost sm">どうなるか見る</button>'
-     :'<span class="mm-set-why">共有の置き場を決めて、アプリを再起動すると使えます</span>',
-    {tip:'この端末の db/records.sqlite3 にある記録を、設備ごとのフォルダへ写します。**元のファイルは消しません**——読むときは旧い置き場も一緒に見るので、記録は1件も消えず、二重にも出ません。どの設備へ何件になるかを、書き込む前に「どうなるか見る」で確かめます。'})])
-   +'<div class="ms-split-result" id="msSplitResult" hidden></div>';
- }
- /* 段「閲覧用の複製」。置き場は共通設定、ここは**間隔**だけ（保存後すぐ効く動きの設定）。保存は足元の1つ。 */
- function msExportHtml(F){
-  const { exp, v } = F;
-  return setRowsHtml([
-   setRow('複製先',`<code class="ms-where-path" title="${esc(v.records_backup_export_path||'')}">${esc(v.records_backup_export_path||'（未設定：複製しません）')}</code>`,
-    {tip:'複製先は共通設定の「置き場」で決めます。設定すると②の中身をまるごと Box 等へ写します。**測定・共有には必要ありません**。',
-     state:setGotoHtml('data-ms-goto="pathConfig"','共通設定で決める')}),
-   setRow('複製の間隔',numFieldHtml({k:'records_backup_export_interval_sec',label:'複製の間隔',unit:'秒',step:30,min:30},
-     String(v.records_backup_export_interval_sec||exp.intervalSec||600),'id="msExportInterval" data-set-field="records_backup_export_interval_sec"'),
-    {tip:'**変わったときだけ**複製するので、短くしても無駄な複製は増えません。保存後すぐ反映されます（再起動は要りません）。'})]);
- }
- const msReload=()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)};
- async function msSyncNow(){
-  if(typeof WL.records.syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
-  await WL.records.syncPendingRecords({silent:false});
-  msReload();
- }
- async function msExportNow(){
-  try{
-   setMaintLoading(true,'複製しています…');
-   await api('/api/measurement/backup/export-now',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-   showToast&&showToast('複製しました','',3200);
-  }catch(e){showToast&&showToast('複製できませんでした',e.message,7000)}
-  finally{setMaintLoading(false);msReload()}
- }
- /* 置き場を直す場所へ連れて行く（§9.207）。**段まで連れて行く**——飛び先は`pcPendingSection`が覚え、共通設定が組み上がった時点で開く。 */
- function msGoto(key){
-  pcPendingSection='place';
-  document.querySelector(`#masterMaintNav [data-master="${key}"]`)?.click();
- }
- function wireMsSplit(){
-  const box=$('#msSplitResult');
-  const run=async apply=>{
-   try{
-    setMaintLoading(true,apply?'振り分けています…':'調べています…');
-    const r=await api('/api/measurement/records/split',{method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({apply,user_id:String($('#masterUserId')?.value||'').trim()})});
-    const gs=r.groups||[];
-    box.hidden=false;
-    box.innerHTML=gs.length
-     ?`<p class="ms-split-total">${apply?'振り分けました':'下見'}：全 ${r.total} 件 → ${gs.length} 設備</p><ul class="ms-split-list">${gs.map(g=>
-       `<li><b>${esc(g.equipment||'（設備なし）')}</b> ${g.count}件 <code title="${esc(g.path||'')}">${esc(g.dirName||'')}</code>${
-        g.error?`<em class="ms-split-err">${esc(g.error)}</em>`:''}</li>`).join('')}</ul><p class="mm-field-hint">${esc(r.note||'')}</p>`
-       +(apply?'':'<button type="button" id="msSplitApply" class="mm-btn-primary">この内容で振り分ける</button>')
-     :`<p class="ms-split-total">振り分ける記録がありません（${esc(r.note||'')}）</p>`;
-    const go=$('#msSplitApply');
-    if(go)go.onclick=async()=>{
-     if(!await confirmModal({confirmLabel:'写す',message:'今ある測定データを、設備ごとのフォルダへ写します。\n\n元のファイルは消しません（記録は1件も消えず、二重にも出ません）。\nよろしいですか？'}))return;
-     run(true);
-    };
-    if(apply){showToast&&showToast('振り分けました',`${r.moved}件を設備ごとのフォルダへ写しました`,6000);msReload()}
-   }catch(e){showToast&&showToast(apply?'振り分けられませんでした':'調べられませんでした',e.message,7000)}
-   finally{setMaintLoading(false)}
-  };
-  if($('#msSplitPreview'))$('#msSplitPreview').onclick=()=>run(false);
  }
  /* ---------- データ引継ぎ（PC引継ぎ等でrecords.sqlite3からIndexedDBへ取り込む） ----------
     通常はIndexedDB→records.sqlite3の一方通行だが、PC更新等でIndexedDBが
@@ -2708,11 +2512,16 @@
    const live=items.filter(x=>!x.retired);
    const miss=live.filter(x=>x.path&&x.exists===false).length,pend=items.filter(x=>x.pending).length;
    const unset=live.filter(x=>!x.path).length;
+   /* 写せていない測定データ（一覧に入っていない・§9.619）。要対応に数えるのは人の手が要るものだけ（自動で写し直すものは数えない）
+      ——帯の札（要対応／自動で写し直します）と同じ数え方。 */
+   const wait=live.reduce((n,x)=>n+pcFilesWaiting(x).length,0);
+   const need=live.reduce((n,x)=>n+pcFilesWaiting(x).filter(f=>!(f.why&&f.why.auto)).length,0);
    /* 未設定は直す必要が無いこともある（§9.583）ので要対応に数えず、札の字で言う。字は**何が起きているか**
       （みんなで使う置き場が空＝この端末の中だけ・§9.598 1i）。手元の置き場は既定の道があるので空にならない。 */
    const unsetWord=live.filter(x=>!x.path).every(x=>x.group==='share')?'共有なし':'未設定';
-   pcTabSet(form,'place',`${live.length}か所`+(unset?`・${unsetWord}${unset}`:'')+(miss?`・まだ無い${miss}`:'')+(pend?`・再起動待ち${pend}`:''),
-    miss+pend,'warn',['要対応',miss?`まだ無い置き場 ${miss}`:'',pend?`再起動待ち ${pend}`:''].filter(Boolean).join(' '),unset?`${unsetWord} ${unset}`:'OK');
+   pcTabSet(form,'place',`${live.length}か所`+(unset?`・${unsetWord}${unset}`:'')+(miss?`・まだ無い${miss}`:'')+(pend?`・再起動待ち${pend}`:'')+(wait?`・写せていない${wait}`:''),
+    miss+pend+need,'warn',['要対応',miss?`まだ無い置き場 ${miss}`:'',pend?`再起動待ち ${pend}`:'',need?`写せていない測定データ ${need}`:''].filter(Boolean).join(' '),
+    wait?`写せていない ${wait}`:unset?`${unsetWord} ${unset}`:'OK');
   }else pcTabSet(form,'place',pathConfigState.storageError?'置き場を読めません':'',pathConfigState.storageError?'!':'','bad','置き場の一覧を読めませんでした',
    pathConfigState.storageError?'読めません':'確かめ中');
   const syncPend=form.querySelectorAll('.mm-tabpanel[data-tab-key="sync"] .pc-pending').length;
@@ -2837,7 +2646,8 @@
     **null（確かめられなかった）を「無い」と同じに扱わない。** */
  function pcExistsText(x){
   if(!x.path)return {t:'未設定',c:'is-off'};
-  if(x.exists===true)return {t:'あります',c:'is-ok'};
+  /* ファイルを並べる行（測定データ（共有））は何が在るのかを言う——下の「写せていない」と食い違って見せない（§9.619）。 */
+  if(x.exists===true)return {t:x.files&&x.files.length?'フォルダ あります':'あります',c:'is-ok'};
   if(x.exists===false)return {t:'まだありません',c:'is-warn'};
   return {t:'確かめられません',c:'is-off'};
  }
@@ -2891,11 +2701,55 @@
    <td class="pc-store-st"><span class="pc-chip pc-store-exists ${ex.c}">${esc(ex.t)}</span>${
      x.pending?'<span class="pc-chip is-warn pc-pending">再起動待ち</span>':''}${
      sub.length?`<small class="pc-store-kind">${esc(sub.join('・'))}</small>`:''}</td>
-   <td class="pc-store-act">${canMake?`<button type="button" class="mm-btn-ghost sm pc-make" data-pc-make="${esc(x.key)}"
+   <td class="pc-store-act">${pcFilesWaiting(x).length?`<button type="button" class="mm-btn-ghost sm" data-pc-recopy
+      title="${esc('いま確かめて、写せるファイルを写し直します（'+pcCheckedText(x.files)+'）')}"><i class="fa-solid fa-rotate" aria-hidden="true"></i> ${pcFilesWaiting(x).length}本を写し直す</button>`:''}${canMake?`<button type="button" class="mm-btn-ghost sm pc-make" data-pc-make="${esc(x.key)}"
       data-pc-make-mode="${esc(x.mode||'dir')}"><i class="fa-solid fa-folder-plus" aria-hidden="true"></i> 作る…</button>`:''}${jump}
     <button type="button" class="pc-more-btn" data-pc-more title="${esc(x.label)}の補足（出どころ・効く時・メモ）" aria-label="補足">
      <i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>${more}</td>
   </tr>`;
+ }
+ /* ---------- 測定データ（共有）のファイルごとの読み方（§9.619、利用者の指示「測定データの保存は削除、必要な設定は共通へ統合」） ----------
+    ほかの PC が書くファイルは手元へ写してから読む（共有を直接読まない・docs/SHARED_READ.md R8）。**写せないファイルの記録は一覧に
+    入らない**ので、どの設備がなぜかを置き場の行のすぐ下で言う。影響（何本が一覧に入っていないか）→ 設備ごとの次の一手（要対応が先・自動で
+    写し直すが後）と人の言葉の理由（技術の字は ⓘ）→ 読めているファイルは1行、の順。押す物は行の操作の列の「N本を写し直す」の1つ
+    （数は帯の頭とまとまりの見出しが言う。行の状態の列は「フォルダ あります」だけ＝同じ数を隣に2つ出さない）。
+    答えはサーバー（`records_copy_report()`・理由の種類は`db_mirror.explain()`）——画面は判定を持たない。 */
+ const pcFilesWaiting=x=>(x&&x.files||[]).filter(f=>f.state==='waiting');
+ const PC_FILE_WORD={mine:'この端末が書く',copied:'写し'};
+ /* サーバーが種類を言わなかった（前の版のサーバー）ときの言い方。理由の元の字をそのまま言う。 */
+ const pcFileWhyOf=f=>({say:f.reason||'まだ写せていません',act:'要対応',auto:false,detail:f.reason||''});
+ function pcCheckedText(files){
+  const at=Math.max(0,...files.map(f=>Number(f.at)||0));
+  if(!at)return '';
+  const min=Math.round((Date.now()/1000-at)/60);
+  return `最後に確かめた ${min<1?'たった今':`${min}分前`}`;
+ }
+ function pcRecordsFilesHtml(x){
+  const files=(x&&x.files)||[];
+  if(!files.length)return '';
+  const bad=pcFilesWaiting(x),ok=files.filter(f=>f.state!=='waiting');
+  const act=w=>`<span class="pc-file-act ${w.auto?'is-auto':'is-need'}"><i class="fa-solid ${w.auto?'fa-clock-rotate-left':'fa-lock'}" aria-hidden="true"></i>${esc(w.act)}</span>`;
+  const box=bad.length?`<div class="pc-files-box" role="group" aria-label="一覧に入っていない測定データ">
+    <div class="pc-files-head"><b class="pc-files-lead"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ${bad.length}本の記録が一覧に入っていません</b>
+     <span class="pc-files-when">${esc(pcCheckedText(files))}</span></div>
+    <table class="pc-files"><tbody>${[...bad].sort((a,b)=>Number(!!(a.why&&a.why.auto))-Number(!!(b.why&&b.why.auto))).map(f=>{const w=f.why||pcFileWhyOf(f);
+     return `<tr data-file-eq="${esc(f.equipment)}"><td class="pc-file-eq">${esc(f.equipment)}</td><td class="pc-file-st">${act(w)}</td>
+      <td class="pc-file-say">${esc(w.say)}${tipHtml(w.detail+(f.path?`\n${f.path}`:''))}${w.hint?`<small>${esc(w.hint)}</small>`:''}</td></tr>`}).join('')}</tbody></table></div>`:'';
+  const okLine=ok.length?`<p class="pc-files-ok">${bad.length?`読めている ${ok.length}本`:`設備ごとのファイル ${ok.length}本を読めています`}${bad.length?'':`<span class="pc-files-when">${esc(pcCheckedText(files))}</span>`}: ${
+    ok.map(f=>`<b>${esc(f.equipment)}</b>（${PC_FILE_WORD[f.state]||''}）`).join('・')}</p>`:'';
+  return `<tr class="pc-store-sub" data-store-sub="${esc(x.key)}"><td></td><td colspan="3">${box}${okLine}</td></tr>`;
+ }
+ /* 「写し直す」（§9.619）。押したら答えの行で描き直し、結果を字で返す（何本写せて、何本残ったか）。 */
+ async function recopyRecords(btn){
+  btn.disabled=true;
+  try{
+   const r=await api('/api/measurement/records/recopy',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},body:'{}'});
+   const st=pathConfigState.storage,row=st&&(st.items||[]).find(x=>x.key==='recordsShare');
+   if(row)row.files=r.files||[];
+   const left=pcFilesWaiting(row).length;
+   showToast&&showToast(left?`写しました ${r.updated||0}本・まだ ${left}本`:'すべて写しました',left?'残ったファイルは行の理由を見てください':'',left?6000:3200);
+   renderPathConfigList();
+  }catch(e){showToast&&showToast('写し直せませんでした',e.message,7000);btn.disabled=false}
  }
  /* `config/local.json` の残り2つ（まとめて決める / 書込サイクル）。**優先順位はサーバーが言う**。
     説明は**マスタと同じ書き方**を通す（`**強調**`が生で出ないように・§9.222 ⑧）。 */
@@ -2977,6 +2831,7 @@
   }finally{setMaintLoading(false)}
  }
  function bindStorageActions(root){
+  root.querySelectorAll('[data-pc-recopy]').forEach(btn=>{btn.onclick=()=>recopyRecords(btn)});
   root.querySelectorAll('[data-pc-make]').forEach(btn=>{
    btn.onclick=()=>makeStoragePath(btn.dataset.pcMake,btn.dataset.pcMakeMode||'dir');
   });
@@ -2986,7 +2841,9 @@
   const live=list.filter(x=>!x.retired);
   const miss=live.filter(x=>x.path&&x.exists===false).length,pend=list.filter(x=>x.pending).length;
   const unset=live.filter(x=>!x.path).length,unknown=live.filter(x=>x.path&&x.exists==null).length;
+  const wait=live.reduce((n,x)=>n+pcFilesWaiting(x).length,0);
   const chips=[
+   wait?`<span class="pc-chip is-warn">写せていない ${wait}</span>`:'',
    miss?`<span class="pc-chip is-warn">まだ無い ${miss}</span>`:'',
    pend?`<span class="pc-chip is-warn">再起動待ち ${pend}</span>`:'',
    unset?`<span class="pc-chip is-off">未設定 ${unset}</span>`:'',
@@ -3013,7 +2870,7 @@
    if(!list.length)return '';
    const extra=g.id==='terminal'?pcLocalExtraRows(sl&&sl.localConfig):'';
    const table=`${g.id==='terminal'?pcLocalErrorHtml(sl&&sl.localConfigError):''}
-    <table class="pc-store"><tbody>${list.map(r=>pcStorageRowHtml(r,sl&&sl.localConfig)).join('')}${extra}</tbody></table>`;
+    <table class="pc-store"><tbody>${list.map(r=>pcStorageRowHtml(r,sl&&sl.localConfig)+pcRecordsFilesHtml(r)).join('')}${extra}</tbody></table>`;
    const open=g.id in was?was[g.id]:pcGroupOpen(g,list);
    return pageFoldHtml(g.name,`${list.filter(x=>!x.retired).length}か所`,table,open,
     {icon:g.icon,tip:g.tip,tag:`<span class="pc-acc-tags">${pcGroupTag(list)}</span>`,cls:'pc-store-group',id:'pcStore-'+g.id,
@@ -5005,7 +4862,6 @@
 
 
  /* 盤の登録簿へ名乗る（§9.324 R3）。 */
- WL.mm.registerSpecial('meas-storage',{load:loadMeasStorageMaint,dirty:setDirty});   // 足元で保存していない変更は離れる前に聞く（§9.598）
  WL.mm.registerSpecial('import-backup',{load:loadImportBackupMaint});
  WL.mm.registerSpecial('data-source',{load:loadDataSourceMaint,onEditorClose:()=>{dsState.editing=null;renderDataSource()}});
  WL.mm.registerSpecial('query-join',{load:loadQueryJoinMaint,onEditorClose:()=>{qjState.editing=null;renderQueryJoin()}});

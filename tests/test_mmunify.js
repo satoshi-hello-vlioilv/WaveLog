@@ -105,8 +105,8 @@ H.run('test_mmunify: マスタの部品は画面をまたいで1つの型（§9.
  addBtn.smn = await look('#smnAdd', BTN);
  const smnIn = await look('#smnNew', ['h']);
  verbs.push(...await plusVerbs());
- /* ---------- 測定データの保存（設定の段の札＝左の一覧の2行の項目） ---------- */
- await openNav('measStorage', '.mm-tabbar.is-rail .mm-tab');
+ /* ---------- 不要ファイル掃除（設定の段の札＝左の一覧の2行の項目・§9.619 で測定データの保存を消した） ---------- */
+ await openNav('cleanup', '.mm-tabbar.is-rail .mm-tab');
  const railH = await look('.mm-tabbar.is-rail .mm-tab', ['h']);
  /* ---------- 帳票レイアウト（一覧の頭・表の見出し・詳細の頭2段） ---------- */
  await openNav('reportLayout', '.rly-row.is-head');

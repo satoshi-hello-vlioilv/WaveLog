@@ -80,7 +80,7 @@
    「記録した値の配置について文字が1行で収まっていない」）。
    以前は`200px * --ui-scale`の決め打ちで、**器だけが縮み、中のアイコン
    (26px)・余白(28px)・隙間は px のまま**だったため、表示サイズ「小」では
-   8文字の呼び名（記録した値の配置／測定データの保存／テーブル生データ…）が
+   8文字の呼び名（記録した値の配置／テーブル生データ…）が
    2行に折り返していた（実測: 使える幅100px に対し文字103px）。
    文字ぶんは`em`（＝文字サイズに追随）、器物は px で足し合わせる。
      8.4em … 8文字ぶん＋にじみ / 56px … 行の余白20+左の帯3+器の余白16+バー15+枠2（§9.593で1文字の印を外した） */
@@ -1127,40 +1127,6 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .pc-owner-off{color:var(--muted)}
 .pc-owner-lines{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);
   font-size:var(--fs-sm);color:var(--ink-2)}
-/* ---------- 測定データの保存（§9.202 → §9.601） ----------
-   頭の下の全幅の図に3つの置き場を**左から右へ**並べる（流れの順＝作業の順・§14）。矢印には「いつ動くか」を1行の字で書く（§3）。
-   §9.261 で縦に積んだのは、段の中の狭い盤で1段204pxまで痩せて値が切れたため——全幅の図なら1段に十分な幅がある。 */
-.ms-flow{display:grid;align-items:center;
-  grid-template-columns:minmax(0,1fr) minmax(var(--w-md),auto) minmax(0,1fr) minmax(var(--w-md),auto) minmax(0,1fr)}
-.ms-stage{display:flex;flex-direction:column;gap:2px;min-width:0;padding:var(--space-2) var(--space-3);
-  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface)}
-.ms-stage.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
-.ms-stage.is-off{border-style:dashed;background:var(--surface-2)}
-.ms-stage-head{display:flex;align-items:center;gap:var(--space-1);min-width:0}
-.ms-stage-head b{font-size:var(--fs-base-sm);color:var(--ink)}
-.ms-stage-sub{font-size:var(--fs-sm);color:var(--muted)}
-/* 行の高さは本文と同じ`--lh`（§9.594）。 */
-.ms-no{flex:none;font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--teal-dark);line-height:var(--lh)}
-/* ラベル列は固定幅でそろえる（§9）。値は**切らない**——入らなければ折り返す（省略記号にすると打つ手の書いてある側が消える）。 */
-.ms-kv{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);gap:2px var(--space-2);margin:var(--space-1) 0 0;min-width:0}
-.ms-kv dt{margin:0;font-size:var(--fs-sm);color:var(--muted)}
-.ms-kv dd{margin:0;font-size:var(--fs-sm);font-weight:var(--fw-ui);color:var(--ink);min-width:0;overflow-wrap:anywhere}
-.ms-kv dd.is-warn{color:var(--warn-fg);font-weight:var(--fw-strong)}
-/* 段と段のあいだの矢印（細い灰の線・字は線の上に1行）。 */
-.ms-arrow{display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:0 var(--space-2);min-width:0}
-.ms-arrow span{font-size:var(--fs-sm);color:var(--muted);text-align:center;white-space:nowrap}
-.ms-arrow i{position:relative;display:block;height:1px;margin:4px 0;background:var(--line-mid)}   /* 上下の余白は矢じり（上下4px）の席 */
-.ms-arrow i::after{content:'';position:absolute;right:-1px;top:-4px;border:4.5px solid transparent;border-left:7px solid var(--line-mid);border-right:0}
-/* ---- 設備ごとへの引っ越し（§9.258）。どうなるか見る → この内容で振り分ける の2段 ---- */
-.ms-split-result{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-1);margin-top:var(--space-2);padding-top:var(--space-2);
-  border-top:1px solid var(--line)}
-.ms-split-total{margin:0;font-size:var(--fs-sm);color:var(--ink);font-weight:var(--fw-ui)}
-.ms-split-list{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
-.ms-split-list code{color:var(--muted)}
-.ms-split-err{font-style:normal;color:var(--danger)}
-/* いまの置き場（読むだけの値・枠を付けない・画面基準 10）。 */
-.ms-where-path{font-family:var(--font-mono,monospace);font-size:var(--fs-sm);color:var(--ink-2);overflow-wrap:anywhere}
-
 /* ---- 上部の操作（§9.266）。3つだけなので詰めて1行に置く ---- */
 .mm-head-ico{font-size:var(--fs-sm);line-height:1;flex:none;opacity:.75}
 .mm-head-user{display:inline-flex;align-items:center;gap:var(--space-1);min-width:0}
@@ -3678,7 +3644,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
 #pzTerms .mm-row.is-old{background:var(--required-bg)}
 
 /* ---------- 設定型の画面（§9.601・ステップ3） ----------
-   測定データの保存・データ引継ぎ・データ接続・クエリ結合・接続状況・不要ファイル掃除は共通設定と同じ骨組み:
+   データ引継ぎ・データ接続・クエリ結合・接続状況・不要ファイル掃除は共通設定と同じ骨組み:
    頭の下に全幅の状態の図（`.mm-set-fig`・どの段を開いても見える）→ 左の段（`.pc-page.is-rail`・共通設定と同じ札）→ 段の中身
    （`.mm-set-body`・ここだけ送る）→ 段の下端の足元（`.pc-save`・開いている段のものだけ）。段が1つなら左の段を持たない（`.mm-set-one`）。 */
 .mm-set{display:flex;flex-direction:column}
@@ -3689,10 +3655,6 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .mm-set-body{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space-3);
   padding:var(--space-3) var(--space-4) var(--space-4)}
 .mm-set-fill{flex:1}
-/* 直す場所へ連れて行く字の札（押す物だが主の操作ではない・下線なしの青緑の字）。 */
-.mm-set-link{display:inline-flex;align-items:center;gap:var(--space-1);padding:0;border:0;background:none;
-  color:var(--teal-ink);font-size:var(--fs-sm);font-weight:var(--fw-ui);white-space:nowrap;cursor:pointer}
-.mm-set-link:hover{color:var(--teal-dark);text-decoration:underline}
 /* 押せない理由（ボタンの代わりに置く字・§4）。 */
 .mm-set-why{color:var(--muted);font-size:var(--fs-sm)}
 /* 量の帯（図）と凡例。色だけで言わない——凡例が名前と数を字で言う（§3）。 */
