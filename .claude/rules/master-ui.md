@@ -1,4 +1,4 @@
-# マスタ管理の画面（83件）
+# マスタ管理の画面（84件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 「測定データの保存」は持たない。置き場・ファイルごとの読み方・写し直すは共通設定の置き場の行の1箇所 | `test_reccopyui.js`・`test_storageui.js` | [§9.619](../../docs/decisions/9.619.md) |
 | 左の一覧の2行の項目は40pxの1つ（余白`--space-1`／`--space-2`・行送り1.3）。共通設定などの段の札も同じ | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 一覧の頭は`.mm-panehead`の1つ（何の一覧・件数）。件数を頭に置いたら札の行の右に同じ数を出さない | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 本文の中の「＋ 追加」は`.mm-btn-ghost`の1つ。同じ操作の動詞は「追加」（足す・つくるを使わない） | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
@@ -27,7 +28,7 @@
 | 設定型の6画面は共通設定と同じ骨組み（頭の下に全幅の状態の図→左の段→段の足元）。組むのは`mountSetPage()`の1箇所 | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 設定型の表は`fillSetList()`（短い値の列は`fit`で中身なり）。行に操作のボタンを置かない（行を押す・行のメニュー・窓の ⋯） | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 説明は定義の`hint`（ⓘ）、範囲は`scope`（灰の札「この端末だけ」）。主役の前に説明の帯・件数の帯を置かない | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
-| 設定型の保存は段の足元の1つ（`wireSetSave()`・`[data-set-field]`の変えた数）。離れる前に聞くのは`setDirty` | `test_measstore.js`・`test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
+| 設定型の保存は段の足元の1つ（`wireSetSave()`・`[data-set-field]`の変えた数）。離れる前に聞くのは`setDirty` | `test_mmset.js` | [§9.601](../../docs/decisions/9.601.md) |
 | 汎用の表のマスタの一覧はどれも札の行（`listBar()`）: タブ「一覧 N件」（絞ったら「n / N件」）・右に探す欄（行のある一覧だけ）と群の開閉。題の横に件数を出さない | `test_mmlist.js`・`test_mmfold.js` | [§9.599](../../docs/decisions/9.599.md) |
 | 探すとその場で絞る（表に出している全部の列の字・`mmFold`）。当たった字に印、群の見出しの件数と要約も絞った行で数え直す | `test_mmlist.js` | [§9.599](../../docs/decisions/9.599.md) |
 | 列の幅は中身なり（見出し〜320px）。器に入るなら px で表の幅に止め（`is-fitw`）、入らないときだけ`optional`の列を畳んで「ほか N列」と書く | `test_mmlist.js`・`test_mmtable.js` | [§9.599](../../docs/decisions/9.599.md) |
@@ -87,7 +88,7 @@
 | `esc()`は「属性にも使う」ので引用符まで逃がす | `test_rbcells.js` | [§9.276](../../docs/decisions/9.276.md) |
 | 落とす場所の印で盤を動かさない | `test_opui.js` | [§9.218](../../docs/decisions/9.218.md) |
 | 浮きパネルの中に絶対配置のポップアップを作らない | — | [§9.201](../../docs/decisions/9.201.md) |
-| 設定ページは段（タブ）＋畳み（アコーディオン） | `test_measstore.js`・`test_setpage.js` | [§9.261](../../docs/decisions/9.261.md) |
+| 設定ページは段（タブ）＋畳み（アコーディオン） | `test_setpage.js` | [§9.261](../../docs/decisions/9.261.md) |
 | 操作が少ない画面の操作列は1行目へ相乗りさせる | — | [§9.266](../../docs/decisions/9.266.md) |
 | 盤の落とし先は「カーソルの真下の物」で決める | `test_oppad.js` | [§9.230](../../docs/decisions/9.230.md) |
 | マスタ管理の汎用CRUDは4本セット | `test_crudroutes.py` | [決まり](../../docs/decisions/rules-misc.md) |

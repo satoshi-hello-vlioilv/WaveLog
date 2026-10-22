@@ -1096,7 +1096,7 @@ def master_edit_effective(role,stored):
 # 「読み取り専用」と名乗るのに実際は切断も引き継ぎもできる＝**合図が嘘をつく**
 # （§CLAUDE 6）。接続状況は区分そのもの（`role_can('presence:view')`）が答える。
 ADMIN_MASTER_KEYS=('accessPermission','pathConfig','dataSource','queryJoin',
-                   'measStorage','cleanup','rawTable')
+                   'cleanup','rawTable')
 
 def master_scope_of(key):
  """タブのキー -> 'admin'（管理のマスタ）/ 'field'（現場のマスタ）。"""

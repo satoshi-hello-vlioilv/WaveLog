@@ -5,9 +5,10 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 import json
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, cfg, MEAS_DB, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, fresh_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_plan, records_paths_holding, note_records_written, records_shared, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
+from ..db_access import DBS, cfg, MEAS_DB, qi, connect, cols, tables, ensure_backup_table, merged_backup_rows, fresh_backup_rows, records_path_for, records_paths_all, records_copy_report, records_paths_holding, note_records_written, records_shared, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
 from ..access_mode import request_user_id, request_pc_name
-from .body import body, flag, any_
+from .body import body, any_
+from .common import api_guard
 # 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
 # **読み取り関数と表名の定数は import ごと外す**——残すと grep で
 # read_operator_names が今もここに当たり、廃止した経路が現役だと誤読される
@@ -433,160 +434,16 @@ def backup_list():
                  meas_path=str(MEAS_DB),meas_paths=[str(p) for p in records_paths_all()])
  except Exception as e:return jsonify(error=f'測定データ読込失敗: {e}',meas_path=str(MEAS_DB)),500
 
-@bp.post('/api/measurement/records/split')
-def records_split():
- """今ある測定データを、設備ごとのファイルへ振り分ける(§9.258)。
+@bp.post('/api/measurement/records/recopy')
+@api_guard('写し直せませんでした')
+def records_recopy():
+ """共通設定の「置き場」の「写し直す」（§9.619）。ほかの PC が書く測定データを、いま確かめて写し直す。
 
- **既定は下見**(§9.193)——`apply:true`を送るまで1件も書かない。押す前に
- 「どの設備へ何件」を出せるようにするため。
-
- **元のファイルは消さない。** 読む側(records_paths_all)は旧い置き場も一緒に
- 見るので、振り分けたあとも記録は1件も消えないし、二重にも出ない
- (記録IDごとに新しい方を採る)。以後その記録を保存し直せば、置き去りは
- backup()が片付ける。
- """
- x=body({'apply': flag})
- apply=x.flag('apply')
- if RECORDS_SHARE_DIR is None:
-  return jsonify(error='測定データの共有の置き場が設定されていません。'
-                       'マスタ管理 > 測定データの保存で置き場を決めて、アプリを再起動してください。'),400
- try:
-  items,_=read_backup_rows(MEAS_DB)
- except Exception as e:
-  return jsonify(error=f'今の測定データを読めませんでした: {e}'),500
- if not items:
-  return jsonify(ok=True,apply=apply,total=0,groups=[],moved=0,
-                 note='この端末のdb/records.sqlite3に振り分ける記録がありません。')
- # 設備ごとにまとめる。**フォルダ名の決め方は records_dir_name の1箇所**。
- buckets={}
- for r in items:
-  buckets.setdefault(str(r.get('equipment') or ''),[]).append(r)
- groups=[];moved=0;failed=[]
- for eq in sorted(buckets):
-  rows=buckets[eq]
-  target=records_path_for(eq,create=apply)
-  g={'equipment':eq,'dirName':records_dir_name(eq),'count':len(rows),'path':str(target),'moved':0,'error':''}
-  if apply:
-   try:
-    with connect(target) as c:
-     ensure_backup_table(c);have=[n for n in cols(c,'Web測定バックアップ')]
-     cur=c.cursor()
-     # 画面が使う名前 -> 実際の列名。read_backup_rows の戻りに合わせる。
-     m={'記録ID':'id','設備':'equipment','ロット番号':'lotNo','検査番号':'inspectionNo',
-        '鋳造番号':'castingNo','状態':'status','更新日時':'updated_at','圧縮形式':'codec',
-        'ペイロード':'payload','登録者ID':'created_by','登録端末名':'created_pc',
-        '更新者ID':'updated_by','更新端末名':'updated_pc','登録日時':'created_at',
-        '更新時刻ISO':'record_updated_at'}
-     use=[n for n in have if n in m]
-     sql=('INSERT INTO [Web測定バックアップ] ('+','.join('['+n+']' for n in use)+') '
-          'VALUES ('+','.join('?' for _ in use)+')')
-     for r in rows:
-      cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[r.get('id')])
-      cur.execute(sql,[r.get(m[n]) for n in use])
-      g['moved']+=1
-     c.commit()
-    moved+=g['moved']
-   except Exception as e:
-    g['error']=str(e);failed.append(eq)
-    app_logger().warning('測定データの振り分け(%s -> %s)に失敗: %s',eq or '(設備なし)',target,e)
-  groups.append(g)
- if apply:
-  invalidate_backup_rows_cache()
- return jsonify(ok=not failed,apply=apply,total=len(items),groups=groups,moved=moved,
-                failed=failed,source=str(MEAS_DB),
-                note=('振り分けました。**元のファイルはそのまま残します**'
-                      '——読むときは旧い置き場も一緒に見るので、記録は1件も消えず二重にも出ません。'
-                      if apply else
-                      '下見です。まだ1件も書いていません。'))
-
-def _mirror_state():
- """閲覧が手元の写しから読めているか(§9.268)。画面はこれをそのまま出す。
-
- **写しから読む本数・実物を読む本数（この端末が書くファイル）・まだ写せていない本数**を分けて数える
- ——まだ写せていない置き場は共有を直接読まず、写し終えるまで一覧に入らない（§9.582）ので、そこを
- 黙ると「全部読めている」と誤解される。
- """
- try:
-  plan=records_read_plan()
-  mirrored=[r for r,u in plan if u is not None and u!=r]
-  waiting=[r for r,u in plan if u is None]
-  return {'enabled':db_mirror.enabled(),
-          'intervalSec':db_mirror.interval_sec(),
-          'mirrored':len(mirrored),'direct':len(plan)-len(mirrored)-len(waiting),'waiting':len(waiting),
-          'paths':[str(u) for _r,u in plan if u is not None]}
- except Exception as e:
-  # **読めなかったことを「写していない」と混同しない**(§9.211 ②)。
-  return {'enabled':None,'error':str(e)}
-
-@bp.get('/api/measurement/storage')
-def storage_status():
- """測定データの置き場の状態(§9.202、利用者の指示「仕組みを整理して視覚的に」)。
-
- 測定データは3段で持っている。**どれが何なのかを画面が図にできるよう、
- サーバーが分かるぶん(②③)をここでまとめて答える**——以前は設定画面も
- 状態表示も無く、「DBへ同期」が何をするボタンなのかも書かれていなかった。
-
-  ① この端末のブラウザ (IndexedDB + localStorageの控え)
-     …入力の実体。**サーバーからは見えない**ので、件数は画面側が足す。
-  ② 測定データのDB     (設備ごとに1ファイル。未設定ならdb/records.sqlite3)
-     …保存のたびに送られる。他のPCから続きを開けるのはここ(§9.91・§9.258)。
-  ③ 閲覧用の複製       (records_backup_export_path、Box等)
-     …②が変わったら間隔ごとに丸ごと複製。閲覧モードはここを読む。
-
- 読み取り専用。**数えられなかったら null を返す**（0件と言い切らない）。
- """
- out={'ok':True}
- # 書く先は「この端末が担当する設備のファイル」。設備は測定を開いたときに
- # 決まるので、**ここで名乗れるのは置き場の形まで**——どのファイルへ書いたかは
- # 保存の応答(meas_path)が返す。
- write_target=MEAS_DB
- local={'path':str(write_target),'exists':None,'count':None,'size':None,'lastWriteAt':None,'error':'',
-        'shareDir':str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR else '',
-        'perEquipment':RECORDS_SHARE_DIR is not None,
-        'readPaths':[str(p) for p in records_paths_all()],
-        # **閲覧は手元の写しから**(§9.268)。黙って写しを読むと、他の端末の
-        # 記録が写しの間隔ぶん古いことに気づけない(§3・§9.198)。
-        'mirrored':_mirror_state()}
- try:
-  local['exists']=path_exists_safe(write_target)
- except Exception as _e:
-  quiet('在るかどうかを確かめられない（分からないものとして続ける）',_e)
-  local['exists']=None
- try:
-  local['size']=write_target.stat().st_size
- except OSError:
-  pass
- try:
-  with connect(write_target,True) as c:
-   cur=c.cursor()
-   cur.execute('SELECT COUNT(*),MAX([更新日時]) FROM [Web測定バックアップ]')
-   row=cur.fetchone() or (None,None)
-   local['count']=row[0]
-   local['lastWriteAt']=row[1]
- except Exception as e:
-  # 表がまだ無い端末（1件も測定していない）もここへ来る。**失敗にしない**
-  # ——設定画面ごと開けなくなるほうが困る。
-  local['error']=str(e)
- out['local']=local
- out['export']=records_export.status()
- out['viewMode']={'reads':'export'}
- return jsonify(out)
-
-@bp.post('/api/measurement/backup/export-now')
-def backup_export_now():
- """「いま複製する」(§9.202)。間隔を待たずに③を作り直す。
-
- **押した手応えを必ず返す**——複製先が未設定・失敗のときは理由を返す
- （黙って成功と言わない）。
- """
- st=records_export.status()
- if not st.get('configured'):
-  return jsonify(error='複製先が設定されていません。マスタ管理 > 共通設定の「測定データバックアップの閲覧用複製先」を設定して、アプリを再起動してください。'),400
- ok=records_export.export_now()
- st=records_export.status()
- if not ok:
-  return jsonify(error=f'複製できませんでした: {st.get("lastError") or "理由は不明です"}',export=st),500
- return jsonify(ok=True,export=st)
+ **読むだけのPOST**（共有は写すだけ・業務データは1行も書かない）。手動の設定でも写す（押したことが合図）。
+ 答えは1ファイルごとの読み方と理由（`records_copy_report()`）——押した結果を行で返す。"""
+ n=db_mirror.refresh_records(manual=True)
+ if n:invalidate_backup_rows_cache()
+ return jsonify(ok=True,updated=n,files=records_copy_report())
 
 @bp.get('/api/measurement/backup/list-view')
 def backup_list_view():

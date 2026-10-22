@@ -28,7 +28,7 @@ from .logging_setup import app_logger
 from .quiet import quiet
 
 _dirty=threading.Event()
-# 最後に試した結果。画面(GET /api/measurement/storage)がそのまま出す。
+# 最後に試した結果（`status()`）。
 _state={'lastOkAt':None,'lastTryAt':None,'lastError':'','running':False}
 _lock=threading.Lock()
 

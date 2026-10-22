@@ -123,7 +123,7 @@ run('test_master: マスタ管理の画面（統合パネル・タブ・編集�
   rec('「設備」に設備とロールが集まる',
     (byGroup.equip||[]).join(',')==='equipment,roll',(byGroup.equip||[]).join(','));
   rec('「データと接続」に置き場と読み込み先が集まる',
-    ['dataSource','measStorage','pathConfig'].every(k=>(byGroup.data||[]).includes(k)),
+    ['dataSource','pathConfig'].every(k=>(byGroup.data||[]).includes(k)),
     (byGroup.data||[]).join(','));
   /* ---- 群ごとに畳める（§9.250 ②、利用者の指示） ---- */
   const folds=await page.evaluate(()=>[...document.querySelectorAll('.mm-nav-group')].map(x=>({

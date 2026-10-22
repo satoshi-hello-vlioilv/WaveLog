@@ -192,7 +192,7 @@ G['マスタ'] = ['test_master', 'test_mmshell', 'test_mmpane', 'test_mmlist', '
                # §9.389: 設備停止の内訳（サブカテゴリ）と時間の選択肢
                'test_stopsub', 'test_stopsubui',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
-               'test_workdate', 'test_measstore', 'test_roll', 'test_rollio',
+               'test_workdate', 'test_reccopyui', 'test_roll', 'test_rollio',
                # §9.241 ①: 束ねた見出しの開閉／④: ロールの読み込み経路
                'test_mmfold', 'test_rollload',
                # §9.251: ロールの全削除・完全入替
@@ -215,7 +215,7 @@ G['マスタ'] = ['test_master', 'test_mmshell', 'test_mmpane', 'test_mmlist', '
                'test_equse',
                # §9.588: 設備停止の挿入条件の盤（設備停止マスタの下の全幅の節）
                'test_stoprulemaster']
-G['測定'] = ['test_course', 'test_tolscale', 'test_lateraljudge', 'test_entermove', 'test_qualitynote', 'test_dimboth', 'test_defect', 'test_share', 'test_recshareui', 'test_flows',
+G['測定'] = ['test_course', 'test_tolscale', 'test_lateraljudge', 'test_entermove', 'test_qualitynote', 'test_dimboth', 'test_defect', 'test_share', 'test_recshareui', 'test_recvisible', 'test_reccopyui', 'test_flows',
              # §9.392: 設備ごとに使う入力内容（選択肢とチップから伏せる）
              'test_measitems',
              # §9.286 ⑥: 未入力・未選択の配色と、増やした色
@@ -242,7 +242,7 @@ G['起動'] = ['test_boot', 'test_bootui', 'test_splashorder', 'test_planstrip',
              'test_shortcut',
              # §9.544: デスクトップ版の窓口（標準入出力・ポートなし）。起動の背景処理を共有する
              'test_sidecar']
-G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_recshare', 'test_recfresh', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
+G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_recshare', 'test_recfresh', 'test_reccopyreason', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
              # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
@@ -527,7 +527,7 @@ RULES = [
     # §9.588: 厳密モードの開始の口（一番上のロット・上の設備停止の時刻）
     ('backend/routes/schedule_start.py', g('test_strictstart', 'test_modeguard', 'test_routesplit', 'test_doneflow')),
     ('backend/schedule_history.py', g('test_schedhist', 'test_schistui')),
-    ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
+    ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_reccopyui',
                                         # §9.317: 参照データが読めなくても測定は始められる
                                         'test_recsplit', 'test_srcread', 'test_ctxfail')),
     ('backend/routes/quality.py', g('test_uiux', 'test_headbar', 'test_tablequery',
@@ -540,7 +540,7 @@ RULES = [
     # §9.267: 置き場の判定は1箇所（storage_layout）。`config/local.json`の
     # 書き換えもここが持つので、起動時の解決を見る網も一緒に回す。
     ('backend/storage_layout.py', g('test_storage', 'test_storageui', 'test_setpage',
-                                    'test_measstore', 'test_localwork', 'test_mastershare',
+                                    'test_reccopyui', 'test_localwork', 'test_mastershare',
                                     # §9.445: 「表示」の節（起動アイコン）
                                     'test_uisize', 'test_setpage')),
     ('backend/routes/rne.py', g('test_datasource', 'test_setpage', 'test_modeguard')),
@@ -601,7 +601,7 @@ RULES = [
                                    'test_screorder', 'test_scdndhold', 'test_atomicio', 'test_scsession',
                                    'test_scwho', 'test_scowner')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd', 'test_lfpoints', 'test_lfui')),
-    ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore',
+    ('backend/records_export.py', g('test_share', 'test_flows', 'test_reccopyui',
                                     'test_recsplit')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),

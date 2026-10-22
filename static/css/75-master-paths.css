@@ -227,6 +227,26 @@
 .pc-store-kind{display:block;margin-top:2px;font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pc-store td.pc-store-act{width:13.5em;text-align:right;white-space:nowrap}
 .pc-store-act>*+*{margin-left:var(--space-1)}
+/* 測定データ（共有）のファイルごとの読み方（§9.619）。行のすぐ下に、欄の列の左端（入力欄の列）からそろえて置く。
+   写せていないファイルがあるときだけ琥珀の帯（影響→設備ごとの次の一手→理由）。読めているファイルは帯の外に1行。 */
+.pc-store-row:has(+.pc-store-sub)>*{border-bottom:0}
+.pc-store-sub>td{padding:0 var(--space-2) var(--space-2)}
+.pc-files-box{margin-top:var(--space-1);border-left:3px solid var(--warn-border);border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:var(--warn-bg);overflow:hidden}
+.pc-files-head{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-1) var(--space-2);min-width:0}
+.pc-files-lead{flex:1 1 auto;min-width:0;font-size:var(--fs);font-weight:var(--fw-strong);color:var(--warn-fg)}
+.pc-files-when{flex:none;font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
+.pc-files-ok .pc-files-when{margin-left:var(--space-2)}
+.pc-files{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--fs-sm)}
+.pc-files td{padding:var(--space-1) var(--space-2);border-top:1px solid var(--warn-border);vertical-align:top;color:var(--ink);background:var(--surface)}
+.pc-files td.pc-file-eq{width:8.5em;font-weight:var(--fw-ui)}
+.pc-files td.pc-file-st{width:12.5em}
+.pc-file-say{text-wrap:pretty}
+.pc-file-say small{display:block;color:var(--ink-2);text-wrap:pretty}
+.pc-file-act{display:inline-flex;align-items:center;gap:4px;padding:0 var(--space-2);border-radius:var(--radius-sm);font-weight:var(--fw-ui);white-space:nowrap}
+.pc-file-act.is-auto{background:var(--teal-tint);color:var(--teal-ink)}
+.pc-file-act.is-need{background:var(--danger-bg);color:var(--danger)}
+.pc-files-ok{margin:var(--space-1) 0 0;font-size:var(--fs-sm);color:var(--ink-2)}
+.pc-files-ok b{color:var(--ink);font-weight:var(--fw-ui)}
 /* 役目を終えた置き場は薄く（消しはしない——古い設定が残っている端末で、何が残っているかは読める）。 */
 .pc-store-row.is-retired>th,.pc-store-row.is-retired>.pc-store-box{opacity:var(--op-disabled)}
 /* 「作る」は打つ手なので、他の行き先より1段強く出す。 */

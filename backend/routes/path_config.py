@@ -29,7 +29,7 @@ from ..db_access import (
  DBS, MEAS_DB, connect, EQUIPMENT_TOKEN, normalize_file_pattern,
  PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
  SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, SCHEDULE_SHARE_PATH,
- parse_match_keys,
+ parse_match_keys, records_copy_report,
 )
 import json as _json
 from ..access_mode import request_user_id
@@ -779,7 +779,14 @@ def data_source_master_delete():
 @bp.get('/api/storage-layout')
 def storage_layout_get():
  try:
-  return jsonify(ok=True,**storage_layout.layout())
+  lay=storage_layout.layout()
+  # 測定データ（共有）の行には設備ごとのファイルの読み方と写せない理由を添える（§9.619）。**写せないファイルは
+  # 一覧に入らない**ので、どれがなぜかを置き場の行が言う（前は「測定データの保存」の画面が本数だけを言っていた）。
+  row=next((x for x in lay['items'] if x['key']=='recordsShare'),None)
+  if row is not None:
+   try:row['files']=records_copy_report()
+   except Exception as e:quiet('測定データのファイルごとの読み方を出せない（行は出す）',e);row['files']=[]
+  return jsonify(ok=True,**lay)
  except Exception as e:
   app_logger().exception('置き場の一覧を作れませんでした')
   return jsonify(error=f'置き場の一覧を作れませんでした: {e}'),500

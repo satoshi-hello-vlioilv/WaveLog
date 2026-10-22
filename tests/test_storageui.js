@@ -11,7 +11,7 @@
     ④ 無い置き場には「作る」が出て、**下見を見るまで作らない**
     ⑤ `config/local.json` の4つも同じ画面から直せる（**画面の外に残さない**）
     ⑤' 保存は**保存値**を送る（効いている値を送り返して焼き付けない・§9.250 ⑩）
-    ⑥ 測定データの保存の側に**同じ欄を2つ置かない**（§9.207 入口は1つ） */
+    ⑥ 置き場を持つ画面は**共通設定の1つ**（§9.207 入口は1つ・§9.619 で測定データの保存を消した） */
 'use strict';
 const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
@@ -207,35 +207,9 @@ run('test_storageui: 置き場を1枚で見せて、その場で直す（§9.267
    js.length>0&&!/is_network_path|startsWith\('\\\\\\\\'\)/.test(js),
    js.length?'ok':'JSを読めませんでした');
 
- // ---- ⑥ 入口は1つ（測定データの保存の側に同じ欄を置かない） ----
- await tab('測定データの保存');
- await openSection('置き場と引っ越し');
- const ms=await page.evaluate(()=>({
-   oldInput:!!document.querySelector('#msShareDir'),
-   oldExport:!!document.querySelector('#msExportPath'),
-   goto:!!document.querySelector('[data-ms-goto]'),
-   where:(document.querySelector('.ms-where-path')||{}).textContent||''}));
- rec('測定データの保存に同じ欄を置かない（入口は1つ）',
-   !ms.oldInput&&!ms.oldExport,JSON.stringify(ms));
- rec('いまの置き場は書き、直す場所へ連れて行く',
-   ms.goto&&ms.where.length>0,JSON.stringify(ms));
- /* **連れて行った先が「置き場」の段であること**まで見る（§2。共通設定を
-    開くだけだと、置き場の段を自分で探すことになる）。 */
- await page.evaluate(()=>document.querySelector('[data-ms-goto]').click());
- /* 連れて行った先の段が選ばれ、中身が出るまで。 */
- await W.until(page,()=>{const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')]
-   .find(x=>x.getAttribute('aria-selected')==='true'||x.classList.contains('is-on'));
-   return !!t&&/置き場/.test(t.textContent)&&document.querySelectorAll('.pc-store-row').length>0},null,
-   {what:'置き場の段へ移る'});
- await idle();
- const landed=await page.evaluate(()=>{
-  const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')]
-    .find(x=>x.getAttribute('aria-selected')==='true'||x.classList.contains('is-on'));
-  return {tab:t?t.textContent.trim():'',rows:document.querySelectorAll('.pc-store-row').length,
-    visible:[...document.querySelectorAll('.pc-store-row')].filter(r=>r.offsetParent).length};
- });
- rec('連れて行った先が「置き場」の段',
-   /置き場/.test(landed.tab)&&landed.visible>0,JSON.stringify(landed));
+ // ---- ⑥ 入口は1つ（§9.619 で「測定データの保存」の画面を消した。置き場は共通設定のこの段だけ） ----
+ const nav=await page.evaluate(()=>[...document.querySelectorAll('#masterMaintNav [data-master]')].map(x=>x.dataset.master));
+ rec('置き場を持つ画面は共通設定の1つ（測定データの保存は無い）',!nav.includes('measStorage'),String(nav.length)+'件');
  }finally{
   /* **後片付け**——検証で入れたパス設定を必ず戻す（§9.121）。 */
   try{if(savedShareDir!==null)await writeShareDir(savedShareDir)}catch(e){console.log('!! 置き場の設定を戻せませんでした: '+(e&&e.message||e))}
