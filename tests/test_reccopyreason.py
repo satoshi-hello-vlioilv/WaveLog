@@ -20,6 +20,7 @@
  R4. 印を片付けたあと「写し直す」で写せ、一覧（summary）に完了の記録が入る
  R5. `-journal`が元ごと同じ形のまま`STALE_MARK_SEC`残ったら、書き手は作業中でないとみて写す（理由はログに1行）
  R6. `-journal`が動いている（書き手が書いている）あいだは見送り続ける
+ R7. 置き場に並ぶ別の役目のフォルダ（接続の記録`presence`など・records.sqlite3 を持たない）は数えず、警告もしない（§9.620）
 ============================================================
 """
 import json
@@ -93,6 +94,9 @@ try:
     d.invalidate_records_dirs_cache()
     d.invalidate_backup_rows_cache()
     m.cache_dir = lambda: work / 'mirror'
+    # 別の役目のフォルダ（マスタと同じ置き場にすると接続の記録が並ぶ）。測定データのファイルは持たない。
+    (share / 'presence').mkdir()
+    (share / 'presence' / 'PC-A.json').write_text('{}', encoding='utf-8')
     # ① 書き手の印が残っている
     other_pc_writes(share / 'LSJ' / 'records.sqlite3', 'J1', '完了')
     (share / 'LSJ' / 'records.sqlite3-journal').write_bytes(b'')
@@ -128,6 +132,10 @@ try:
     rec('R1. ④写せた: 「写し」と出て理由は無い', bool(fo and fo.get('state') == 'copied' and not fo.get('reason')),
         json.dumps(fo, ensure_ascii=False)[:200] if fo else '（行に無い）')
     print(f'MEASURE: 理由が置き場に出た {shown}/3・ログに残った {logged}/3')
+    fp = file_of(row, 'presence')
+    plog = [x for x in keep.lines if 'presence' in x]
+    rec('R7. 測定データのファイルを持たないフォルダ（presence）は数えず、警告もしない', fp is None and not plog,
+        f'{json.dumps(fp, ensure_ascii=False)[:120] if fp else "行に無い"} / ログ{len(plog)}行')
 
     # R5・R6. 残ったままの印（同じ形）は写す・動いている印は見送る。待つ長さはこの網だけ縮める。
     import time
