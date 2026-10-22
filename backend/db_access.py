@@ -1147,11 +1147,11 @@ BACKUP_AUDIT_COLUMNS=(('登録者ID','TEXT'),('登録端末名','TEXT'),
                       ('更新時刻ISO','TEXT'))
 
 def ensure_backup_table(c):
- names=tables(c)
- if 'Web測定バックアップ' not in names:
-  c.cursor().execute('CREATE TABLE [Web測定バックアップ] ([記録ID] TEXT, [設備] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [状態] TEXT, [更新日時] DATETIME, [圧縮形式] TEXT, [ペイロード] TEXT, [登録者ID] TEXT, [登録端末名] TEXT, [更新者ID] TEXT, [更新端末名] TEXT, [登録日時] DATETIME)')
+ # 監査の列は**作ったときも**`add_missing_columns()`の1箇所で足す（§9.618）。以前は作る文に列を書き写して
+ # 返しており、後から足した[更新時刻ISO]が抜けて、新しい設備のフォルダへの初めての保存が 500 になっていた。
+ if 'Web測定バックアップ' not in tables(c):
+  c.cursor().execute('CREATE TABLE [Web測定バックアップ] ([記録ID] TEXT, [設備] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [状態] TEXT, [更新日時] DATETIME, [圧縮形式] TEXT, [ペイロード] TEXT)')
   c.commit()
-  return
  add_missing_columns(c,'Web測定バックアップ',BACKUP_AUDIT_COLUMNS)
 
 def read_backup_rows(path):
@@ -1265,6 +1265,20 @@ def _merged_backup_rows_uncached():
    if existing is None or (row.get('updated_at') or '')>(existing.get('updated_at') or ''):
     merged[rid]=row
  return list(merged.values())
+
+def fresh_backup_rows():
+ """**一覧を開いたとき**の読み（§9.618）。答える前に、ほかの端末が書く測定データの元が変わったかを確かめ、
+ 変わったファイルだけその場で写し直す（`db_mirror.refresh_records()`・変わっていなければ stat 1回）。
+
+ 以前は`merged_backup_rows()`が裏の係を起こすだけで待たず、前の写しで答えていた——別の PC が完了した直後に
+ 一覧を開くと「編集中」のまま出て、完了の一覧に出なかった（利用者の報告）。作業スケジュール・実績の集計は
+ 今までどおり覚えと周回で読む（描くたびに共有へ確かめに行かない）。"""
+ updated=0
+ try:
+  from . import db_mirror  # 遅延: db_mirror は起動時にこのモジュールの設定を読む（循環を避ける）
+  updated=db_mirror.refresh_records()
+ except Exception as _e:quiet('写しを確かめられない（前の写しで答える）',_e)
+ return merged_backup_rows(force=bool(updated))
 
 def merged_backup_rows(force=False):
  # MEAS_DB(書込端末のローカルrecords.sqlite3)とRECORDS_BACKUP_EXPORT_PATH

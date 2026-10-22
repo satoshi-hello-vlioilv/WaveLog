@@ -1,4 +1,4 @@
-# データの置き場と共有（87件）
+# データの置き場と共有（88件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 一覧を開く口は`fresh_backup_rows()`の1箇所（答える前にほかの端末の元を確かめ、変わったファイルだけ写し直す・届かない元は待たない） | `test_recfresh.py` | [§9.618](../../docs/decisions/9.618.md) |
 | 閲覧・スケジュールモードの一覧も`merged_backup_rows()`を読む。他の PC の分が入るかは`records_shared()`、副題が言う | `test_recshare.py` | [§9.616](../../docs/decisions/9.616.md) |
 | 測定を開くときは同じ記録IDの新しいほう（手元・共有・`latestRecordFor()`）。完了なら聞く。空は無いときだけ | `test_recshareui.js` | [§9.616](../../docs/decisions/9.616.md) |
 | 一覧は共有が新しければ状態も共有側で見せる（一覧の写しだけ・中身は開くときに取り込む） | `test_recshareui.js` | [§9.616](../../docs/decisions/9.616.md) |

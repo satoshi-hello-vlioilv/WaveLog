@@ -394,16 +394,16 @@ def _verify(tmp):
  return None
 
 
-def refresh_one(key, remote):
+def refresh_one(key, remote, retry=None):
  """1つのデータソースを確かめ、元が変わっていれば写し直す（「再読込」も同じ道・約束の R2）。
 
  戻り値: {'updated':bool,'reason':str,...}。**例外は投げない**——
- 写せなくても画面は前の写しで動き続けるほうがよい。"""
+ 写せなくても画面は前の写しで動き続けるほうがよい。`retry=False`は届かない元を待たない（画面が待っている呼び出し）。"""
  remote = Path(remote)
  local = mirror_path(key)
  result = {'key': key, 'remote': str(remote), 'local': str(local),
            'updated': False, 'reason': '', 'at': time.time()}
- sig, err = _remote_stat(remote, retry=_known_good(key, remote))
+ sig, err = _remote_stat(remote, retry=_known_good(key, remote) if retry is None else retry)
  # 元に**写していない新しい版があるか**（§9.463）。写せたら下で False に戻す。
  result['newer'] = bool(sig is not None and _signature_of(key) != sig)
  if sig is None and not local.exists():
@@ -625,6 +625,21 @@ def records_targets():
  if RECORDS_BACKUP_EXPORT_PATH is not None and str(RECORDS_BACKUP_EXPORT_PATH) not in mine:
   out.append((RECORDS_KEY_PREFIX + '_export', Path(RECORDS_BACKUP_EXPORT_PATH)))
  return out
+
+
+def refresh_records():
+ """ほかの端末が書く測定データの写しを**いま**確かめる（§9.618・一覧を開いたとき）。写し直したファイルの数を返す。
+
+ 周回を待たずに同じ道（`refresh_one`・変わった元だけ写す）を通す。届かない元は待たない（前の写しで答える）。
+ 手動（`update_mode()`が manual）と、写して読むのを切った端末は何もしない（その約束を一覧が破らない）。"""
+ if not enabled() or update_mode() != 'auto':
+  return 0
+ n = 0
+ with _refresh_lock:
+  for key, remote in records_targets():
+   if refresh_one(key, remote, retry=False).get('updated'):
+    n += 1
+ return n
 
 
 def targets():

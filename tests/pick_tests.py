@@ -242,7 +242,7 @@ G['起動'] = ['test_boot', 'test_bootui', 'test_splashorder', 'test_planstrip',
              'test_shortcut',
              # §9.544: デスクトップ版の窓口（標準入出力・ポートなし）。起動の背景処理を共有する
              'test_sidecar']
-G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_recshare', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
+G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_recshare', 'test_recfresh', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
              # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
