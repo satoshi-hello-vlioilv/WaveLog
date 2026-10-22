@@ -397,6 +397,8 @@ RULES = [
                                         'test_rlmaster',
                                         # §9.242 ⑦⑧: 刷るときの紙の箱・品質情報の枠
                                         'test_rpprint',
+                                        # §9.622: 環境の設定（表示サイズ・字の大きさ・倍率）で紙が変わらない
+                                        'test_rppaper',
                                         # §9.253: 見本のロットで帳票を見る
                                         'test_rbsample',
                                         'test_collayout', 'test_actuals')),
