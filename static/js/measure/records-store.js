@@ -367,6 +367,9 @@ function markSyncResult(m,ok,error){
 /* backupRecordを呼び、結果をsyncStateへ反映して端末へ保存し直す
    (呼び出し元が既にreliablePut済みのmを渡す想定。ここでの再保存は
    syncStateだけが変わった差分を確実に永続化するため)。 */
+/* 送り直しの対象か（§9.621）。`withdrawn`＝データ引継ぎの「バックアップから消す」で利用者が共有から外した記録
+   ——手元には残すが、送り直して戻さない（次に保存し直したら送る）。 */
+const unsent=x=>!['synced','withdrawn'].includes(x&&x.syncState&&x.syncState.status);
 async function backupAndTrackSync(m){
  try{
   await backupRecord(m);markSyncResult(m,true);
@@ -391,7 +394,7 @@ async function syncPendingRecords({silent}={}){
  syncingPending=true;
  try{
   const all=await reliableAll();
-  const targets=all.filter(x=>x.syncState?.status!=='synced');
+  const targets=all.filter(unsent);
   if(!targets.length){
    if(!silent)showToast('未同期のデータはありません','',3000);
    return{total:0,ok:0};
@@ -424,7 +427,7 @@ async function refreshSyncStatusUI(preloaded){
  let pendingCount=0;
  try{
   const all=Array.isArray(preloaded)?preloaded:await reliableAll();
-  pendingCount=all.filter(x=>x.syncState?.status!=='synced').length;
+  pendingCount=all.filter(unsent).length;
  }catch(e){return}
  const badge=$('#homeDraftSyncWarn');
  if(badge){badge.hidden=pendingCount===0;badge.title=pendingCount?`バックアップDBへ未送信のデータが${pendingCount}件あります`:''}
@@ -952,13 +955,14 @@ function remoteIsNewer(row,mine){
 WL.recordVersion={remoteIsNewer,localStampMs};
 async function mergedRecords(){
  const local=(await reliableAll()).map(WL.measureView.ensureMeasureShape);
- let remote=[];
+ let remote=[],answered=false;
  try{
   const r=await api('/api/measurement/backup/summary');
-  remote=(r&&r.items)||[];
+  remote=(r&&r.items)||[];answered=true;
   recordListState.shared=typeof r?.shared==='boolean'?r.shared:null;
  }catch(e){recordListState.shared=null;WL.quiet.note('共有が読めなくても端末内のぶんは出す',e)}
- if(!remote.length)return local;
+ /* 突き合わせはサーバーが答えたときだけ（読めなかったのを「無い」と取り違えて全部を送り直さない）。 */
+ if(!remote.length){if(answered)markUnshared(local,remote);return local}
  const byId=new Map(local.map(x=>[x.id,x]));
  for(const row of remote){
   const mine=byId.get(row.id);
@@ -1001,7 +1005,38 @@ async function mergedRecords(){
    syncState:{status:'synced'},
   }));
  }
+ markUnshared(local,remote);
  return [...byId.values()];
+}
+/* ---------- 共有に届いていない手元の記録を送り直す（§9.621、利用者の指摘） ----------
+   「送れた（synced）」と控えた記録でも、共有に無いことがある——共有の置き場を決める前に保存した記録は、その PC の
+   db/records.sqlite3 にしか無い（他の PC から見えない）。送った先のファイルを入れ替えた・消えた場合も同じ。
+   一覧を開いたとき、サーバーの答え（`inShare`＝その版が共有の置き場にあるか）と突き合わせ、
+   ①サーバーに無い ②共有に無い（この端末のファイルだけ） ③手元のほうが新しい、の記録を未送信へ戻して裏で送る。
+   未送信の数はデータ一覧の帯・左のバッジがいつもどおり言う。手元より新しい版が共有にあるものは触らない。 */
+let unsharedKick=false;
+async function markUnshared(local,remote){
+ const byRemote=new Map(remote.map(r=>[r.id,r]));
+ const behind=local.filter(m=>{
+  if(!m||!m.id||m.remoteOnly||m.remoteNewer||(m.syncState&&m.syncState.status)!=='synced')return false;
+  const r=byRemote.get(m.id);
+  return !r||r.inShare===false||!!(r.record_updated_at&&m.updatedAt&&m.updatedAt>r.record_updated_at);
+ });
+ if(!behind.length)return 0;
+ for(const one of behind){
+  /* 一覧の写しは状態を共有側へ書き換えていることがあるので、保存は取り直した実物へ（§9.616）。 */
+  const m=await reliableGet(one.id);
+  if(!m)continue;
+  m.syncState={...(m.syncState||{}),status:'pending',lastError:'共有に届いていません（この端末にだけあります）'};
+  await reliablePut(m);
+ }
+ console.info(`共有に届いていない測定データ ${behind.length}件を送り直します`);
+ refreshSyncStatusUI();
+ if(!unsharedKick){
+  unsharedKick=true;
+  syncPendingRecords({silent:true}).catch(WL.quiet('送り直しに失敗（未送信のまま残り、次に開いたとき・15分ごとの同期で送る）')).finally(()=>{unsharedKick=false});
+ }
+ return behind.length;
 }
 /* 共有DBにしか無い1件を、この端末へ取り込む。取り込んでから開く
    (取り込まないと編集の保存先が無い)。 */

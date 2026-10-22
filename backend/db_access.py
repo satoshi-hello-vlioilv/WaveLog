@@ -1292,14 +1292,22 @@ def _merged_backup_rows_uncached():
  # load_factor.py(換算係数モデルの学習、§6.6)が共用する。どちらの端末
  # (書込端末そのもの/閲覧・スケジュール専用端末)から呼んでも同じ実績が
  # 見える。
- merged={}
- for path in records_read_paths():
-  for row in _backup_file_rows(path):
+ # `inShare`＝その版が共有の置き場（設備ごとのフォルダ）にあるか（§9.621）。この端末の db/records.sqlite3 にしか
+ # 無い版は False——画面は「共有に届いていない」として送り直す（他の PC からは見えないため）。置き場が未設定なら全部 True。
+ merged={};seen=set();share=str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR is not None else None
+ for real,use in records_read_plan():
+  if use is None or str(use) in seen:continue
+  seen.add(str(use))
+  in_share=share is None or str(real).startswith(share)
+  for row in _backup_file_rows(use):
    rid=row.get('id')
    if not rid:continue
+   row=dict(row,inShare=in_share)
    existing=merged.get(rid)
    if existing is None or (row.get('updated_at') or '')>(existing.get('updated_at') or ''):
     merged[rid]=row
+   elif in_share and (row.get('updated_at') or '')==(existing.get('updated_at') or ''):
+    existing['inShare']=True
  return list(merged.values())
 
 def fresh_backup_rows():
