@@ -20,6 +20,8 @@
  R4. 印を片付けたあと「写し直す」で写せ、一覧（summary）に完了の記録が入る
  R5. `-journal`が元ごと同じ形のまま`STALE_MARK_SEC`残ったら、書き手は作業中でないとみて写す（理由はログに1行）
  R6. `-journal`が動いている（書き手が書いている）あいだは見送り続ける
+ R8. サーバーの一覧の各行は、その版が共有の置き場にあるか（`inShare`）を言う。この端末の db/records.sqlite3 にしか無い
+     記録は False（画面はそれを送り直す・§9.621）
  R7. 置き場に並ぶ別の役目のフォルダ（接続の記録`presence`など・records.sqlite3 を持たない）は数えず、警告もしない（§9.620）
 ============================================================
 """
@@ -173,6 +175,12 @@ try:
     rec('R3. 「写し直す」は手動の設定でも写し直し、結果の行を返す', r.status_code == 200 and bool(fj and fj.get('state') == 'copied'),
         f'{r.status_code} {json.dumps(fj, ensure_ascii=False)[:160] if fj else body}')
     items = (client.get('/api/measurement/backup/summary').get_json() or {}).get('items') or []
+    other_pc_writes(d.MEAS_DB, 'LOCAL1', '完了')
+    d.invalidate_backup_rows_cache()
+    rows = {x.get('id'): x for x in (client.get('/api/measurement/backup/summary').get_json() or {}).get('items') or []}
+    rec('R8. 共有にある版は inShare=True、この端末のファイルにしか無い版は False',
+        (rows.get('J1') or {}).get('inShare') is True and (rows.get('LOCAL1') or {}).get('inShare') is False,
+        f"J1={(rows.get('J1') or {}).get('inShare')} LOCAL1={(rows.get('LOCAL1') or {}).get('inShare')}")
     rec('R4. 写し直したあと、一覧に別の PC の完了の記録が入る', any(x.get('id') == 'J1' and x.get('status') == '完了' for x in items),
         str([x.get('id') for x in items]))
 finally:

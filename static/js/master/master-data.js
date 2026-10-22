@@ -246,6 +246,11 @@
    setMaintLoading(true,`バックアップから ${ids.length}件を削除しています…`);
    const r=await api('/api/measurement/backup/delete',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({ids})});
+   /* 手元に残す記録は「利用者が共有から外した」と控える（§9.621）——一覧を開いたときの送り直しで戻さない。 */
+   for(const id of ids.filter(i=>importBackupState.localIds.has(i))){
+    const m=await WL.records.reliableGet(id);
+    if(m){m.syncState={...(m.syncState||{}),status:'withdrawn',lastError:''};await WL.records.reliablePut(m)}
+   }
    // 実績が変わったので作業スケジュールの予定キャッシュを捨てる
    if(typeof window.invalidateSchedulePlanCache==='function')window.invalidateSchedulePlanCache();
    await loadImportBackupMaint(true);
