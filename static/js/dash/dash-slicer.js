@@ -55,7 +55,8 @@
       + `<b title="${k == null ? "月で見るときは ◀ で前の月へ" : esc(monthName(k, info.today))}">${k == null ? "月" : esc(monthName(k, info.today))}</b>`
       + `<button type="button" class="dsl-step" data-ds-back="-1"${k == null || k <= 0 ? " disabled" : ""} title="次の月へ" aria-label="次の月へ">▶</button></span>`;
     const gs = groupsOf(info.tree || {}, s.set).filter((g) => !g.none);
-    const gchips = `<button type="button" class="dsl-chip${eq.length ? "" : " on"}" data-ds-all aria-pressed="${!eq.length}" title="すべての設備">すべて</button>`
+    // 設備を選んでいないときは「組んだまま」（期間と同じ言葉・§9.628。前は「すべて」で、自設備のパネルが自設備だけを数えているのに全設備に読めた）
+    const gchips = `<button type="button" class="dsl-chip${eq.length ? "" : " on"}" data-ds-all aria-pressed="${!eq.length}" title="パネルごとに組んだ設備で数えます（スライサーで設備を絞らない）">組んだまま</button>`
       + gs.map((g) => { const on = eq.length > 0 && same(eq, g.members); return `<button type="button" class="dsl-chip${on ? " on" : ""}" data-ds-group="${esc(g.name)}" aria-pressed="${on}" title="${esc(g.name)}: ${esc(g.members.join("・"))}">${esc(g.name)}</button>`; }).join("");
     const custom = eq.length && !gs.some((g) => same(eq, g.members));
     const pick = `<button type="button" class="dsl-chip dsl-pick${custom ? " on" : ""}" data-ds-pick aria-haspopup="dialog" aria-expanded="${!!info.open}" title="設備を 1 台ずつ選びます（設備グループの見出しで、まとめて選べます）">${custom ? `設備 ${eq.length}` : "設備…"}<i aria-hidden="true">▾</i></button>`;
@@ -74,7 +75,7 @@
     const popt = PERIODS.map(([kind, n]) => `<option value="${kind}"${pv === kind ? " selected" : ""}>${n}</option>`).join("")
       + (per.kind === "month" ? `<option value="month:${per.n}" selected>${esc(monthName(k, info.today))}</option>` : "");
     const gs = groupsOf(info.tree || {}, s.set).filter((g) => !g.none), gon = gs.find((g) => eq.length && same(eq, g.members));
-    const gopt = `<option value=""${eq.length ? "" : " selected"}>すべて</option>${gs.map((g) => `<option value="${esc(g.name)}"${gon === g ? " selected" : ""}>${esc(g.name)}</option>`).join("")}`
+    const gopt = `<option value=""${eq.length ? "" : " selected"}>組んだまま</option>${gs.map((g) => `<option value="${esc(g.name)}"${gon === g ? " selected" : ""}>${esc(g.name)}</option>`).join("")}`
       + (eq.length && !gon ? `<option value="@custom" selected>設備 ${eq.length}</option>` : "") + `<option value="@pick">設備を選ぶ…</option>`;
     const active = !!(per.kind || eq.length);
     const rng = per.kind === "range" ? `<option value="@range" selected>${esc(rangeWord(per))}</option>` : "";
@@ -126,7 +127,7 @@
     const s = sl || {}, eq = new Set(s.equips || []), tree = info.tree || {};
     if (!tree.names) return '<p class="dfl-none">設備を数えています…</p>';
     const sets = (tree.sets || []).map((x) => x.name);
-    const head = `<div class="dash-pophead"><b>設備で絞る</b><small>選んだ設備だけを数えます（どれも選ばなければ、すべての設備）</small></div>`
+    const head = `<div class="dash-pophead"><b>設備で絞る</b><small>選んだ設備だけを数えます（どれも選ばなければ、パネルごとに組んだ設備）</small></div>`
       + (sets.length > 1 ? `<label class="dash-field">まとめ方<select data-ds-set>${sets.map((n) => `<option${n === (s.set || sets[0]) ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>` : "");
     const gs = groupsOf(tree, s.set);
     const list = (gs.length ? gs : [{ name: "", members: tree.names }]).map((g) => {
@@ -134,7 +135,7 @@
       const gh = g.name ? `<label class="dsl-gh"><input type="checkbox" data-ds-gck="${esc(g.name)}"${all ? " checked" : ""}${n && !all ? " data-mixed" : ""}><b>${esc(g.name)}</b><small>${n ? `${n} / ` : ""}${g.members.length} 台</small></label>` : "";
       return `<div class="dsl-g${g.name ? "" : " is-flat"}">${gh}<div class="dsl-ms">${g.members.map((m) => `<label class="dsl-m"><input type="checkbox" data-ds-eq="${esc(m)}"${eq.has(m) ? " checked" : ""}>${esc(m)}</label>`).join("")}</div></div>`;
     }).join("");
-    return `${head}<div class="dsl-list">${list}</div><div class="dash-popacts"><button type="button" class="dfl-link" data-ds-all>すべての設備に戻す</button><span class="dash-sp"></span><button type="button" class="mm-btn-primary" data-ds-done>閉じる</button></div>`;
+    return `${head}<div class="dsl-list">${list}</div><div class="dash-popacts"><button type="button" class="dfl-link" data-ds-all>組んだままに戻す</button><span class="dash-sp"></span><button type="button" class="mm-btn-primary" data-ds-done>閉じる</button></div>`;
   }
   /** チェックの途中（グループの一部を選んだ）を見せる */
   const mixed = (root) => root.querySelectorAll("[data-mixed]").forEach((x) => { x.indeterminate = true; });

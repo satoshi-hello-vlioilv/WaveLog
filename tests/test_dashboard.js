@@ -87,6 +87,12 @@ run('test_dashboard: ダッシュボード',async({page,rec,B,W,idle})=>{
    const sum=k=>m.panels.reduce((n,p)=>n+(+p[k]||0),0);
    scores.push(`${tag} ${it.name} 切れた題${sum('cutTitle')} 切れた添え書き${sum('cutMeta')} 分からない数${sum('unknown')} 元のくり返し${sum('dupSrc')} 条件n${sum('vague')} 字の上の線${sum('cross')}`);
    if(process.env.WAVELOG_SHOT)await page.screenshot({path:path.join(SHOT,`after_${tag}_${it.id.replace(/\W/g,'_')}.png`)});
+   if(it.id==='b:standard'){
+    /* 合わせた表: パネル共通に条件があるとき、条件の無いまとまり（仕掛ロット数）は「条件 なし」と言う（共通の条件で数えたと読ませない） */
+    const g=await page.evaluate(()=>({common:(document.querySelector('#dashBar .dash-common')||{}).textContent||'',
+     heads:[...document.querySelectorAll('#dashGrid .dash-p[data-id="board"] thead tr:first-child th')].map(th=>th.textContent.replace(/\s+/g,' ').trim())}));
+    rec(`合わせた表の条件の無いまとまりは「条件 なし」（${tag}）`,!/条件/.test(g.common)||g.heads.some(h=>/仕掛ロット数.*条件 なし/.test(h)),JSON.stringify(g));
+   }
    if(it.id==='b:analysis'){
     /* 同じ設備はどのパネルでも同じ色（稼働状況の直近14日＝時系列・人数別の内訳＝積み上げ・月ごとの推移＝時系列。
        前は系列の何番目かで色を決め、時系列は 1 つずらして始まるので、同じ設備が橙と青緑に分かれた） */

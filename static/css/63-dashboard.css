@@ -12,7 +12,7 @@
 .dash-screen[hidden]{display:none}.dash-sp{flex:1}
 
 /* ---- 道具の行（1 段） ---- */
-.dash-tools{display:flex;align-items:center;gap:8px;min-height:var(--ctl-h-sm);flex:0 0 auto;white-space:nowrap}
+.dash-tools{display:flex;align-items:center;gap:8px;min-height:var(--ctl-h-sm);flex:1 1 auto;min-width:0;white-space:nowrap}
 .dash-pick{display:inline-flex;align-items:center;gap:7px;height:var(--ctl-h-sm);padding:0 10px 0 9px;border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface);
   font:inherit;color:var(--ink);cursor:pointer;max-width:420px;box-shadow:var(--elev-1)}
 .dash-pick svg{width:16px;height:16px;fill:none;stroke:var(--teal);stroke-width:1.5;flex:0 0 auto}
@@ -27,7 +27,7 @@
 .dash-mi small{color:var(--muted);font-size:var(--fs-sm)}
 .dash-psub .dash-mi,.dp-kmeta .dash-mi{color:var(--ink-2)}
 .dp-kmeta .dash-mi{white-space:normal}
-.dash-common{display:inline-flex;align-items:baseline;gap:2px;margin-left:14px;font-size:var(--fs-sm);color:var(--ink);white-space:nowrap;min-width:0}
+.dash-common{display:inline-flex;align-items:baseline;gap:2px;padding:0 12px;border-left:1px solid var(--line-mid);font-size:var(--fs-sm);color:var(--ink);white-space:nowrap;min-width:0}
 .dash-common>b{font-weight:var(--fw-ui);color:var(--ink-2);margin-right:8px}
 .dash-table thead .dash-gcond{display:block;font-weight:var(--fw-body);color:var(--ink-2);font-size:var(--fs-sm)}
 .dash-msg{color:var(--ink-2);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
@@ -105,6 +105,8 @@ body.dash-dragging{cursor:grabbing;user-select:none}
 .dp-tbl{max-height:100%;overflow:hidden auto}
 .dp-tbl .pv-table{font-size:var(--fs-base-sm);width:100%}
 .dp-tbl .pv-table th,.dp-tbl .pv-table td{padding:var(--dp-pad,4px 8px)}
+/* 見出しは値と同じ揃え（行の見出しの列は左・数の列は右。§9.628 の採点: 見出しは中央・値は右で食い違っていた） */
+.dp-tbl .pv-table thead th:not(.pv-corner){text-align:right}
 /* パネルの中の表の見出しは合わせた表と同じ白い地（§9.628。集計表の濃い見出しはパネルの中だけ表に1つ目立ちすぎた） */
 .dp-tbl .pv-table thead th,.dp-tbl .pv-table thead th.pv-corner,.dp-tbl .pv-table thead th.pv-mh,.dp-tbl .pv-table thead th.pv-gt,.dp-tbl .pv-table thead th.pv-st{background:var(--surface);color:var(--muted);font-weight:var(--fw-ui);border-right:0;border-bottom:1px solid var(--line-mid)}
 /* 設備ごとに並べる（版 3.40.0。esplit facet）: 小さな図の格子。見出しは設備名（同じ大きさ・同じ形で比べる） */
@@ -211,11 +213,11 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .dash-morepop{width:200px;padding:6px}
 .dash-li.is-danger b{color:var(--danger)}
 .dash-li.is-armed{background:var(--bg)}
-.dp-flow{display:grid;grid-template-columns:repeat(var(--k,1),minmax(0,1fr));gap:0 10px;overflow:hidden auto;align-items:start}
+.dp-flow{display:grid;grid-template-columns:repeat(var(--k,1),minmax(0,1fr));gap:0 10px;overflow:hidden auto;align-items:start;margin-top:6px}   /* 表の縦の罫線を見出しの「絞る」に突き当てない */
 .dp-flow .dp-tbl + .dp-tbl{border-left:2px solid var(--line-soft);padding-left:10px}
 /* 目立たせる（最初に見る数。2026-10-grid の 3 回目で決めた L・作るときに地を一段濃く・藍の枠） */
-.dash-p.is-emph{background:var(--surface-3);border:1.5px solid var(--card-border)}
-.dash-p.is-emph .dp-num{color:var(--teal-ink)}
+/* 強調は色でなく縁の太さで（§9.628。灰色の地は選択中・使えない状態に見え、青緑の数は押せる物の色だった） */
+.dash-p.is-emph{border:1.5px solid var(--line-strong)}
 .de-fields .pv-f.is-off{opacity:var(--op-disabled)}
 .pv-f b .sx-calc{display:inline}
 
@@ -722,7 +724,6 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .og-svg{display:block;flex:0 0 auto;font-family:inherit}
 .og-off{fill:url(#ogHatch)}
 .og-on{fill:var(--bg)}
-.og-row.is-alt .og-on{fill:var(--surface-3)}
 .og-sep{stroke:var(--card-border);stroke-width:1.2}
 .og-day{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 2}.og-day.is-own{stroke-opacity:.7}
 .og-tick{font-size:var(--fs-micro);fill:var(--muted);font-variant-numeric:tabular-nums}
@@ -767,6 +768,9 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .og-key i,.og-leg i{width:12px;height:9px;border-radius:var(--radius-xs);display:inline-block}
 .og-k-on{background:var(--bg);border:1px solid var(--line-mid)}
 .og-k-off{background:repeating-linear-gradient(45deg,var(--bg) 0 3px,var(--line-soft) 3px 5px);border:1px solid var(--line-soft)}
+/* 縦の線にも名前（§9.628 の採点: 説明の無い灰色の縦線が直の境か日の境か分からなかった） */
+.og-key i.og-k-sep{width:2px;background:var(--card-border);border:0;border-radius:0}
+.og-key i.og-k-day{width:0;border:0;border-left:1px dashed var(--muted);border-radius:0}
 .og-k-run{background:repeating-linear-gradient(45deg,var(--teal) 0 3px,var(--teal-soft) 3px 5px)}
 
 .oa-wrap{display:flex;flex-direction:column;height:100%;min-height:0;gap:4px}
@@ -1118,9 +1122,9 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .pv-cempty{padding:28px 12px;color:var(--muted);text-align:center;width:100%}
 .pv-grid{stroke:var(--surface-3)}
 .pv-axis{stroke:var(--line-strong)}
-.pv-ax{font-size:var(--fs-micro);fill:var(--teal-ink)}
+.pv-ax{font-size:var(--fs-micro);fill:var(--ink-2)}
 /* 数値ラベル（版 3.26.0）: 棒・点の上に小さく。下の棒・線と重なっても読めるよう白い縁取り */
-.pv-vl{font-size:var(--fs-micro);font-weight:var(--fw-strong);fill:var(--teal-ink);paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round;font-variant-numeric:tabular-nums}
+.pv-vl{font-size:var(--fs-micro);font-weight:var(--fw-strong);fill:var(--ink);paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round;font-variant-numeric:tabular-nums}
 /* 月の境目（月で区切る）: 縦の点線と、月の真ん中の上の月の名前 */
 .pv-msep{stroke:var(--card-border);stroke-width:1;stroke-dasharray:3 3}
 .pv-mname{font-size:var(--fs-sm);font-weight:var(--fw-strong);fill:var(--teal-ink)}
@@ -1198,7 +1202,7 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .pv-p80{stroke:var(--look-red);stroke-width:1.2;stroke-dasharray:4 4}.pv-p80-t{fill:var(--danger);font-weight:var(--fw-strong)}
 .pv-wh{stroke:var(--teal-ink);stroke-width:1.4}
 .pv-hv{font-size:var(--fs-sm);font-weight:var(--fw-strong);fill:var(--teal-ink);font-variant-numeric:tabular-nums}.pv-hv.is-dark{fill:#fff}
-.pv-axn{font-size:var(--fs-sm);font-weight:var(--fw-strong);fill:var(--teal-ink)}
+.pv-axn{font-size:var(--fs-sm);font-weight:var(--fw-strong);fill:var(--ink-2)}
 .pv-dl{font-size:var(--fs-sm);font-weight:var(--fw-strong);fill:#fff;paint-order:stroke;stroke:color-mix(in srgb,var(--ink) 28%,transparent);stroke-width:2px}
 .pv-dtot{font-size:var(--fs-xl);font-weight:var(--fw-strong);fill:var(--teal-ink);font-variant-numeric:tabular-nums}
 .pv-dlist{flex:1 1 auto;min-width:0;max-width:460px;display:flex;flex-direction:column;gap:3px;font-size:var(--fs-sm);padding-top:6px}

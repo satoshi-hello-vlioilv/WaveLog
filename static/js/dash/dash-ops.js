@@ -60,7 +60,8 @@
     const cats = [...new Set(eqs.flatMap((e) => (e.ops || []).map((o) => o[3]).filter(Boolean)))];
     const colorOf = new Map(cats.map((c, i) => [c, CATS[i % CATS.length]]));
     const legend = cats.length > 1 || (cats.length === 1 && (p.ops || {}).color);
-    const AX = 38, FOOT = 20;
+    // 下の凡例の高さは字の大きさから（表示サイズ「大」で 20px に入らず 2px あふれた・§9.628）
+    const AX = 38, FOOT = Math.ceil((parseFloat(getComputedStyle(box).fontSize) || 12) * 1.8);
     const LW = Math.max(44, Math.min(Math.max(120, W * 0.2), Math.max(...eqs.map((e) => textW(e.name, 12.5, 700))) + 16));
     const RW = W >= 620 ? 156 : W >= 420 ? 92 : 56;
     const TW = Math.max(60, W - LW - RW - 8);
@@ -82,7 +83,7 @@
       + `<defs><pattern id="ogHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#f3f4f5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#dde1e4" stroke-width="2"/></pattern>`
       + `<pattern id="ogRun" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#fff" stroke-opacity=".4" stroke-width="3"/></pattern></defs>`
       + g.join("") + "</svg>"
-      + `<div class="og-foot"><span class="og-key"><span><i class="og-k-on"></i>勤務時間</span><span><i class="og-k-off"></i>勤務の外</span>${legend ? "" : `<span><i style="background:${WORK}"></i>作業</span>`}`
+      + `<div class="og-foot"><span class="og-key"><span><i class="og-k-on"></i>勤務時間</span>${c.offSeen ? '<span><i class="og-k-off"></i>勤務の外</span>' : ""}${c.sepSeen ? '<span><i class="og-k-sep"></i>直の境目</span>' : ""}${c.daySeen ? '<span><i class="og-k-day"></i>作業日の境目</span>' : ""}${legend ? "" : `<span><i style="background:${WORK}"></i>作業</span>`}`
       + `${eqs.some((e) => (e.ops || []).some((o) => o[5] === "r")) ? '<span title="作業終了がまだ無い、いちばん新しい作業（いままでの区間）"><i class="og-k-run"></i>作業中</span>' : ""}</span>${leg}</div></div>`;
     const more = eqs.length - shown.length;
     return more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "";
@@ -107,7 +108,7 @@
     const basisWord = d.basis === "cal" ? "太陽暦" : "現場歴";
     mainDays.forEach((x, i) => {
       const a = Math.max(LW, X(ms(x[0]))), b = Math.min(LW + TW, X(ms(x[1])));
-      if (i) g.push(`<line class="og-day" x1="${a}" x2="${a}" y1="${AX + 1}" y2="${AX + nRows * rh}"/>`);      // 目盛りの字に掛けない
+      if (i) { g.push(`<line class="og-day" x1="${a}" x2="${a}" y1="${AX + 1}" y2="${AX + nRows * rh}"/>`); c.daySeen = true; }      // 目盛りの字に掛けない
       const t = ms(`${x[2]} 12:00:00`), lbl = mainDays.length > 1 || i === 0 ? dayText(t) : "";
       if (lbl && b - a > textW(lbl, 12, 700) + 6) g.push(`<g><title>${esc(`${dayText(t)} の作業日（${basisWord}）: ${hm(ms(x[0]))}〜翌 ${hm(ms(x[1]))}`)}</title><text class="og-dayl" x="${a + 3}" y="1.2em">${lbl}</text></g>`);   // 説明は字を包む g に。字の高さは字の大きさから（y＝11 だと大きい字で上が図の外へ出た）
     });
@@ -119,12 +120,15 @@
   function ganttRow(g, c, e, i, dayKey, mainKey) {
     const { LW, TW, RW, rh, X, x0, x1, p, colorOf } = c, AX = c.AX;
     const y = AX + i * rh, bh = Math.max(8, Math.round(rh * 0.62)), by = y + (rh - bh) / 2;
-    g.push(`<g class="og-row${i % 2 ? " is-alt" : ""}" data-i="${i}"><rect class="og-off" x="${LW}" y="${y + 1}" width="${TW}" height="${rh - 2}"/>`);
+    g.push(`<g class="og-row" data-i="${i}"><rect class="og-off" x="${LW}" y="${y + 1}" width="${TW}" height="${rh - 2}"/>`);
+    let onW = 0;
     (e.windows || []).forEach((w, k) => {
       const a = X(ms(w[0])), b = X(ms(w[1]));
+      onW += Math.max(0, Math.min(b, LW + TW) - Math.max(a, LW));
       g.push(`<rect class="og-on" x="${a}" y="${y + 1}" width="${Math.max(0, b - a)}" height="${rh - 2}"><title>${esc(`${w[2]}（${w[3].slice(5).replace("-", "/")}）${hm(ms(w[0]))}〜${hm(ms(w[1]))}`)}</title></rect>`);
-      if (k) g.push(`<line class="og-sep" x1="${a}" x2="${a}" y1="${y + 1}" y2="${y + rh - 1}"/>`);
+      if (k) { g.push(`<line class="og-sep" x1="${a}" x2="${a}" y1="${y + 1}" y2="${y + rh - 1}"/>`); c.sepSeen = true; }
     });
+    if (onW < TW - 1) c.offSeen = true;      // 勤務の外が見えている行がある（凡例に「勤務の外」を出す）
     if ((e.days || []).length && dayKey(e) !== mainKey) e.days.slice(1).forEach((x) => { const a = X(ms(x[0])); if (a > LW && a < LW + TW) g.push(`<line class="og-day is-own" x1="${a}" x2="${a}" y1="${y + 1}" y2="${y + rh - 1}"><title>${esc(`${e.name} の作業日の区切り（勤務体系 ${e.pattern || "なし"}）`)}</title></line>`); });
     // 棒の字は、次の棒の始まりまでに入るときだけ（版 3.47.0。前は棒の幅だけを見て、重なる次の棒が字の上に描かれた）
     const starts = (e.ops || []).map((o) => X(Math.max(ms(o[0]), x0))).sort((u, v) => u - v);

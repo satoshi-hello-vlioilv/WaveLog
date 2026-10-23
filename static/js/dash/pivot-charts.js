@@ -360,8 +360,9 @@
       let base = 0;
       stacked.forEach((q) => {
         const v = q.v[i] || 0; if (!v) return; const y1 = y(base + v, q), y0 = y(base, q);
-        T.g += `<rect x="${x(i) - bw / 2}" y="${y1}" width="${bw}" height="${Math.max(0, y0 - y1)}" fill="${q.color}" opacity=".88"><title>${esc(lab(k))}: ${esc(q.name)} ${esc(fmt(v))}（計 ${esc(fmt(tops[i]))}）</title></rect>`;
-        if (LBL.inside && y0 - y1 >= 13 && bw >= lf(v, q.name).length * 6.2 + 2) T.g += `<text x="${x(i)}" y="${(y0 + y1) / 2 + 4}" text-anchor="middle" class="pv-vl pv-in">${esc(lf(v, q.name))}</text>`;
+        T.g += `<rect x="${x(i) - bw / 2}" y="${y1}" width="${bw}" height="${Math.max(0, y0 - y1)}" fill="${q.color}"><title>${esc(lab(k))}: ${esc(q.name)} ${esc(fmt(v))}（計 ${esc(fmt(tops[i]))}）</title></rect>`;
+        // 段が棒ぜんたい（ほかの段が 0）なら、中の数は上の合計と同じ字になるので書かない（§9.628 の採点: 「2」が上と中に並んだ）
+        if (LBL.inside && !(LBL.top && v === tops[i]) && y0 - y1 >= 13 && bw >= lf(v, q.name).length * 6.2 + 2) T.g += `<text x="${x(i)}" y="${(y0 + y1) / 2 + 4}" text-anchor="middle" class="pv-vl pv-in">${esc(lf(v, q.name))}</text>`;
         base += v;
       });
     });
@@ -384,8 +385,8 @@
     const barQ = series.filter((q) => q.kind === "bar"), nb = barQ.length, sw = nb > 1 ? bw / nb : bw;
     barQ.forEach((q, k) => { const off = -bw / 2 + k * sw; q.v.forEach((v, i) => {
       if (!v) return;
-      T.g += `<rect x="${x(i) + off}" y="${y(v, q)}" width="${nb > 1 ? Math.max(1, sw - 1) : bw}" height="${Math.max(0, base0 - y(v, q))}" fill="${q.color}" opacity=".82"><title>${esc(lab(ax.ticks[i]))}: ${esc(q.name)} ${esc(fmt(v))}</title></rect>`;
-      if (LBL.inside && base0 - y(v, q) >= 16 && sw >= lf(v, q.name).length * 6.2 + 2) T.g += `<text x="${x(i) + off + sw / 2}" y="${y(v, q) + 13}" text-anchor="middle" class="pv-vl pv-in">${esc(lf(v, q.name))}</text>`;
+      T.g += `<rect x="${x(i) + off}" y="${y(v, q)}" width="${nb > 1 ? Math.max(1, sw - 1) : bw}" height="${Math.max(0, base0 - y(v, q))}" fill="${q.color}"><title>${esc(lab(ax.ticks[i]))}: ${esc(q.name)} ${esc(fmt(v))}</title></rect>`;
+      if (LBL.inside && !LBL.top && base0 - y(v, q) >= 16 && sw >= lf(v, q.name).length * 6.2 + 2) T.g += `<text x="${x(i) + off + sw / 2}" y="${y(v, q) + 13}" text-anchor="middle" class="pv-vl pv-in">${esc(lf(v, q.name))}</text>`;
     }); });
     T.barQ = barQ;
     series.filter((q) => q.kind === "area").forEach((q) => {
@@ -403,7 +404,8 @@
   function trendAxes(T) {
     const { cat, n, iw, ax, x, H, pb, tickOf, pl, pr, W, base0, series, y, months, pt } = T;
     const every = cat ? cat.every : Math.max(1, Math.ceil(n / Math.max(4, Math.floor(iw / (F.xrot && +F.xrot ? 18 : 70)))));
-    ax.ticks.forEach((k, i) => { if (i % every === 0) T.g += cat ? cat.text(i, x(i), H - pb + 16) : xText(x(i), H - pb + 16, fitW(tickOf(k), (iw / n) * every - 4)); });
+    // 時の軸は終わり（今日・今月）から数えて間引く（終わりの日にいつも字がある・§9.628 の採点）
+    ax.ticks.forEach((k, i) => { if ((cat ? i : ax.ticks.length - 1 - i) % every === 0) T.g += cat ? cat.text(i, x(i), H - pb + 16) : xText(x(i), H - pb + 16, fitW(tickOf(k), (iw / n) * every - 4)); });
     T.g += `<line x1="${pl}" x2="${W - pr}" y1="${base0}" y2="${base0}" class="pv-axis"/>`;
     const leftQ = series.find((q) => q.axis === "left") || series[0];
     T.g += refLines((v) => y(v, leftQ), pl, W - pr, pt, base0);
@@ -563,7 +565,8 @@
       // 名前の字の幅（いちばん長い名前を測る。幅の 4 割まで）だけ左を空ける（版 3.47.0。前は字の数 × 12.5px・詰めない形は 160px 決め打ちで、長い名前が左へはみ出した）
       const longest = Math.max(0, ...names.map((t) => textW(t)));
       const pl = Math.round(Math.max(ctx.compact ? 44 : 80, Math.min(W * 0.4, longest + 16))), pr = pad(ctx, 70, 52), pt = pad(ctx, 8, 4);
-      const rh = (H - pad(ctx, 30, 8)) / Math.max(data.length, 1), bh = Math.max(3, Math.min(18, rh * 0.75 / series.length)), iw = W - pl - pr;
+      // 1 行の高さは 36px まで（行が少ないと棒が面いっぱいに離れて並び、何本あるか・どれが長いかを比べにくかった・§9.628）。上から詰める
+      const rh = Math.min(36, (H - pad(ctx, 30, 8)) / Math.max(data.length, 1)), bh = Math.max(3, Math.min(18, rh * 0.75 / series.length)), iw = W - pl - pr;
       data.forEach((r, i) => {
         g += `<text x="${pl - 8}" y="${pt + rh * (i + 0.5) + 4}" text-anchor="end" class="pv-ax">${esc(fitW(names[i], pl - 10))}</text>`;
         series.forEach((q, k) => {

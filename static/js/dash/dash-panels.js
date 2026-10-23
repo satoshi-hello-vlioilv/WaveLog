@@ -20,7 +20,7 @@
      量の棒・1 つの値の図は紺（NAVY）、設備でない系列（人数・品種など）は紺の濃淡。データの種類の色（前は作業実績＝青緑・ほか＝藍）はやめた */
   const NAVY = "#3f6591";
   const SOURCE_COLOR = { work: NAVY, src: NAVY };
-  const SERIES_SHADES = ["#2f5583", "#7395c2", "#a3bbd9", "#1f3a5f", "#4a73a6", "#cbd8ea"];
+  const SERIES_SHADES = [NAVY, "#7395c2", "#a3bbd9", "#1f3a5f", "#5d84b8", "#cbd8ea"];     // 1 つ目は紺そのもの（紺を 1 つに・§9.628）
   // 設備の色（紺・赤・桃を使わない: 紺は量、赤は警告）
   const EQUIP_COLORS = ["#2f7d78", "#b5822a", "#7658ae", "#5c8a2a", "#8a5f18", "#0d8191", "#7a7a1f", "#8e4f76"];
   // 合わせるデータの役割の色（組む所の札・全体の表の行の頭・グラフの系列で同じ）。差＝灰・達成率＝琥珀
@@ -146,8 +146,11 @@
     const bi = ms.findIndex((m) => m.role === "base"), di = ms.findIndex((m) => m.role === "diff");
     if (bi < 0 || di < 0 || typeof vals[bi] !== "number" || typeof vals[di] !== "number") return "";
     const name = String(ms[bi].name || "").replace(/^[^：]*：/, ""), f = (j) => C.numText(Math.abs(vals[j]), C.measFmt(fm, ms[j]));   // 分の値は numText が「55分」と書く（measFmt の minutes）
-    const d = vals[di], min = ms[di].unit === "min", word = d === 0 ? "同じ" : d > 0 ? (min ? "長い" : "多い") : (min ? "短い" : "少ない");
-    return `<span class="dp-kcmp">${esc(name)} ${esc(f(bi))}より${d === 0 ? "" : ` ${esc(f(di))}`}${word}</span>`;
+    // 分は整数で見せるので、差も見せた数どうしの差（58分と 55分なら 3分。前は丸める前の差で「4分長い」と食い違った）
+    const ai = ms.findIndex((m) => m.role === "actual"), min = ms[di].unit === "min";
+    const d = min && ai >= 0 && typeof vals[ai] === "number" ? Math.round(vals[ai]) - Math.round(vals[bi]) : vals[di], word = d === 0 ? "同じ" : d > 0 ? (min ? "長い" : "多い") : (min ? "短い" : "少ない");
+    const dt = min ? C.numText(Math.abs(d), C.measFmt(fm, ms[di])) : f(di);
+    return `<span class="dp-kcmp">${esc(name)} ${esc(f(bi))}より${d === 0 ? "" : ` ${esc(dt)}`}${word}</span>`;
   }
 
   /* ---- 数字（kpi） ---- */
@@ -382,7 +385,7 @@
     const measOf = (g) => { const i = gs.indexOf(g), am = i >= 0 ? (((d.groups || [])[i] || {}).measures || [])[0] : null; return g ? { ...g.measure, ...(am && am.unit ? { unit: am.unit } : {}) } : null; };
     const fmtN = (n, g) => (n == null ? "–" : C.numText(n, C.measFmt(p.fmt, measOf(g)))), fmtH = (n, g) => C.numHtml(n, C.measFmt(p.fmt, measOf(g)));
     const unitWord = rowDim === "@equip" ? "設備" : "行";
-    return { p, d, gs, rowDim, models, tree, order, flags, folded, span, fmtN, fmtH, unitWord, SEG: PALETTES.calm.c };
+    return { p, d, gs, rowDim, models, tree, order, flags, folded, span, fmtN, fmtH, unitWord, SEG: SERIES_SHADES };
   }
   /** 1 つの数の札（見せ方ごと）。mx … その段の最大・base … 割合の分母 */
   function boardVal(B, g, v, mx, base) {
@@ -400,7 +403,7 @@
     const totals = [...B.models[gi].rows.values()].map((x) => x.total), v = r ? r.total : 0;
     if (g.look === "bar" || g.look === "stack") {
       const mx = maxOf(totals);
-      return `<td class="dash-lots${grp}" style="--gc:${col}"><div><span class="dash-bar"><i style="width:${((v || 0) / mx * 100).toFixed(1)}%"></i></span><b>${v ? B.fmtH(v, g) : "–"}</b></div></td>`;
+      return `<td class="dash-lots${grp}" style="--gc:${col}"><div><span class="dash-bar"><i style="width:${((v || 0) / mx * 100).toFixed(1)}%"></i></span><b>${v ? B.fmtH(v, g) : C.ADDITIVE.has(((g.measure || {}).agg) || "lots") ? "0" : "–"}</b></div></td>`;   // 数える物の無い行は 0（隣の列と同じ言い方・§9.628）
     }
     const sum = totals.reduce((a, x) => a + (x || 0), 0);
     return `<td class="num dash-s${grp}${v ? "" : " is-zero"} dash-l-${g.look}" style="--gc:${col}">${boardVal(B, g, v, maxOf(totals), sum)}</td>`;

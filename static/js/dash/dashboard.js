@@ -348,10 +348,11 @@
     const equip = (p.equips || []).length ? eqWord(p.equips) + split : WL.dashKit.src.isWork(p.source) ? "全設備" + split : "";
     return { src: name(p.source) || (d && d.sourceName) || "", equip, per: d ? P.periodText(p, d, false) : "", cond: condsText(p.filters), basis: d ? P.basisOf(p, d) : "" };
   }
-  /** 多くのパネル（半分以上・2 枚以上）で同じ項目 → {src, equip, per, cond, basis}（無い項目は ""）。期間は答えが揃ってから */
+  /** 多くのパネル（半分以上・2 枚以上）で同じ項目 → {src, equip, per, cond, basis}（無い項目は ""）。期間は答えが揃ってから
+      @returns {{src: string, equip: string, per: string, cond: string, basis: string}} */
   function commonMeta() {
     const all = ((DS.layout || {}).panels || []).map((p) => metaParts(asked(p), DS.answers.get(p.id))).filter(Boolean);
-    const need = Math.max(2, Math.ceil(all.length / 2)), out = {};
+    const need = Math.max(2, Math.ceil(all.length / 2)), out = { src: "", equip: "", per: "", cond: "", basis: "" };
     for (const [k] of META_KEYS.concat([["basis"]])) {
       const n = new Map();
       all.forEach((x) => { const v = (k === "per" && x.noPer) || (k === "cond" && x.noCond) ? null : x[k]; if (v) n.set(v, (n.get(v) || 0) + 1); });
@@ -397,7 +398,8 @@
     const filt = (width < NARROW || fold) && DS.edit ? "" : `<button type="button" class="dash-pbtn dash-filt${qn ? " is-on" : ""}" data-db-filter aria-haspopup="dialog" title="このパネルだけを、設備・期間・値で絞ります（この PC の見え方）">`
       + `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.2V13l-3 1.2V8.2z"/></svg>${qn ? `絞り込み ${qn}` : "絞る"}</button>`;
     return `<h3 title="${esc(titleOf(p))}">${titleHtml(p)}</h3><span class="dash-sp"></span>`
-      + badge + (a && a.busy ? '<i class="dash-spin" aria-label="読んでいます"></i>' : "") + filt + tools;
+      // 見ているときの「組む」は乗せると出る（いつもは見えない）ので「絞る」の左に置く（「絞る」がパネルの右端にそろう・§9.628 の採点）
+      + badge + (a && a.busy ? '<i class="dash-spin" aria-label="読んでいます"></i>' : "") + (DS.edit ? filt + tools : tools + filt);
   }
   /** パネルを描く。組み・答え・大きさ・編集の様子が前に描いた時と同じなら描かない（force で必ず） */
   function paintPanel(id, force = false) {
@@ -452,11 +454,11 @@
     else if (a.err && !a.d) body.innerHTML = errHtml(a);
     else {
       body.classList.toggle("is-busy", !!a.busy);
-      note = p.visual === "board" ? P.board(body, p, a.d, size.h) : P.render(body, slicerView(p), a.d, size, p.visual === "kpi" ? meta : "");
+      note = p.visual === "board" ? P.board(body, p, a.d, size.h, commonMeta()) : P.render(body, slicerView(p), a.d, size, p.visual === "kpi" ? meta : "");
     }
     foot.hidden = !note; foot.textContent = note || ""; foot.title = note || "";
     if (note && body.clientHeight < size.h - 2) {          // 下の知らせの分だけ低くなった: もう一度、新しい高さで描く
-      if (a && a.d && p.visual === "board") P.board(body, p, a.d, body.clientHeight);
+      if (a && a.d && p.visual === "board") P.board(body, p, a.d, body.clientHeight, commonMeta());
       else if (a && a.d) P.render(body, slicerView(p), a.d, { w: body.clientWidth, h: body.clientHeight }, p.visual === "kpi" ? meta : "");
     }
   }
@@ -488,11 +490,11 @@
       + `${icon}<b>${esc(it ? it.name : "ダッシュボード")}</b>${it ? `<small>${esc(SCOPE_NAME[it.scope] || "")}${it.builtin ? "・組み込み" : it.replaces ? "・組み込みと入れ替え" : ""}</small>` : ""}${std ? '<i class="dash-std" title="標準（最初に開く物）">★</i>' : ""}<i aria-hidden="true">▾</i></button>`;
     const msg = `<span class="dash-msg" aria-live="polite">${esc(DS.msg)}</span>`;
     if (!DS.edit) {
-      bar.innerHTML = pick + msg + `<span class="dash-sp"></span>${barCfg().off && DS.layout ? D.cfgBtn(sliceInfo(), true) : ""}<small class="dash-when" title="出ているあいだは 1 分ごとに引き直します">${when ? `${when} 時点` : ""}</small>`
+      // 並び（§9.628 の採点）: 選ぶ札｜パネル共通（何のダッシュボードの前提か）｜…｜時点・引き直す・編集（右端。ダッシュボードを替えても動かない）
+      bar.innerHTML = pick + (DS.layout ? commonHtml() : "") + msg + `<span class="dash-sp"></span>${barCfg().off && DS.layout ? D.cfgBtn(sliceInfo(), true) : ""}<small class="dash-when" title="出ているあいだは 1 分ごとに引き直します">${when ? `${when} 時点` : ""}</small>`
         + `<button type="button" class="pv-btn" data-db-refresh title="いま引き直す">↻ 引き直す</button>`
         // ダッシュボードが 1 つも無いときは「編集」を出さない（何を編集するのか分からない。空の画面の知らせから作る・戻す）
-        + (it ? `<button type="button" class="mm-btn-primary dash-editbtn" data-db-editmode title="パネルを足す・動かす・大きさを変える・組む">編集</button>` : "")
-        + (DS.layout ? commonHtml() : "");
+        + (it ? `<button type="button" class="mm-btn-primary dash-editbtn" data-db-editmode title="パネルを足す・動かす・大きさを変える・組む">編集</button>` : "");
       paintSlicer();
       return;
     }
