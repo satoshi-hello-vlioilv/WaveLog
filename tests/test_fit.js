@@ -91,7 +91,8 @@ run('test_fit: 中身が器から溢れていないかを、表示サイズ3段�
     if(!scrollY&&overY>sl)bad.push('縦+'+overY);
     if(!scrollX&&!ellipsis&&overX>sl)bad.push('横+'+overX);
     if(!bad.length)return;
-    const cls=(typeof el.className==='string'?el.className:'').split(/\s+/).filter(Boolean).slice(0,2).join('.');
+    /* SVG の要素は className が文字列でない（SVGAnimatedString）ので、属性から読む（図の字でも、どの字か名指せる） */
+    const cls=(el.getAttribute('class')||'').split(/\s+/).filter(Boolean).slice(0,2).join('.');
     out.push({name:el.tagName.toLowerCase()+(el.id?'#'+el.id:'')+(cls?'.'+cls:''),
               why:bad.join(' '),over:Math.max(overY,overX)});
    });

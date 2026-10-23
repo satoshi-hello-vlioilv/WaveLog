@@ -2777,10 +2777,11 @@ function durationText(minutes,compact){
  const n=Number(minutes);
  if(minutes===null||minutes===undefined||minutes===''||!Number.isFinite(n))return '-';
  const v=Math.round(n),sign=v<0?'-':'',a=Math.abs(v);
- if(durationStyle!=='hm'||a<60)return `${sign}${a}分`;
+ /* 3桁区切りは数の書き方の1つ（ダッシュボードの「2,003」と「1796分」が並んで食い違った・§9.628） */
+ if(durationStyle!=='hm'||a<60)return `${sign}${a.toLocaleString('ja-JP')}分`;
  const h=Math.floor(a/60),m=a%60;
  return compact?`${sign}${h}:${String(m).padStart(2,'0')}`
-               :`${sign}${h}時間${m?m+'分':''}`;
+               :`${sign}${h.toLocaleString('ja-JP')}時間${m?m+'分':''}`;
 }
 function applyDurationStyle(key){
  durationStyle=DURATION_STYLES.some(s=>s.key===key)?key:'min';

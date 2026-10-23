@@ -49,8 +49,9 @@ BODY_CSS_FILES=[
  '45-tolerance.css',   # 公差数直線・フィルタ
  '50-master.css',      # マスタ管理
  '55-quality.css',     # 品質データ分析
- '60-report.css',      # 測定帳票(画面)・ダッシュボード
+ '60-report.css',      # 測定帳票(画面)
  '62-actuals.css',     # 実績データリスト・操業データ表(紙とプレビュー)
+ '63-dashboard.css',   # ダッシュボード（§9.628・グリッドのパネル）
  '65-calendar.css',    # 実績カレンダー
  '70-schedule.css',    # 作業スケジュール・勤務体系
  '72-bladeset.css',    # 刃組ガイダンス（§9.377）
@@ -120,6 +121,20 @@ JS_FILES=[
  # 刷り出しの段取りを持つ。**紙を出す3本より先に読むこと。**
  'core/print-core.js',
  'report/report-dashboard.js',
+ # §9.628: ダッシュボード（LotScope のグリッドのパネルの移植）。小道具 → 数の書式 → グラフ → 部品 → パネル → 組む所 → 画面の順。
+ 'dash/dash-kit.js',
+ 'dash/num-format.js',
+ 'dash/pivot-charts.js',
+ 'dash/pivot-calc.js',
+ 'dash/pivot-dnd.js',
+ 'dash/value-filter.js',
+ 'dash/hardcopy.js',
+ 'dash/dash-panels.js',
+ 'dash/dash-ops.js',
+ 'dash/dash-filter.js',
+ 'dash/dash-slicer.js',
+ 'dash/dash-editor.js',
+ 'dash/dashboard.js',
  'schedule/calendar-view.js',
  # §9.588: 足りない設備停止の判定（純粋な関数・`WL.stopRules`）。予定の画面が描くときに呼ぶので、その前。
  'schedule/stop-rules.js',

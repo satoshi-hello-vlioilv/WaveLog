@@ -188,7 +188,7 @@ G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope', 'test_recordlayou
 # 刃組（§9.377）。**部材マスタ・ガイダンス・設備停止の連携**は1つの仕事なので、
 # どれを触っても3本まとめて回す（計算はサーバー不要の1本、画面は1本）。
 G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_holdpick', 'test_bladesets', 'test_ringboard', 'test_bladeboard', 'test_screenprint', 'test_stopeq', 'test_partboards']
-G['マスタ'] = ['test_master', 'test_mmshell', 'test_mmpane', 'test_mmlist', 'test_mmset', 'test_mmboard', 'test_mmunify', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
+G['マスタ'] = ['test_master', 'test_mmshell', 'test_mmpane', 'test_mmlist', 'test_mmset', 'test_mmboard', 'test_mmunify', 'test_equipgroupui', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                # §9.389: 設備停止の内訳（サブカテゴリ）と時間の選択肢
                'test_stopsub', 'test_stopsubui',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
@@ -304,7 +304,7 @@ RULES = [
     ('static/js/list/list-rules.js', g('列')),
     # §9.256 式で作る自動値も同じ評価器を使う（片方だけ直した状態を作らない）
     ('static/js/list/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
-                                    'test_opformula')),
+                                    'test_opformula', 'test_formulaparity')),
     # §9.591: 一覧の道具（スライサー・色付け・拡大・Excel に出力・表示の設定）
     ('static/js/list/list-slicer.js', g('一覧', 'test_filtersavedui')),
     ('static/js/list/list-marks.js', g('一覧', 'test_filtersavedui')),
@@ -518,6 +518,18 @@ RULES = [
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
+    # §9.628 ダッシュボード: 集計（パネルの答え）・計算列（画面の式と同じ答え）・画面
+    ('backend/dashboard/', g('test_dashpivot', 'test_formulaparity', 'test_dashapi', 'test_dashboard', 'test_equipgroupui')),
+    # §9.628: ダッシュボードの画面（LotScope の移植）。前の画面を読んでいた網（自設備・稼働状況・見出し・待ち）も一緒に回す
+    ('static/js/dash/', g('見た目', 'test_dashboard', 'test_dbequip', 'test_uiux', 'test_uisize', 'test_headbar', 'test_flows',
+                          'test_waiting', 'test_nav', 'test_loadorder', 'test_eslint', 'test_tscheck', 'test_funclen')),
+    ('static/css/63-dashboard.css', g('見た目', 'test_dashboard', 'test_csslint')),
+    ('backend/routes/masters/dashboard.py', g('test_dashapi', 'test_equipgroupui', 'test_modeguard', 'test_mastershare', 'test_routesplit')),
+    ('backend/repositories/dashboard_repo.py', g('test_dashapi')),
+    ('backend/filter_sql.py', g('一覧', 'test_dashpivot', 'test_filtersaved', 'test_listtools')),
+    ('backend/datetext.py', g('test_dashpivot', 'test_formulaparity')),
+    ('tests/lib/dash_fixture.py', g('test_dashpivot')),
+    ('tests/lib/formula_parity.js', g('test_formulaparity')),
     ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_lotident', 'test_filterbarui', 'test_filtersaved', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     # §9.333で段（`equipment.py`/`operation.py`…）へ分けた。**末尾の`/`で丸ごと**

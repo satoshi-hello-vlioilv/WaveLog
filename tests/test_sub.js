@@ -54,14 +54,15 @@ run('test_sub: サブ導線の棚卸し(§9.54)の検証', async ({page,rec,B,W,
 
  await arm();
  await page.click('#openDashboard');
- await W.until(page,()=>document.body.classList.contains('db-mode')&&(window.__ra||0)>=1,null,
-   {what:'ダッシュボードが開いて全件読みが走る'});
+ await W.until(page,()=>document.body.classList.contains('db-mode')&&!!document.querySelector('#dashGrid .dash-p')&&
+   ![...document.querySelectorAll('#dashGrid .dash-p')].some(p=>p.querySelector('.dp-wait')),null,
+   {ms:20000,what:'ダッシュボードが開いて数が出る'});
  await idle();
  const dashReads=await reads();
- // 以前はensureDataが結果だけをキャッシュしており、1回の描画から同時に
- // 2箇所が呼ぶと両方ともキャッシュ未命中になって2回読んでいた。
- rec('ダッシュボードを開くときの全件読みは1回(同時呼び出しでも二重に読まない)',
-   dashReads===1,dashReads+'回');
+ // 前のダッシュボードは端末の全件を読んで画面で数えていた（同時呼び出しで2回読む不具合もあった）。
+ // §9.628 から数はサーバーが測定データ（共有の写し）から数えるので、端末の全件読みは走らない。
+ rec('ダッシュボードは端末の全件読みをしない（数はサーバーが数える・§9.628）',
+   dashReads===0,dashReads+'回');
 
  // ---- 恒久的な失敗(403)は控えへ積まない ----
  await page.evaluate(()=>localStorage.removeItem('WaveLogPendingBackupDeleteV1'));

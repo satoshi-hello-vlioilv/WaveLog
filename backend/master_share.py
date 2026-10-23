@@ -74,6 +74,8 @@ WRITING_BLUEPRINTS = {'masters', 'path_config', 'master_tables', 'schedule', 'me
 # `Blueprint名.関数名`——**エンドポイントを別のBlueprintへ移すと黙って
 # 意味が変わる**ので、移すときは必ずここも直す。
 NON_MASTER_ENDPOINTS = {
+    # ダッシュボードのパネルの数・列の札（§9.628）。数えるだけ（マスタは読むだけ）
+    'masters.dashboard_query', 'masters.dashboard_fields',
     'path_config.storage_layout_prepare',
     'path_config.storage_layout_local_config',
 }

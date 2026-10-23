@@ -32,7 +32,7 @@ const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
 /* 画面 → [ナビのid, ヘッダーへ載る操作列のid] */
 const VIEWS=[
  ['作業スケジュール','openSchedule','scHead'],
- ['ダッシュボード','openDashboard','dbHeadActions'],
+ ['ダッシュボード','openDashboard','dashBar'],
  ['測定実績カレンダー','openCalendar','calToolbar'],
  ['マスタ管理','openMasterMaint','mmHead'],
  ['ログ・診断','openLogView','lgHead'],

@@ -8,19 +8,6 @@
    レイヤの宣言とトークンは 00-base.css が持つ。
    ============================================================ */
 @layer component {
-.db-status-table thead th{background:var(--bg);color:var(--ink);position:sticky;top:0;z-index:1;
- font-size:var(--fs-sm)}
-.db-status-table tbody th{text-align:left;color:var(--ink);font-weight:var(--fw-strong)}
-.db-status-table .db-lot{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
-.db-late{color:var(--warn-fg)}
-.db-state-badge{display:inline-block;padding:var(--pad-chip);border-radius:var(--radius-md);
- font-size:var(--fs-sm);font-weight:var(--fw-ui);border:1px solid transparent}
-.db-state-badge.running{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
-.db-state-badge.idle{background:var(--bg);border-color:var(--line-soft);color:var(--muted)}
-.db-state-badge.done{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
-.db-state-badge.ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
-.db-state-badge.editing{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
-@media(max-width:1200px){.db-status-grid{grid-template-columns:1fr}}
 /* ---------- 実績カレンダー ---------- */
 .cal-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 .cal-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) calc(320px * var(--ui-scale));overflow:hidden}

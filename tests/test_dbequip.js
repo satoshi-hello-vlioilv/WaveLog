@@ -1,15 +1,26 @@
-/* test_dbequip.js: ダッシュボードの「自設備」タブと、フィルタ条件の変数(§9.74)。
+/* test_dbequip.js: ダッシュボードの「自設備」と、フィルタ条件の変数(§9.74・§9.628)。
    ------------------------------------------------------------
-   自設備ビューは端末内(IndexedDB)の測定データを集計するので、検証用の実績を
-   reliablePut で直接入れてから測る(サーバーのバックアップではない)。 */
+   自設備は組み込みのダッシュボード「自設備」（§9.628）。パネルの設備は「この端末の使用設備」（@mine）で、
+   画面が問い合わせる前に WL.equipment の設備へ置き換える。数えるのはサーバーの測定データなので、
+   検証用の実績はサーバーへ入れる（seedRecord）。 */
 const API='http://127.0.0.1:5029';
-const {run}=require('./lib/harness.js');
+const {run,seedRecord,clearRecords}=require('./lib/harness.js');
 /* 待ちは「時間」ではなく「条件」（§9.102・3-15 ③・§9.347）。骨組み
-   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。
-   置き換え前後で全PASS行（測った値ごと）を突き合わせてある。 */
+   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。 */
 run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({page,rec,setMode,W,idle,paint})=>{
  const EQ='テスト設備A',OTHER='テスト設備B';
+ await clearRecords();
+ try{
   await setMode('edit');
+  /* 自設備2件(60分/120分=平均90分)、他設備1件(30分)を入れる。全設備の平均は 70分 → 自設備は 20分「遅い」。
+     平均の差まで見て、自設備だけを数えていることと、全設備と比べていることを確かめる。 */
+  const mk=(equipment,lot,min,agoDays)=>{
+   const end=new Date(Date.now()-agoDays*86400000),start=new Date(end.getTime()-min*60000);
+   return seedRecord({equipment,status:'完了',lotNo:lot,extra:{basic:{lotNo:lot,purposeName:'検証用途'},
+    settings:{registeredEquipment:equipment,operator:'検証員',crewSize:'2',verticalCount:1,horizontalCount:1},
+    workTime:{startAt:start.toISOString(),endAt:end.toISOString()}}});
+  };
+  await mk(EQ,'ZZ001',60,1);await mk(EQ,'ZZ002',120,2);await mk(OTHER,'ZZ003',30,1);
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
@@ -17,52 +28,38 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
   await page.waitForSelector('#grid',{timeout:20000});
   await W.booted(page);await idle();
 
-  /* 自設備2件(60分/120分=平均90分)、他設備1件(30分)を入れる。
-     平均の差(90-30=60分「遅い」)まで見て、自設備だけを集計していることを確かめる。 */
-  const ids=await page.evaluate(async([eq,other])=>{
-   const mk=(id,equipment,lot,min,agoDays)=>{
-    const end=new Date(Date.now()-agoDays*86400000);
-    const start=new Date(end.getTime()-min*60000);
-    return {id,status:'完了',basic:{lotNo:lot,purposeName:'検証用途'},
-      settings:{registeredEquipment:equipment,operator:'検証員',crewSize:'2',
-                verticalCount:1,horizontalCount:1},
-      workTime:{startAt:start.toISOString(),endAt:end.toISOString()},
-      updatedAt:end.toISOString()};
-   };
-   const list=[mk('flowA1',eq,'ZZ001',60,1),mk('flowA2',eq,'ZZ002',120,2),
-               mk('flowB1',other,'ZZ003',30,1)];
-   for(const r of list)await WL.records.reliablePut(r);
-   return list.map(r=>r.id);
-  },[EQ,OTHER]);
-
-  await page.click('#openDashboard');await idle(400,15000);
-  const tabs=await page.$$eval('[data-dbview]',n=>n.map(x=>x.dataset.dbview));
-  rec('ダッシュボードに「自設備」タブがある',tabs.includes('equipment'),tabs.join(','));
-
-  await page.click('[data-dbview="equipment"]');await idle(400,20000);
-  const v=await page.evaluate(()=>({
-   name:document.querySelector('#dbEquipName')?.textContent||'',
-   kpi:[...document.querySelectorAll('#dbEquipKpi .db-card')].map(c=>({
-     k:c.querySelector('.db-card-label')?.textContent||'',
-     v:c.querySelector('.db-card-value')?.textContent||'',
-     note:c.querySelector('.db-card-note')?.textContent||''})),
-   product:document.querySelector('#dbEquipProduct')?.innerText||'',
-   recent:document.querySelector('#dbEquipRecent')?.innerText||'',
-   otherViews:[...document.querySelectorAll('#dbStatusView,#dbPivotView')].filter(e=>!e.hidden).length,
-  }));
-  rec('使用設備名を出す',v.name.includes(EQ),v.name);
-  rec('他のビューは隠れている(重なり無し)',v.otherViews===0,String(v.otherViews));
-  const kpi=Object.fromEntries(v.kpi.map(x=>[x.k,x]));
-  rec('自設備の完了件数だけを数える(他設備を含めない)',
-   kpi['完了ロット']?.v==='2件',JSON.stringify(kpi['完了ロット']));
-  rec('平均作業時間が自設備の実績から出る',
-   kpi['平均作業時間']?.v==='90分',JSON.stringify(kpi['平均作業時間']));
-  rec('全設備平均との差を併記する(速い/遅いが分かる)',
-   /遅い|速い|ほぼ同じ/.test(kpi['平均作業時間']?.note||''),kpi['平均作業時間']?.note);
-  rec('直近の実績に自設備のロットが並ぶ',
-   v.recent.includes('ZZ001')&&v.recent.includes('ZZ002'),v.recent.slice(0,60));
-  rec('直近の実績に他設備のロットを混ぜない',!v.recent.includes('ZZ003'),v.recent.slice(0,60));
-  rec('品種別の内訳が出る',v.product.includes('検証用途'),v.product.slice(0,50));
+  await W.nav(page,'#openDashboard');
+  await W.until(page,()=>!!document.querySelector('#dashGrid .dash-p'),null,{ms:20000,what:'ダッシュボードが開く'});
+  const list=await page.evaluate(async()=>(await (await fetch('/api/dashboards')).json()).items.map(x=>x.id));
+  rec('組み込みに「自設備」がある',list.includes('b:mine'),list.join(','));
+  const panel=id=>page.evaluate(id=>{
+   const p=document.querySelector(`#dashGrid .dash-p[data-id="${id}"]`);
+   return p?{num:(p.querySelector('.dp-num')||{}).textContent||'',text:p.innerText.replace(/\s+/g,' ')}:null;
+  },id);
+  const openMine=async want=>{
+   await page.evaluate(()=>WL.dashboard._open('b:mine'));
+   /* 押した物（開いたダッシュボード）の全部のパネルが数を出すまで（数えています… が1枚も無い） */
+   await W.until(page,w=>{const p=document.querySelector('#dashGrid .dash-p[data-id="mineLots"] .dp-num');
+    return !!p&&p.textContent.startsWith(w)&&![...document.querySelectorAll('#dashGrid .dash-p')].some(x=>x.querySelector('.dp-wait'))},want,{ms:30000,what:`自設備の完了ロットが ${want}`});
+  };
+  await openMine('2');
+  const lots=await panel('mineLots'),avg=await panel('mineAvg');
+  rec('自設備の完了件数だけを数える(他設備を含めない)',lots.num.startsWith('2'),JSON.stringify(lots));
+  /* 設備の名前は、多くのパネルで同じなら道具の行の「パネル共通」に1回（§9.628）、違えばパネルの添え書きに */
+  const common=await page.evaluate(()=>(document.querySelector('#dashBar .dash-common')||{}).textContent||'');
+  rec('使用設備名を出す（@mine の字を出さない）',(lots.text.includes(EQ)||common.includes(EQ))&&!(lots.text+common).includes('@mine'),`${lots.text.slice(0,60)} ／ 共通 ${common}`);
+  rec('平均作業時間が自設備の実績から出る',avg.num.startsWith('90'),JSON.stringify(avg));
+  rec('全設備との差を併記する(速い/遅いが分かる)',/全設備/.test(avg.text)&&/20/.test(avg.text),avg.text.slice(0,120));
+  const rows=await page.evaluate(()=>(document.querySelector('#dashGrid .dash-p[data-id="mineOp"]')||{}).innerText||'');
+  rec('オペレータごとの実績に自設備の作業が並ぶ',rows.includes('検証員')&&/\b2\b/.test(rows),rows.slice(0,80));
+  const kind=await page.evaluate(()=>(document.querySelector('#dashGrid .dash-p[data-id="mineKind"]')||{}).innerText||'');
+  rec('品種ごとの内訳が出る',kind.includes('検証用途'),kind.slice(0,50));
+  /* 使用設備を切り替えたら、その瞬間に自設備が引き直される（WL.equipment.onChange） */
+  await page.evaluate(e=>WL.equipment.set(e),OTHER);
+  await W.until(page,()=>{const p=document.querySelector('#dashGrid .dash-p[data-id="mineLots"] .dp-num');return !!p&&p.textContent.startsWith('1')},null,{ms:20000,what:'切り替えた設備で数え直す'});
+  rec('使用設備を切り替えると自設備が数え直される',(await panel('mineLots')).num.startsWith('1'));
+  await page.evaluate(e=>WL.equipment.set(e),EQ);
+  await openMine('2');
 
   /* ---- フィルタ条件の変数 ---- */
   await page.click('aside [data-db-key="SIKALOTNOW"]');await idle();
@@ -155,9 +152,5 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
   await page.evaluate(e=>WL.equipment.set(e),EQ);
   await idle();
 
-  // 後始末: 入れた実績を消す
-  await page.evaluate(async list=>{
-   for(const id of list)if(typeof WL.records.reliableDelete==='function')await WL.records.reliableDelete(id);
-  },ids).catch(()=>{});
-
+ }finally{await clearRecords()}
 },{viewport:{width:1600,height:1000}});

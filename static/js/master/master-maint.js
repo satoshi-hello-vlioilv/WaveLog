@@ -1223,7 +1223,8 @@
     const tagHint=f.tagHint!==undefined?f.tagHint:'複数選べます。「すべての設備」は開発・保守用の全設備権限です（設備を増やしても権限行を足さずに済みます）。未選択は「未設定」＝権限なしです。';
     /* **空欄もすべての設備**を意味する欄（定義の`blankAll`・選択肢の値の「出る設備」）は、チェックの1つでなく
        「すべての設備｜設備で絞る」の切り替え（§9.602）——空欄の行で「すべての設備」のチェックが外れて見え、
-       一覧の字（すべての設備）と食い違っていた。絞るを押したときだけ設備の欄を出す。 */
+       一覧の字（すべての設備）と食い違っていた。絞るを押したときだけ設備の欄を出す。
+       **「すべての設備」を受け付けない欄**（定義の`noAll`・設備グループ §9.628）には押せる形で出さない。 */
     const scopeAll=!!f.blankAll&&(isAll||!selected.size);
     const scope=f.blankAll?`<div class="mm-seg mm-tag-scope" role="group" aria-label="${esc(f.label)}">`
       +[['all','すべての設備'],['pick','設備で絞る']].map(([v,t])=>{const on=(v==='all')===scopeAll;
@@ -1231,7 +1232,7 @@
       +`</div><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''} hidden>`:'';
     return `<div class="mm-field mm-tagfield" data-tagfield="${f.k}" data-tagfield-all="1">${fieldLabelHtml(f)}${scope}
      <div class="mm-tagfield-inner"${scopeAll?' hidden':''}>
-      ${f.blankAll?'':`<label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>`}
+      ${f.blankAll||f.noAll?'':`<label class="mm-tag-all"><input type="checkbox" data-equipment-all="${f.k}"${isAll?' checked':''}>すべての設備</label>`}
       <div class="mm-tag-box" data-equipment-box="${f.k}" tabindex="-1">${strayBoxes}<input type="text" class="mm-tag-search" data-equipment-search="${f.k}" placeholder="設備名で検索・追加" autocomplete="off">${hiddenBoxes}</div>
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>

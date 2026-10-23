@@ -86,51 +86,39 @@ run('test_uiux: §9.59〜§9.65 の作法',async({page,rec,setMode,W,idle,paint}
  rec('ページ送りに説明が付いている',!!prev.title,prev.title);
 
  // ---- §9.63 パネル見出し ----
- await page.click('#openDashboard');await idle(400,15000);
+ await W.nav(page,'#openDashboard');
+ await W.until(page,()=>!!document.querySelector('#dashGrid .dash-p'),null,{ms:20000,what:'ダッシュボードが開く'});
+ await idle();
  const head=await page.evaluate(()=>{
   // パネル側は画面名も見出しバーも持たない(ヘッダーの#fileNameと
   // #headerViewBarが担う)。以前はダッシュボード/実績カレンダー/マスタ管理が
   // 同じ名前を二重に出し、さらに操作だけの帯が1本残って本文の高さを食っていた。
   const screenName=document.querySelector('#fileName')?.textContent?.trim()||'';
-  const dup=[...document.querySelectorAll('#dashboardPanel h1,#dashboardPanel h2,#dashboardPanel h3')]
+  const dup=[...document.querySelectorAll('#dashScreen h1,#dashScreen h2,#dashScreen h3')]
    .map(x=>x.textContent.trim()).filter(t=>t===screenName);
   const bar=document.getElementById('headerViewBar');
-  return {screenName,dup,
-          panelHead:!!document.querySelector('#dashboardPanel .rp-head'),
-          mounted:bar?bar.children.length:-1,
-          tabs:bar?bar.querySelectorAll('[data-dbview]').length:0};
+  return {screenName,dup,mounted:bar?bar.children.length:-1,tools:!!(bar&&bar.querySelector('#dashBar'))};
  });
- rec('パネル側に操作だけの見出しバーを残さない',!head.panelHead,JSON.stringify(head));
- rec('画面の操作はヘッダーの操作列へ載る',head.mounted===1&&head.tabs===3,JSON.stringify(head));
+ rec('画面の操作はヘッダーの操作列へ載る',head.mounted===1&&head.tools,JSON.stringify(head));
  rec('パネル側がヘッダーの画面名を繰り返さない',head.dup.length===0,JSON.stringify(head));
 
- // ---- §9.64 ダッシュボード ----
+ // ---- §9.64 ダッシュボード（§9.628 でグリッドのパネルへ移した。前の3つの表示は組み込みのダッシュボード） ----
  const dash=await page.evaluate(()=>({
-  statusVisible:!document.querySelector('#dbStatusView').hidden,
-  pivotHidden:document.querySelector('#dbPivotView').hidden,
-  kpi:document.querySelectorAll('#dbStatusKpi .db-card').length,
-  equipRows:document.querySelectorAll('#dbEquipStatus tbody tr').length,
-  activeTab:document.querySelector('[data-dbview].active')?.dataset.dbview,
+  name:(document.querySelector('#dashBar .dash-pick b')||{}).textContent||'',
+  kpi:document.querySelectorAll('#dashGrid .dash-p .dp-kpi').length,
+  equipRows:document.querySelectorAll('#dashGrid .dash-p[data-id="board"] tbody tr').length,
  }));
- rec('ダッシュボードは既定で稼働状況を表示する',
-   dash.statusVisible&&dash.pivotHidden&&dash.activeTab==='status',JSON.stringify(dash));
+ rec('ダッシュボードは既定で稼働状況を表示する',dash.name==='稼働状況',JSON.stringify(dash));
  rec('稼働状況にKPIが4枚出る',dash.kpi===4,dash.kpi+'枚');
  rec('作業予定から設備ごとの状況が出る',dash.equipRows>0,dash.equipRows+'行');
- await page.click('[data-dbview="pivot"]');await idle(400,15000);
- const pivot=await page.evaluate(()=>({
-  pivotVisible:!document.querySelector('#dbPivotView').hidden,
-  presets:document.querySelectorAll('[data-preset]').length,
-  axis:document.querySelector('#dbAxis')?.value,
-  period:document.querySelector('#dbStart')?.value,
- }));
- rec('自由集計は従来機能のまま残っている',
-   pivot.pivotVisible&&pivot.presets===4&&!!pivot.axis&&!!pivot.period,JSON.stringify(pivot));
- // 自由集計タブを開いた状態でボタンの寸法を測る(隠れている間は箱が無い)
- const btn=await page.evaluate(()=>{const e=document.querySelector('#dbRefresh');
-   const cs=getComputedStyle(e);return {h:Math.round(e.getBoundingClientRect().height),bg:cs.backgroundColor}});
- rec('rp-btn-primaryに様式が当たっている',btn.h>20&&btn.bg!=='rgba(0, 0, 0, 0)',JSON.stringify(btn));
- await page.click('[data-dbview="status"]');await idle(400,15000);
- rec('稼働状況へ戻れる',await page.evaluate(()=>!document.querySelector('#dbStatusView').hidden));
+ const built=await page.evaluate(async()=>(await (await fetch('/api/dashboards')).json()).items.filter(x=>x.builtin));
+ const ana=built.find(x=>x.id==='b:analysis');
+ rec('自由集計のよく使う組み合わせ4つは「作業時間の分析」に残っている',!!ana&&ana.body.panels.length===4,
+   JSON.stringify(ana?ana.body.panels.map(x=>x.title):null));
+ // 自由な組み合わせはパネルを組み直して作る（編集の入口が道具の行にある）
+ const edit=await page.evaluate(()=>{const e=document.querySelector('#dashBar [data-db-editmode]');
+   if(!e)return null;const cs=getComputedStyle(e);return {h:Math.round(e.getBoundingClientRect().height),bg:cs.backgroundColor,text:e.textContent.trim()}});
+ rec('自由に組む入口（編集）がヘッダーの操作列にある',!!edit&&edit.h>20&&edit.bg!=='rgba(0, 0, 0, 0)',JSON.stringify(edit));
 
  // ---- §9.62 スケジュールの折りたたみ ----
  await setMode('schedule');

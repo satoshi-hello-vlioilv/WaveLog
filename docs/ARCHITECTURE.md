@@ -733,7 +733,7 @@ UI は「入力内容」セレクトをチップへ置換する（面積は増�
 |---|---|---|
 | 測定データ | データ一覧 | `index.html`（静的） |
 | 一覧を見る | 仕掛（現在）・品質データ | `list-view.js`（`role!=='master'`） |
-| 分析 | ダッシュボード・実績カレンダー | `report-dashboard.js` / `calendar-view.js` → **`#analysisNav`** |
+| 分析 | ダッシュボード・実績カレンダー | `dash/dashboard.js`（§9.628） / `calendar-view.js` → **`#analysisNav`** |
 | 管理 | マスタ管理 | `index.html`（静的、`#openMasterMaint`） |
 
 - DB一覧の置き場所は `/api/catalog` の **`role`** で決まる。DBを増やすときは

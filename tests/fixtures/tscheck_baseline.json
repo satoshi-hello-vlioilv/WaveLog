@@ -20,7 +20,7 @@
  "static/js/measure/measure-worklog.js": 2,
  "static/js/measure/records-store.js": 1,
  "static/js/report/opsheet-print.js": 1,
- "static/js/report/report-dashboard.js": 14,
+ "static/js/report/report-dashboard.js": 7,
  "static/js/schedule/schedule-history.js": 2,
  "static/js/schedule/schedule-times.js": 3,
  "static/js/schedule/schedule-view.js": 21

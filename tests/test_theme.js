@@ -299,7 +299,7 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
     const bar=document.getElementById('headerViewBar');
     const title=(document.getElementById('fileName')?.textContent||'').trim();
     // 本文側に画面名と同じ文字を持つ見出しが残っていないか
-    const dupes=[...document.querySelectorAll('main .sc-title,main #recordTitle,#schedulePanel h2,#dashboardPanel h2,#masterMaintPanel .mm-head-title')]
+    const dupes=[...document.querySelectorAll('main .sc-title,main #recordTitle,#schedulePanel h2,#dashScreen h2,#masterMaintPanel .mm-head-title')]
       .map(e=>e.textContent.trim()).filter(t=>t&&title.includes(t));
     // 画面ごとの操作列に並ぶコントロールの寸法。‹ ›のようなアイコンのみの
     // ボタンは「文字」ではなく記号なので、文字サイズの揃いからは外す。

@@ -1288,7 +1288,10 @@ MASTER_EDIT_EXEMPT_ENDPOINTS=(
  'masters.filter_preset_register','masters.filter_preset_use','masters.filter_preset_delete',
  'masters.filter_preset_marks','masters.filter_preset_owner','masters.filter_preset_combo',
  'masters.filter_preset_update',
- 'masters.schedule_column_master_save','masters.schedule_content_master_save')
+ 'masters.schedule_column_master_save','masters.schedule_content_master_save',
+ # ダッシュボードの組み・セット(§9.628)。置き場ごとの門は`dashboard.store.Who.gate()`
+ 'masters.dashboards_create','masters.dashboards_update','masters.dashboards_delete','masters.dashboards_hidden',
+ 'masters.dashboard_sets_create','masters.dashboard_sets_update','masters.dashboard_sets_delete')
 # 測定画面からの間接登録（§9.322、利用者の指示「測定作業時、汎用カスタム部分の
 # 選択肢でリストにないものを登録できるモード設定があった場合に測定画面から
 # 入力してマスタに間接的に登録する形のマスタ登録は許可する」）。

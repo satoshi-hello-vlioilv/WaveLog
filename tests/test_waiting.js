@@ -60,7 +60,10 @@ run('test_waiting: 読み込みが遅いときのWAITING表示(§9.32)。', asyn
  s=await seen();
  rec('実績カレンダー: WAITINGが出て閉じる',(!s.shown||/実績カレンダー/.test(s.title))&&await closed(),JSON.stringify(s));
 
- await watch(); await W.nav(page,'#openDashboard'); await built('#dashboardPanel .db-card'); await settle();
+ await watch(); await W.nav(page,'#openDashboard'); await built('#dashGrid .dash-p .dp-kpi');
+ /* 読み込み後＝**全部のパネルが数を出した後**（1枚目の数だけで次へ進むと、残りのパネルを数えている最中に次の画面を開くことになる） */
+ await page.waitForFunction(()=>![...document.querySelectorAll('#dashGrid .dash-p')].some(p=>p.querySelector('.dp-wait')),null,{timeout:30000}).catch(()=>{});
+ await settle();
  s=await seen();
  rec('分析ダッシュボード: 読み込み後に閉じている',await closed(),JSON.stringify(s));
 

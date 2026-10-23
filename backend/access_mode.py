@@ -248,6 +248,16 @@ _ENDPOINT_EXTRA_MODES={
  'masters.sort_preset_register':{'schedule'},
  'masters.sort_preset_delete':{'schedule'},
  'masters.sort_preset_use':{'schedule'},
+ # ダッシュボードの組み・セット（§9.628）。一覧の列・フィルタと同じ「見せ方」の保存で、スケジュールモードの端末も
+ # ダッシュボードを使う。置き場ごとの門（共通デフォルト＝開発者・共通＝現場のマスタを書ける端末・自分だけ＝本人）は
+ # ハンドラ側の`dashboard.store.Who.gate()`が二重に見る。
+ 'masters.dashboards_create':{'schedule'},
+ 'masters.dashboards_update':{'schedule'},
+ 'masters.dashboards_delete':{'schedule'},
+ 'masters.dashboards_hidden':{'schedule'},
+ 'masters.dashboard_sets_create':{'schedule'},
+ 'masters.dashboard_sets_update':{'schedule'},
+ 'masters.dashboard_sets_delete':{'schedule'},
 }
 # 書込ではないがPOSTで受けるもの(§9.50の「今すぐ抽出」)。データを書き換えず、
 # 抽出元(RNE)から読み直すだけなので、閲覧モードの端末からも実行できてよい。
@@ -261,6 +271,8 @@ _ENDPOINT_EXTRA_MODES={
 # 除外せず表に載せるのは、あとで本物の書込を足したときに無防備にならない
 # ようにするため(CLAUDE.md「読み取り専用のPOSTしか持たないBlueprintも宣言する」)。
 _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
+                           # ダッシュボードのパネルの数・列の札(§9.628)。数えるだけ（パネルの中身が長いので POST）。
+                           'masters.dashboard_query','masters.dashboard_fields',
                            # 測定データの写し直し(§9.619)。共有を手元へ写すだけ。
                            'measurement.records_recopy',
                            'path_config.data_source_master_probe',

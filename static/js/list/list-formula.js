@@ -223,6 +223,59 @@
  }
  /* 位置は**1から数える**（Excelの MID／FIND と同じ・現場の数え方）。 */
  const posOf=v=>{const n=numOf(v);return n===null?1:Math.max(1,Math.floor(n))};
+ /* ---------- §9.628 で足した関数（LotScope のダッシュボードの移植。LotScope の list-formula.js と同じ名前・同じ答え。
+    数の読み方は上の looseNum／strictNum、計算の結果の丸めは tidy のまま）。サーバーは backend/dashboard/formula.py が
+    同じ決まりで計算する（網: test_formulaparity が同じ式・同じ行を両方で突き合わせる）。 ---------- */
+ const nums=a=>a.map(numOf).filter(n=>n!==null);
+ const digitsOf=v=>Math.trunc(Math.max(0,Math.min(8,numOf(v)||0)));
+ /* Excel の ROUNDUP（0 から遠い側）・ROUNDDOWN（0 の側）。x×10^桁 の小さな誤差は 15 桁で丸めてから切る */
+ function roundDir(a,up){const n=numOf(a[0]);if(n===null)return null;
+  const p=Math.pow(10,a.length>1?digitsOf(a[1]):0),t=parseFloat((Math.abs(n)*p).toPrecision(15));
+  return tidy((n<0?-1:1)*(up?Math.ceil(t):Math.floor(t))/p)}
+ const REPT_MAX=10000;
+ /* 1バイトに数える字（ASCII と半角カナ ｡〜ﾟ） */
+ const lenbOne=c=>{const k=c.charCodeAt(0);return k<=0x7f||(k>=0xff61&&k<=0xff9f)};
+ /* 日時（年月日・時刻）。数字は半角だけ。区切りは - / . 年月日 と、日と時刻の間の T・空白（全角の空白も） */
+ const D_YMD=/^([0-9]{4})[-/.年]([0-9]{1,2})[-/.月]([0-9]{1,2})日?(?:[T 　]+([0-9]{1,2})[:時]([0-9]{1,2})(?:[:分]([0-9]{1,2})(?:\.[0-9]+)?秒?)?)?$/,
+       D_YY=/^([0-9]{2})\/([0-9]{1,2})\/([0-9]{1,2})(?:[T 　]+([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?)?$/,
+       D_8=/^([0-9]{4})([0-9]{2})([0-9]{2})$/,D_T=/^([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?$/,
+       DIM=[31,28,31,30,31,30,31,31,30,31,30,31];
+ /* 1970-01-01 からの日数（days_from_civil。整数だけで計算する） */
+ function daysOf(y,m,d){y-=m<=2?1:0;const era=Math.floor(y/400),yoe=y-era*400,
+  doy=Math.floor((153*(m+(m>2?-3:9))+2)/5)+d-1;return era*146097+yoe*365+Math.floor(yoe/4)-Math.floor(yoe/100)+doy-719468}
+ /* 値 → [年,月,日,時,分,秒,日付がある]。読めなければ null（時刻だけは 1970-01-01 の時刻） */
+ /** @returns {?[number,number,number,number,number,number,boolean]} 年・月・日・時・分・秒・日付を持つか（読めなければ null） */
+ function when(v){
+  const t=textOf(v).trim();let m=t.match(D_YMD),yy=false,g,y,has=true;
+  if(!m){m=t.match(D_YY);yy=!!m}
+  if(!m)m=t.match(D_8);
+  if(m){g=m.slice(1).map(x=>x?parseInt(x,10):0);while(g.length<6)g.push(0);y=yy?g[0]+2000:g[0]}
+  else{m=t.match(D_T);if(!m)return null;g=[1970,1,1].concat(m.slice(1).map(x=>x?parseInt(x,10):0));y=1970;has=false}
+  const mo=g[1],d=g[2],h=g[3],mi=g[4],sec=g[5];
+  const dim=mo===2&&(y%4===0&&(y%100!==0||y%400===0))?29:(mo>=1&&mo<=12?DIM[mo-1]:0);
+  if(!(d>=1&&d<=dim&&h<=23&&mi<=59&&sec<=59))return null;
+  return [y,mo,d,h,mi,sec,has];
+ }
+ const secOf=w=>daysOf(w[0],w[1],w[2])*86400+w[3]*3600+w[4]*60+w[5];
+ const DATEDIFF_UNITS={d:86400,'日':86400,h:3600,'時':3600,'時間':3600,m:60,'分':60,s:1,'秒':1};
+ const partOf=(i,needDate=true)=>a=>{const w=when(a[0]);return !w||(needDate&&!w[6])?null:w[i]};
+ const ymdText=(y,m,d)=>`${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+ /* y 年 m 月の第 wk 週・曜日 wd（日＝1〜土＝7）の日（無ければ null）。月初を第 1 週として日曜日で進み、第 6 週は第 1 週に戻す（同じなら早い方） */
+ function kamaDay(y,m,wk,wd){const first=daysOf(y,m,1),last=(m===12?daysOf(y+1,1,1):daysOf(y,m+1,1))-first,sw=((first%7)+7+4)%7;let n=0;
+  for(let d=1;d<=last;d++){const dw=(sw+d-1)%7+1;if(n===0||dw===1)n=n===5?1:n+1;if(n===wk&&dw===wd)return d}return null}
+ /* kamadate(釜番[, 基準日]): 釜番（週・曜日〈日＝1〜土＝7〉・何番目の 3 桁）→ 日付。釜番は月を持たないので、基準日（省くと今日）の
+    前の月・その月・次の月のうち、その週・曜日の日付が基準日にいちばん近い物（同じなら前） */
+ function kamadate(a){
+  const k=textOf(a[0]).trim();if(!/^[0-9]{3}$/.test(k))return null;const wk=+k[0],wd=+k[1];if(wk<1||wk>5||wd<1||wd>7)return null;
+  let y,m,d0;if(a.length>1){const w=when(a[1]);if(!w||!w[6])return null;y=w[0];m=w[1];d0=w[2]}else{const t=new Date();y=t.getFullYear();m=t.getMonth()+1;d0=t.getDate()}
+  const base=daysOf(y,m,d0);let best=null;
+  for(const dm of [-1,0,1]){const yy=m+dm===0?y-1:m+dm===13?y+1:y,mm=m+dm===0?12:m+dm===13?1:m+dm,d=kamaDay(yy,mm,wk,wd);
+   if(d!==null){const gap=Math.abs(daysOf(yy,mm,d)-base);if(best===null||gap<best[0])best=[gap,yy,mm,d]}}
+  return best===null?null:ymdText(best[1],best[2],best[3]);
+ }
+ /* = と同じ比べ方（どちらも書いてある通りに数なら数で、ほかは字で・上の cmp ノードと同じ） */
+ function eqOf(a,b){const x=strictNum(a),y=strictNum(b);return x!==null&&y!==null?x===y:textOf(a)===textOf(b)}
+ const sumOf=x=>x.reduce((s,v)=>s+v,0);
  const FUNCS={
   num:a=>numOf(a[0]),
   text:a=>textOf(a[0]),
@@ -263,13 +316,46 @@
   hankaku:a=>textOf(a[0]).normalize('NFKC'),
   /* padleft(x, 桁, 埋める字)。埋める字を省くと0。 */
   padleft:a=>textOf(a[0]).padStart(Math.max(0,Math.min(64,numOf(a[1])||0)),a.length>2?(textOf(a[2])||'0'):'0'),
+  /* count(x, 字): 字が何回出てくるか（重ならない数え方）。regcount(x, 正規表現): 合う所の数 */
+  count:a=>{const t=textOf(a[1]);return t?textOf(a[0]).split(t).length-1:0},
+  regcount:a=>(textOf(a[0]).match(reOf(textOf(a[1]),'g'))||[]).length,
+  /* lenb(x): 半角の英数記号・半角カナを 1、ほかを 2 と数えた長さ（Excel の LENB） */
+  lenb:a=>{const t=textOf(a[0]);let n=0;for(let i=0;i<t.length;i++)n+=lenbOne(t[i])?1:2;return n},
+  rept:a=>{const t=textOf(a[0]);let n=Math.trunc(Math.max(0,Math.min(1000,numOf(a[1])||0)));
+           if(t&&t.length*n>REPT_MAX)n=Math.floor(REPT_MAX/t.length);return t.repeat(n)},
+  min:a=>{const x=nums(a);return x.length?Math.min(...x):null},
+  max:a=>{const x=nums(a);return x.length?Math.max(...x):null},
+  sum:a=>{const x=nums(a);return x.length?tidy(sumOf(x)):null},
+  avg:a=>{const x=nums(a);return x.length?tidy(sumOf(x)/x.length):null},
+  int:a=>{const n=numOf(a[0]);return n===null?null:Math.floor(n)},
+  ceil:a=>{const n=numOf(a[0]);return n===null?null:Math.ceil(n)},
+  roundup:a=>roundDir(a,true),
+  rounddown:a=>roundDir(a,false),
+  sqrt:a=>{const n=numOf(a[0]);return n===null||n<0?null:tidy(Math.sqrt(n))},
+  isnum:a=>strictNum(a[0])===null?0:1,
+  isblank:a=>textOf(a[0]).trim()===''?1:0,
+  /* ifs(条件1, 答え1, …[, どれでもない時])・switch(x, 値1, 答え1, …[, どれでもない時])（値は = と同じ比べ方） */
+  ifs:a=>{for(let i=0;i+1<a.length;i+=2)if(truthy(a[i]))return a[i+1];return a.length%2?a[a.length-1]:''},
+  switch:a=>{for(let i=1;i+1<a.length;i+=2)if(eqOf(a[0],a[i]))return a[i+1];return a.length%2===0?a[a.length-1]:''},
+  year:partOf(0),month:partOf(1),day:partOf(2),hour:partOf(3,false),minute:partOf(4,false),
+  /* weekday(x): 1＝日 〜 7＝土（Excel の WEEKDAY と同じ） */
+  weekday:a=>{const w=when(a[0]);return !w||!w[6]?null:((daysOf(w[0],w[1],w[2])%7)+7+4)%7+1},
+  date:a=>{const w=when(a[0]);return !w||!w[6]?null:ymdText(w[0],w[1],w[2])},
+  /* datediff(始め, 終わり[, 単位])＝終わり−始め（d＝日〈既定〉・h＝時間・m＝分・s＝秒） */
+  datediff:a=>{const x=when(a[0]),y=when(a[1]),u=DATEDIFF_UNITS[a.length>2?textOf(a[2]).trim().toLowerCase():'d'];
+               return !x||!y||!u?null:tidy((secOf(y)-secOf(x))/u)},
+  kamadate,
  };
  const ARITY={cmp:2,num:1,text:1,abs:1,round:2,len:1,left:2,right:2,trim:1,upper:1,lower:1,
               find:2,replace:3,match:2,regreplace:3,split:3,contains:2,startswith:2,endswith:2,
-              hankaku:1};
+              hankaku:1,
+              count:2,regcount:2,lenb:1,rept:2,int:1,ceil:1,sqrt:1,isnum:1,isblank:1,
+              year:1,month:1,day:1,hour:1,minute:1,weekday:1,date:1};
  /* 引数の数に幅がある関数（下限〜上限）。 */
- const ARITY_RANGE={mid:[2,3],extract:[2,3],padleft:[2,3]};
- const REGEX_FUNCS=new Set(['extract','match','regreplace']);
+ const ARITY_RANGE={mid:[2,3],extract:[2,3],padleft:[2,3],
+                    roundup:[1,2],rounddown:[1,2],datediff:[2,3],ifs:[2,40],switch:[3,41],kamadate:[1,2],
+                    min:[1,30],max:[1,30],sum:[1,30],avg:[1,30]};
+ const REGEX_FUNCS=new Set(['extract','match','regreplace','regcount']);
 
  function evalNode(n,row){
   switch(n.k){
@@ -369,6 +455,16 @@
   ['hankaku','x','全角の英数を半角へ'],['padleft','x, 桁, 字','左を字で埋める'],
   ['extract','x, 正規表現, 組','正規表現で抜き出す'],['match','x, 正規表現','正規表現に合うか'],
   ['contains','x, 字','字を含むか'],['cmp','a, b','比べる（数に読めれば数で・-1／0／1）'],['startswith','x, 字','字で始まるか'],['endswith','x, 字','字で終わるか'],
+  ['count','x, 字','字が何回出てくるか'],['regcount','x, 正規表現','正規表現に合う所の数'],['lenb','x','バイト数（全角 2・半角 1）'],
+  ['rept','x, 回数','字をくり返す'],['min','a, b, …','いちばん小さい数'],['max','a, b, …','いちばん大きい数'],
+  ['sum','a, b, …','数の合計'],['avg','a, b, …','数の平均'],['int','x','小数を切り捨てた整数（小さい側）'],['ceil','x','小数を切り上げた整数'],
+  ['roundup','x, 桁','切り上げ（0 から遠い側）'],['rounddown','x, 桁','切り捨て（0 の側）'],['sqrt','x','平方根'],
+  ['isnum','x','数か（1／0）'],['isblank','x','空か（1／0）'],
+  ['ifs','条件1, 答え1, …, どれでもない時','条件を順に見て、最初に合った答え'],['switch','x, 値1, 答え1, …, どれでもない時','値で切り替える'],
+  ['year','日時','年'],['month','日時','月'],['day','日時','日'],['hour','日時','時'],['minute','日時','分'],
+  ['weekday','日時','曜日（1＝日 〜 7＝土）'],['date','日時','年月日（2026-10-01 の形）'],
+  ['datediff',"始め, 終わり, 'm'",'日時の差（d＝日・h＝時間・m＝分・s＝秒）'],
+  ['kamadate','釜番, 基準日','釜番（週・曜日・何番目の 3 桁）→ 基準日にいちばん近い日付（基準日を省くと今日）'],
  ];
  /* ---------- 書いている最中の候補（§9.474、利用者の指示「条件式の部分もさらに使いやすく、関数などは
     特にサジェスト機能なども組み込んで」） ----------
@@ -421,5 +517,9 @@
               ['mid(x,何文字目,文字数) find(x,字) split(x,区切り,何番目)','切り出す（位置は1から）'],
               ['replace(x,字,置く字) regreplace(x,正規表現,置く字) hankaku(x) padleft(x,桁,字)','変換する'],
               ['extract(x,正規表現[,組]) match(x,正規表現) contains(x,字)','抜き出す・合うか'],
+              ['count(x,字) regcount(x,正規表現) lenb(x) rept(x,回数)','数える・くり返す'],
+              ['min(…) max(…) sum(…) avg(…) int(x) ceil(x) roundup(x,桁) rounddown(x,桁) sqrt(x)','数の計算'],
+              ['ifs(条件,答え,…) switch(x,値,答え,…) isnum(x) isblank(x)','切り替える・確かめる'],
+              ["year(x) month(x) day(x) hour(x) minute(x) weekday(x) date(x) datediff(始め,終わり,'m')",'日時（作業時間は datediff で分に）'],
              ]};
 })();

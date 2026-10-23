@@ -899,6 +899,12 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
     </div>
    </div>
    <div class="sc-float-resize" title="ドラッグで大きさを変えられます"></div></template>
+<!-- ダッシュボード（§9.628・LotScope のグリッドのパネルの移植。static/js/dash/）: 道具の行・期間と設備の帯・グリッドと組む所 -->
+<template id="tpl-dash-screen">
+  <div class="dash-tools" id="dashBar"></div>
+  <div class="dsl-wrap dsl-strip" id="dashSlicer" hidden></div>
+  <div class="dash-stage"><div class="dash-grid" id="dashGrid"></div><aside id="dashEditor" class="dash-editor-pane" aria-label="パネルを組む" hidden></aside></div>
+</template>
 <template id="tpl-actuals-panel">
    <div class="ac-head" id="acHead">
     <label class="ac-field">設備<select id="acEquipment" title="実績が記録されている設備から選びます"></select></label>

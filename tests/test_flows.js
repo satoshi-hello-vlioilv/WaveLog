@@ -39,7 +39,7 @@ run('test_flows: 測定・スケジュール・メンテナンスの各導線を
    .filter(vis).map(el=>el.id||el.className||el.tagName).slice(0,5);
   // トップレベルのパネルが同時に見えていないか(画面の重なり)
   const PANELS=['recordModal','schedulePanel','calendarPanel','reportPanel',
-                'dashboardPanel','masterMaintPanel','qualityAnalysisPanel'];
+                'dashScreen','masterMaintPanel','qualityAnalysisPanel'];
   const shown=PANELS.filter(id=>{const el=document.getElementById(id);return el&&vis(el)});
   // スクロールできないのに中身がはみ出している(見切れ)
   const clipped=[...document.querySelectorAll('section,div')].filter(el=>{

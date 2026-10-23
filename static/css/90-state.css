@@ -110,8 +110,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .mm-row.is-pending-restart{background:var(--warn-bg)}
 .db-card.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
 .db-card.is-warn .db-card-label{color:var(--warn-fg)}
-.db-status-table tbody tr.is-running{background:var(--surface-2)}
-.db-status-table tbody tr.is-late{background:var(--warn-bg)}
+
 .sc-stop-button.is-disabled{opacity:var(--op-disabled);cursor:not-allowed}
 .sc-stop-button.is-row-dragging{opacity:.45;outline:1px dashed var(--teal)}
 #grid tbody tr.is-row-dragging{opacity:.45;outline:1px dashed var(--teal)}
@@ -543,9 +542,8 @@ body.rp-bulk-print .rp-bulk-print-area .rp-page:last-child{page-break-after:auto
   .bs-hide button.is-on,
   .bs-orient-seg button.is-on,
   .lr-seg button.is-on,
-  .db-presets button.active,
   .db-seg button.active,
-  .hd-viewbar .db-seg button.active, .hd-viewbar .db-viewtabs button.active, .hd-viewbar .sc-mode-toggle-btn.active,
+  .hd-viewbar .db-seg button.active, .hd-viewbar .sc-mode-toggle-btn.active,
   .hd-viewbar button.active, .hd-viewbar [role="tab"].active,
   .lc-state-chip.is-on,
   .lg-seg button.is-on,
@@ -568,7 +566,6 @@ body.rp-bulk-print .rp-bulk-print-area .rp-page:last-child{page-break-after:auto
   .status-filter-btn.active{background:var(--teal);border-color:var(--teal);color:#fff}
 
   /* 濃い面（縁なし）（9族） */
-  .db-viewtabs button.active,
   .mm-card-opt.is-on .mm-card-ico,
   .mm-seg>button.is-on,
   .mode-tabs button.active,
