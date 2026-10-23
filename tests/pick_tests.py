@@ -401,6 +401,8 @@ RULES = [
                                         'test_rppaper',
                                         # §9.623: 帳票は同じ記録IDの新しい版（手元・共有）で描く
                                         'test_rpfresh',
+                                        # §9.624: 描いたあとに字の幅が変わっても紙を測り直す
+                                        'test_rprefit',
                                         # §9.253: 見本のロットで帳票を見る
                                         'test_rbsample',
                                         'test_collayout', 'test_actuals')),
