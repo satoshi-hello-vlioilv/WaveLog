@@ -174,8 +174,18 @@ def check_groups():
         tree = client.get('/api/dashboard/equip-tree').get_json() or {}
         hit = next((s for s in tree.get('sets') or [] if s['name'] == TAG + 'まとめ'), None)
         rec('スライサーの設備の木にグループが出る', bool(hit) and hit['groups'][0]['members'] == ['テスト設備A'], hit)
+        # マスタ管理の画面の約束（§9.82: 直すのは POST /update・id は本文）。決まりは1行に1つの字で直せる
+        r3 = client.post('/api/masters/equipgroups/update', json={'id': gid, 'rulesText': 'テスト設備 で始まる'})
+        row = next((x for x in (r3.get_json() or {}).get('items') or [] if x['id'] == gid), {})
+        rec('決まりを字で直せる（1行に1つ）', r3.status_code == 200 and row.get('rules') == [{'op': 'prefix', 'value': 'テスト設備'}]
+            and row.get('rulesText') == 'テスト設備 で始まる', (r3.status_code, row.get('rules'), (r3.get_json() or {}).get('error')))
+        r4 = client.post('/api/masters/equipgroups/update', json={'id': gid, 'rulesText': 'テスト設備'})
+        rec('比べ方の無い決まりは断る（400・例を言う）', r4.status_code == 400 and '例' in ((r4.get_json() or {}).get('error') or ''), r4.status_code)
+        r5 = client.post('/api/masters/equipgroups/update', json={'id': gid, 'equipment': '*'})
+        rec('「すべての設備」はグループに入れない（400）', r5.status_code == 400, r5.status_code)
     finally:
-        client.delete(f'/api/masters/equipgroups/{gid}')
+        r = client.post('/api/masters/equipgroups/delete', json={'id': gid})
+        rec('設備グループを消せる（POST /delete）', r.status_code == 200 and gid not in [x['id'] for x in (r.get_json() or {}).get('items') or []], r.status_code)
 
 
 def _item(i, status, start, end, minutes, crew, equipment='テスト設備A'):

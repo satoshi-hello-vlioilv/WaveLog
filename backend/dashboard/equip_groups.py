@@ -53,9 +53,11 @@ def clean_row(data, partial=False):
         out["名称"] = name[:NAME_MAX]
     if not partial or "set" in data:
         out["まとめ方"] = (str(data.get("set") or "").strip() or SET_DEFAULT)[:NAME_MAX]
-    if not partial or "equipment" in data or "rules" in data:
+    if not partial or any(k in data for k in ("equipment", "rules", "rulesText")):
         eq = equipment_list(data.get("equipment"))
-        rules = clean_rules(data.get("rules"))
+        if any(x == "*" for x in eq):
+            raise GroupError("グループに「すべての設備」は入れられません。入れる設備を選ぶか、名前の決まりを書いてください。")
+        rules = clean_rules(parse_rules_text(data["rulesText"]) if "rulesText" in data else data.get("rules"))
         if not eq and not rules:
             raise GroupError("グループに入れる設備を 1 つ以上選ぶか、設備の名前の決まり（ルール）を 1 つ以上入れてください。")
         out["設備"] = ",".join(eq)
@@ -88,6 +90,25 @@ def clean_rules(v):
         x = {"op": r["op"], "value": val}
         if x not in out:
             out.append(x)
+    return out
+
+
+def rules_text(rules):
+    """決まり [{op, value}] → 1 行に 1 つの字（「L- で始まる」）。マスタ管理の画面の欄が読み書きする形"""
+    return "\n".join(f"{r['value']} {RULE_OPS[r['op']]}" for r in rules or [] if r.get("op") in RULE_OPS)
+
+
+def parse_rules_text(text):
+    """rules_text の字 → [{op, value}]。行の終わりが比べ方の言葉（RULE_OPS の字）でない行は、どう比べるか分からないので断る"""
+    words = sorted(RULE_OPS.items(), key=lambda kv: -len(kv[1]))
+    out = []
+    for line in (x.strip() for x in str(text or "").splitlines()):
+        if not line:
+            continue
+        hit = next(((op, line[: -len(w)].strip()) for op, w in words if line.endswith(w)), None)
+        if not hit or not hit[1]:
+            raise GroupError(f"決まり「{line}」の比べ方が読めません。行の終わりに「{'」「'.join(RULE_OPS.values())}」のどれかを書いてください（例: L- で始まる）。")
+        out.append({"op": hit[0], "value": hit[1]})
     return out
 
 
@@ -135,8 +156,13 @@ def ordered(rows):
 def view(row):
     """画面へ出す形"""
     return {"id": row.get("id"), "name": row.get("名称") or "", "set": row.get("まとめ方") or SET_DEFAULT,
-            "equipment": equipment_list(row.get("設備")), **rules_of(row), "order": _order(row), "note": row.get("備考") or "", "rev": row.get("rev", 1),
+            "equipment": equipment_list(row.get("設備")), **_rules_view(row), "order": _order(row), "note": row.get("備考") or "", "rev": row.get("rev", 1),
             "updated_at": row.get("updated_at", ""), "updated_by": row.get("updated_by") or {}}
+
+
+def _rules_view(row):
+    d = rules_of(row)
+    return {**d, "rulesText": rules_text(d["rules"])}
 
 
 def sets(rows):

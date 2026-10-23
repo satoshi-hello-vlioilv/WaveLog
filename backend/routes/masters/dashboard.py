@@ -185,7 +185,16 @@ def _group_listing(extra=None):
  return {**_read(lambda c: store.group_listing(c, seen)), **(extra or {})}
 
 
-_GROUP_SPEC = {'name': any_, 'set': any_, 'equipment': any_, 'rules': any_, 'except': any_, 'order': any_, 'note': any_, 'base_rev': any_}
+_GROUP_SPEC = {'id': any_, 'user_id': any_, 'name': any_, 'set': any_, 'equipment': any_, 'rules': any_, 'rulesText': any_, 'except': any_,
+               'order': any_, 'note': any_, 'base_rev': any_}
+_GROUP_META = ('id', 'user_id', 'base_rev')
+
+
+def _group_id(x):
+ try:
+  return int(x.get('id'))
+ except (TypeError, ValueError):
+  raise ValueError('直す・消す設備グループ（id）がありません。') from None
 
 
 @bp.get('/api/masters/equipgroups')
@@ -197,17 +206,18 @@ def equipgroups_list():
 @bp.post('/api/masters/equipgroups')
 def equipgroups_create():
  x = body(_GROUP_SPEC)
- return _call(lambda c: store.group_create(c, current_login_id(), dict(x.raw)), 201, after=lambda new: _group_listing({'created': new}))
+ return _call(lambda c: store.group_create(c, current_login_id(), {k: v for k, v in x.raw.items() if k not in _GROUP_META}), 201, after=lambda new: _group_listing({'created': new}))
 
 
-@bp.put('/api/masters/equipgroups/<int:item_id>')
-def equipgroups_update(item_id):
+@bp.post('/api/masters/equipgroups/update')
+def equipgroups_update():
+ """マスタ管理の約束（§9.82: 直すのは /update・id は本文）"""
  x = body(_GROUP_SPEC)
- return _call(lambda c: store.group_update(c, current_login_id(), item_id, {k: v for k, v in x.raw.items() if k != 'base_rev'}, _base_rev(x)),
+ return _call(lambda c: store.group_update(c, current_login_id(), _group_id(x), {k: v for k, v in x.raw.items() if k not in _GROUP_META}, _base_rev(x)),
               after=lambda _: _group_listing())
 
 
-@bp.delete('/api/masters/equipgroups/<int:item_id>')
-def equipgroups_delete(item_id):
- x = body({'base_rev': any_}, silent=True)
- return _call(lambda c: repo.delete(c, repo.EQUIP_GROUP, item_id, _base_rev(x)), after=lambda _: _group_listing())
+@bp.post('/api/masters/equipgroups/delete')
+def equipgroups_delete():
+ x = body({'id': any_, 'user_id': any_, 'base_rev': any_})
+ return _call(lambda c: repo.delete(c, repo.EQUIP_GROUP, _group_id(x), _base_rev(x)), after=lambda _: _group_listing())

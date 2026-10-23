@@ -120,8 +120,10 @@ run('test_master: マスタ管理の画面（統合パネル・タブ・編集�
     (byGroup.measure||[]).join(','));
   rec('「帳票」に帳票の2つが集まる',
     (byGroup.report||[]).join(',')==='reportLayout,reportBlock',(byGroup.report||[]).join(','));
-  rec('「設備」に設備とロールが集まる',
-    (byGroup.equip||[]).join(',')==='equipment,roll',(byGroup.equip||[]).join(','));
+  /* 並びは前後関係で見る（§9.389・顔ぶれを字で丸ごと固定しない）: 設備が先、設備グループ（§9.628）はその後 */
+  const eqG=byGroup.equip||[];
+  rec('「設備」に設備・設備グループ・ロールが集まる（設備が先）',
+    ['equipment','equipGroup','roll'].every(k=>eqG.includes(k))&&eqG.indexOf('equipment')<eqG.indexOf('equipGroup'),eqG.join(','));
   rec('「データと接続」に置き場と読み込み先が集まる',
     ['dataSource','pathConfig'].every(k=>(byGroup.data||[]).includes(k)),
     (byGroup.data||[]).join(','));
