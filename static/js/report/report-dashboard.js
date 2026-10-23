@@ -3885,7 +3885,7 @@ ${rpEdVisRow(k)}`;
  /* 描いたあとに1回だけ測る。**2フレーム待つ**——1フレームでは`innerHTML`の
     レイアウトが確定しておらず、高さを読み違える。 */
  function rpAfterPaint(){
-  requestAnimationFrame(()=>requestAnimationFrame(rpFitAll));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{rpFitAll();rpWatchFit($id('reportContent'))}));
  }
  /* **写しは必ず新しい形で配る**（§9.222 ②）。widthsを書く呼び出しは全て
     `{...rpLayoutNow().widths}`＝全件の写しを土台にして1〜2キーだけ差し替える
@@ -4792,6 +4792,34 @@ ${rpEdVisRow(k)}`;
   try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
   try{rpFitBlockBodies(h)}catch(e){console.warn('帳票の中身の合わせ込みに失敗',e)}
   try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
+ }
+ /* ---------- 描いたあとに中身の大きさが変わったら測り直す（§9.624、利用者の報告） ----------
+    「Latitude 3550（1920×1080・100%）で、運転条件の字が折り返し、測定データが40条のところ32条しか出ない」。
+    同じ解像度・倍率の Latitude 5340 では入っていた。紙は描いた直後に1回だけ測って器へ合わせる
+    （`rpFitRows`・`rpFitBlockBodies`）。そのあと字の幅が変わる（書体の用意が遅れて差し替わる等）と、広がった字が
+    器の中で折り返し、`overflow:hidden`の下で切れたまま残る。**中身の器（`.rp-block-fit`）の大きさを見張り、
+    変わったら1フレームにまとめて測り直す**。測り直し自体も大きさを変える（詰め・縮め）が、2回目で同じ答えに落ち着くので
+    回り続けない（見張りは前の大きさと比べて、変わったときだけ動く）。 */
+ let rpFitWatch=null,rpFitQueued=false;
+ const rpFitSeen=new WeakMap();
+ function rpWatchFit(host){
+  if(typeof ResizeObserver!=='function'||!host)return;
+  if(!rpFitWatch)rpFitWatch=new ResizeObserver(list=>{
+   let moved=false;
+   for(const e of list){
+    const r=e.contentRect,was=rpFitSeen.get(e.target);
+    rpFitSeen.set(e.target,r.width+'x'+r.height);
+    if(was!==undefined&&was!==r.width+'x'+r.height)moved=true;
+   }
+   if(!moved||rpFitQueued)return;
+   rpFitQueued=true;
+   requestAnimationFrame(()=>{rpFitQueued=false;
+    /* 描いた直後と同じ道で測り直す（ふだんは`rpAfterPaint`の`rpFitAll`、組み換え中は`rpMarkOverflow`）。 */
+    try{if(rpArranging)rpMarkOverflow(host);else rpFitAll()}
+    catch(e){WL.quiet.note('中身の大きさが変わった紙を測り直せない（前の割り付けのまま）',e)}});
+  });
+  rpFitWatch.disconnect();
+  host.querySelectorAll('[data-rp-block]>.rp-block-fit').forEach(el=>rpFitWatch.observe(el));
  }
  function rpFitAll(){
   /* **紙の余白は行を測る前に与える**（§9.308）——あとから与えると、
