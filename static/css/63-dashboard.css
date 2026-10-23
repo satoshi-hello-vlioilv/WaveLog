@@ -205,7 +205,6 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .dash-screen.has-editor .dash-cell{display:none}
 
 /* ---- 2026-10-grid の 2 回目: 色＝データの種類の点・知らせの札・狭いパネルの「⋯」・1 枚の表を列に分ける ---- */
-.dash-dot{width:9px;height:9px;border-radius:var(--radius-round);background:var(--c);flex:0 0 auto}
 .dash-warnb{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:var(--radius-pill);background:var(--look-amber-pale);border:1px solid var(--look-amber);color:var(--look-amber-dark);
   font-size:var(--fs-sm);font-weight:var(--fw-strong);flex:0 0 auto;cursor:help}
 .dash-more{width:30px;padding:0;font-size:var(--fs-title);line-height:1}

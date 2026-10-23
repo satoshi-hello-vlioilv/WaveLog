@@ -539,7 +539,9 @@ def clean_board(p, what):
     rows = _dims([p.get("rows")] if isinstance(p.get("rows"), dict) else [])
     o = p.get("order") if isinstance(p.get("order"), dict) else {}
     gs = [clean_group(g, i) for i, g in enumerate(groups)]
-    extra = {k: v for k, v in (("equips", _names(p.get("equips"))), ("egroup", clean_egroup(p.get("egroup"))), ("filters", _filters(p.get("filters")))) if v}
+    # noTotal（§9.628）… 見出しの「計」を出さない（同じ数を上の数字のパネルが言うとき。同じ数を 2 か所に出さない）
+    extra = {k: v for k, v in (("equips", _names(p.get("equips"))), ("egroup", clean_egroup(p.get("egroup"))), ("filters", _filters(p.get("filters"))),
+                               ("noTotal", p.get("noTotal") is True)) if v}
     return {**extra, "rows": rows[0] if rows else {"column": "@equip", "part": ""}, "groups": gs,
             "order": {"by": o.get("by") if o.get("by") in BOARD_ORDERS else "value", "group": _int(o.get("group"), 0, len(gs) - 1, 0),
                       "dir": "asc" if o.get("dir") == "asc" else "desc", "list": _keys(o.get("list")), "hide": _keys(o.get("hide")),
@@ -824,6 +826,11 @@ def _pv(pid, x, y, w, h, title, visual, source, rows=(), cols=(), measures=({"ag
                      "labels": True}, **kw}
 
 
+# 組み込みの書式（§9.628 の採点）: 積み上げは段の数も（合計だけでは内訳が乗せないと分からない）・平均の分は整数（58.33 分と出ていた）
+STACK_LABELS = {"labels": "both"}
+WHOLE_MIN = {"digits": 0}
+
+
 def _f(column, op, value):
     return {"column": column, "op": op, "value": value}
 
@@ -860,21 +867,21 @@ BUILTIN_LAYOUTS = [
         _pv("pending", 3, 0, 3, 1, "残っている予定", "kpi", "plan", measures=[{"agg": "count"}], filters=[_f("状態", "eq", "予定")]),
         _pv("late", 6, 0, 3, 1, "遅れている設備", "kpi", "plan", measures=[{"agg": "distinct", "column": "設備名"}], filters=[_f("遅れ（分）", "gt", "0")]),
         _pv("doneToday", 9, 0, 3, 1, "本日の完了", "kpi", "rec", period={"column": "@workday", "kind": "today"}, filters=[DONE]),
-        {"id": "board", "x": 0, "y": 1, "w": 6, "h": 4, "title": "設備の稼働状況（作業予定から）", "visual": "board", **_status_board()},
+        {"id": "board", "x": 0, "y": 1, "w": 6, "h": 4, "title": "設備の稼働状況", "visual": "board", "noTotal": True, **_status_board()},
         _pv("gantt", 6, 1, 6, 4, "きょうの作業", "gantt", "rec", measures=[{"agg": "count"}],
             period={"column": "@workday", "kind": "today"}),
         # 表とガントは中身なりの高さ。空いた下の段に直近の完了を設備ごとに（§9.628 の採点: 上の 2 枚の下が 6 割空いていた）
         _pv("trend14", 0, 5, 12, 3, "直近 14 日の完了（本・設備ごと）", "time", "rec", rows=[{"column": "@workday"}], cols=[{"column": "@equip"}],
-            period=_days(14), filters=[DONE]),
+            period=_days(14), filters=[DONE], fmt=STACK_LABELS),
     ]}},
     # いまの仕掛と前日・今月の完了をスクロールせずに見る（LotScope の「標準」と同じ並び。名前は中身で言う）
     {"key": "standard", "name": "仕掛と完了", "body": {"rows": 8, "panels": [
         _pv("wipTotal", 0, 0, 4, 1, "仕掛ロット数", "kpi", "role:仕掛", emph=True),
-        _pv("workTotal", 4, 0, 4, 1, "前日の完了（本）", "kpi", "rec", period=YESTERDAY, filters=[DONE]),
-        _pv("workMonth", 8, 0, 4, 1, "今月の完了（本）", "kpi", "rec", period={"column": "@workday", "kind": "this_month"}, filters=[DONE]),
+        _pv("workTotal", 4, 0, 4, 1, "前日の完了", "kpi", "rec", period=YESTERDAY, filters=[DONE]),
+        _pv("workMonth", 8, 0, 4, 1, "今月の完了", "kpi", "rec", period={"column": "@workday", "kind": "this_month"}, filters=[DONE]),
         _pv("wipPurpose", 0, 1, 5, 4, "用途名ごとの仕掛ロット数", "bar", "role:仕掛", rows=[{"column": "用途名"}], sort="desc", top=15),
         _pv("workDays", 0, 5, 5, 3, "直近 14 日の完了（本）", "time", "rec", rows=[{"column": "@workday"}], period=_days(14), filters=[DONE]),
-        {"id": "board", "x": 5, "y": 1, "w": 7, "h": 7, "title": "設備ごとの仕掛と前日の実績", "visual": "board", **board_default()},
+        {"id": "board", "x": 5, "y": 1, "w": 7, "h": 7, "title": "設備ごとの仕掛と前日の実績", "visual": "board", "noTotal": True, **board_default()},
     ]}},
     # 前の「自設備」: この端末の使用設備にしぼった直近 30 日の完了の実績
     {"key": "mine", "name": "自設備", "body": {"rows": 8, "panels": [
@@ -883,9 +890,10 @@ BUILTIN_LAYOUTS = [
         # 前の画面の「全設備平均との差（速い・遅い）」: この端末の設備の平均を実績、全設備の平均を基準に合わせ、差を添える
         _pv("mineAvg", 6, 0, 3, 1, "平均作業時間", "kpi", "rec", measures=[{"agg": "avg", "column": WORK_TIME}],
             link={"sides": [_side("actual", "この端末の設備", [MINE]), _side("base", "全設備", [])], "extra": ["diff"]}),
-        _pv("mineDays", 9, 0, 3, 1, "作業した日", "kpi", "rec", measures=[{"agg": "distinct", "column": "作業日"}], equips=[MINE], period=_days(30), filters=[DONE]),
+        _pv("mineDays", 9, 0, 3, 1, "作業した日", "kpi", "rec", measures=[{"agg": "distinct", "column": "作業日"}], equips=[MINE], period=_days(30), filters=[DONE],
+            fmt={"utext": "日"}),
         _pv("mineKind", 0, 1, 6, 4, "品種ごとの平均作業時間（分）", "bar", "rec", rows=[{"column": "品種"}], measures=[{"agg": "avg", "column": WORK_TIME}],
-            equips=[MINE], period=_days(30), filters=[DONE], sort="desc", top=12),
+            equips=[MINE], period=_days(30), filters=[DONE], sort="desc", top=12, fmt=WHOLE_MIN),
         _pv("mineOp", 6, 1, 6, 4, "オペレータごとの実績", "none", "rec", rows=[{"column": "オペレータ"}],
             measures=[{"agg": "lots"}, {"agg": "avg", "column": WORK_TIME}], equips=[MINE], period=_days(30), filters=[DONE], sort="desc", top=12,
             grand=False),     # 総計は上の数字のパネル（完了ロット・平均作業時間）が言う（同じ数を 2 か所に出さない・§9.628）
@@ -894,13 +902,13 @@ BUILTIN_LAYOUTS = [
     # 前の「自由集計」の4つのよく使う組み合わせ（設備別効率・人数別内訳・品種別作業時間・月次推移）。自由な組み合わせはパネルを直して作る
     {"key": "analysis", "name": "作業時間の分析", "body": {"rows": 8, "panels": [
         _pv("eqEff", 0, 0, 6, 4, "設備別の効率（平均作業時間・分）", "column", "rec", rows=[{"column": "@equip"}], cols=[{"column": "作業人数"}],
-            measures=[{"agg": "avg", "column": WORK_TIME}], period={"column": "@workday", "kind": "this_month"}, filters=[DONE]),
+            measures=[{"agg": "avg", "column": WORK_TIME}], period={"column": "@workday", "kind": "this_month"}, filters=[DONE], fmt=WHOLE_MIN),
         _pv("crew", 6, 0, 6, 4, "人数別の内訳（本）", "stack", "rec", rows=[{"column": "作業人数"}], cols=[{"column": "@equip"}],
-            period={"column": "@workday", "kind": "this_month"}, filters=[DONE]),
+            period={"column": "@workday", "kind": "this_month"}, filters=[DONE], fmt=STACK_LABELS),
         _pv("kind", 0, 4, 6, 4, "品種別の作業時間（平均・分）", "bar", "rec", rows=[{"column": "品種"}], measures=[{"agg": "avg", "column": WORK_TIME}],
-            period={"column": "@workday", "kind": "this_month"}, filters=[DONE], sort="desc", top=15),
+            period={"column": "@workday", "kind": "this_month"}, filters=[DONE], sort="desc", top=15, fmt=WHOLE_MIN),
         _pv("monthly", 6, 4, 6, 4, "月ごとの推移（本）", "time", "rec", rows=[{"column": "@workday", "part": "ym"}], cols=[{"column": "@equip"}],
-            period=_days(365), filters=[DONE]),
+            period=_days(365), filters=[DONE], fmt=STACK_LABELS),
     ]}},
 ]
 

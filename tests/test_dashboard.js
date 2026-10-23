@@ -32,8 +32,8 @@ const measure=page=>page.evaluate(()=>{
    outside:r.right>g.right+1||r.bottom>window.innerHeight+1,
    cutTitle:!!h3&&cutEl(h3),cutMeta:metas.filter(cutEl).length,unknown:[...p.querySelectorAll('.dp-num')].filter(n=>n.textContent.trim().startsWith('–')).length,
    dupSrc:segs.length-new Set(segs).size,vague:metas.reduce((n,m)=>n+(m.textContent.match(/条件 \d/g)||[]).length,0),
-   /* 線より後に地（og-msgbg）を敷いて描いた字は、線が上を通らない */
-   cross:line?texts.filter(t=>hit(box(line),box(t))&&!(t.previousElementSibling&&t.previousElementSibling.classList.contains('og-msgbg')&&(line.compareDocumentPosition(t)&Node.DOCUMENT_POSITION_FOLLOWING))).length:0};
+   /* 字と「いま」の線が重ならない（字を線の横へ寄せる。地を敷いて線を隠すのも「重なる」と数える） */
+   cross:line?texts.filter(t=>hit(box(line),box(t))).length:0};
  });
  return {name:(document.querySelector('.dash-pick b')||{}).textContent||'',panels,
   scroll:document.scrollingElement.scrollHeight>window.innerHeight+1};

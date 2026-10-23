@@ -9,7 +9,7 @@
 (function(){
   "use strict";
   const { esc } = WL.dashKit;
-  const WORK = "#2f7d78";
+  const WORK = "#3f6591";     // 作業の棒は紺（量の色。色相は設備の色に使う・§9.628）
   // ABC は順位なので 1 つの色（藍）の濃淡（A＝濃い → C＝淡い。字は A・B が白・C が墨）。ガントの色分けとは色を分ける（同じ色で別の意味にしない: 2026-10-ops の 1 回目の採点）
   const RANK = { A: { c: "#24446a", n: "A", f: "#fff" }, B: { c: "#4d6e96", n: "B", f: "#fff" }, C: { c: "#c3ccd5", n: "C", f: "#1b2733" } };
   /* 段は A・B・C に限らない（版 3.51.0。利用者の要望 2026-10-22）: 段の数（ranks.count）に合わせて、同じ藍の濃淡を A（濃い）→ 最後（淡い）に割り振る。
@@ -70,11 +70,11 @@
     if (rh < 14) { rh = 14; shown = eqs.slice(0, Math.max(1, Math.floor(avail / 14))); }
     const X = (t) => LW + ((t - x0) / span) * TW;
     const g = [];
-    const c = { LW, TW, RW, AX, rh, X, x0, x1, span, p, colorOf, top: [] };
+    const now = ms(d.now || "");
+    const c = { LW, TW, RW, AX, rh, X, x0, x1, span, p, colorOf, top: [], nowX: now > x0 && now < x1 ? X(now) : null };
     const { dayKey, mainKey } = ganttAxis(g, c, eqs, d, shown.length);
     shown.forEach((e, i) => ganttRow(g, c, e, i, dayKey, mainKey));
     // いま（期間が今日を含むとき）
-    const now = ms(d.now || "");
     if (now > x0 && now < x1) g.push(`<line class="og-now" x1="${X(now)}" x2="${X(now)}" y1="${AX - 2}" y2="${AX + shown.length * rh}"/><text class="og-nowl" x="${X(now) + 3}" y="${AX - 16}">いま</text>`);
     g.push(...c.top);
     const leg = legend ? `<span class="og-leg">${cats.slice(0, 8).map((c) => `<span><i style="background:${colorOf.get(c)}"></i>${esc(c)}</span>`).join("")}${cats.length > 8 ? `<span>ほか ${cats.length - 8}</span>` : ""}</span>` : "";
@@ -145,8 +145,11 @@
     const why = Object.entries(e.why || {}).map(([k, n]) => `${k} ${n} 本`).join("・");
     const msg = e.error ? `読めません: ${e.error}` : !(e.ops || []).length ? (e.noEnd ? `作業 ${e.count} 本の区間が分かりません（${why}）` : "この期間の作業はありません") : "";
     if (msg && rh >= 14) {      // 字は「いま」の線より上に、地を敷いて（§9.628。前は線が字の上を通った）。c.top は線の後に描く
-      const wt = e.error || e.noEnd ? 700 : 400, t = fitW(msg, TW - 16, 12, wt);
-      c.top.push(`<rect class="og-msgbg" x="${LW + 4}" y="${y + rh / 2 - 9}" width="${textW(t, 12, wt) + 8}" height="18" rx="3"/><text class="og-msg${wt === 700 ? " is-warn" : ""}" x="${LW + 8}" y="${y + rh / 2 + 4}">${esc(t)}<title>${esc(msg)}</title></text>`);
+      const wt = e.error || e.noEnd ? 700 : 400, t = fitW(msg, TW - 16, 12, wt), tw = textW(t, 12, wt);
+      // 「いま」の線が字を通るなら、字を線の右（入らなければ左）へ寄せる（線も字も隠さない・§9.628 の 3 回目の採点）
+      let tx = LW + 8;
+      if (c.nowX != null && c.nowX > tx - 6 && c.nowX < tx + tw + 6) tx = c.nowX + 10 + tw <= LW + TW ? c.nowX + 10 : Math.max(LW + 8, c.nowX - 10 - tw);
+      c.top.push(`<rect class="og-msgbg" x="${tx - 4}" y="${y + rh / 2 - 9}" width="${tw + 8}" height="18" rx="3"/><text class="og-msg${wt === 700 ? " is-warn" : ""}" x="${tx}" y="${y + rh / 2 + 4}">${esc(t)}<title>${esc(msg)}</title></text>`);
     }
     else if (e.noEnd && rh >= 14) {     // 棒はあるが、区間の分からない作業がある: 行の右の端に琥珀の丸い札「区間なし n・わけ」（入らなければ「区間なし n」）
       const tip = `${e.name}: 作業 ${e.count} 本のうち ${e.noEnd} 本は区間が分からないので棒にしていません（${why}）。稼働率にも入りません`;

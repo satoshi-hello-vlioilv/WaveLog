@@ -16,7 +16,13 @@
   const CATEGORY = new Set(["column", "bar", "lollipop", "pareto", "donut", "treemap", "stack", "stack100", "hstack", "hstack100", "box", "violin"]);   // 種類の段を並べる形（入る数だけ描く）
   /* 色（2026-10-grid の 2 回目）: 色＝データの種類。仕掛（データ元）＝藍・作業実績＝青緑・品質データ＝琥珀（1 枚の表の仕掛の棒・実績の濃淡も同じ）。
      種類の少ない段（8 つまで。仕掛区分など）の 1 系列の棒・ドーナツは、名前ごとに決まった色（どのパネルでも同じ名前は同じ色） */
-  const SOURCE_COLOR = { work: "#2f7d78", src: "#3f6591" };
+  /* 色の意味は1つ（§9.628 の採点: 青緑が「作業実績」「設備 B」「2名班」の3つの意味を持っていた）: 色相は設備だけ（EQUIP_COLORS）。
+     量の棒・1 つの値の図は紺（NAVY）、設備でない系列（人数・品種など）は紺の濃淡。データの種類の色（前は作業実績＝青緑・ほか＝藍）はやめた */
+  const NAVY = "#3f6591";
+  const SOURCE_COLOR = { work: NAVY, src: NAVY };
+  const SERIES_SHADES = ["#2f5583", "#7395c2", "#a3bbd9", "#1f3a5f", "#4a73a6", "#cbd8ea"];
+  // 設備の色（紺・赤・桃を使わない: 紺は量、赤は警告）
+  const EQUIP_COLORS = ["#2f7d78", "#b5822a", "#7658ae", "#5c8a2a", "#8a5f18", "#0d8191", "#7a7a1f", "#8e4f76"];
   // 合わせるデータの役割の色（組む所の札・全体の表の行の頭・グラフの系列で同じ）。差＝灰・達成率＝琥珀
   const ROLE_COLOR = { target: "#7658ae", actual: "#2f7d78", base: "#4a62b0", "": "#5a6f77", diff: "#5a6f77", rate: "#b5822a" };
   const kindOf = (src) => (WL.dashKit.src.isWork(src) ? "work" : "src");
@@ -47,7 +53,7 @@
   /* 設備の色（§9.628）: 同じ設備はどのパネルでも同じ色（前は系列の何番目かで決め、図の種類で始まりの色が違い、同じ設備が橙と青緑に分かれた）。
      並びは設備の木（実際に出てくる設備・dashboard.js が setEquipOrder で渡す）の順、木に無い設備は名前から。書式で決めた色（colors）が先 */
   let equipOrder = () => [];
-  function equipColor(name, list = C.COLORS) {
+  function equipColor(name, list = EQUIP_COLORS) {
     const order = equipOrder(), i = order.indexOf(name);
     return list[(i >= 0 ? i : order.length + hash(name)) % list.length];
   }
@@ -56,15 +62,14 @@
     const c0 = (d.dims.cols || [])[0];
     if (!c0 || c0.column !== "@equip" || !m.nc) return fm;
     const pal = PALETTES[fm.palette || ""], names = m.cols.filter((c) => c.type === "data").map((c) => m.colName(c));
-    return { ...fm, colors: { ...Object.fromEntries(names.map((n) => [n, equipColor(n, pal ? pal.c : C.COLORS)])), ...(fm.colors || {}) } };
+    return { ...fm, colors: { ...Object.fromEntries(names.map((n) => [n, equipColor(n, pal ? pal.c : EQUIP_COLORS)])), ...(fm.colors || {}) } };
   }
   /** パネルの系列の色の並び（色の組を選んでいればその組。無ければデータの種類の色から） */
   function seriesColors(p) {
     if (p._facetColor) return [p._facetColor, ...C.COLORS.filter((c) => c !== p._facetColor)];   // 並べる: その設備の色（重ねるときの系列の色と同じ）
     const pal = PALETTES[((p.fmt || {}).palette) || ""];
     if (pal) return pal.c.concat(C.COLORS.filter((c) => !pal.c.includes(c)));
-    const src = colorOf(p.source);
-    return [src, ...C.COLORS.filter((c) => c !== src)];
+    return SERIES_SHADES.concat(C.COLORS.filter((c) => !EQUIP_COLORS.includes(c)));
   }
 
   /* ---- 名前（集計表と同じ言葉。列はそのままの名前） ---- */
@@ -81,7 +86,10 @@
     const pr = d && d.period;
     if (!pr) return d && d.periodMixed ? "データごとに違います" : "";
     const r = (pr.ranges || [])[0], basis = withBasis ? `（${basisOf(p, d)}）` : "";
-    const span = r ? (r.from === r.to ? md(r.from) : `${md(r.from)}〜${md(r.to)}`) : "";
+    // 年をまたぐ期間は年も書く（§9.628。「10/24〜10/23」は 1 日前から今日に読めた）
+    const ymd = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ""); return m ? `${m[1]}/${+m[2]}/${+m[3]}` : iso || ""; };
+    const cross = r && String(r.from).slice(0, 4) !== String(r.to).slice(0, 4);
+    const span = r ? (r.from === r.to ? md(r.from) : cross ? `${ymd(r.from)}〜${ymd(r.to)}` : `${md(r.from)}〜${md(r.to)}`) : "";
     const name = pr.kind === "days" ? `直近 ${pr.n} 日` : pr.kind === "range" ? "" : pr.name;     // 日付で決めた期間は日付だけ（版 3.52.0。1280 の数字のパネルで添え書きが 2 段に折れた）
     return `${name ? name + " " : ""}${span}${basis}${(pr.ranges || []).length > 1 ? "・設備で日が違います" : ""}`;
   }
@@ -161,7 +169,9 @@
     // 横並びは行送り（1.2）のぶん高さの 8 割まで（前は 0.92 で行の箱が面から 2px はみ出した）
     const size = Math.round(Math.max(14, Math.min(88 * z, room * (row ? 0.8 : vals.length > 1 ? 0.42 : 0.56) * z, wide / Math.max(2, text.length * 0.62 + unit.length * 0.36 + 0.2))));
     const sub = baseSentence(ms, vals, fm) || vals.slice(1, 4).map((v, i) => `<span><small>${esc(measName(ms[i + 1]))}</small><b>${C.numHtml(v, C.measFmt(fm, ms[i + 1]))}</b></span>`).join("");
-    box.innerHTML = `<div class="dp-kpi${row ? " is-row" : ""}"><b class="dp-num" style="--dp-numfs:${size}px">${main == null ? "–" : C.numHtml(main, fm0)}<small>${unit}</small></b>`
+    // 分の値（「1078分」「17時間58分」）の単位の字も、ほかの数字のパネルの単位（本・件）と同じ小さな字に（§9.628）
+    const numH = main == null ? "–" : fm0.minutes ? esc(C.numText(main, fm0)).replace(/([^\d.,\s+-]+)/g, "<small>$1</small>") : C.numHtml(main, fm0);
+    box.innerHTML = `<div class="dp-kpi${row ? " is-row" : ""}"><b class="dp-num" style="--dp-numfs:${size}px">${numH}<small>${unit}</small></b>`
       + (sub && !row && room > size + 40 ? `<div class="dp-ksub">${sub}</div>` : "")
       // 低いパネルの横並びでは、2 つ目からの値（合わせたデータの基準・差など）を添え書きの上の行に（§9.628 自設備の「全設備との差」）
       + (row && (sub || sub0) ? `<div class="dp-kside">${sub ? `<div class="dp-ksub is-row">${sub}</div>` : ""}${sub0 ? metaHtml(sub0, sub ? 1 : Math.max(1, Math.min(2, Math.floor(H / 16)))) : ""}</div>` : "")
@@ -429,13 +439,15 @@
   }
   /** 見出しの 2 段（まとまりの題と計／列の段） */
   /** まとまりの条件は、そのまとまりの見出しの中に（§9.628。前は表の上の右寄せの1行に「作業予定・条件 1」とまとめ、どの列の何の条件か読めなかった） */
-  const gcond = (g) => { const t = (g.filters || []).map((f) => WL.dashKit.condLabel(f).replace(/\s+/g, " ").trim()).join("・"); return t ? `<small class="dash-gcond" title="このまとまりの条件">${esc(t)}</small>` : ""; };
+  // パネル共通に条件があるのに、このまとまりに条件が無ければ「条件 なし」と言い切る（共通の条件で数えたと読ませない）
+  const gcond = (g, common) => { const t = (g.filters || []).map((f) => WL.dashKit.condLabel(f).replace(/\s+/g, " ").trim()).join("・") || (common && common.cond ? "条件 なし" : "");
+    return t ? `<small class="dash-gcond" title="このまとまりの条件">${esc(t)}</small>` : ""; };
   function boardHead(B) {
     const { gs, models, d, rowDim } = B;
     const head1 = gs.map((g, gi) => {
       const m = models[gi], a = (d.groups || [])[gi] || {}, cls = gi ? "dash-grp" : "";
       const tip = [a.sourceName, ...(a.mirrors || []).slice(0, 1).map((x) => x && x.at ? `元 ${ago(x.at)}` : ""), m.none ? `${rowDim === "@equip" ? "設備なし" : "空欄"} ${C.fmt(m.none)}` : ""].filter(Boolean).join("・");
-      return `<th class="${cls}${m.cols.length ? "" : (g.look === "bar" || g.look === "stack" ? " dash-lots" : " num")}" colspan="${B.span(gi)}"${m.cols.length ? "" : ' rowspan="2"'} title="${esc(tip)}">${esc(groupTitle(g, a))}<small>計 ${m.total == null ? "–" : B.fmtN(m.total, g)}${unitOf(g) ? ` ${unitOf(g)}` : ""}</small>${gcond(g)}</th>`;
+      return `<th class="${cls}${m.cols.length ? "" : (g.look === "bar" || g.look === "stack" ? " dash-lots" : " num")}" colspan="${B.span(gi)}"${m.cols.length ? "" : ' rowspan="2"'} title="${esc(tip)}">${esc(groupTitle(g, a))}${B.p.noTotal ? "" : `<small>計 ${m.total == null ? "–" : B.fmtN(m.total, g)}${unitOf(g) ? ` ${unitOf(g)}` : ""}</small>`}${gcond(g, B.common)}</th>`;
     }).join("");
     const head2 = gs.map((g, gi) => {
       const m = models[gi];
@@ -454,10 +466,11 @@
     return `${warn ? `<div class="dash-boardhead">${warn}</div>` : ""}<div class="dp-flow"></div>`;
   }
   /** 合わせた表を描く（d = {groups: [答え], equipOrder}）→ 下に出す知らせの字 */
-  function board(box, p, d, H) {
+  /** @param {{cond?: string}} [common] 道具の行の「パネル共通」（条件が共通にあれば、条件の無いまとまりに「条件 なし」と書く） */
+  function board(box, p, d, H, common = {}) {
     look(box, p.fmt);
     if (!d) { box.innerHTML = '<p class="dp-wait">数えています…</p>'; return ""; }
-    const B = boardModel(p, d), gs = B.gs;
+    const B = { ...boardModel(p, d), common }, gs = B.gs;
     const allCols = 1 + gs.reduce((n, g, gi) => n + B.span(gi), 0);
     // 設備グループの見出しの行（版 3.41.0）: グループの名前と台数。行の頭は字下げ（どのグループの設備か、形で分かる）
     const rowList = B.tree.flatMap((t) => (t.name ? [`<tr class="dash-gtr${t.none ? " is-none" : ""}"><th colspan="${allCols}" scope="rowgroup"><span>${esc(t.name)}</span><small>${t.keys.length} 台</small></th></tr>`] : [])
@@ -533,7 +546,7 @@
     const fm0 = p.fmt || {}, j = Math.min((p.body || {}).chartAt || 0, ((d.measures || []).length || 1) - 1);
     const leafMax = (a) => { const nr = a.dims.rows.length, nc = a.dims.cols.length; return Math.max(0, ...a.cells.filter((c) => c.r.length === nr && c.c.length === (nc && ["time", "stack", "stack100", "hstack", "hstack100", "stackarea"].includes(p.visual) ? 0 : nc)).map((c) => +c.v[j] || 0)); };
     const top = Math.max(...shown.map((f) => leafMax(f.answer)));
-    const pal = PALETTES[fm0.palette || ""], base = (n) => (fm0.colors || {})[n] || equipColor(n, pal ? pal.c : C.COLORS);
+    const pal = PALETTES[fm0.palette || ""], base = (n) => (fm0.colors || {})[n] || equipColor(n, pal ? pal.c : EQUIP_COLORS);
     const one = (f) => ({ ...p, esplit: "", _facetColor: base(f.name), fmt: { ...fm0, legend: fm0.legend || (kpiLike ? "none" : ""), ...(fm0.ymax == null && top > 0 && !kpiLike && p.visual !== "none" ? { ymax: top } : {}) } });
     box.querySelectorAll(".dp-facet").forEach((sec, i) => {
       sec.style.setProperty("--fc0", base(shown[i].name));

@@ -386,7 +386,6 @@
   function headHtml(p, a, width, fold = false) {
     const warn = a && a.d ? P.notes(a.d).concat(a.err ? [`いまの数は前の物です（${a.err}）`] : []) : [];
     const badge = warn.length ? `<span class="dash-warnb" title="${esc(warn.join("\n"))}" aria-label="${esc(warn.join("。"))}">⚠ ${warn.length}</span>` : "";
-    const dot = p.visual === "board" ? "" : `<i class="dash-dot" style="--c:${P.colorOf(p.source)}" aria-hidden="true"></i>`;
     const tools = DS.edit && (width < NARROW || fold)
       ? `<button type="button" class="dash-pbtn dash-more" data-db-more aria-haspopup="true" title="このパネルの操作（組む・複製・消す）" aria-label="このパネルの操作">⋯</button>`
       : DS.edit
@@ -397,7 +396,7 @@
     const qn = Q.chips(quickOf(p.id)).length;
     const filt = (width < NARROW || fold) && DS.edit ? "" : `<button type="button" class="dash-pbtn dash-filt${qn ? " is-on" : ""}" data-db-filter aria-haspopup="dialog" title="このパネルだけを、設備・期間・値で絞ります（この PC の見え方）">`
       + `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.2V13l-3 1.2V8.2z"/></svg>${qn ? `絞り込み ${qn}` : "絞る"}</button>`;
-    return `${dot}<h3 title="${esc(titleOf(p))}">${titleHtml(p)}</h3><span class="dash-sp"></span>`
+    return `<h3 title="${esc(titleOf(p))}">${titleHtml(p)}</h3><span class="dash-sp"></span>`
       + badge + (a && a.busy ? '<i class="dash-spin" aria-label="読んでいます"></i>' : "") + filt + tools;
   }
   /** パネルを描く。組み・答え・大きさ・編集の様子が前に描いた時と同じなら描かない（force で必ず） */
