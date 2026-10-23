@@ -403,6 +403,8 @@ RULES = [
                                         'test_rpfresh',
                                         # §9.624: 描いたあとに字の幅が変わっても紙を測り直す
                                         'test_rprefit',
+                                        # §9.625: 紙の字の幅は字の描き方の設定（ヒンティング）で変わらない
+                                        'test_rpmetric',
                                         # §9.253: 見本のロットで帳票を見る
                                         'test_rbsample',
                                         'test_collayout', 'test_actuals')),
