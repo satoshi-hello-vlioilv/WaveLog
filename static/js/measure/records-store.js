@@ -631,8 +631,13 @@ async function resumeStoredMeasureCore(saved,row=null){S.current=row||saved.sour
    （共有が新しければこの端末へ取り込む＝一覧から開くときと同じ道）。共有が読めなければ手元の分で決める。 */
 async function latestRecordFor(row){
  const draft=await findDraftForRow(row);
- const id=draft?.id||WL.base.lotKey(row);
- const mine=draft||await reliableGet(id).catch(e=>{WL.quiet.note('この端末の記録を読めない（無いものとして続ける）',e);return null});
+ return latestRecordById(draft?.id||WL.base.lotKey(row),draft||undefined);
+}
+/* 記録IDのいちばん新しい版（§9.616・§9.623）。手元（`mine`・渡さなければこの端末の保存から読む）と共有の1件を比べ、
+   共有が新しければこの端末へ取り込んで返す。測定画面を開くときも帳票を開くときもここを通る——帳票だけが手元の古い版を
+   描くと、一覧は「完了」なのに紙は「編集中」（中身も古い版）になる。 */
+async function latestRecordById(id,mine){
+ if(mine===undefined)mine=await reliableGet(id).catch(e=>{WL.quiet.note('この端末の記録を読めない（無いものとして続ける）',e);return null});
  let head=null;
  try{head=(await api('/api/measurement/backup/get?id='+encodeURIComponent(id)))?.item||null}
  catch(e){WL.quiet.note('共有の記録を確かめられない（この端末の分で開く）',e)}
@@ -2340,7 +2345,7 @@ WL.records={
  /* 端末の控えとの突き合わせ（§9.545）。開いたときの1回の結果（pulled/pushed/removed）を返す。 */
  terminalReconciled:()=>terminalPromise,
  saveLocal,backupRecord,backupAndTrackSync,deleteBackupRows,
- flushPendingBackupDeletes,syncPendingRecords,importRemoteRecord,shareRecord,
+ flushPendingBackupDeletes,syncPendingRecords,importRemoteRecord,shareRecord,latestRecordById,
  mergedRecords,persistAndTransition,
  openMeasurement,openMeasurementCore,closeMeasureModal,loadMeasurementContext,
  /* この端末に同じロットの編集中のデータがあるか（§9.588・厳密モードの関門が「続き」を止めないために聞く）。 */

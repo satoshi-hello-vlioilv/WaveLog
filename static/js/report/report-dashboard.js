@@ -3885,7 +3885,7 @@ ${rpEdVisRow(k)}`;
  /* 描いたあとに1回だけ測る。**2フレーム待つ**——1フレームでは`innerHTML`の
     レイアウトが確定しておらず、高さを読み違える。 */
  function rpAfterPaint(){
-  requestAnimationFrame(()=>requestAnimationFrame(rpFitAll));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{rpFitAll();rpWatchFit($id('reportContent'))}));
  }
  /* **写しは必ず新しい形で配る**（§9.222 ②）。widthsを書く呼び出しは全て
     `{...rpLayoutNow().widths}`＝全件の写しを土台にして1〜2キーだけ差し替える
@@ -4793,6 +4793,34 @@ ${rpEdVisRow(k)}`;
   try{rpFitBlockBodies(h)}catch(e){console.warn('帳票の中身の合わせ込みに失敗',e)}
   try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
  }
+ /* ---------- 描いたあとに中身の大きさが変わったら測り直す（§9.624、利用者の報告） ----------
+    「Latitude 3550（1920×1080・100%）で、運転条件の字が折り返し、測定データが40条のところ32条しか出ない」。
+    同じ解像度・倍率の Latitude 5340 では入っていた。紙は描いた直後に1回だけ測って器へ合わせる
+    （`rpFitRows`・`rpFitBlockBodies`）。そのあと字の幅が変わる（書体の用意が遅れて差し替わる等）と、広がった字が
+    器の中で折り返し、`overflow:hidden`の下で切れたまま残る。**中身の器（`.rp-block-fit`）の大きさを見張り、
+    変わったら1フレームにまとめて測り直す**。測り直し自体も大きさを変える（詰め・縮め）が、2回目で同じ答えに落ち着くので
+    回り続けない（見張りは前の大きさと比べて、変わったときだけ動く）。 */
+ let rpFitWatch=null,rpFitQueued=false;
+ const rpFitSeen=new WeakMap();
+ function rpWatchFit(host){
+  if(typeof ResizeObserver!=='function'||!host)return;
+  if(!rpFitWatch)rpFitWatch=new ResizeObserver(list=>{
+   let moved=false;
+   for(const e of list){
+    const r=e.contentRect,was=rpFitSeen.get(e.target);
+    rpFitSeen.set(e.target,r.width+'x'+r.height);
+    if(was!==undefined&&was!==r.width+'x'+r.height)moved=true;
+   }
+   if(!moved||rpFitQueued)return;
+   rpFitQueued=true;
+   requestAnimationFrame(()=>{rpFitQueued=false;
+    /* 描いた直後と同じ道で測り直す（ふだんは`rpAfterPaint`の`rpFitAll`、組み換え中は`rpMarkOverflow`）。 */
+    try{if(rpArranging)rpMarkOverflow(host);else rpFitAll()}
+    catch(e){WL.quiet.note('中身の大きさが変わった紙を測り直せない（前の割り付けのまま）',e)}});
+  });
+  rpFitWatch.disconnect();
+  host.querySelectorAll('[data-rp-block]>.rp-block-fit').forEach(el=>rpFitWatch.observe(el));
+ }
  function rpFitAll(){
   /* **紙の余白は行を測る前に与える**（§9.308）——あとから与えると、
      `rpFitRows()`が詰める前の中身で行数を数えてしまい、詰めたぶんが
@@ -4858,9 +4886,26 @@ ${rpEdVisRow(k)}`;
   rpAfterPaint();
  }
 
+ /* ---------- 帳票は同じ記録IDの新しい版で描く（§9.623、利用者の指摘） ----------
+    「測定実績のリストで『完了』のものを帳票で開くと、右上が『完了』のときと『編集中』のときがある」。
+    一覧（データ一覧・測定実績）は手元と共有の新しいほうの状態を見せるが、帳票はこの端末の保存（手元の版）をそのまま
+    描いていた——別の PC が完了した記録の、この端末に残る古い「編集中」の版。答えは`WL.records.latestRecordById()`の
+    1箇所（測定画面を開くときと同じ）。新しい版に替わったら`true`。閲覧・スケジュールモードは共有を読んでいるので要らない。 */
+ async function rpFreshen(id){
+  if(rpIsSample({id})||!(window.accessMode&&window.accessMode.mode==='edit'))return false;
+  const got=await WL.records.latestRecordById(id).catch(e=>{WL.quiet.note('共有の版を確かめられない（この端末の版で描く）',e);return null});
+  if(!got)return false;
+  const i=rpState.items.findIndex(x=>String(x.id)===String(id)),cur=rpState.items[i];
+  if(cur&&String(cur.updatedAt||'')===String(got.updatedAt||'')&&cur.status===got.status)return false;
+  const m=WL.measureView.ensureMeasureShape(got);
+  if(i>=0)rpState.items[i]=m;else rpState.items.unshift(m);
+  return true;
+ }
  function selectLot(id){
   rpState.selectedId=id;renderLotList();
   const x=rpState.items.find(i=>i.id===id);if(!x)return;
+  /* 描いてから共有の版を確かめ、新しければ描き直す（一覧から選ぶたびに待たせない）。 */
+  rpFreshen(id).then(changed=>{if(changed&&rpState.selectedId===id)selectLot(id)});
   /* バーは1層に詰めているため、左の一覧で選択中が分かることを前提に短く出す。 */
   $id('reportSelectedTitle').textContent=[x.basic?.lotNo||x.id,x.basic?.inspectionNo,WL.base.statusLabel(x.status)].filter(Boolean).join(' / ');
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
@@ -5146,6 +5191,8 @@ ${rpEdVisRow(k)}`;
   await openReportView();           // ここで初めてパネル(戻るボタン)が作られる
   updateBackButton();
   syncArrangeButton();
+  /* 一覧と同じ版で描く（§9.623）。描く前に確かめるので、最初の1枚から新しい版。 */
+  if(id)await rpFreshen(id);
   if(id&&!rpState.items.some(x=>String(x.id)===String(id))){
    const rec=await fetchRecordFromBackup(id);
    if(rec){rpState.items=[rec,...rpState.items];renderLotList()}
