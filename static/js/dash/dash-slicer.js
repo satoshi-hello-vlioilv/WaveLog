@@ -52,7 +52,7 @@
     }).join("");
     const month = `<span class="dsl-month${k != null && k > 1 ? " on" : ""}" role="group" aria-label="月を送る">`
       + `<button type="button" class="dsl-step" data-ds-back="1" title="前の月へ（${esc(monthName((k ?? 0) + 1, info.today))}）" aria-label="前の月へ">◀</button>`
-      + `<b title="${k == null ? "月で見るときは ◀ で前の月へ" : esc(monthName(k, info.today))}">${k == null ? "月" : esc(monthName(k, info.today))}</b>`
+      + `<b title="${k == null ? "月で見るときは ◀ で前の月へ" : esc(monthName(k, info.today))}">${k == null ? "月で見る" : esc(monthName(k, info.today))}</b>`
       + `<button type="button" class="dsl-step" data-ds-back="-1"${k == null || k <= 0 ? " disabled" : ""} title="次の月へ" aria-label="次の月へ">▶</button></span>`;
     const gs = groupsOf(info.tree || {}, s.set).filter((g) => !g.none);
     // 設備を選んでいないときは「組んだまま」（期間と同じ言葉・§9.628。前は「すべて」で、自設備のパネルが自設備だけを数えているのに全設備に読めた）

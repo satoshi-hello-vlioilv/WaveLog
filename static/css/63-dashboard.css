@@ -108,7 +108,7 @@ body.dash-dragging{cursor:grabbing;user-select:none}
 /* 見出しは値と同じ揃え（行の見出しの列は左・数の列は右。§9.628 の採点: 見出しは中央・値は右で食い違っていた） */
 .dp-tbl .pv-table thead th:not(.pv-corner){text-align:right}
 /* パネルの中の表の見出しは合わせた表と同じ白い地（§9.628。集計表の濃い見出しはパネルの中だけ表に1つ目立ちすぎた） */
-.dp-tbl .pv-table thead th,.dp-tbl .pv-table thead th.pv-corner,.dp-tbl .pv-table thead th.pv-mh,.dp-tbl .pv-table thead th.pv-gt,.dp-tbl .pv-table thead th.pv-st{background:var(--surface);color:var(--muted);font-weight:var(--fw-ui);border-right:0;border-bottom:1px solid var(--line-mid)}
+.dp-tbl .pv-table thead th,.dp-tbl .pv-table thead th.pv-corner,.dp-tbl .pv-table thead th.pv-mh,.dp-tbl .pv-table thead th.pv-gt,.dp-tbl .pv-table thead th.pv-st{background:var(--surface);color:var(--muted);font-weight:var(--fw-ui);font-size:var(--fs-sm);border-right:0;border-bottom:1px solid var(--line-mid)}
 /* 設備ごとに並べる（版 3.40.0。esplit facet）: 小さな図の格子。見出しは設備名（同じ大きさ・同じ形で比べる） */
 .dp-facets{display:grid;grid-template-columns:repeat(var(--fc,2),minmax(0,1fr));gap:8px;height:100%;min-height:0}
 .dp-facet{min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line-soft);border-radius:var(--radius-sm);padding:2px 6px 4px;background:var(--card-bg)}

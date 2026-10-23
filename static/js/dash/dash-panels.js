@@ -20,7 +20,8 @@
      量の棒・1 つの値の図は紺（NAVY）、設備でない系列（人数・品種など）は紺の濃淡。データの種類の色（前は作業実績＝青緑・ほか＝藍）はやめた */
   const NAVY = "#3f6591";
   const SOURCE_COLOR = { work: NAVY, src: NAVY };
-  const SERIES_SHADES = [NAVY, "#7395c2", "#a3bbd9", "#1f3a5f", "#5d84b8", "#cbd8ea"];     // 1 つ目は紺そのもの（紺を 1 つに・§9.628）
+  // 設備でない系列（人数など）は灰の濃淡（紺は量・1 つの値の色。同じ紺が隣のパネルで「2名班」と「品種の量」になった・§9.628 の 6 回目の採点）
+  const SERIES_SHADES = ["#33424a", "#6b7f88", "#a3b1b7", "#4f5f67", "#87989f", "#c3ccd0"];
   // 設備の色（紺・赤・桃を使わない: 紺は量、赤は警告）
   const EQUIP_COLORS = ["#2f7d78", "#b5822a", "#7658ae", "#5c8a2a", "#8a5f18", "#0d8191", "#7a7a1f", "#8e4f76"];
   // 合わせるデータの役割の色（組む所の札・全体の表の行の頭・グラフの系列で同じ）。差＝灰・達成率＝琥珀
@@ -57,19 +58,21 @@
     const order = equipOrder(), i = order.indexOf(name);
     return list[(i >= 0 ? i : order.length + hash(name)) % list.length];
   }
-  /** 列の段が設備なら、設備ごとの色を書式の色（名前 → 色）に重ねる */
-  function withEquipColors(fm, d, m) {
+  /** 列の段の系列の色を名前で決めて書式の色（名前 → 色）に重ねる: 設備なら設備の色、ほかは灰の濃淡（並びの順）。
+      名前で決めるので、図の種類ごとの「何番目の色から始めるか」の違いに左右されない。色の組を選んでいれば、その組 */
+  function withSeriesColors(fm, d, m) {
     const c0 = (d.dims.cols || [])[0];
-    if (!c0 || c0.column !== "@equip" || !m.nc) return fm;
+    if (!c0 || !m.nc) return fm;
     const pal = PALETTES[fm.palette || ""], names = m.cols.filter((c) => c.type === "data").map((c) => m.colName(c));
-    return { ...fm, colors: { ...Object.fromEntries(names.map((n) => [n, equipColor(n, pal ? pal.c : EQUIP_COLORS)])), ...(fm.colors || {}) } };
+    const of = c0.column === "@equip" ? (n) => equipColor(n, pal ? pal.c : EQUIP_COLORS) : (n, i) => (pal ? pal.c : SERIES_SHADES)[i % (pal ? pal.c : SERIES_SHADES).length];
+    return { ...fm, colors: { ...Object.fromEntries(names.map((n, i) => [n, of(n, i)])), ...(fm.colors || {}) } };
   }
   /** パネルの系列の色の並び（色の組を選んでいればその組。無ければデータの種類の色から） */
   function seriesColors(p) {
     if (p._facetColor) return [p._facetColor, ...C.COLORS.filter((c) => c !== p._facetColor)];   // 並べる: その設備の色（重ねるときの系列の色と同じ）
     const pal = PALETTES[((p.fmt || {}).palette) || ""];
     if (pal) return pal.c.concat(C.COLORS.filter((c) => !pal.c.includes(c)));
-    return SERIES_SHADES.concat(C.COLORS.filter((c) => !EQUIP_COLORS.includes(c)));
+    return [NAVY].concat(SERIES_SHADES);     // 1 つの値は紺。列の段の系列は withSeriesColors が名前で決める
   }
 
   /* ---- 名前（集計表と同じ言葉。列はそのままの名前） ---- */
@@ -247,7 +250,7 @@
     // 別のデータを合わせた答え（版 3.40.0）: 色は役割の色（組む所の札と同じ: 目標＝紫・実績＝青緑）・目標と実績は同じ目盛り
     const link = !!d.link;
     const cols = link && !(fm.palette) ? d.measures.map((x, j) => ROLE_COLOR[x.role] || colors[j % colors.length]) : colors;
-    const out = C.draw(kind, { m, d, s, W, H: gh, measName, dimName: (x) => dimName(x, p), label: (c) => c, compact: true, colors: cols, rowColor, fmt: withEquipColors(fm, d, m), oneAxis: link });
+    const out = C.draw(kind, { m, d, s, W, H: gh, measName, dimName: (x) => dimName(x, p), label: (c) => c, compact: true, colors: cols, rowColor, fmt: withSeriesColors(fm, d, m), oneAxis: link });
     if (!p._facetColor) { drawn.set(p.id, new Map(out.used || [])); drawnSer.set(p.id, new Map(out.ser || [])); }
     const sideOk = out.side && (kind === "donut" ? W - (Math.min(gh / 2 - 6, W / 2 - 8, 160) * 2 + 16) >= 150 : W >= 760);
     const legend = wantLegend ? `<div class="dp-legend">${(out.legend || "").replace(/<small class="pv-cnote">[\s\S]*?<\/small>/g, "")}</div>` : "";
@@ -320,6 +323,11 @@
       out.rows.set(label, { v: out.cols.map((c) => (cellOf(a, [k], c.path) || [null])[0]), total: (cellOf(a, [k], []) || [null])[0] });
     }
     out.total = (cellOf(a, [], []) || [null])[0];
+    // 列の段の値が 1 つだけなら段を畳む（§9.628 の採点: 凡例「● 予定」と「計」が棒と同じことを言った）。値は見出しの字で言う
+    if (out.cols.length === 1 && !(nc === 1 && a.dims.cols[0].column === "@shift")) {
+      out.only = { name: (a.dims.cols[0] || {}).name || (a.dims.cols[0] || {}).column || "", label: out.cols[0].label };
+      out.cols = []; out.rows.forEach((r) => { r.v = []; });
+    }
     (a.failed || []).concat(a.skipped || []).forEach((f) => out.failed.set(f.name, f.kind === "copying" ? "写しています…" : f.error));
     if (a.parts) out.parts = new Set(a.parts.map((x) => x.name));
     return out;
@@ -450,7 +458,7 @@
     const head1 = gs.map((g, gi) => {
       const m = models[gi], a = (d.groups || [])[gi] || {}, cls = gi ? "dash-grp" : "";
       const tip = [a.sourceName, ...(a.mirrors || []).slice(0, 1).map((x) => x && x.at ? `元 ${ago(x.at)}` : ""), m.none ? `${rowDim === "@equip" ? "設備なし" : "空欄"} ${C.fmt(m.none)}` : ""].filter(Boolean).join("・");
-      return `<th class="${cls}${m.cols.length ? "" : (g.look === "bar" || g.look === "stack" ? " dash-lots" : " num")}" colspan="${B.span(gi)}"${m.cols.length ? "" : ' rowspan="2"'} title="${esc(tip)}">${esc(groupTitle(g, a))}${B.p.noTotal ? "" : `<small>計 ${m.total == null ? "–" : B.fmtN(m.total, g)}${unitOf(g) ? ` ${unitOf(g)}` : ""}</small>`}${gcond(g, B.common)}</th>`;
+      return `<th class="${cls}${m.cols.length ? "" : (g.look === "bar" || g.look === "stack" ? " dash-lots" : " num")}" colspan="${B.span(gi)}"${m.cols.length ? "" : ' rowspan="2"'} title="${esc(tip)}">${esc(groupTitle(g, a))}${B.p.noTotal ? "" : `<small>計 ${m.total == null ? "–" : B.fmtN(m.total, g)}${unitOf(g) ? ` ${unitOf(g)}` : ""}</small>`}${gcond(g, B.common)}${m.only ? `<small class="dash-gcond">${esc(m.only.name)}：${esc(m.only.label)}のみ</small>` : ""}</th>`;
     }).join("");
     const head2 = gs.map((g, gi) => {
       const m = models[gi];

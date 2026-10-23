@@ -381,7 +381,8 @@
   /** 道具の行の「パネル共通」（無ければ ""） */
   function commonHtml(cm = commonMeta()) {
     const items = META_KEYS.filter(([k]) => cm[k]).map(([k, n]) => [n, cm[k]]).concat(cm.basis ? [["日付", cm.basis]] : []);
-    return items.length ? `<span class="dash-common" title="${esc(`多くのパネルで同じ物: ${metaItemsText(items)}（違うパネルはパネルの題の下に書いてあります）`)}"><b>パネル共通</b>${metaItemsHtml(items)}</span>` : "";
+    // 頭の字は「前提」（「共通」はパネルの半分ほどが違う物を持つと事実に合わない・§9.628 の 6 回目の採点）
+    return items.length ? `<span class="dash-common" title="${esc(`多くのパネルで同じ物: ${metaItemsText(items)}（違うパネルはパネルの題の下に書いてあります）`)}"><b>このダッシュボードの前提</b>${metaItemsHtml(items)}</span>` : "";
   }
   const NARROW = 360;      // これより狭いパネルの見出しは、操作を「⋯」1 つに畳む（ボタンが見出しからはみ出さない）
   function headHtml(p, a, width, fold = false) {
