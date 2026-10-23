@@ -12,6 +12,7 @@ import io, json, time
 from flask import Blueprint, request, jsonify, send_file
 from .body import body, flag, any_
 
+from .. import filter_sql
 from .. import lot_identity
 from .. import query_join
 from .. import sort_order
@@ -404,89 +405,14 @@ def api_query_join_resolve():
   app_logger().warning('/api/query-join/resolve db=%s で失敗しました: %s',k,e)
   return jsonify(error=str(e)),500
 
-IN_MAX=300          # 「どれかと同じ」の値の数の上限（スライサーの1列ぶん）
-FILTERS_MAX=60      # 1回の問い合わせで当てる条件の数の上限。越えたぶんは`_ignored_filter_columns()`が名乗る（§9.614）
 SLICER_MAX=200       # スライサーが返す値の数の上限（越えたら`truncated`）
 MARK_RULES_MAX=8     # 色付けの決まりの数の上限（§9.591）
 MARK_CONDS_MAX=6     # 1つの決まりの条件の数の上限
-
-
-def _safe_filters(text,columns):
- if not text:return []
- try:items=json.loads(text)
- except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);return []
- if not isinstance(items,list):return []
- allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty','in','not_in'}
- out=[]
- for item in items[:FILTERS_MAX]:
-  if not isinstance(item,dict):continue
-  col=str(item.get('column') or '').strip();op=str(item.get('op') or 'contains').strip()
-  raw=item.get('value')
-  # 「どれかと同じ」（`in`・§9.591 スライサー）は値の並び。字で来ても並びで来ても受け、JSONの字にそろえる。
-  value=json.dumps([str(x) for x in raw][:IN_MAX],ensure_ascii=False) if op in ('in','not_in') and isinstance(raw,list) else str(raw if raw is not None else '').strip()
-  if col in columns and op in allowed_ops:out.append({'column':col,'op':op,'value':value})
- return out
-
-
-def _build_filter_where(filters):
- parts=[];params=[]
- for f in filters:
-  col=qi(f['column']);op=f['op'];value=f['value']
-  if op=='contains':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}%')
-  elif op=='not_contains':parts.append(f'(CStr({col}) NOT LIKE ? OR {col} IS NULL)');params.append(f'%{value}%')
-  elif op=='eq':parts.append(f'CStr({col})=?');params.append(value)
-  elif op=='neq':parts.append(f'(CStr({col})<>? OR {col} IS NULL)');params.append(value)
-  elif op=='starts':parts.append(f'CStr({col}) LIKE ?');params.append(f'{value}%')
-  elif op=='starts_any':
-   # 「この先頭のどれかで始まる」(§9.94)。仕掛一覧の行ごとの追い判定は
-   # 先頭5桁の一族を引くが、1ページに数十の先頭が並ぶため1件ずつ引くと
-   # 往復が数十本になる。まとめて1回で引けるようにする。
-   vals=[x for x in (value.split(',') if value else []) if x][:60]
-   if not vals:parts.append('0=1')
-   else:
-    parts.append('('+' OR '.join(f'CStr({col}) LIKE ?' for _ in vals)+')')
-    params += [f'{v}%' for v in vals]
-  elif op=='ends':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}')
-  elif op in ('in','not_in'):
-   # 「どれかと同じ」（§9.591 スライサー）。空の字は「空欄」（NULL も''も）。並びが読めなければ何にも当たらない。
-   # 「どれか以外」（§9.614・見出しの値の一覧で少しだけ外したとき）は**その否定**——空欄を外していなければ空欄も残す。
-   try:vals=[str(x) for x in json.loads(value)][:IN_MAX] if value else []
-   except (TypeError,ValueError):vals=[]
-   words=[v for v in vals if v!='']
-   alts=[f'CStr({col}) IN ('+','.join('?'*len(words))+')'] if words else []
-   params += words
-   if '' in vals:alts.append(f'({col} IS NULL OR CStr({col})=\'\')')
-   hit='('+' OR '.join(alts)+')' if alts else '0=1'
-   if op=='in':parts.append(hit)
-   elif not alts:parts.append('1=1')            # 何も外していない＝全部に当たる
-   elif '' in vals:parts.append(f'NOT {hit}')   # 空欄も外した
-   else:parts.append(f'(NOT {hit} OR {col} IS NULL)')   # NULL の NOT IN は不明になるので、空欄は残すと書く
-  elif op=='empty':parts.append(f'({col} IS NULL OR CStr({col})=\'\')')
-  elif op=='not_empty':parts.append(f'({col} IS NOT NULL AND CStr({col})<>\'\')')
-  elif op in ('gt','gte','lt','lte'):
-   sign={"gt":'>',"gte":'>=',"lt":'<',"lte":'<='}[op]
-   # 数の読み方は`sort_order.num_of()`の1箇所（§9.581・画面の式と同じ決まり）。読めない値（空欄・
-   # '12A'・日付）は NULL＝当たらない。打った境の値も同じ読み方で、読めなければ何にも当たらない。
-   # パラメータは数値で渡す（SQLiteは型優先で比べるので、文字列だと常に REAL<TEXT で不成立）。
-   lim=sort_order.num_of(value)
-   if lim is None:parts.append('0=1')
-   else:
-    parts.append(f'NumOf({col}) {sign} ?')
-    params.append(lim)
- return parts,params
-
-
-def _ignored_filter_columns(filter_payload,cs):
- """条件のうち、この表に無い列（結合で足した品質データの列など）。**黙って捨てない**——画面が「効いていない」と言う（§9.612）。"""
- try:items=json.loads(filter_payload) if filter_payload else []
- except ValueError as _e:quiet('条件の並びを読めない（効いていない列は数えない）',_e);return []
- out=[]
- for it in (items if isinstance(items,list) else []):
-  col=str((it or {}).get('column') or '').strip() if isinstance(it,dict) else ''
-  if col and col not in cs and col not in out:out.append(col)
- # 上限を越えた条件も黙って捨てない（§9.614。前は20件目より後ろを何も言わずに落としていた）。
- if isinstance(items,list) and len(items)>FILTERS_MAX:out.append(f'（{FILTERS_MAX}件を越えた{len(items)-FILTERS_MAX}件の条件）')
- return out
+# 条件の読み方と WHERE の組み立ては`filter_sql`の1箇所（§9.628。一覧・スライサー・色付け・ダッシュボードの集計が同じ答えを読む）。
+IN_MAX=filter_sql.IN_MAX;FILTERS_MAX=filter_sql.FILTERS_MAX
+_safe_filters=filter_sql.safe_filters
+_build_filter_where=filter_sql.build_filter_where
+_ignored_filter_columns=filter_sql.ignored_filter_columns
 
 
 def _table_counts(cur,t,where,params):
@@ -506,10 +432,8 @@ def _row_dicts(k,cs,rows):
 
 def _table_where(cs,q,filter_payload):
  """一覧の絞り込み（検索の字・条件）→ `(' WHERE …', 値, 効いた条件)`。一覧・スライサー・色付けの数が同じ答えを読む（§9.591）。"""
- where_parts=[];params=[]
- if q:
-  where_parts.append('('+' OR '.join(f'CStr({qi(x)}) LIKE ?' for x in cs)+')');params += [f'%{q}%']*len(cs)
- filters=_safe_filters(filter_payload,cs);fp,filter_params=_build_filter_where(filters);where_parts += fp;params += filter_params
+ filters=_safe_filters(filter_payload,cs)
+ where_parts,params=filter_sql.search_filter_where(cs,q,filters)
  return ((' WHERE '+' AND '.join(where_parts)) if where_parts else ''),params,filters
 
 

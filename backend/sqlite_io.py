@@ -22,6 +22,7 @@ import threading
 import time
 
 from .logging_setup import app_logger
+from . import datetext
 from .sort_order import num_of
 from .quiet import quiet
 
@@ -149,6 +150,10 @@ def connect(path,readonly=False,engine=None):
  # 一覧の絞り込みの大小（以上・以下…）が読む数（§9.581）。`Val()`は**先頭の数字だけ**を読むので
  # '1,200'→1・'12A'→12・空欄→0 になっていた。読めない値は NULL＝大小の条件に当たらない。
  c.create_function('NumOf',1,num_of,deterministic=True)
+ # 日時と並べ替えの鍵（§9.628・`datetext`の読み方）。一覧の条件「N日以内」「日付で決める」とダッシュボードの集計が読む。
+ c.create_function('ToDate',1,datetext.to_date,deterministic=True)
+ c.create_function('ToDateTime',1,datetext.to_datetime,deterministic=True)
+ c.create_function('SortKey',1,datetext.sort_key,deterministic=True)
  return c
 
 # 列名の取得は「1行だけSELECTして description を見る」実装のため、共有越しの

@@ -304,7 +304,7 @@ RULES = [
     ('static/js/list/list-rules.js', g('列')),
     # §9.256 式で作る自動値も同じ評価器を使う（片方だけ直した状態を作らない）
     ('static/js/list/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
-                                    'test_opformula')),
+                                    'test_opformula', 'test_formulaparity')),
     # §9.591: 一覧の道具（スライサー・色付け・拡大・Excel に出力・表示の設定）
     ('static/js/list/list-slicer.js', g('一覧', 'test_filtersavedui')),
     ('static/js/list/list-marks.js', g('一覧', 'test_filtersavedui')),
@@ -518,6 +518,12 @@ RULES = [
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
 
     # --- サーバー(ルート) --------------------------------------------
+    # §9.628 ダッシュボード: 集計（パネルの答え）・計算列（画面の式と同じ答え）・画面
+    ('backend/dashboard/', g('test_dashpivot', 'test_formulaparity', 'test_dashboard')),
+    ('backend/filter_sql.py', g('一覧', 'test_dashpivot', 'test_filtersaved', 'test_listtools')),
+    ('backend/datetext.py', g('test_dashpivot', 'test_formulaparity')),
+    ('tests/lib/dash_fixture.py', g('test_dashpivot')),
+    ('tests/lib/formula_parity.js', g('test_formulaparity')),
     ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_lotident', 'test_filterbarui', 'test_filtersaved', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     # §9.333で段（`equipment.py`/`operation.py`…）へ分けた。**末尾の`/`で丸ごと**
