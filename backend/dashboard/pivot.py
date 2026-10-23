@@ -838,8 +838,13 @@ def _answer(states, head, cells, box_vals, seen, count, o):
     orders = [sorted(seen[i], key=lambda k, i=i: seen[i][k][0]) for i in range(nr + nc)]
     labels = [{k: seen[i][k][1] for k in seen[i]} for i in range(nr + nc)]
     cells, truncated = _truncate(cells, orders, nr, nc)
+    if not count and not nr and not nc:
+        # 1 行も当たらないときの総計（§9.628）: 数える物（件数・ロット数・種類）と合計は 0。前は総計のマスごと無く、画面が「–」（分からない）と出した
+        cells[((), ())] = [0, set(), [aggregate.Acc(m["agg"]) for m in ms]]
 
     def value(acc, j, m):
+        if not acc[0] and m["agg"] == "sum":
+            return 0
         if m["agg"] == "count":
             return acc[0]
         if m["agg"] == "lots":

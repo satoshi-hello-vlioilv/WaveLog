@@ -233,6 +233,15 @@ def check_rec_values():
         answer.forget()
 
 
+def check_empty_total():
+    """1 行も当たらない数字のパネル: 数える物と合計は 0（前は総計のマスが無く、画面が「–」＝分からないと出した）"""
+    p = {'visual': 'kpi', 'source': 'plan', 'body': {'rows': [], 'measures': [{'agg': 'count'}, {'agg': 'distinct', 'column': '設備名'}]},
+         'filters': [{'column': '状態', 'op': 'eq', 'value': '無い状態_' + TAG}]}
+    st, a = query(p)
+    cell = next((c for c in a.get('cells') or [] if not c['r'] and not c['c']), None)
+    rec('当たる行が無くても総計は 0（件数・種類）', st == 200 and cell is not None and cell['v'] == [0, 0], (st, a.get('error'), cell))
+
+
 def check_view_mode():
     if not mode('view'):
         rec('閲覧モードへ切り替えられる（この端末の権限）', False)
@@ -259,6 +268,7 @@ def main():
         check_hidden_and_sets(made)
         check_groups()
         check_rec_values()
+        check_empty_total()
         check_view_mode()
     finally:
         for i in made:

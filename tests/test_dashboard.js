@@ -19,9 +19,20 @@ const measure=page=>page.evaluate(()=>{
  const panels=[...grid.querySelectorAll('.dash-p[data-id]')].map(p=>{
   const r=p.getBoundingClientRect(),body=p.querySelector('.dash-pb')||p;
   const wait=!!p.querySelector('.dp-wait'),err=(p.querySelector('.dp-err')||{}).textContent||'';
+  /* 読み手が「推測する」ことになる物（§9.628 の物差し）: 切れた題・切れた添え書き・分からない数（–）・同じ元の名前のくり返し・
+     意味の分からない「条件 n」・字の上を通る線 */
+  const cutEl=e=>e.scrollWidth-e.clientWidth>1||e.scrollHeight-e.clientHeight>1;
+  const h3=p.querySelector('.dash-ph h3');
+  const metas=[...p.querySelectorAll('.dash-psub:not([hidden]),.dp-kmeta,.dash-meta')];
+  const segs=metas.flatMap(m=>m.textContent.split('　').map(x=>x.trim().split('・')[0]).filter(Boolean));
+  const box=e=>e.getBoundingClientRect(),hit=(a,b)=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom;
+  const line=p.querySelector('.og-now'),texts=line?[...p.querySelectorAll('.og-msg,.og-bl')].filter(t=>t.textContent.trim()):[];
   return {id:p.dataset.id,title:((p.querySelector('.dash-ph')||{}).textContent||'').trim().slice(0,30),wait,err:err.trim(),
    overX:body.scrollWidth-body.clientWidth>2,overY:body.scrollHeight-body.clientHeight>2,
-   outside:r.right>g.right+1||r.bottom>window.innerHeight+1};
+   outside:r.right>g.right+1||r.bottom>window.innerHeight+1,
+   cutTitle:!!h3&&cutEl(h3),cutMeta:metas.filter(cutEl).length,unknown:[...p.querySelectorAll('.dp-num')].filter(n=>n.textContent.trim().startsWith('–')).length,
+   dupSrc:segs.length-new Set(segs).size,vague:metas.reduce((n,m)=>n+(m.textContent.match(/条件 \d/g)||[]).length,0),
+   cross:line?texts.filter(t=>hit(box(line),box(t))).length:0};
  });
  return {name:(document.querySelector('.dash-pick b')||{}).textContent||'',panels,
   scroll:document.scrollingElement.scrollHeight>window.innerHeight+1};
@@ -59,7 +70,7 @@ run('test_dashboard: ダッシュボード',async({page,rec,B,W,idle})=>{
   await W.until(page,()=>{const p=document.getElementById('dashScreen');return !!p&&!p.hidden&&!!document.querySelector('#dashGrid .dash-p')},null,{ms:20000,what:'ダッシュボードが開く'});
   rec(`前のダッシュボードの画面は無い（${tag}）`,await page.evaluate(()=>!document.getElementById('dashboardPanel')&&!document.querySelector('[data-dbview]')));
   const list=await page.evaluate(async()=>(await (await fetch('/api/dashboards')).json()).items.filter(x=>x.builtin).map(x=>({id:x.id,name:x.name})));
-  const times=[];
+  const times=[],scores=[];
   rec(`組み込みのダッシュボードが4つ（${tag}）`,list.length===4,list.map(x=>x.name).join('・'));
   for(const it of list){
    const t0=Date.now();
@@ -72,10 +83,13 @@ run('test_dashboard: ダッシュボード',async({page,rec,B,W,idle})=>{
    rec(`「${it.name}」: パネル ${m.panels.length} 枚がどれも数を出し、はみ出さない（${tag}）`,m.panels.length>0&&!bad.length,
     JSON.stringify(bad.slice(0,4)));
    rec(`「${it.name}」: 画面がスクロールしない（${tag}）`,!m.scroll);
+   const sum=k=>m.panels.reduce((n,p)=>n+(+p[k]||0),0);
+   scores.push(`${tag} ${it.name} 切れた題${sum('cutTitle')} 切れた添え書き${sum('cutMeta')} 分からない数${sum('unknown')} 元のくり返し${sum('dupSrc')} 条件n${sum('vague')} 字の上の線${sum('cross')}`);
    if(process.env.WAVELOG_SHOT)await page.screenshot({path:path.join(SHOT,`after_${tag}_${it.id.replace(/\W/g,'_')}.png`)});
   }
   /* 物差し: 開いてから全部のパネルが数を出すまで（1回目は写しを作る・2回目からは答えの控え）。遅さを数で残す */
   rec(`開いてから全部のパネルが数を出すまでの時間（${tag}）`,true,times.join(' / '));
+  rec(`読み手に推測させる物の数（${tag}）`,true,scores.join(' / '));
  }
  rec('画面のスクリプトの例外が出ていない',!errors.length,errors.slice(0,3).join(' / '));
  }finally{await clearRecords()}
