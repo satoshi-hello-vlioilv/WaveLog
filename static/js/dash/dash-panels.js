@@ -44,6 +44,20 @@
     names.forEach((n) => { let i = hash(n) % list.length; for (let k = 0; k < list.length && used.has(i); k++) i = (i + 1) % list.length; used.add(i); map.set(n, list[i]); });
     return (n) => map.get(n) || list[hash(n) % list.length];
   }
+  /* 設備の色（§9.628）: 同じ設備はどのパネルでも同じ色（前は系列の何番目かで決め、図の種類で始まりの色が違い、同じ設備が橙と青緑に分かれた）。
+     並びは設備の木（実際に出てくる設備・dashboard.js が setEquipOrder で渡す）の順、木に無い設備は名前から。書式で決めた色（colors）が先 */
+  let equipOrder = () => [];
+  function equipColor(name, list = C.COLORS) {
+    const order = equipOrder(), i = order.indexOf(name);
+    return list[(i >= 0 ? i : order.length + hash(name)) % list.length];
+  }
+  /** 列の段が設備なら、設備ごとの色を書式の色（名前 → 色）に重ねる */
+  function withEquipColors(fm, d, m) {
+    const c0 = (d.dims.cols || [])[0];
+    if (!c0 || c0.column !== "@equip" || !m.nc) return fm;
+    const pal = PALETTES[fm.palette || ""], names = m.cols.filter((c) => c.type === "data").map((c) => m.colName(c));
+    return { ...fm, colors: { ...Object.fromEntries(names.map((n) => [n, equipColor(n, pal ? pal.c : C.COLORS)])), ...(fm.colors || {}) } };
+  }
   /** パネルの系列の色の並び（色の組を選んでいればその組。無ければデータの種類の色から） */
   function seriesColors(p) {
     if (p._facetColor) return [p._facetColor, ...C.COLORS.filter((c) => c !== p._facetColor)];   // 並べる: その設備の色（重ねるときの系列の色と同じ）
@@ -62,14 +76,17 @@
   const measName = (m) => (m.role != null && m.name ? m.name : C.measLabel(m));
   const md = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ""); return m ? `${+m[2]}/${+m[3]}` : iso || ""; };
   /** 期間の見せ方（「前日 10/15（現場歴）」「直近 14 日 10/2〜10/15」）。設備で日が違えば、いちばん多い範囲 */
-  function periodText(p, d) {
+  /** 期間の字。withBasis=false は日付の数え方（現場歴など・basisOf）を付けない（道具の行の「パネル共通」が1回だけ言うとき・§9.628） */
+  function periodText(p, d, withBasis = true) {
     const pr = d && d.period;
-    if (!pr) return "";
-    const r = (pr.ranges || [])[0], basis = pr.column === "@workday" ? `（${(p && p.basis) === "cal" ? "太陽暦" : "現場歴"}）` : `（${pr.column}）`;
+    if (!pr) return d && d.periodMixed ? "データごとに違います" : "";
+    const r = (pr.ranges || [])[0], basis = withBasis ? `（${basisOf(p, d)}）` : "";
     const span = r ? (r.from === r.to ? md(r.from) : `${md(r.from)}〜${md(r.to)}`) : "";
     const name = pr.kind === "days" ? `直近 ${pr.n} 日` : pr.kind === "range" ? "" : pr.name;     // 日付で決めた期間は日付だけ（版 3.52.0。1280 の数字のパネルで添え書きが 2 段に折れた）
     return `${name ? name + " " : ""}${span}${basis}${(pr.ranges || []).length > 1 ? "・設備で日が違います" : ""}`;
   }
+  /** 期間の日付をどう数えるか（作業日なら現場歴／太陽暦・ほかは列の名前）。期間が無ければ "" */
+  const basisOf = (p, d) => { const pr = d && d.period; return !pr ? "" : pr.column === "@workday" ? ((p && p.basis) === "cal" ? "太陽暦" : "現場歴") : pr.column; };
 
   /* ---- 表の形（集計表と同じ buildModel）。種類の段は並べ替え・上位 N を当てる ---- */
   function modelOf(p, d) {
@@ -113,9 +130,20 @@
   };
 
   /** 数字の添え書き（期間・元）。lines 行で切る */
-  const metaHtml = (t, lines) => `<small class="dp-kmeta" title="${esc(t)}" style="-webkit-line-clamp:${lines}">${esc(t)}</small>`;
+  /* 添え書き（sub）は字か {text, html}（dashboard.js の「元・設備・期間・条件」の項目・§9.628） */
+  const subText = (s) => (typeof s === "string" ? s : s.text), subHtmlOf = (s) => (typeof s === "string" ? esc(s) : s.html);
+  const metaHtml = (s, lines) => `<small class="dp-kmeta" title="${esc(subText(s))}" style="-webkit-line-clamp:${lines}">${subHtmlOf(s)}</small>`;
+  /** 合わせたデータの「実績・基準・差」を1文で（「全設備 55分より 2分長い」。前は「基準：全設備 55分　差（実績−基準）+2分」が 1536 で切れた） */
+  function baseSentence(ms, vals, fm) {
+    const bi = ms.findIndex((m) => m.role === "base"), di = ms.findIndex((m) => m.role === "diff");
+    if (bi < 0 || di < 0 || typeof vals[bi] !== "number" || typeof vals[di] !== "number") return "";
+    const name = String(ms[bi].name || "").replace(/^[^：]*：/, ""), f = (j) => C.numText(Math.abs(vals[j]), C.measFmt(fm, ms[j]));   // 分の値は numText が「55分」と書く（measFmt の minutes）
+    const d = vals[di], min = ms[di].unit === "min", word = d === 0 ? "同じ" : d > 0 ? (min ? "長い" : "多い") : (min ? "短い" : "少ない");
+    return `<span class="dp-kcmp">${esc(name)} ${esc(f(bi))}より${d === 0 ? "" : ` ${esc(f(di))}`}${word}</span>`;
+  }
 
   /* ---- 数字（kpi） ---- */
+  /** @param {string|{text:string,html:string}} [sub0] */
   function kpi(box, p, d, W, H, sub0 = "") {
     const cell = (d.cells || []).find((x) => !x.r.length && !x.c.length);
     const vals = cell ? cell.v : [];
@@ -132,7 +160,7 @@
     const z = SIZE_RATE[fm.nsize] || 1;    // 書式の字の大きさ（版 3.43.0）。入りきらなければ下で縮める
     // 横並びは行送り（1.2）のぶん高さの 8 割まで（前は 0.92 で行の箱が面から 2px はみ出した）
     const size = Math.round(Math.max(14, Math.min(88 * z, room * (row ? 0.8 : vals.length > 1 ? 0.42 : 0.56) * z, wide / Math.max(2, text.length * 0.62 + unit.length * 0.36 + 0.2))));
-    const sub = vals.slice(1, 4).map((v, i) => `<span><small>${esc(measName(ms[i + 1]))}</small><b>${C.numHtml(v, C.measFmt(fm, ms[i + 1]))}</b></span>`).join("");
+    const sub = baseSentence(ms, vals, fm) || vals.slice(1, 4).map((v, i) => `<span><small>${esc(measName(ms[i + 1]))}</small><b>${C.numHtml(v, C.measFmt(fm, ms[i + 1]))}</b></span>`).join("");
     box.innerHTML = `<div class="dp-kpi${row ? " is-row" : ""}"><b class="dp-num" style="--dp-numfs:${size}px">${main == null ? "–" : C.numHtml(main, fm0)}<small>${unit}</small></b>`
       + (sub && !row && room > size + 40 ? `<div class="dp-ksub">${sub}</div>` : "")
       // 低いパネルの横並びでは、2 つ目からの値（合わせたデータの基準・差など）を添え書きの上の行に（§9.628 自設備の「全設備との差」）
@@ -146,6 +174,7 @@
   }
 
   /** 数字の形（版 3.39.0。書式 kpi）: 目標に対する進み。bar＝数と、目標までの横の棒（達成率）・gauge＝半円のメーター（真ん中に数・下に達成率） */
+  /** @param {string|{text:string,html:string}} sub0 */
   function kpiTarget(box, p, d, W, H, sub0, v) {
     const fm = p.fmt, t = fm.target, rate = v / t, col = seriesColors(p)[0], fill = Math.max(0, Math.min(1, rate));
     const unit = autoUnit(p, d.measures[0]);
@@ -157,12 +186,12 @@
       box.innerHTML = `<div class="dp-gauge"><svg viewBox="0 0 ${W} ${cy + 4}" width="${W}" height="${cy + 4}" role="img" aria-label="目標 ${esc(C.numText(t, fm))} に対して ${esc(rateText)}">`
         + arc(Math.PI, 0, "#e4e9ee") + (fill > 0 ? arc(Math.PI, a, col) : "")
         + `<text x="${cx}" y="${cy - R * 0.18}" text-anchor="middle" class="dp-gnum" style="font-size:${Math.round(Math.max(14, Math.min(54, R * 0.5)))}px">${esc(C.numText(v, fm))}<tspan class="dp-gunit">${unit}</tspan></text></svg>`
-        + `<div class="dp-grate"><b class="${ok ? "is-ok" : ""}">${ok ? "✓ " : ""}達成 ${esc(rateText)}</b><small>目標 ${esc(C.numText(t, fm))}${unit}</small>${sub0 ? `<small class="dp-kmeta" title="${esc(sub0)}">${esc(sub0)}</small>` : ""}</div></div>`;
+        + `<div class="dp-grate"><b class="${ok ? "is-ok" : ""}">${ok ? "✓ " : ""}達成 ${esc(rateText)}</b><small>目標 ${esc(C.numText(t, fm))}${unit}</small>${sub0 ? `<small class="dp-kmeta" title="${esc(subText(sub0))}">${subHtmlOf(sub0)}</small>` : ""}</div></div>`;
       return;
     }
     if (H < 90) {          // 低いパネル（1 段）: 数・棒・達成率を 1 行に（添え書きは札の題に）
       const sz = Math.round(Math.max(14, Math.min(40, H * 0.62)));
-      box.innerHTML = `<div class="dp-kbar is-row" title="目標 ${esc(C.numText(t, fm))}${unit}${sub0 ? `　${esc(sub0)}` : ""}"><b class="dp-num" style="font-size:${sz}px">${C.numHtml(v, fm)}<small>${unit}</small></b>`
+      box.innerHTML = `<div class="dp-kbar is-row" title="目標 ${esc(C.numText(t, fm))}${unit}${sub0 ? `　${esc(subText(sub0))}` : ""}"><b class="dp-num" style="font-size:${sz}px">${C.numHtml(v, fm)}<small>${unit}</small></b>`
         + `<div class="dp-track" role="img" aria-label="目標 ${esc(C.numText(t, fm))} に対して ${esc(rateText)}"><i style="width:${(fill * 100).toFixed(1)}%;background:${col}"></i></div>`
         + `<span class="dp-krate${ok ? " is-ok" : ""}">${ok ? "✓ " : ""}${esc(rateText)}<small>／${esc(C.numText(t, fm))}${unit}</small></span></div>`;
       return;
@@ -170,7 +199,7 @@
     const size = Math.round(Math.max(14, Math.min(64, (H - 40) * 0.62, (W - 8) / Math.max(2, C.numText(v, fm).length * 0.62 + 1))));
     box.innerHTML = `<div class="dp-kbar"><div class="dp-krow"><b class="dp-num" style="--dp-numfs:${size}px">${C.numHtml(v, fm)}<small>${unit}</small></b><span class="dp-krate${ok ? " is-ok" : ""}">${ok ? "✓ " : ""}${esc(rateText)}</span></div>`
       + `<div class="dp-track" role="img" aria-label="目標 ${esc(C.numText(t, fm))} に対して ${esc(rateText)}"><i style="width:${(fill * 100).toFixed(1)}%;background:${col}"></i></div>`
-      + `<small class="dp-kmeta">目標 ${esc(C.numText(t, fm))}${unit}${sub0 ? `　${esc(sub0)}` : ""}</small></div>`;
+      + `<small class="dp-kmeta">目標 ${esc(C.numText(t, fm))}${unit}${sub0 ? `　${subHtmlOf(sub0)}` : ""}</small></div>`;
   }
 
   /* ---- グラフ ---- */
@@ -198,12 +227,14 @@
     const gh = Math.max(60, H - (wantLegend ? 20 : 0));
     const colors = seriesColors(p), pal = PALETTES[fm.palette || ""];
     const r0 = (d.dims.rows || [])[0], few = m.nr === 1 && m.nc === 0 && r0 && !r0.column.startsWith("@") && !C.isTimeDim(r0) && m.rows.filter((r) => r.type === "data").length <= 8;
-    const rowColor = few || (pal && ["column", "bar", "lollipop", "donut", "treemap", "bubble"].includes(kind) && m.nc === 0)
+    // 1 つの値だけの棒（縦棒・横棒・ロリポップ）は 1 色（§9.628。前は 8 項目までだと項目ごとの色で、9 項目からは 1 色＝同じ図の色が項目の数で変わり、色に意味が無かった）。
+    // 項目ごとの色は、全体の内訳を言う形（ドーナツ・ツリーマップ・バブル）か、色の組を選んだときだけ
+    const rowColor = (few && !["column", "bar", "lollipop"].includes(kind)) || (pal && ["column", "bar", "lollipop", "donut", "treemap", "bubble"].includes(kind) && m.nc === 0)
       ? catColors(m.rows.filter((r) => r.type === "data").map((r) => m.rowName(r)).sort(), pal ? pal.c : CAT) : null;
     // 別のデータを合わせた答え（版 3.40.0）: 色は役割の色（組む所の札と同じ: 目標＝紫・実績＝青緑）・目標と実績は同じ目盛り
     const link = !!d.link;
     const cols = link && !(fm.palette) ? d.measures.map((x, j) => ROLE_COLOR[x.role] || colors[j % colors.length]) : colors;
-    const out = C.draw(kind, { m, d, s, W, H: gh, measName, dimName: (x) => dimName(x, p), label: (c) => c, compact: true, colors: cols, rowColor, fmt: fm, oneAxis: link });
+    const out = C.draw(kind, { m, d, s, W, H: gh, measName, dimName: (x) => dimName(x, p), label: (c) => c, compact: true, colors: cols, rowColor, fmt: withEquipColors(fm, d, m), oneAxis: link });
     if (!p._facetColor) { drawn.set(p.id, new Map(out.used || [])); drawnSer.set(p.id, new Map(out.ser || [])); }
     const sideOk = out.side && (kind === "donut" ? W - (Math.min(gh / 2 - 6, W / 2 - 8, 160) * 2 + 16) >= 150 : W >= 760);
     const legend = wantLegend ? `<div class="dp-legend">${(out.legend || "").replace(/<small class="pv-cnote">[\s\S]*?<\/small>/g, "")}</div>` : "";
@@ -397,12 +428,14 @@
     return cells + sumCell;
   }
   /** 見出しの 2 段（まとまりの題と計／列の段） */
+  /** まとまりの条件は、そのまとまりの見出しの中に（§9.628。前は表の上の右寄せの1行に「作業予定・条件 1」とまとめ、どの列の何の条件か読めなかった） */
+  const gcond = (g) => { const t = (g.filters || []).map((f) => WL.dashKit.condLabel(f).replace(/\s+/g, " ").trim()).join("・"); return t ? `<small class="dash-gcond" title="このまとまりの条件">${esc(t)}</small>` : ""; };
   function boardHead(B) {
     const { gs, models, d, rowDim } = B;
     const head1 = gs.map((g, gi) => {
       const m = models[gi], a = (d.groups || [])[gi] || {}, cls = gi ? "dash-grp" : "";
       const tip = [a.sourceName, ...(a.mirrors || []).slice(0, 1).map((x) => x && x.at ? `元 ${ago(x.at)}` : ""), m.none ? `${rowDim === "@equip" ? "設備なし" : "空欄"} ${C.fmt(m.none)}` : ""].filter(Boolean).join("・");
-      return `<th class="${cls}${m.cols.length ? "" : (g.look === "bar" || g.look === "stack" ? " dash-lots" : " num")}" colspan="${B.span(gi)}"${m.cols.length ? "" : ' rowspan="2"'} title="${esc(tip)}">${esc(groupTitle(g, a))}<small>計 ${m.total == null ? "–" : B.fmtN(m.total, g)}${unitOf(g) ? ` ${unitOf(g)}` : ""}</small></th>`;
+      return `<th class="${cls}${m.cols.length ? "" : (g.look === "bar" || g.look === "stack" ? " dash-lots" : " num")}" colspan="${B.span(gi)}"${m.cols.length ? "" : ' rowspan="2"'} title="${esc(tip)}">${esc(groupTitle(g, a))}<small>計 ${m.total == null ? "–" : B.fmtN(m.total, g)}${unitOf(g) ? ` ${unitOf(g)}` : ""}</small>${gcond(g)}</th>`;
     }).join("");
     const head2 = gs.map((g, gi) => {
       const m = models[gi];
@@ -414,12 +447,11 @@
     const rowName = rowDim === "@equip" ? "設備" : dimName(B.p.rows || { column: rowDim }, B.p);
     return `<thead><tr><th rowspan="2">${esc(rowName)}</th>${head1}</tr><tr>${head2}</tr></thead>`;
   }
-  /** 表の上の帯（0 の知らせ・まとまりごとの添え書き。添え書きはふつうのパネルと同じ「条件 n」） */
+  /** 表の上の帯（0 の知らせだけ。元はパネルの添え書き・条件はまとまりの見出し・写しの時刻と設備なしの数は見出しの説明が持つ） */
   function boardTop(B) {
-    const { gs, models, d, rowDim } = B;
+    const { gs, d } = B;
     const warn = gs.map((g, gi) => (B.flags[gi].length ? `<span class="dash-warn" title="ほかのまとまりに数があるのに、${esc(groupTitle(g, d.groups[gi]))}が 0 だった${B.unitWord}"><b>${esc(groupTitle(g, d.groups[gi]).replace(/ .*$/, ""))} 0 ${unitOf(g)}</b>${B.flags[gi].map(esc).join("・")}</span>` : "")).join("");
-    const meta = models.map((m, gi) => { const a = (d.groups || [])[gi] || {}, at = (a.mirrors || [])[0], nf = (gs[gi].filters || []).length; return `${esc(a.sourceName || "")}${at && at.at ? ` 元 ${esc(ago(at.at))}` : ""}${m.none ? `・${rowDim === "@equip" ? "設備なし" : "空欄"} ${C.fmt(m.none)}` : ""}${nf ? `・条件 ${nf}` : ""}`; }).filter(Boolean).join("　");
-    return `<div class="dash-boardhead">${warn}<span class="dash-sp"></span><small class="dash-meta" title="${esc(meta)}">${meta}</small></div><div class="dp-flow"></div>`;
+    return `${warn ? `<div class="dash-boardhead">${warn}</div>` : ""}<div class="dp-flow"></div>`;
   }
   /** 合わせた表を描く（d = {groups: [答え], equipOrder}）→ 下に出す知らせの字 */
   function board(box, p, d, H) {
@@ -501,11 +533,11 @@
     const fm0 = p.fmt || {}, j = Math.min((p.body || {}).chartAt || 0, ((d.measures || []).length || 1) - 1);
     const leafMax = (a) => { const nr = a.dims.rows.length, nc = a.dims.cols.length; return Math.max(0, ...a.cells.filter((c) => c.r.length === nr && c.c.length === (nc && ["time", "stack", "stack100", "hstack", "hstack100", "stackarea"].includes(p.visual) ? 0 : nc)).map((c) => +c.v[j] || 0)); };
     const top = Math.max(...shown.map((f) => leafMax(f.answer)));
-    const pal = seriesColors(p), base = (n, i) => (fm0.colors || {})[n] || pal[(i + 1) % pal.length];
-    const one = (f, i) => ({ ...p, esplit: "", _facetColor: base(f.name, i), fmt: { ...fm0, legend: fm0.legend || (kpiLike ? "none" : ""), ...(fm0.ymax == null && top > 0 && !kpiLike && p.visual !== "none" ? { ymax: top } : {}) } });
+    const pal = PALETTES[fm0.palette || ""], base = (n) => (fm0.colors || {})[n] || equipColor(n, pal ? pal.c : C.COLORS);
+    const one = (f) => ({ ...p, esplit: "", _facetColor: base(f.name), fmt: { ...fm0, legend: fm0.legend || (kpiLike ? "none" : ""), ...(fm0.ymax == null && top > 0 && !kpiLike && p.visual !== "none" ? { ymax: top } : {}) } });
     box.querySelectorAll(".dp-facet").forEach((sec, i) => {
-      sec.style.setProperty("--fc0", base(shown[i].name, i));
-      render(sec.querySelector(".dp-fbox"), one(shown[i], i), shown[i].answer, { w: cw - 2, h: ch - 22 });
+      sec.style.setProperty("--fc0", base(shown[i].name));
+      render(sec.querySelector(".dp-fbox"), one(shown[i]), shown[i].answer, { w: cw - 2, h: ch - 22 });
     });
     return fs.length > shown.length ? `ほか ${fs.length - shown.length} 設備（パネルを大きくすると出ます）` : "";
   }
@@ -541,6 +573,7 @@
     box.innerHTML = `<div class="dsp-wrap">${head}<div class="dsp-list" style="--sp-cols:${cols};--sp-h:${h}px" role="group" aria-label="値で絞る">${cards}</div>${foot}</div>`;
     return "";
   }
+  /** @param {string|{text:string,html:string}} [sub] 数字のパネルの添え書き（字か、dashboard.js の項目の {text, html}） */
   function render(box, p, d, size, sub = "") {
     d = calcd(p, d);
     const W = Math.max(60, Math.floor(size.w)), H = Math.max(40, Math.floor(size.h));
@@ -566,6 +599,6 @@
     return out;
   }
 
-  WL.dashPanels = { ROLE_COLOR, render, calcd, autoUnit, board, notes, periodText, measName, dimName, md, colorOf, kindOf, groupTitle, unitOf, boardKeys, boardTree, NONE_GROUP, SOURCE_COLOR, PALETTES, seriesColors, drawnColor: (id, name) => (drawn.get(id) || new Map()).get(name),
+  WL.dashPanels = { basisOf, setEquipOrder: (fn) => { equipOrder = fn; }, equipColor, ROLE_COLOR, render, calcd, autoUnit, board, notes, periodText, measName, dimName, md, colorOf, kindOf, groupTitle, unitOf, boardKeys, boardTree, NONE_GROUP, SOURCE_COLOR, PALETTES, seriesColors, drawnColor: (id, name) => (drawn.get(id) || new Map()).get(name),
     drawnSeries: (id, name) => (drawnSer.get(id) || new Map()).get(name) || null };
 })();

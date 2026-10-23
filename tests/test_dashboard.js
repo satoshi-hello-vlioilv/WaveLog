@@ -32,7 +32,8 @@ const measure=page=>page.evaluate(()=>{
    outside:r.right>g.right+1||r.bottom>window.innerHeight+1,
    cutTitle:!!h3&&cutEl(h3),cutMeta:metas.filter(cutEl).length,unknown:[...p.querySelectorAll('.dp-num')].filter(n=>n.textContent.trim().startsWith('–')).length,
    dupSrc:segs.length-new Set(segs).size,vague:metas.reduce((n,m)=>n+(m.textContent.match(/条件 \d/g)||[]).length,0),
-   cross:line?texts.filter(t=>hit(box(line),box(t))).length:0};
+   /* 線より後に地（og-msgbg）を敷いて描いた字は、線が上を通らない */
+   cross:line?texts.filter(t=>hit(box(line),box(t))&&!(t.previousElementSibling&&t.previousElementSibling.classList.contains('og-msgbg')&&(line.compareDocumentPosition(t)&Node.DOCUMENT_POSITION_FOLLOWING))).length:0};
  });
  return {name:(document.querySelector('.dash-pick b')||{}).textContent||'',panels,
   scroll:document.scrollingElement.scrollHeight>window.innerHeight+1};
@@ -86,6 +87,12 @@ run('test_dashboard: ダッシュボード',async({page,rec,B,W,idle})=>{
    const sum=k=>m.panels.reduce((n,p)=>n+(+p[k]||0),0);
    scores.push(`${tag} ${it.name} 切れた題${sum('cutTitle')} 切れた添え書き${sum('cutMeta')} 分からない数${sum('unknown')} 元のくり返し${sum('dupSrc')} 条件n${sum('vague')} 字の上の線${sum('cross')}`);
    if(process.env.WAVELOG_SHOT)await page.screenshot({path:path.join(SHOT,`after_${tag}_${it.id.replace(/\W/g,'_')}.png`)});
+   if(it.id==='b:analysis'){
+    /* 同じ設備はどのパネルでも同じ色（稼働状況の直近14日＝時系列・人数別の内訳＝積み上げ・月ごとの推移＝時系列。
+       前は系列の何番目かで色を決め、時系列は 1 つずらして始まるので、同じ設備が橙と青緑に分かれた） */
+    const c=await page.evaluate(()=>['テスト設備A','テスト設備B'].map(n=>['trend14','crew','monthly'].map(id=>WL.dashPanels.drawnColor(id,n))));
+    rec(`同じ設備はどのパネルでも同じ色（${tag}）`,c.every(x=>x[0]&&x.every(y=>y===x[0]))&&c[0][0]!==c[1][0],JSON.stringify(c));
+   }
   }
   /* 物差し: 開いてから全部のパネルが数を出すまで（1回目は写しを作る・2回目からは答えの控え）。遅さを数で残す */
   rec(`開いてから全部のパネルが数を出すまでの時間（${tag}）`,true,times.join(' / '));

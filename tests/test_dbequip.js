@@ -45,7 +45,9 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
   await openMine('2');
   const lots=await panel('mineLots'),avg=await panel('mineAvg');
   rec('自設備の完了件数だけを数える(他設備を含めない)',lots.num.startsWith('2'),JSON.stringify(lots));
-  rec('使用設備名を出す（@mine の字を出さない）',lots.text.includes(EQ)&&!lots.text.includes('@mine'),lots.text.slice(0,80));
+  /* 設備の名前は、多くのパネルで同じなら道具の行の「パネル共通」に1回（§9.628）、違えばパネルの添え書きに */
+  const common=await page.evaluate(()=>(document.querySelector('#dashBar .dash-common')||{}).textContent||'');
+  rec('使用設備名を出す（@mine の字を出さない）',(lots.text.includes(EQ)||common.includes(EQ))&&!(lots.text+common).includes('@mine'),`${lots.text.slice(0,60)} ／ 共通 ${common}`);
   rec('平均作業時間が自設備の実績から出る',avg.num.startsWith('90'),JSON.stringify(avg));
   rec('全設備との差を併記する(速い/遅いが分かる)',/全設備/.test(avg.text)&&/20/.test(avg.text),avg.text.slice(0,120));
   const rows=await page.evaluate(()=>(document.querySelector('#dashGrid .dash-p[data-id="mineOp"]')||{}).innerText||'');

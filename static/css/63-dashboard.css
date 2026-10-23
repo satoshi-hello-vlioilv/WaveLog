@@ -22,6 +22,14 @@
 .dash-pick:hover,.dash-pick[aria-expanded="true"]{border-color:var(--teal)}
 .dash-std{font-style:normal;color:var(--look-amber);font-size:var(--fs-base-sm)}
 .dash-when{color:var(--muted);font-size:var(--fs-sm)}
+/* 添え書きの項目（§9.628）: 名前（元・設備・期間・条件）は薄く小さく、値は字の色。道具の行の「パネル共通」も同じ形 */
+.dash-mi{display:inline-flex;align-items:baseline;gap:4px;margin-right:10px;white-space:nowrap}
+.dash-mi small{color:var(--muted);font-size:var(--fs-sm)}
+.dash-psub .dash-mi,.dp-kmeta .dash-mi{color:var(--ink-2)}
+.dp-kmeta .dash-mi{white-space:normal}
+.dash-common{display:inline-flex;align-items:baseline;gap:2px;margin-left:14px;font-size:var(--fs-sm);color:var(--ink);white-space:nowrap;min-width:0}
+.dash-common>b{font-weight:var(--fw-ui);color:var(--ink-2);margin-right:8px}
+.dash-table thead .dash-gcond{display:block;font-weight:var(--fw-body);color:var(--ink-2);font-size:var(--fs-sm)}
 .dash-msg{color:var(--ink-2);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
 .dash-editing{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border-radius:var(--radius-pill);background:var(--look-amber-pale);border:1px solid var(--look-amber);color:var(--look-amber-dark);font-size:var(--fs-sm);font-weight:var(--fw-strong)}
 .dash-armed{color:var(--look-red-dark);font-weight:var(--fw-strong);font-size:var(--fs-sm)}
@@ -97,6 +105,8 @@ body.dash-dragging{cursor:grabbing;user-select:none}
 .dp-tbl{max-height:100%;overflow:hidden auto}
 .dp-tbl .pv-table{font-size:var(--fs-base-sm);width:100%}
 .dp-tbl .pv-table th,.dp-tbl .pv-table td{padding:var(--dp-pad,4px 8px)}
+/* パネルの中の表の見出しは合わせた表と同じ白い地（§9.628。集計表の濃い見出しはパネルの中だけ表に1つ目立ちすぎた） */
+.dp-tbl .pv-table thead th,.dp-tbl .pv-table thead th.pv-corner,.dp-tbl .pv-table thead th.pv-mh,.dp-tbl .pv-table thead th.pv-gt,.dp-tbl .pv-table thead th.pv-st{background:var(--surface);color:var(--muted);font-weight:var(--fw-ui);border-right:0;border-bottom:1px solid var(--line-mid)}
 /* 設備ごとに並べる（版 3.40.0。esplit facet）: 小さな図の格子。見出しは設備名（同じ大きさ・同じ形で比べる） */
 .dp-facets{display:grid;grid-template-columns:repeat(var(--fc,2),minmax(0,1fr));gap:8px;height:100%;min-height:0}
 .dp-facet{min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line-soft);border-radius:var(--radius-sm);padding:2px 6px 4px;background:var(--card-bg)}
@@ -722,7 +732,7 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .og-head{font-size:var(--fs-sm);fill:var(--muted);font-weight:var(--fw-strong)}
 .og-headsub{font-weight:var(--fw-body)}
 /* 見出しの題の横の札: 全体の稼働率（数を大きく）と内訳 */
-.og-badge{display:inline-flex;align-items:baseline;gap:6px;padding:0 10px;height:22px;line-height:20px;border-radius:var(--radius-pill);background:var(--bg);border:1px solid var(--line-mid);font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;flex:0 0 auto}
+.og-badge{display:inline-flex;align-items:baseline;gap:6px;padding:0 4px;height:22px;line-height:20px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;flex:0 0 auto}
 .og-badge b{font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink);font-variant-numeric:tabular-nums}
 .og-badge small{font-size:var(--fs-sm);color:var(--ink-2);font-variant-numeric:tabular-nums}
 .og-badge.is-short small{display:none}
@@ -733,6 +743,7 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .og-run{fill:url(#ogRun);pointer-events:none}
 .og-cut{fill:none;stroke:#fff;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .og-msg{font-size:var(--fs-sm);fill:var(--muted)}
+.og-msgbg{fill:var(--surface)}
 .og-msg.is-warn{fill:var(--look-amber-dark);font-weight:var(--fw-strong)}
 .og-nend{font-size:var(--fs-sm);fill:var(--warn-fg);font-weight:var(--fw-strong)}
 .og-nbr{fill:var(--look-amber-pale);stroke:var(--look-amber);stroke-width:1}

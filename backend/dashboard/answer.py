@@ -277,11 +277,14 @@ def link_answer(p, ctx):
  ms += [{'agg': 'sum', 'name': f'差（実績−{ref}）' if e == 'diff' else f'達成率（実績÷{ref} %）', 'role': e,
          **({'unit': 'min'} if e == 'diff' and mins else {})} for e in extra]
  ok = [a for a in answers if 'cells' in a]
+ # 期間（§9.628）: 合わせるデータがどれも同じ期間ならその期間（画面の添え書きが「期間」を言える）。違えば言わずに印だけ
+ pers = [a.get('period') for a in ok]
+ same_period = pers[0] if pers and all(x == pers[0] for x in pers) else None
  note = '　'.join(f"{names[i]}: {a['error']}" for i, a in enumerate(answers) if 'cells' not in a)
  return {'table': '', 'count': sum(a.get('count') or 0 for a in ok), 'lotsBy': '', 'start': '', 'bins': [], 'stats': {}, 'box': '', 'boxes': [],
          'dims': {'rows': [{**sides[0]['key'], 'name': '・'.join(dict.fromkeys(pivot._dim_name(x['key']) for x in sides))}], 'cols': []},
          'measures': ms, 'orders': [order], 'labels': [labels], 'cells': cells, 'truncated': {'rows': False, 'cols': False},
-         'months': [], 'month': '', 'ignoredFilters': sorted({f for a in ok for f in a.get('ignoredFilters') or []}),
+         'months': [], 'month': '', 'period': same_period, 'periodMixed': len(pers) > 1 and same_period is None, 'ignoredFilters': sorted({f for a in ok for f in a.get('ignoredFilters') or []}),
          'equipIgnored': any(a.get('equipIgnored') for a in ok), 'note': ' '.join(x for x in [note] + [a.get('note') or '' for a in ok] if x),
          'sourceName': '・'.join(dict.fromkeys(a.get('sourceName') or '' for a in ok)),
          'failed': [f for a in ok for f in a.get('failed') or []], 'now': ctx.now.strftime('%Y-%m-%d %H:%M:%S'),

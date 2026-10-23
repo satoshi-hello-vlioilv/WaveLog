@@ -70,12 +70,13 @@
     if (rh < 14) { rh = 14; shown = eqs.slice(0, Math.max(1, Math.floor(avail / 14))); }
     const X = (t) => LW + ((t - x0) / span) * TW;
     const g = [];
-    const c = { LW, TW, RW, AX, rh, X, x0, x1, span, p, colorOf };
+    const c = { LW, TW, RW, AX, rh, X, x0, x1, span, p, colorOf, top: [] };
     const { dayKey, mainKey } = ganttAxis(g, c, eqs, d, shown.length);
     shown.forEach((e, i) => ganttRow(g, c, e, i, dayKey, mainKey));
     // いま（期間が今日を含むとき）
     const now = ms(d.now || "");
     if (now > x0 && now < x1) g.push(`<line class="og-now" x1="${X(now)}" x2="${X(now)}" y1="${AX - 2}" y2="${AX + shown.length * rh}"/><text class="og-nowl" x="${X(now) + 3}" y="${AX - 16}">いま</text>`);
+    g.push(...c.top);
     const leg = legend ? `<span class="og-leg">${cats.slice(0, 8).map((c) => `<span><i style="background:${colorOf.get(c)}"></i>${esc(c)}</span>`).join("")}${cats.length > 8 ? `<span>ほか ${cats.length - 8}</span>` : ""}</span>` : "";
     box.innerHTML = `<div class="og-wrap"><svg class="og-svg" viewBox="0 0 ${W} ${AX + shown.length * rh + 2}" width="${W}" height="${AX + shown.length * rh + 2}" role="img" aria-label="設備の稼働のガントチャート">`
       + `<defs><pattern id="ogHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#f3f4f5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#dde1e4" stroke-width="2"/></pattern>`
@@ -143,7 +144,10 @@
     // 棒の無い行は、そのわけを行の中に出す（前は空の行で、出ないのか作業が無いのか分からなかった。版 3.47.0）
     const why = Object.entries(e.why || {}).map(([k, n]) => `${k} ${n} 本`).join("・");
     const msg = e.error ? `読めません: ${e.error}` : !(e.ops || []).length ? (e.noEnd ? `作業 ${e.count} 本の区間が分かりません（${why}）` : "この期間の作業はありません") : "";
-    if (msg && rh >= 14) g.push(`<text class="og-msg${e.error || e.noEnd ? " is-warn" : ""}" x="${LW + 8}" y="${y + rh / 2 + 4}">${esc(fitW(msg, TW - 16, 12, e.error || e.noEnd ? 700 : 400))}<title>${esc(msg)}</title></text>`);
+    if (msg && rh >= 14) {      // 字は「いま」の線より上に、地を敷いて（§9.628。前は線が字の上を通った）。c.top は線の後に描く
+      const wt = e.error || e.noEnd ? 700 : 400, t = fitW(msg, TW - 16, 12, wt);
+      c.top.push(`<rect class="og-msgbg" x="${LW + 4}" y="${y + rh / 2 - 9}" width="${textW(t, 12, wt) + 8}" height="18" rx="3"/><text class="og-msg${wt === 700 ? " is-warn" : ""}" x="${LW + 8}" y="${y + rh / 2 + 4}">${esc(t)}<title>${esc(msg)}</title></text>`);
+    }
     else if (e.noEnd && rh >= 14) {     // 棒はあるが、区間の分からない作業がある: 行の右の端に琥珀の丸い札「区間なし n・わけ」（入らなければ「区間なし n」）
       const tip = `${e.name}: 作業 ${e.count} 本のうち ${e.noEnd} 本は区間が分からないので棒にしていません（${why}）。稼働率にも入りません`;
       let t = `区間なし ${e.noEnd}・${whyShort(e.why)}`;

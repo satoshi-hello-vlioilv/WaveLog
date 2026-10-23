@@ -27,7 +27,7 @@
   const DS = {
     list: [], login: "", canEditCommon: false, canEditDefault: false, standardId: null, rowsRange: [4, 16],
     id: null, layout: null, saved: "", edit: false, history: [], sel: "", sources: [],
-    tree: null, answers: new Map(), at: 0, timer: null, active: false, loading: false, msg: "", confirm: "", pop: null, editing: "",
+    tree: null, answers: new Map(), cmSig: "", at: 0, timer: null, active: false, loading: false, msg: "", confirm: "", pop: null, editing: "",
     sets: [], setStd: null, setId: null, setMax: 12, hidden: [], want: null,
   };
 
@@ -136,6 +136,7 @@
     const hits = ps.filter((p) => { const h = Q.sliceHits(p, sl, canEquip); return h.period || h.equip; }).length;
     return { tree: DS.tree || {}, today: today(), hits, total: ps.length, open: DS.pop === "slice", parts: barParts(), dateOpen: DS.pop === "date", cfgOpen: DS.pop === "cfg" };
   }
+  WL.dashPanels.setEquipOrder(() => (DS.tree && DS.tree.names) || []);     // 設備の色の並び（どのパネルでも同じ設備は同じ色）
   async function loadTree() {
     try { const r = await WL.dashKit.fetch("/api/dashboard/equip-tree", { cache: "no-store" }); if (r.ok) DS.tree = await r.json(); } catch (e) { WL.quiet.note("設備の木を読めない（スライサーの設備の札が出ないだけ）", e); }
     paintBar();
@@ -214,6 +215,14 @@
   // 答えに通し番号を付ける（描き直すかの決め手。版 3.41.0: 組み替え・保存のたびに全部のパネルを描き直していた）
   let ansSeq = 0;
   const setAnswer = (id, a) => { a.n = ++ansSeq; DS.answers.set(id, a); };
+  /** 「パネル共通」が答えで変わったら、道具の行と全部のパネルを描き直す（パネルに出す項目は共通との違いなので） */
+  function syncCommon() {
+    const sig = JSON.stringify(commonMeta());
+    if (sig === DS.cmSig) return;
+    DS.cmSig = sig;
+    paintBar();
+    ((DS.layout || {}).panels || []).forEach((q) => paintPanel(q.id));
+  }
   async function queryPanel(p) {
     const k = qkey(p), old = DS.answers.get(p.id);
     setAnswer(p.id, { ...(old || {}), key: k, busy: true });
@@ -228,6 +237,7 @@
     if (!now || qkey(now) !== k) return;                 // 引いている間に組みが変わった（新しい方が引き直す）
     setAnswer(p.id, a);
     paintPanel(p.id);
+    syncCommon();
     if (DS.editing === p.id && E.isOpen()) E.answered();
     // 写している最中: 答え全部（kind）か、合わせた表のまとまりか、写し終えていない設備がある（写し終えた設備だけの途中の数。版 3.46.0）
     const stillCopying = (x) => !!x && (x.kind === "copying" || (x.failed || []).some((f) => f.kind === "copying"));
@@ -317,19 +327,60 @@
     return `${esc(t.slice(0, m.index))}<mark class="dash-tsw" title="スライサーで「${esc(m[0])}」から替えています">${esc(sliceWord(sliceState().period))}</mark>${esc(t.slice(m.index + m[0].length))}`;
   }
   const SPLIT_NAME = { series: "設備ごとの系列", facet: "設備ごとに並べる", sum: "合算" };
-  function metaOf(p, a) {
-    if (p.visual === "board") return "";
-    const name = (k) => (WL.dashKit.src.of(k) || {}).name || k;
-    if (p.link && (p.link.sides || []).length) {     // 別のデータを合わせたパネル（版 3.40.0）: データごとの役割・元・作り方
-      const role = { target: "目標", actual: "実績" };
-      return p.link.sides.map((x) => `${role[x.role] ? role[x.role] + " " : ""}${x.title || name(x.source)}${x.build === "cum" ? "（積み上げ）" : ""}`).join(" ／ ");
+  /* 添え書き（§9.628）: 元・設備・期間・条件を分けて持ち、多くのパネルで同じ物は道具の行の「パネル共通」に1回、パネルには違う物だけ。
+     前は全パネルが同じ「測定データ・全設備　今月…　条件 1」をくり返し、「条件 1」は何の条件か読めなかった（推測させる物 1728 で27・1536 で30） */
+  const META_KEYS = [["src", "元"], ["equip", "設備"], ["per", "期間"], ["cond", "条件"]];
+  const condsText = (fs) => (fs || []).map((f) => WL.dashKit.condLabel(f).replace(/\s+/g, " ").trim()).join("・");
+  /** パネルの添え書きの項目 {src, equip, per, cond, basis}（スライサーは null）。per は日付の数え方を付けない字（basis が持つ） */
+  function metaParts(p, a) {
+    if (p.visual === "slicer") return null;
+    const name = (k) => (WL.dashKit.src.of(k) || {}).name || k, d = a && a.d;
+    if (p.visual === "board") {
+      const gs = p.groups || [];
+      return { src: [...new Set(gs.map((g) => name(g.source)).filter(Boolean))].join("・"), equip: (p.equips || []).length ? eqWord(p.equips) : "全設備", per: "", cond: "", basis: "", noPer: true, noCond: true };   // 期間・条件はまとまりごと（見出しが言う）
     }
-    const src = name(p.source) || (a && a.d && a.d.sourceName);
-    const equip = (p.equips || []).length ? eqWord(p.equips) : "";
-    const split = a && a.d && a.d.esplit && (p.equips || []).length !== 1 ? `（${SPLIT_NAME[a.d.esplit] || ""}）` : "";
-    const per = a && a.d ? P.periodText(p, a.d) : "";
-    const cond = (p.filters || []).length ? `条件 ${p.filters.length}` : "";
-    return [src + (equip ? `・${equip}` : WL.dashKit.src.isWork(p.source) ? "・全設備" : "") + split, per, cond].filter(Boolean).join("　");
+    if (p.link && (p.link.sides || []).length) {     // 別のデータを合わせたパネル: 設備は合わせるデータの名前・条件はどのデータにもある物
+      const sides = p.link.sides, c0 = condsText(sides[0].filters);
+      return { src: [...new Set(sides.map((x) => name(x.source)))].join("・"), equip: sides.map((x) => x.title || name(x.source)).join("と"),
+        per: d ? P.periodText(p, d, false) : "", cond: sides.every((x) => condsText(x.filters) === c0) ? c0 : "データごとに違います", basis: d ? P.basisOf(p, d) : "" };
+    }
+    const split = d && d.esplit && (p.equips || []).length !== 1 ? `（${SPLIT_NAME[d.esplit] || ""}）` : "";
+    const equip = (p.equips || []).length ? eqWord(p.equips) + split : WL.dashKit.src.isWork(p.source) ? "全設備" + split : "";
+    return { src: name(p.source) || (d && d.sourceName) || "", equip, per: d ? P.periodText(p, d, false) : "", cond: condsText(p.filters), basis: d ? P.basisOf(p, d) : "" };
+  }
+  /** 多くのパネル（半分以上・2 枚以上）で同じ項目 → {src, equip, per, cond, basis}（無い項目は ""）。期間は答えが揃ってから */
+  function commonMeta() {
+    const all = ((DS.layout || {}).panels || []).map((p) => metaParts(asked(p), DS.answers.get(p.id))).filter(Boolean);
+    const need = Math.max(2, Math.ceil(all.length / 2)), out = {};
+    for (const [k] of META_KEYS.concat([["basis"]])) {
+      const n = new Map();
+      all.forEach((x) => { const v = (k === "per" && x.noPer) || (k === "cond" && x.noCond) ? null : x[k]; if (v) n.set(v, (n.get(v) || 0) + 1); });
+      const top = [...n].sort((a, b) => b[1] - a[1])[0];
+      out[k] = top && top[1] >= need ? top[0] : "";
+    }
+    // 日付の数え方は、期間のあるパネルがどれも同じときだけ1回で言う（違うパネルがあれば各パネルの期間に付ける）
+    const bs = new Set(all.map((x) => x.basis).filter(Boolean));
+    out.basis = bs.size === 1 ? [...bs][0] : "";
+    return out;
+  }
+  /** パネルに出す項目: 共通と違う物だけ。共通にある期間・条件をパネルが持たなければ「すべて」「なし」と言い切る → [[名前, 字]] */
+  function metaShow(p, a, cm = commonMeta()) {
+    const x = metaParts(p, a);
+    if (!x) return [];
+    const val = (k) => (k === "per" && x.per && !cm.basis && x.basis ? `${x.per}（${x.basis}）` : x[k]);
+    return META_KEYS.flatMap(([k, n]) => {
+      if ((k === "per" && x.noPer) || (k === "cond" && x.noCond)) return [];
+      const v = x[k];
+      if (v) return v === cm[k] ? [] : [[n, val(k)]];
+      return cm[k] && (k === "per" || k === "cond") ? [[n, k === "per" ? "すべて" : "なし"]] : [];
+    });
+  }
+  const metaItemsHtml = (items) => items.map(([n, v]) => `<span class="dash-mi"><small>${esc(n)}</small>${esc(v)}</span>`).join("");
+  const metaItemsText = (items) => items.map(([n, v]) => `${n} ${v}`).join("　");
+  /** 道具の行の「パネル共通」（無ければ ""） */
+  function commonHtml(cm = commonMeta()) {
+    const items = META_KEYS.filter(([k]) => cm[k]).map(([k, n]) => [n, cm[k]]).concat(cm.basis ? [["日付", cm.basis]] : []);
+    return items.length ? `<span class="dash-common" title="${esc(`多くのパネルで同じ物: ${metaItemsText(items)}（違うパネルはパネルの題の下に書いてあります）`)}"><b>パネル共通</b>${metaItemsHtml(items)}</span>` : "";
   }
   const NARROW = 360;      // これより狭いパネルの見出しは、操作を「⋯」1 つに畳む（ボタンが見出しからはみ出さない）
   function headHtml(p, a, width, fold = false) {
@@ -354,7 +405,7 @@
     const p = panelOf(id), el = document.querySelector(`#dashGrid .dash-p[data-id="${CSS.escape(id)}"]`);
     if (!p || !el) return;
     const a1 = DS.answers.get(id), bd = el.querySelector(".dash-pb");
-    const sig = JSON.stringify([{ ...p, x: 0, y: 0 }, a1 ? a1.n : 0, el.clientWidth, el.clientHeight, bd.clientWidth, bd.clientHeight, DS.edit, DS.confirm, quickOf(id), sliceOf(p), picksOn(p), p.visual === "slicer" ? pickOf(id) : 0, DS.sources.length, WL.duration.style()]);   // 時間の書き方が変われば描き直す
+    const sig = JSON.stringify([{ ...p, x: 0, y: 0 }, a1 ? a1.n : 0, el.clientWidth, el.clientHeight, bd.clientWidth, bd.clientHeight, DS.edit, DS.confirm, quickOf(id), sliceOf(p), picksOn(p), p.visual === "slicer" ? pickOf(id) : 0, DS.sources.length, WL.duration.style(), DS.cmSig]);   // 時間の書き方・パネル共通が変われば描き直す
     if (!force && el._sig === sig) return;
     el._sig = sig;
     // 形を替えた直後は、前の形の答え（合わせた表の答えとふつうの答えは形が違う）では描かない（引き直した答えを待つ）
@@ -363,8 +414,8 @@
     ph.innerHTML = headHtml(p, a, el.clientWidth);
     el.setAttribute("aria-label", titleOf(p));
     // 添え書き（元・期間・条件）は見出しの下の 2 行目（見出しは題と操作だけで 1 行）。数字の形は数の下に出す
-    const meta = metaOf(asked(p), a), subEl = el.querySelector(".dash-psub");
-    subEl.hidden = !meta || p.visual === "kpi"; subEl.textContent = meta; subEl.title = meta;
+    const items = metaShow(asked(p), a), meta = items.length ? { text: metaItemsText(items), html: metaItemsHtml(items) } : "", subEl = el.querySelector(".dash-psub");
+    subEl.hidden = !meta || p.visual === "kpi"; subEl.innerHTML = meta ? meta.html : ""; subEl.title = meta ? meta.text : "";
     // 効いている絞り込みの札（見出しの下。× で 1 つずつ外す）
     const qc = Q.chips(quickOf(id)), qEl = el.querySelector(".dash-pq"), hit = Q.sliceHits(p, sliceOf(p), canEquip), sl = sliceState();
     // スライサーが効いているパネルには札（外すのは道具の行のスライサーで）
@@ -438,10 +489,11 @@
       + `${icon}<b>${esc(it ? it.name : "ダッシュボード")}</b>${it ? `<small>${esc(SCOPE_NAME[it.scope] || "")}${it.builtin ? "・組み込み" : it.replaces ? "・組み込みと入れ替え" : ""}</small>` : ""}${std ? '<i class="dash-std" title="標準（最初に開く物）">★</i>' : ""}<i aria-hidden="true">▾</i></button>`;
     const msg = `<span class="dash-msg" aria-live="polite">${esc(DS.msg)}</span>`;
     if (!DS.edit) {
-      bar.innerHTML = pick + msg + `<span class="dash-sp"></span>${barCfg().off && DS.layout ? D.cfgBtn(sliceInfo(), true) : ""}<small class="dash-when" title="出ているあいだは 1 分ごとに引き直します">${when ? `${when} の数` : ""}</small>`
+      bar.innerHTML = pick + msg + `<span class="dash-sp"></span>${barCfg().off && DS.layout ? D.cfgBtn(sliceInfo(), true) : ""}<small class="dash-when" title="出ているあいだは 1 分ごとに引き直します">${when ? `${when} 時点` : ""}</small>`
         + `<button type="button" class="pv-btn" data-db-refresh title="いま引き直す">↻ 引き直す</button>`
         // ダッシュボードが 1 つも無いときは「編集」を出さない（何を編集するのか分からない。空の画面の知らせから作る・戻す）
-        + (it ? `<button type="button" class="mm-btn-primary dash-editbtn" data-db-editmode title="パネルを足す・動かす・大きさを変える・組む">編集</button>` : "");
+        + (it ? `<button type="button" class="mm-btn-primary dash-editbtn" data-db-editmode title="パネルを足す・動かす・大きさを変える・組む">編集</button>` : "")
+        + (DS.layout ? commonHtml() : "");
       paintSlicer();
       return;
     }

@@ -212,7 +212,9 @@
   /** 左（か右）の目盛りと横の補助線（0〜max を 4 等分） */
   function axisY(x0, y0, h, max, right, W, color = MUTED, fmtv = nf, lo = 0) {
     // 目盛りの字が重ならない数だけ（低いグラフ＝ダッシュボードの小さなパネルは 3 つか 2 つ）。lo … 縦軸の下の端（書式の ymin。既定 0）
-    return (h >= 110 ? [0, 0.25, 0.5, 0.75, 1] : h >= 54 ? [0, 0.5, 1] : [0, 1]).map((f) => { const y = y0 + h * (1 - f); return `${right || F.grid === false ? "" : `<line x1="${x0}" x2="${W - 56}" y1="${y}" y2="${y}" class="pv-grid"/>`}<text x="${right ? W - 50 : x0 - 6}" y="${y + 4}" text-anchor="${right ? "start" : "end"}" fill="${color}" class="pv-ax">${esc(fmtv(lo + (max - lo) * f))}</text>`; }).join("");
+    // 最大が 4 までの整数なら目盛りは整数だけ（§9.628。前は 0・0.5・1・1.5・2 で、本数に 0.5 本の目盛りがあった）
+    const whole = lo === 0 && Number.isInteger(max) && max >= 1 && max <= 4 && h >= 54;
+    return (whole ? Array.from({ length: max + 1 }, (_, i) => i / max) : h >= 110 ? [0, 0.25, 0.5, 0.75, 1] : h >= 54 ? [0, 0.5, 1] : [0, 1]).map((f) => { const y = y0 + h * (1 - f); return `${right || F.grid === false ? "" : `<line x1="${x0}" x2="${W - 56}" y1="${y}" y2="${y}" class="pv-grid"/>`}<text x="${right ? W - 50 : x0 - 6}" y="${y + 4}" text-anchor="${right ? "start" : "end"}" fill="${color}" class="pv-ax">${esc(fmtv(lo + (max - lo) * f))}</text>`; }).join("");
   }
   /** 範囲の目盛り（niceRange）と補助線。y は値 → 縦の位置 */
   const axisRange = (r, x0, x1, y) => r.ticks.filter((t, i, a) => a.length < 3 || Math.abs(y(a[0]) - y(a[a.length - 1])) / (a.length - 1) >= 16 || i % 2 === 0).map((t) => `${F.grid === false ? "" : `<line x1="${x0}" x2="${x1}" y1="${y(t)}" y2="${y(t)}" class="pv-grid"/>`}<text x="${x0 - 6}" y="${y(t) + 4}" text-anchor="end" class="pv-ax">${esc(nf(t))}</text>`).join("");
@@ -238,9 +240,9 @@
     const xd = F.xdate || "";
     if (part === "date" && /^\d{4}-\d{2}-\d{2}$/.test(k)) {
       const m = +k.slice(5, 7), dd = +k.slice(8, 10), w = "日月火水木金土"[new Date(k + "T00:00:00").getDay()];
-      return { mdw: `${m}/${dd}(${w})`, d: `${dd}`, dw: `${dd}(${w})`, ymd: `${k.slice(0, 4)}/${m}/${dd}`, w, ym: `${k.slice(2, 4)}/${k.slice(5, 7)}` }[xd] || `${m}/${dd}`;
+      return { mdw: `${m}/${dd}(${w})`, d: `${dd}`, dw: `${dd}(${w})`, ymd: `${k.slice(0, 4)}/${m}/${dd}`, w, ym: `${k.slice(0, 4)}/${k.slice(5, 7)}` }[xd] || `${m}/${dd}`;
     }
-    if (part === "ym" && /^\d{4}-\d{2}$/.test(k)) return xd === "ymd" ? `${k.slice(0, 4)}/${k.slice(5, 7)}` : ["md", "mdw", "d", "dw", "w"].includes(xd) ? `${+k.slice(5, 7)}月` : `${k.slice(2, 4)}/${k.slice(5, 7)}`;
+    if (part === "ym" && /^\d{4}-\d{2}$/.test(k)) return xd === "ymd" ? `${k.slice(0, 4)}/${k.slice(5, 7)}` : ["md", "mdw", "d", "dw", "w"].includes(xd) ? `${+k.slice(5, 7)}月` : `${k.slice(0, 4)}/${k.slice(5, 7)}`;   // 年は 4 桁（「26/10」は 10 月 26 日に読めた・§9.628）
     return k;
   }
   /** 横の目盛り。時の段（日付・年月）は間も空けて並べる（無い日は値なし）。そうでなければ表の並びのまま（cat）。L は横に並べる段 */
@@ -254,6 +256,12 @@
     const part = x.column === "@workday" ? ({ ym: "ym", year: "year" }[x.part] || "date") : x.part;
     const keys = [...new Set(data.map((r) => r.path[L]).filter(Boolean))].sort();
     if (!keys.length) return { ticks: [], at: () => -1, part };
+    // 期間が横の段と同じ列なら、軸は期間の始まり〜終わり（§9.628。前は数のある日・月の間だけで、「直近 365 日」の月ごとが 1 本の棒だった）
+    const r0 = ((d.period || {}).ranges || [])[0], cut = part === "date" ? 10 : part === "ym" ? 7 : 0;
+    if (cut && r0 && r0.from && r0.to && d.period.column === x.column) {
+      const ends = [String(r0.from).slice(0, cut), String(r0.to).slice(0, cut)].filter((k) => /^\d{4}-\d{2}/.test(k));
+      keys.splice(0, keys.length, ...[...new Set(keys.concat(ends))].sort());
+    }
     let ticks = keys;
     if (part === "date" && /^\d{4}-\d{2}-\d{2}$/.test(keys[0])) {
       ticks = daysBetween(keys[0], keys[keys.length - 1], 2000);
