@@ -138,8 +138,12 @@ rec('create() は渡された名前・絵を保存値で上書きしない（作
     and "rename_from(saved('shortcut_name'),name)" in src,
     '保存値を読むのは片付けの1回だけ' if src.count('saved(') == 1 else f'saved() が{src.count("saved(")}回')
 # 状態は保存した名前で見る（既定名に倒れると「まだ作っていません」と言う）。
-rec('status() は名前を渡されなければ保存値を使う',
-    "saved('shortcut_name')" in inspect.getsource(desktop_shortcut.status))
+rec('status() は名前を渡されなければ保存値（決めた名前）を使う',
+    "chosen_name()" in inspect.getsource(desktop_shortcut.status)
+    and "saved('shortcut_name')" in inspect.getsource(desktop_shortcut.chosen_name))
+# ---- 既定の名前はアプリの名前「WaveLog」（§9.627、利用者の指示「ショートカットを作成時にアプリ名「WaveLog」となるように」） ----
+rec('既定の名前は「WaveLog」', desktop_shortcut.DEFAULT_NAME == 'WaveLog', desktop_shortcut.DEFAULT_NAME)
+rec('前の既定の名前を覚えている（控えの読み替えに使う）', '測定伝送システム' in desktop_shortcut.LEGACY_DEFAULT_NAMES)
 
 # ---- 6) 作ったときの名前と絵は「作った側」が残す（§9.445、利用者の指示） ----
 # 盤はヘッダーの「表示」へ移した（どのモードからも開ける）。共通設定の画面は
@@ -440,6 +444,32 @@ try:
     rec('別の名前で作ったあと、名前の控えが空でも聞かない', _scene(6, '', ['WaveLog 測定']) is False)
     rec('同じ名前の別の物だけなら聞き、作る先は空いている名前', _scene(7, '', other=[DN]) is True
         and desktop_shortcut.status()['createAt'].endswith(f'{DN}（2）.lnk'), desktop_shortcut.status().get('createAt'))
+    # 前の既定の名前で作った端末（§9.627）: 控えは「決めていない」と読み、欄は空（既定が薄字）・作成済みは行き先で見つける。
+    # 作り直すと「WaveLog」で作り、前の名前のほうは片付ける（同じ物を2つ残さない）。
+    for old in ('測定伝送システム', '測定伝送システム（2）'):
+        rec(f'前の既定の名前「{old}」で作った控えは決めた名前と読まない（作成済みは行き先で見つける）',
+            _scene(8 if old.endswith('ム') else 9, old, [old]) is False and desktop_shortcut.status()['savedName'] == ''
+            and desktop_shortcut.status()['exists'] is True, str(desktop_shortcut.status().get('savedName')))
+    rec('利用者が決めた名前はそのまま（前の既定の名前を含む別の名前も）',
+        _scene(10, '測定伝送システム A', ['測定伝送システム A']) is False
+        and desktop_shortcut.status()['savedName'] == '測定伝送システム A')
+    _keep3 = {k: getattr(desktop_shortcut, k) for k in ('_lnk', '_icon_spec', 'remember')}
+    try:
+        def _fake_lnk(req):
+            Path(req['path']).write_text(req['target'])
+            return {'ok': True}
+        desktop_shortcut._lnk = _fake_lnk
+        desktop_shortcut._icon_spec = lambda icon: ('', '既定', '')
+        desktop_shortcut.remember = lambda *a, **k: None
+        _scene(11, '測定伝送システム', ['測定伝送システム'])
+        made = desktop_shortcut.create('')
+        d11 = _t / 'd11'
+        rec('前の既定の名前で作った端末で作り直すと「WaveLog」になり、前の名前のほうは片付ける',
+            made.get('ok') is True and (d11 / 'WaveLog.lnk').exists() and not (d11 / '測定伝送システム.lnk').exists()
+            and made.get('renamedFrom') == '測定伝送システム', str(sorted(x.name for x in d11.iterdir())) + str(made.get('renamedFrom')))
+    finally:
+        for k, v in _keep3.items():
+            setattr(desktop_shortcut, k, v)
 finally:
     for k, v in _keep2.items():
         setattr(desktop_shortcut, k, v)

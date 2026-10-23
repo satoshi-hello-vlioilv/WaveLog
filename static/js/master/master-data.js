@@ -2144,7 +2144,7 @@
     const okGo=await confirmModal({title:'同じ名前のショートカットがあります',
       message:`デスクトップの「${shown}」は、このアプリが作ったものではありません。\n`
         +`いまの行き先: ${e.linkTarget||'不明'}\n\n`
-        +'上書きすると、そのショートカットは測定伝送システムの起動用に書き換わります。よろしいですか？',
+        +'上書きすると、そのショートカットはWaveLogの起動用に書き換わります。よろしいですか？',
       confirmLabel:'上書きする',danger:true});
     if(!okGo){showToast('上書きをやめました','デスクトップのショートカットはそのままです',3600);return}
     r=await send(true);

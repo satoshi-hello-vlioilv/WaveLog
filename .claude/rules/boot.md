@@ -1,4 +1,4 @@
-# 起動・停止・監視（81件）
+# 起動・停止・監視（82件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -28,6 +28,7 @@
 | 新しい PC には共有の**配る入口**（`<置き場>\WaveLog.exe`）のアドレスだけ渡す。入口と渡す設定（`install.json`）は配る版を決めたときに置く | `test_appupdate.py`・`test_appupdateui.js` | [§9.559](../../docs/decisions/9.559.md) |
 | 共有の入口から起こされたら手元の写しへ渡し、アプリが無ければ`%USERPROFILE%\WaveLog`へ配る版を写す（`install::run()`＝更新と同じ道） | `test_appupdate.py` | [§9.559](../../docs/decisions/9.559.md) |
 | 渡す設定は窓が`config/install.json`へ写す（`local.json`は書かない）。マスタの置き場は`paths.setting()`の1か所 | `test_appupdate.py` | [§9.568](../../docs/decisions/9.568.md) |
+| 起動アイコンの既定の名前は「WaveLog」。前の既定の名前の控えは決めた名前と読まない（`chosen_name()`の1箇所） | `test_shortcut.py` | [§9.627](../../docs/decisions/9.627.md) |
 | 起動アイコンが無ければ作るか聞く。答えは`desktop_shortcut.offer()`の1箇所。在るかは**行き先**で見る（名前で見ない・みんなのデスクトップも） | `test_shortcut.py` | [§9.559](../../docs/decisions/9.559.md)・[§9.568](../../docs/decisions/9.568.md) |
 | 外した入口（Start.vbs・update.bat・setup_app.py）は`RETIRED_DESKTOP`。`.git`のある作業ツリーは触らない | `test_faststart.py` | [§9.559](../../docs/decisions/9.559.md) |
 | 更新の置き場と配る版は`app_update.py`、各PCをそろえるのは窓の`update::check_and_apply()`の1箇所 | `test_appupdate.py` | [§9.555](../../docs/decisions/9.555.md) |

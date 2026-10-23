@@ -30,6 +30,7 @@
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -40,9 +41,12 @@ from . import desktop_shell
 from .paths import APP_ROOT, PROGRAM_DIR, runtime_dir
 from .quiet import quiet
 
-# ショートカットの既定の名前。**画面で名乗っている名前**にそろえる
-# （デスクトップに「WaveLog」とだけ出ても、現場は何のアイコンか分からない）。
-DEFAULT_NAME='測定伝送システム'
+# ショートカットの既定の名前。**アプリの名前（入口の exe・窓が名乗る名前）**の「WaveLog」にそろえる
+# （§9.627、利用者の指示「ショートカットを作成時にアプリ名「WaveLog」となるように」）。
+DEFAULT_NAME='WaveLog'
+# 前の既定の名前（§9.410〜§9.626）。名前を決めずに作った控えはこの名前で残っているので、**決めた名前とは読まない**
+# （`chosen_name()`）——読むと作り直しても前の名前のまま。作り直せば前の名前のほうは片付ける（`rename_from()`）。
+LEGACY_DEFAULT_NAMES=('測定伝送システム',)
 # 前の行き先（§9.405〜§9.553）。**自分が作ったもの**の見分けと、付け替え（`migrate()`）にだけ使う。
 LEGACY_TARGET_NAME='Start.vbs'
 # 入口へ program フォルダを渡す引数（`desktop/src/locate.rs`の`PROGRAM_ARG`と同じ字）。
@@ -51,7 +55,7 @@ PROGRAM_ARG='--program'
 ICON_SUFFIXES=('.ico','.exe','.dll')
 # 窓（exe）の副コマンド（`desktop/src/lnk.rs`の`ARG`と同じ字）。
 LNK_ARG='--lnk'
-DESCRIPTION='測定伝送システム（WaveLog）を起動します'
+DESCRIPTION='WaveLog（測定伝送システム）を起動します'
 
 
 def target_path():
@@ -323,6 +327,15 @@ def saved(key):
   return ''
 
 
+def chosen_name():
+ """利用者が**決めた**名前（§9.627）。残した名前が前の既定の名前（その「（2）」…も）なら、決めていないものとして空を返す
+    ——名前を決めずに作った控えは既定の名前で残るので、既定を改めても欄と作り直しが前の名前を使い続けた。"""
+ name=saved('shortcut_name')
+ for old in LEGACY_DEFAULT_NAMES:
+  if name==old or re.fullmatch(re.escape(old)+r'（\d+）',name):return ''
+ return name
+
+
 def status(name=None):
  """いまの状態。**画面はこの答えをそのまま出す**（判定を2箇所に持たない）。
 
@@ -330,7 +343,7 @@ def status(name=None):
     「作成済みか」は名前から決まるファイルが在るかで見るので、ここが既定名に
     倒れると、別の名前で作ったショートカットを「まだ作っていません」と言う。"""
  ok,why=supported()
- if not str(name or '').strip():name=saved('shortcut_name')
+ if not str(name or '').strip():name=chosen_name()
  link=None
  try:link=link_path(name)
  except Exception as _e:quiet('デスクトップの場所を決められない',_e)
@@ -341,7 +354,7 @@ def status(name=None):
       # **残してある名前そのもの**（§9.445）。`name`は「空なら既定へ倒した
       # 結果」なので、欄へ出すと**決めていない名前を決めたように見える**。
       # 欄が出すのはこちら（空欄なら既定の名前が薄い字で出る）。
-      'savedName':saved('shortcut_name'),
+      'savedName':chosen_name(),
       'desktop':str(desktop_dir()) if ok else '',
       'link':str(link) if link else '',
       'target':str(target_path()),
@@ -490,7 +503,8 @@ def migrate():
  name=saved('shortcut_name')
  link=link_path(name)
  if not link.exists() or not _same_path(link_target(link),legacy_target()):return ''
- out=create(name,saved('shortcut_icon'),overwrite=True)
+ # 前の既定の名前のままなら、いまの既定の名前で作り直す（前の名前のほうは`create()`が片付ける・§9.627）
+ out=create(chosen_name(),saved('shortcut_icon'),overwrite=True)
  if not out.get('ok'):
   quiet('起動アイコンを入口へ付け替えられない（前の Start.vbs のまま動く）',out.get('error'))
   return ''
