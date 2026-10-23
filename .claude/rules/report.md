@@ -1,4 +1,4 @@
-# 帳票と紙（103件）
+# 帳票と紙（104件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 紙の字送りは画素にそろえない（紙の根に`text-rendering:geometricPrecision`） | `test_rpmetric.js` | [§9.625](../../docs/decisions/9.625.md) |
 | 紙は描いたあとも中身の器の大きさを見張り、変わったら測り直す（`rpWatchFit()`・道は描いた直後と同じ） | `test_rprefit.js` | [§9.624](../../docs/decisions/9.624.md) |
 | 帳票は同じ記録IDの新しい版で描く（`WL.records.latestRecordById()`の1箇所・測定画面と同じ）。手元の古い版を描かない | `test_rpfresh.js` | [§9.623](../../docs/decisions/9.623.md) |
 | 紙の根（`.rp-page`・`.os-page`・`.sp-page`）でトークンの塊をもう一度当てる（表示サイズを紙へ漏らさない） | `test_rppaper.js` | [§9.622](../../docs/decisions/9.622.md) |

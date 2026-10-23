@@ -40,9 +40,14 @@ const SIDE_EFFECT_TABLES=['選択履歴マスタ'];
 async function getMode(){
  return fetch(B+'/api/access-mode').then(r=>r.json()).then(j=>String(j.mode||'')).catch(()=>'');
 }
-async function run(title,body,opts={}){
+/* ブラウザを起こすのはここ1箇所（§9.347）。`env`は起こすブラウザの環境へ重ねる（§9.625: 字の描き方の設定を変えた
+   2つ目のブラウザ＝fontconfig を差し替えて比べる網）。閉じるのは呼んだ側。 */
+async function launchBrowser(env={}){
  const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
  const exe=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+ return chromium.launch({executablePath:exe,env:{...process.env,LC_CTYPE:process.env.LC_CTYPE||'C.UTF-8',...env}});
+}
+async function run(title,body,opts={}){
  const R=[],errs=[],native=[];
  const rec=(n,ok,d)=>{R.push({n,ok:!!ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
@@ -56,7 +61,7 @@ async function run(title,body,opts={}){
   sideSnap=await masterSnapshot(SIDE_EFFECT_TABLES).catch(()=>null);
   /* ファイル名の文字コードは UTF-8（§9.551）。この網の環境は POSIX（UTF-8 でない）なので、Chromium は日本語の
      保存の名前（a.download）を使えず「download」へ倒す——現場の Windows では日本語のまま保存される。 */
-  b=await chromium.launch({executablePath:exe,env:{...process.env,LC_CTYPE:process.env.LC_CTYPE||'C.UTF-8'}});
+  b=await launchBrowser();
   /* 文脈を1つ作る。`init` は最初の航行より前に走らせる小さな仕込み
      （localStorage へ使用設備を入れる等。test_listcache が使う）。 */
   const ctx=await b.newContext({viewport:opts.viewport||{width:1700,height:1000}});
@@ -199,4 +204,4 @@ async function restoreLayout(target,l,userId='test'){
  await fetch(B+'/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(body)}).catch(()=>{});
 }
-module.exports={run,B,resetTerminal,clearLayout,clearRecords,seedRecord,masterRows,masterSnapshot,dropNewMasterRows,snapLayout,restoreLayout};
+module.exports={run,launchBrowser,B,resetTerminal,clearLayout,clearRecords,seedRecord,masterRows,masterSnapshot,dropNewMasterRows,snapLayout,restoreLayout};
