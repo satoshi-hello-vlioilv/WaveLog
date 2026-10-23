@@ -19,7 +19,7 @@ from . import aggregate, equip_groups, layout, pivot, sources
 CACHE_MAX = 96
 BOX_VISUALS = ('box', 'violin', 'xbar')
 EQUIP_DIM = {'column': pivot.EQUIP_DIM, 'part': ''}
-ROLE_NAME = {'target': '目標', 'actual': '実績', '': ''}
+ROLE_NAME = {'target': '目標', 'actual': '実績', 'base': '基準', '': ''}
 _DAY = re.compile(r'\d{4}(-\d{2}){0,2}')
 
 # 画面は全部のパネルを一度に問い合わせる。重い集計を同時に走らせると取り合って、順に数えるより遅い
@@ -101,6 +101,11 @@ def _count(p, parts, ctx, egroups, sets):
   return {'error': str(e), 'kind': 'error', 'status': 503}
 
 
+def units(ms):
+ """値に単位を添える（分の値は unit: min。画面が端末の時間の書き方で書く）"""
+ return [{**m, 'unit': 'min'} if sources.minutes_of(m) else m for m in ms or []]
+
+
 def answer(p, ctx):
  """1つの組みの数 → 答え（集計表と同じ形に、元の名前・読めなかった設備）。数えられなければ {error, kind, status}"""
  try:
@@ -119,6 +124,7 @@ def answer(p, ctx):
  note = ('設備のまとめのマスタ「' + p['egroup']['set'] + '」にグループがありません（マスタ管理の「設備グループ」）。'
          if p.get('egroup') and p['egroup']['mode'] == 'master' and not egroups else '')
  out = {**with_eorder(hit, p), 'sourceName': name, 'failed': failed, 'now': stamp}
+ out['measures'] = units(out.get('measures'))
  if note:
   out['note'] = ' '.join(x for x in (hit.get('note'), note) if x)
  return out
@@ -233,7 +239,8 @@ def _link_cells(link, answers, keys, order):
    grand.append(run if order else None)
   else:
    grand.append(next((c['v'][0] for c in answers[i].get('cells') or [] if not c['r'] and not c['c']), None))
- ti = next((i for i, x in enumerate(sides) if x['role'] == 'target'), -1)
+ # 差・達成率の相手は目標、無ければ基準（全設備の平均など。§9.628 自設備の「全設備との差」）
+ ti = next((i for i, x in enumerate(sides) if x['role'] == 'target'), next((i for i, x in enumerate(sides) if x['role'] == 'base'), -1))
  ai = next((i for i, x in enumerate(sides) if x['role'] == 'actual'), -1)
  extra = [e for e in link.get('extra') or [] if ti >= 0 and ai >= 0]
 
@@ -264,7 +271,11 @@ def link_answer(p, ctx):
   base = x['title'] or f"{answers[i].get('sourceName') or ''}の{aggregate_name(x['measure'], x['source'])}"
   names.append(f"{ROLE_NAME[x['role']]}：{base}" if x['role'] else base)
  ms = [{**x['measure'], 'name': names[i] + ('（積み上げ）' if x['build'] == 'cum' else ''), 'role': x['role'], 'side': i} for i, x in enumerate(sides)]
- ms += [{'agg': 'sum', 'name': '差（実績−目標）' if e == 'diff' else '達成率（実績÷目標 %）', 'role': e} for e in extra]
+ ref = ROLE_NAME['target' if any(x['role'] == 'target' for x in sides) else 'base']
+ ms = units(ms)
+ mins = all(m.get('unit') == 'min' for m in ms)           # 分どうしの差も分
+ ms += [{'agg': 'sum', 'name': f'差（実績−{ref}）' if e == 'diff' else f'達成率（実績÷{ref} %）', 'role': e,
+         **({'unit': 'min'} if e == 'diff' and mins else {})} for e in extra]
  ok = [a for a in answers if 'cells' in a]
  note = '　'.join(f"{names[i]}: {a['error']}" for i, a in enumerate(answers) if 'cells' not in a)
  return {'table': '', 'count': sum(a.get('count') or 0 for a in ok), 'lotsBy': '', 'start': '', 'bins': [], 'stats': {}, 'box': '', 'boxes': [],

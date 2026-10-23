@@ -520,6 +520,10 @@ RULES = [
     # --- サーバー(ルート) --------------------------------------------
     # §9.628 ダッシュボード: 集計（パネルの答え）・計算列（画面の式と同じ答え）・画面
     ('backend/dashboard/', g('test_dashpivot', 'test_formulaparity', 'test_dashapi', 'test_dashboard')),
+    # §9.628: ダッシュボードの画面（LotScope の移植）。前の画面を読んでいた網（自設備・稼働状況・見出し・待ち）も一緒に回す
+    ('static/js/dash/', g('見た目', 'test_dashboard', 'test_dbequip', 'test_uiux', 'test_uisize', 'test_headbar', 'test_flows',
+                          'test_waiting', 'test_nav', 'test_loadorder', 'test_eslint', 'test_tscheck', 'test_funclen')),
+    ('static/css/63-dashboard.css', g('見た目', 'test_dashboard', 'test_csslint')),
     ('backend/routes/masters/dashboard.py', g('test_dashapi', 'test_modeguard', 'test_mastershare', 'test_routesplit')),
     ('backend/repositories/dashboard_repo.py', g('test_dashapi')),
     ('backend/filter_sql.py', g('一覧', 'test_dashpivot', 'test_filtersaved', 'test_listtools')),

@@ -100,9 +100,9 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar button{height:var(--bar-h);padding:0 var(--bar-px);font-size:var(--bar-fs);border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;
   color:var(--ink-2);font-weight:var(--fw-ui);cursor:pointer}
 .hd-viewbar button:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-ink)}
-.hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle,.hd-viewbar .sc-board-window,.hd-viewbar .ac-presets,.hd-viewbar .lg-steps{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
-.hd-viewbar .db-viewtabs button{height:calc(var(--bar-h) - 4px);border-color:transparent;background:transparent}
-/* 作業スケジュールの切り替え（段・24／48時間）は**ダッシュボードの切り替えと同じ1つの部品**（§9.506）——
+.hd-viewbar .sc-mode-toggle,.hd-viewbar .sc-board-window,.hd-viewbar .ac-presets,.hd-viewbar .lg-steps{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+
+/* 作業スケジュールの切り替え（段・24／48時間）は**実績カレンダーの切り替え（.db-seg）と同じ1つの部品**（§9.506）——
    縁取りは持たず**地の色**でまとまりを言い、中の札（`--ctl-h-sm` − 4px＝26px＝`--ctl-h-xs`）＋余白2px×2で
    外側が帯の押す物と同じ30px。前は縁取り1pxのぶん外側32px、24／48時間だけ別の顔で28px。
    中の札を 30−6＝24px にして縁取りを残す案は、24px が寸法の刻み（19/26/30/36/40）に無いので採らない。 */
@@ -133,18 +133,13 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar .rp-btn-icon{width:var(--bar-h);padding:0;font-size:var(--fs-title);line-height:1}
 .hd-viewbar .db-seg{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
 .hd-viewbar .db-seg button{height:calc(var(--bar-h) - 4px);border-color:transparent;background:transparent}
-.hd-viewbar .db-seg button:hover:not(.active),
-.hd-viewbar .db-viewtabs button:hover:not(.active),
-.hd-viewbar .sc-mode-toggle-btn:hover:not(.active),
-.hd-viewbar .sc-board-window-btn:hover:not(.active),
-.hd-viewbar .lg-step:hover:not(.active),
-.hd-viewbar .ac-chip:hover:not(.is-on){background:#fff;border-color:var(--teal);color:var(--teal-ink)}
+.hd-viewbar .db-seg button:hover:not(.active),.hd-viewbar .sc-mode-toggle-btn:hover:not(.active),.hd-viewbar .sc-board-window-btn:hover:not(.active),.hd-viewbar .lg-step:hover:not(.active),.hd-viewbar .ac-chip:hover:not(.is-on){background:#fff;border-color:var(--teal);color:var(--teal-ink)}
 /* マスタ管理: 更新者IDだけを残す(説明はヘッダーの副題、閉じるは左メニュー)。 */
 .hd-viewbar .mm-head-user{display:inline-flex;align-items:center;gap:var(--space-2);margin:0;
   color:var(--muted);font-size:var(--bar-fs);font-weight:var(--fw-ui);white-space:nowrap}
 .hd-viewbar .mm-head-user input{min-width:calc(180px * var(--ui-scale));font-weight:var(--fw-strong)}
 /* パネル側に残った見出しバーの枠は、中身をヘッダーへ移したぶん詰める。 */
-.sc-panel .sc-head:empty,.db-panel .rp-head-actions:empty,
+.sc-panel .sc-head:empty,
 .cal-panel .cal-toolbar:empty,.mm-panel .mm-head:empty{display:none}
 
 /* 押すと選択肢が出るボタンの目印(再読込)。モードバッジ・表示サイズと

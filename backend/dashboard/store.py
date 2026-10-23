@@ -88,8 +88,8 @@ def layouts(c, who):
   if x['body'].get('replaces'):
    x['replaces'] = f"b:{x['body']['replaces']}"
  names = {b['key']: b['name'] for b in layout.BUILTIN_LAYOUTS}
- # ★標準が無ければ組み込みの「標準」（入れ替えた物ならその行）。それも外していれば並びの先頭
- first = next((x['id'] for x in items if 'b:standard' in (x['id'], x.get('replaces'))), items[0]['id'] if items else None)
+ # ★標準が無ければ既定の組み込み（稼働状況・入れ替えた物ならその行）。それも外していれば並びの先頭
+ first = next((x['id'] for x in items if layout.BUILTIN_DEFAULT in (x['id'], x.get('replaces'))), items[0]['id'] if items else None)
  return {'items': items, 'login': who.login, 'canEditCommon': who.common, 'canEditDefault': who.default,
          'standardId': std.get('id') if std else first,
          'cols': layout.GRID_COLS, 'rowsRange': [layout.ROWS_MIN, layout.ROWS_MAX],

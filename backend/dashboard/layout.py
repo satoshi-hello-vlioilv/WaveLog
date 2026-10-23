@@ -435,10 +435,10 @@ def split_of(p):
 # 利用者の要望（2026-10）: 45度線管理図などの 2 つのデータが要る形は、1 つのデータの中の 2 つの値ではなく、別のデータ（例: 計画のデータ元と作業実績）
 # から取る。どの段で軸を合わせるか・合わせた後にそのまま出すか積み上げる（累計）か・どちらが目標でどちらが実績かを、データ（側）ごとに決める。
 #   link: {sides: [side（2〜4）], extra: [diff（実績−目標）・rate（実績÷目標 %）]}
-#   side: {title, role: target（目標）・actual（実績）・""（比べる）, build: as（そのまま）・cum（積み上げ）, key: 段（軸。日付の列・作業日・設備など）,
+#   side: {title, role: target（目標）・actual（実績）・base（基準＝比べる相手。全設備の平均など・§9.628）・""（比べる）, build: as（そのまま）・cum（積み上げ）, key: 段（軸。日付の列・作業日・設備など）,
 #          measure: 値 1 つ, source・equip・equips・filters・search・period・basis・calc（ふつうのパネルと同じ）}
 # 軸の値は、日（作業日の日・日付の列の年月日）・年月・年・設備名・字の値で、データが違っても同じ値なら同じ行にそろう（routes の _link_key）
-LINK_ROLES = ("target", "actual", "")
+LINK_ROLES = ("target", "actual", "base", "")
 LINK_BUILDS = ("as", "cum")
 LINK_EXTRAS = ("diff", "rate")
 MAX_SIDES = 4
@@ -831,6 +831,12 @@ def _days(n):
     return {"column": "@workday", "kind": "days", "n": n}
 
 
+def _side(role, title, equips):
+    """自設備の比べるデータ 1 つ（直近 30 日の完了の平均作業時間）"""
+    return {"title": title, "role": role, "build": "as", "source": "rec", "equips": list(equips), "filters": [DONE], "search": "",
+            "period": _days(30), "basis": "work", "key": {"column": "状態", "part": ""}, "measure": {"agg": "avg", "column": WORK_TIME}}
+
+
 def _status_board():
     """稼働状況の表（前の画面の「設備の稼働状況」）: 設備ごとの予定・作業中・完了の件数、残りの見込、遅れのいちばん長い作業"""
     def g(title, measure, look, filters=(), cols=(), **kw):
@@ -838,22 +844,16 @@ def _status_board():
                 "measure": measure, "cols": list(cols), "look": look, "total": True, "zero": False, "color": "", **kw}
     return {"rows": {"column": "@equip", "part": ""},
             "groups": [g("予定の件数", {"agg": "count"}, "stack", cols=[{"column": "状態", "part": ""}]),
-                       g("残りの見込（分）", {"agg": "sum", "column": "見積（分）"}, "bar", [_f("状態", "eq", "予定")]),
-                       g("遅れ（分）", {"agg": "max", "column": "遅れ（分）"}, "signal", limits={"warn": 1, "alert": 60, "dir": "high"})],
+                       g("残りの見込", {"agg": "sum", "column": "見積（分）"}, "bar", [_f("状態", "eq", "予定")]),
+                       g("遅れ", {"agg": "max", "column": "遅れ（分）"}, "signal", limits={"warn": 1, "alert": 60, "dir": "high"})],
             "order": {"by": "value", "group": 2, "dir": "desc", "list": [], "hide": []}}
 
 
+# ★標準が無いときに開く組み込み（前の画面と同じく稼働状況から・§9.64）
+BUILTIN_DEFAULT = "b:status"
+
 BUILTIN_LAYOUTS = [
-    # 最初の画面: いまの仕掛と前日の実績をスクロールせずに見る（LotScope の標準と同じ並び）
-    {"key": "standard", "name": "標準", "body": {"rows": 8, "panels": [
-        _pv("wipTotal", 0, 0, 4, 1, "仕掛ロット数", "kpi", "role:仕掛", emph=True),
-        _pv("workTotal", 4, 0, 4, 1, "前日の完了（本）", "kpi", "rec", period=YESTERDAY, filters=[DONE]),
-        _pv("workMonth", 8, 0, 4, 1, "今月の完了（本）", "kpi", "rec", period={"column": "@workday", "kind": "this_month"}, filters=[DONE]),
-        _pv("wipPurpose", 0, 1, 5, 4, "用途名ごとの仕掛ロット数", "bar", "role:仕掛", rows=[{"column": "用途名"}], sort="desc", top=15),
-        _pv("workDays", 0, 5, 5, 3, "直近 14 日の完了（本）", "time", "rec", rows=[{"column": "@workday"}], period=_days(14), filters=[DONE]),
-        {"id": "board", "x": 5, "y": 1, "w": 7, "h": 7, "title": "設備ごとの仕掛と前日の実績", "visual": "board", **board_default()},
-    ]}},
-    # 前の「稼働状況」: 作業予定と進み具合（予定・作業中・遅れ）と、きょうの作業の棒（ガント）
+    # 最初の画面（BUILTIN_DEFAULT）。前の「稼働状況」（§9.64 で既定にした）: 作業予定と進み具合（予定・作業中・遅れ）と、きょうの作業の棒（ガント）
     {"key": "status", "name": "稼働状況", "body": {"rows": 8, "panels": [
         _pv("running", 0, 0, 3, 1, "稼働中の設備", "kpi", "plan", measures=[{"agg": "distinct", "column": "設備名"}], filters=[_f("状態", "eq", "着手")], emph=True),
         _pv("pending", 3, 0, 3, 1, "残っている予定（件）", "kpi", "plan", measures=[{"agg": "count"}], filters=[_f("状態", "eq", "予定")]),
@@ -863,11 +863,22 @@ BUILTIN_LAYOUTS = [
         _pv("gantt", 6, 1, 6, 7, "きょうの作業（測定データの作業開始〜作業終了）", "gantt", "rec", measures=[{"agg": "count"}],
             period={"column": "@workday", "kind": "today"}),
     ]}},
+    # いまの仕掛と前日・今月の完了をスクロールせずに見る（LotScope の「標準」と同じ並び。名前は中身で言う）
+    {"key": "standard", "name": "仕掛と完了", "body": {"rows": 8, "panels": [
+        _pv("wipTotal", 0, 0, 4, 1, "仕掛ロット数", "kpi", "role:仕掛", emph=True),
+        _pv("workTotal", 4, 0, 4, 1, "前日の完了（本）", "kpi", "rec", period=YESTERDAY, filters=[DONE]),
+        _pv("workMonth", 8, 0, 4, 1, "今月の完了（本）", "kpi", "rec", period={"column": "@workday", "kind": "this_month"}, filters=[DONE]),
+        _pv("wipPurpose", 0, 1, 5, 4, "用途名ごとの仕掛ロット数", "bar", "role:仕掛", rows=[{"column": "用途名"}], sort="desc", top=15),
+        _pv("workDays", 0, 5, 5, 3, "直近 14 日の完了（本）", "time", "rec", rows=[{"column": "@workday"}], period=_days(14), filters=[DONE]),
+        {"id": "board", "x": 5, "y": 1, "w": 7, "h": 7, "title": "設備ごとの仕掛と前日の実績", "visual": "board", **board_default()},
+    ]}},
     # 前の「自設備」: この端末の使用設備にしぼった直近 30 日の完了の実績
     {"key": "mine", "name": "自設備", "body": {"rows": 8, "panels": [
         _pv("mineLots", 0, 0, 3, 1, "完了ロット（直近 30 日）", "kpi", "rec", equips=[MINE], period=_days(30), filters=[DONE], emph=True),
-        _pv("mineSum", 3, 0, 3, 1, "合計作業時間（分）", "kpi", "rec", measures=[{"agg": "sum", "column": WORK_TIME}], equips=[MINE], period=_days(30), filters=[DONE]),
-        _pv("mineAvg", 6, 0, 3, 1, "平均作業時間（分）", "kpi", "rec", measures=[{"agg": "avg", "column": WORK_TIME}], equips=[MINE], period=_days(30), filters=[DONE]),
+        _pv("mineSum", 3, 0, 3, 1, "合計作業時間", "kpi", "rec", measures=[{"agg": "sum", "column": WORK_TIME}], equips=[MINE], period=_days(30), filters=[DONE]),
+        # 前の画面の「全設備平均との差（速い・遅い）」: この端末の設備の平均を実績、全設備の平均を基準に合わせ、差を添える
+        _pv("mineAvg", 6, 0, 3, 1, "平均作業時間・全設備との差", "kpi", "rec", measures=[{"agg": "avg", "column": WORK_TIME}],
+            link={"sides": [_side("actual", "この端末の設備", [MINE]), _side("base", "全設備", [])], "extra": ["diff"]}),
         _pv("mineDays", 9, 0, 3, 1, "作業した日", "kpi", "rec", measures=[{"agg": "distinct", "column": "作業日"}], equips=[MINE], period=_days(30), filters=[DONE]),
         _pv("mineKind", 0, 1, 6, 4, "品種ごとの平均作業時間（分）", "bar", "rec", rows=[{"column": "品種"}], measures=[{"agg": "avg", "column": WORK_TIME}],
             equips=[MINE], period=_days(30), filters=[DONE], sort="desc", top=12),

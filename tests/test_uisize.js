@@ -346,14 +346,17 @@ run('test_uisize: 表示サイズ（--ui-scale の3段）', async ({page,rec,B,W
  rec('再読込しても選んだ書き方が残る',(await durOut()).style==='hm');
 
  /* **描かれた字まで見る**（§9.229 ⑥）。`WL.duration`が正しくても、画面が
-    その答えを使っていなければ4-4 ⑰は直っていない。稼働状況は「見込」
-    「経過」「遅れ」を出す、指摘そのものの画面。 */
- await page.click('#openDashboard');
- /* 稼働状況が描かれて、画面ぶんの取得が静まるまで。 */
- await W.until(page,()=>{const e=document.getElementById('dbStatusView');return !!e&&e.innerText.trim().length>0},null,
-   {ms:15000,what:'稼働状況が描かれる'});
+    その答えを使っていなければ4-4 ⑰は直っていない。ダッシュボードの「稼働状況」（§9.628・組み込み）は
+    設備ごとの「残りの見込」「遅れ」（作業予定の分）を出す、指摘そのものの画面。 */
+ await W.nav(page,'#openDashboard');
+ await page.evaluate(()=>WL.dashboard._open('b:status'));
+ const BOARD='#dashGrid .dash-p[data-id="board"] .dash-table';
+ /* 開き直した後の数で見る（全部のパネルが数を出し、表が描かれている）。前に開いていた絵で通さない */
+ await W.until(page,s=>{const e=document.querySelector(s);return !!e&&e.innerText.trim().length>0&&
+   ![...document.querySelectorAll('#dashGrid .dash-p')].some(p=>p.querySelector('.dp-wait'))},BOARD,
+   {ms:20000,what:'稼働状況が描かれる'});
  await idle();
- const statusText=()=>page.$eval('#dbStatusView',e=>e.innerText.replace(/\s+/g,' '));
+ const statusText=()=>page.$eval(BOARD,e=>e.innerText.replace(/\s+/g,' '));
  const hmText=await statusText();
  rec('稼働状況が時間と分で描かれている',/\d+時間/.test(hmText)&&!/\d{3,}分/.test(hmText),
    hmText.slice(0,90));

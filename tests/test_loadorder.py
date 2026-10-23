@@ -111,6 +111,8 @@ AREAS = {
     # 画面（view）の2本で閉じており、他の領域からは `WL.bladeGuide.open()` の
     # 1つだけを呼ぶ。
     'bladeset': '刃組ガイダンス（刃・スペーサー・ゴムリング・フィンガーの組み方）',
+    # ダッシュボード（§9.628・LotScope のグリッドのパネルの移植）。数はサーバー（backend/dashboard/）が数え、画面はパネルを描いて組むだけ。
+    'dash':     'ダッシュボード（グリッドのパネル・組む所・スライサー・セット）',
 }
 flat = sorted(p.name for p in JS_DIR.glob('*.js'))
 rec('static/js の直下に .js を置かない（領域フォルダへ入れる）', not flat, str(flat))

@@ -21,6 +21,7 @@
 import json
 import pathlib
 import sys
+import time
 from datetime import datetime
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -56,8 +57,8 @@ def check_sources():
 def check_list():
     j = client.get('/api/dashboards').get_json() or {}
     ids = [x['id'] for x in j.get('items') or [] if x.get('builtin')]
-    rec('組み込みの4つが並ぶ', ids == ['b:standard', 'b:status', 'b:mine', 'b:analysis'], ids)
-    rec('★が無ければ組み込みの「標準」が開く', j.get('standardId') == 'b:standard', j.get('standardId'))
+    rec('組み込みの4つが並ぶ（稼働状況が先頭）', ids == ['b:status', 'b:standard', 'b:mine', 'b:analysis'], ids)
+    rec('★が無ければ組み込みの「稼働状況」が開く（前の画面と同じ・§9.64）', j.get('standardId') == layout.BUILTIN_DEFAULT == 'b:status', j.get('standardId'))
     return [x for x in j.get('items') or [] if x.get('builtin')]
 
 
@@ -82,13 +83,15 @@ def _as_screen(p, mine):
 
 def check_panels(items):
     """物差し: 組み込みのパネルのうち、数を返したパネルの数（理由つき）。5xx は 0"""
-    total, ok, bad, crash = 0, 0, [], []
+    total, ok, bad, crash, took = 0, 0, [], [], []
     for d in items:
         for p in d['body']['panels']:
             if p.get('visual') == 'slicer':
                 continue
             total += 1
+            t0 = time.perf_counter()
             st, a = query(_as_screen(p, 'テスト設備A'))
+            took.append((time.perf_counter() - t0, f"{d['name']}/{p['title']}"))
             if _answered(st, a):
                 ok += 1
             else:
@@ -97,6 +100,8 @@ def check_panels(items):
             if st >= 500:
                 crash.append(p['title'])
     print(f'  物差し: 組み込みのパネル {ok}/{total} が数を返した')
+    # 物差し: 数え時間（1回目＝写しを作る・答えの控えなし）。遅い順に5つ
+    print('  物差し: 数え時間（遅い順）: ' + ' / '.join(f'{n} {t:.2f}秒' for t, n in sorted(took, reverse=True)[:5]))
     for b in bad:
         print('   - ' + b)
     rec('組み込みのパネルで 5xx は 0', not crash, crash)
@@ -173,8 +178,8 @@ def check_groups():
         client.delete(f'/api/masters/equipgroups/{gid}')
 
 
-def _item(i, status, start, end, minutes, crew):
-    return {'id': f'{TAG}{i}', 'equipment': 'テスト設備A', 'lotNo': f'L{i}', 'status': status, 'workStart': start, 'workEnd': end,
+def _item(i, status, start, end, minutes, crew, equipment='テスト設備A'):
+    return {'id': f'{TAG}{i}', 'equipment': equipment, 'lotNo': f'L{i}', 'status': status, 'workStart': start, 'workEnd': end,
             'durationMin': minutes, 'workDate': start[:10], 'shift': '', 'updatedAt': start, 'updatedAtDb': start,
             'basic': {'purposeName': '用途X'}, 'settings': {'crewSize': crew, 'operator': '検査太郎', 'verticalCount': 2, 'horizontalCount': 3},
             'opData': {}, 'mother': {}, 'product': {}, 'qualityGrades': {}, 'source': {}, 'readable': True}
@@ -185,7 +190,7 @@ def check_rec_values():
     検証用のデータに記録が無いので、実績データリストの読み口（actuals.rows）を差し替える（finally で戻す）"""
     day = datetime.now().strftime('%Y-%m-%d')
     items = [_item(1, '完了', f'{day} 08:00:00', f'{day} 08:30:00', 30.0, '2'), _item(2, '完了', f'{day} 09:00:00', f'{day} 10:00:00', 60.0, '3'),
-             _item(3, '編集中', f'{day} 10:30:00', '', None, '2')]
+             _item(3, '編集中', f'{day} 10:30:00', '', None, '2'), _item(4, '完了', f'{day} 07:00:00', f'{day} 08:30:00', 90.0, '2', 'テスト設備B')]
     keep = sources.actuals.rows
     sources.actuals.rows = lambda *a, **k: items
     answer.forget()
@@ -205,6 +210,14 @@ def check_rec_values():
         eq = (a.get('equips') or [{}])[0]
         rec('ガント: 区間の分かる作業 2本・終わりの無い作業は「いま動いている」か理由つき', st == 200 and eq.get('count') == 3
             and len(eq.get('ops') or []) >= 2, (st, eq.get('count'), len(eq.get('ops') or []), a.get('error')))
+        # 自設備の平均は全設備の平均と比べる（前の画面の「全設備平均との差」）: 自 45分・全 (30+60+90)/3=60分 → 差 −15分
+        mine = next(d for d in layout.BUILTIN_LAYOUTS if d['key'] == 'mine')
+        panel = next(p for p in mine['body']['panels'] if p['id'] == 'mineAvg')
+        st, a = query(_as_screen(panel, 'テスト設備A'))
+        grand = next((c['v'] for c in a.get('cells') or [] if not c['r'] and not c['c']), None)
+        names = [m.get('name') for m in a.get('measures') or []]
+        rec('自設備の平均作業時間に全設備との差を添える（45・60・差 −15）', st == 200 and grand == [45.0, 60.0, -15.0] and '差（実績−基準）' in names,
+            (st, grand, names, a.get('error')))
     finally:
         sources.actuals.rows = keep
         answer.forget()

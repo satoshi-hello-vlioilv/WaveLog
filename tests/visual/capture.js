@@ -125,9 +125,11 @@ const shots=[];
   await page.keyboard.press('Escape').catch(()=>{}); await settle(700);
 
   // ---- ダッシュボード ----
+  // 前の3つの表示は組み込みのダッシュボード（§9.628）。開くのは画面の open と同じ道
   await click('#openDashboard',3200); await shot('30-ダッシュボード-稼働状況');
-  await click('[data-dbview="equipment"]',2400); await shot('31-ダッシュボード-自設備');
-  await click('[data-dbview="pivot"]',2400); await shot('32-ダッシュボード-自由集計');
+  for(const [id,name] of [['b:mine','31-ダッシュボード-自設備'],['b:analysis','32-ダッシュボード-作業時間の分析'],['b:standard','33-ダッシュボード-仕掛と完了']]){
+   await page.evaluate(x=>WL.dashboard._open(x),id); await settle(2400); await shot(name);
+  }
 
   // ---- 実績カレンダー ----
   await click('#openCalendar',2600); await shot('40-実績カレンダー');

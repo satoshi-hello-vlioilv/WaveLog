@@ -286,6 +286,16 @@ def rec_rows():
 
 
 # ---- 作業予定（plan）: 作業スケジュールの予定の行（子ロットは時刻を持たないので数えない）
+# 所要時間（分）の列。数えた値（合計・平均・最大…）も分なので、画面は端末の時間の書き方（WL.duration）で書く（前の稼働状況と同じ・§9.628）
+MINUTE_COLUMNS = frozenset({'作業時間（分）', '見積（分）', '経過（分）', '遅れ（分）'})
+MINUTE_AGGS = frozenset({'sum', 'avg', 'min', 'max', 'median', 'q1', 'q3', 'iqr', 'range', 'sd', 'mode', 'pct'})
+
+
+def minutes_of(m):
+ """値（measure）が所要時間（分）か: 分の列を、分のまま返す集計で数えたとき（件数・割合などの表し方は分でない）"""
+ return m.get('column') in MINUTE_COLUMNS and m.get('agg') in MINUTE_AGGS and not m.get('show')
+
+
 PLAN_CORE = ('設備名', '種類', '状態', 'ロット番号', '検査番号', '鋳造番号', '題名', PLAN_START, '予定終了', '見積（分）',
              '経過（分）', '遅れ（分）', REC_START, '作業終了', '備考')
 
