@@ -423,12 +423,17 @@ body.sc-mode #headerContextSource{display:none}
    （画面表示中は.rp-bulk-print-areaが常時display:noneのため無関係）。
    **箱の作り方は単票と同じ**（§9.242 ⑦）——ここだけ`width:auto`に戻すと、
    1枚ずつ刷ると合うのに一括だけ比率が違う、という分かりにくい形になる。 */
+/* **測るあいだも組む**（§9.626、利用者の報告「『選択した帳票を印刷』だと切れる・右上の印刷だと切れない」）。
+   一括印刷は画面で測ってから帳票だけの書類へ写して刷る（§9.244）。器を見せる規則が`@media print`の中だけだと、
+   測るあいだ器は`display:none`のまま＝大きさ0で測り、中身なりの塊は1行へ潰れ、場所と高さを決めた塊は縮められない。
+   画面では**画面の外で紙と同じ箱に組む**（見えない・押せない）。刷るときだけ流れへ戻して単一プレビューを隠す。 */
+body.rp-bulk-print .rp-bulk-print-area{display:block;position:fixed;left:-10000px;top:0;pointer-events:none}
+body.rp-bulk-print .rp-bulk-print-area .rp-page{width:210mm;min-height:297mm;margin:0;box-shadow:none;padding:8mm;box-sizing:border-box;transform:none;page-break-after:always}
+body.rp-bulk-print .rp-bulk-print-area .rp-page.rp-landscape{width:297mm;min-height:210mm}
+body.rp-bulk-print .rp-bulk-print-area .rp-page:last-child{page-break-after:auto}
 @media print{
  body.rp-bulk-print #reportPanel{display:none}
- body.rp-bulk-print .rp-bulk-print-area{display:block}
- body.rp-bulk-print .rp-bulk-print-area .rp-page{width:210mm;min-height:297mm;margin:0;box-shadow:none;padding:8mm;box-sizing:border-box;transform:none;page-break-after:always}
- body.rp-bulk-print .rp-bulk-print-area .rp-page.rp-landscape{width:297mm;min-height:210mm}
- body.rp-bulk-print .rp-bulk-print-area .rp-page:last-child{page-break-after:auto}
+ body.rp-bulk-print .rp-bulk-print-area{position:static}
 }
 @media print{
   body.df-print>*:not(.df-print-area){display:none}

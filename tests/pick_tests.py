@@ -405,6 +405,8 @@ RULES = [
                                         'test_rprefit',
                                         # §9.625: 紙の字の幅は字の描き方の設定（ヒンティング）で変わらない
                                         'test_rpmetric',
+                                        # §9.626: 一括印刷も測った紙を刷る（印刷用の器を隠したまま測らない）
+                                        'test_rpbulk',
                                         # §9.253: 見本のロットで帳票を見る
                                         'test_rbsample',
                                         'test_collayout', 'test_actuals')),
