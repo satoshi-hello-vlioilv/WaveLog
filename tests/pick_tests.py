@@ -519,7 +519,9 @@ RULES = [
 
     # --- サーバー(ルート) --------------------------------------------
     # §9.628 ダッシュボード: 集計（パネルの答え）・計算列（画面の式と同じ答え）・画面
-    ('backend/dashboard/', g('test_dashpivot', 'test_formulaparity', 'test_dashboard')),
+    ('backend/dashboard/', g('test_dashpivot', 'test_formulaparity', 'test_dashapi', 'test_dashboard')),
+    ('backend/routes/masters/dashboard.py', g('test_dashapi', 'test_modeguard', 'test_mastershare', 'test_routesplit')),
+    ('backend/repositories/dashboard_repo.py', g('test_dashapi')),
     ('backend/filter_sql.py', g('一覧', 'test_dashpivot', 'test_filtersaved', 'test_listtools')),
     ('backend/datetext.py', g('test_dashpivot', 'test_formulaparity')),
     ('tests/lib/dash_fixture.py', g('test_dashpivot')),
