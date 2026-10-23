@@ -4858,9 +4858,26 @@ ${rpEdVisRow(k)}`;
   rpAfterPaint();
  }
 
+ /* ---------- 帳票は同じ記録IDの新しい版で描く（§9.623、利用者の指摘） ----------
+    「測定実績のリストで『完了』のものを帳票で開くと、右上が『完了』のときと『編集中』のときがある」。
+    一覧（データ一覧・測定実績）は手元と共有の新しいほうの状態を見せるが、帳票はこの端末の保存（手元の版）をそのまま
+    描いていた——別の PC が完了した記録の、この端末に残る古い「編集中」の版。答えは`WL.records.latestRecordById()`の
+    1箇所（測定画面を開くときと同じ）。新しい版に替わったら`true`。閲覧・スケジュールモードは共有を読んでいるので要らない。 */
+ async function rpFreshen(id){
+  if(rpIsSample({id})||!(window.accessMode&&window.accessMode.mode==='edit'))return false;
+  const got=await WL.records.latestRecordById(id).catch(e=>{WL.quiet.note('共有の版を確かめられない（この端末の版で描く）',e);return null});
+  if(!got)return false;
+  const i=rpState.items.findIndex(x=>String(x.id)===String(id)),cur=rpState.items[i];
+  if(cur&&String(cur.updatedAt||'')===String(got.updatedAt||'')&&cur.status===got.status)return false;
+  const m=WL.measureView.ensureMeasureShape(got);
+  if(i>=0)rpState.items[i]=m;else rpState.items.unshift(m);
+  return true;
+ }
  function selectLot(id){
   rpState.selectedId=id;renderLotList();
   const x=rpState.items.find(i=>i.id===id);if(!x)return;
+  /* 描いてから共有の版を確かめ、新しければ描き直す（一覧から選ぶたびに待たせない）。 */
+  rpFreshen(id).then(changed=>{if(changed&&rpState.selectedId===id)selectLot(id)});
   /* バーは1層に詰めているため、左の一覧で選択中が分かることを前提に短く出す。 */
   $id('reportSelectedTitle').textContent=[x.basic?.lotNo||x.id,x.basic?.inspectionNo,WL.base.statusLabel(x.status)].filter(Boolean).join(' / ');
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
@@ -5146,6 +5163,8 @@ ${rpEdVisRow(k)}`;
   await openReportView();           // ここで初めてパネル(戻るボタン)が作られる
   updateBackButton();
   syncArrangeButton();
+  /* 一覧と同じ版で描く（§9.623）。描く前に確かめるので、最初の1枚から新しい版。 */
+  if(id)await rpFreshen(id);
   if(id&&!rpState.items.some(x=>String(x.id)===String(id))){
    const rec=await fetchRecordFromBackup(id);
    if(rec){rpState.items=[rec,...rpState.items];renderLotList()}
