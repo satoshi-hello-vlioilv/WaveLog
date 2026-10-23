@@ -362,7 +362,7 @@
         const v = q.v[i] || 0; if (!v) return; const y1 = y(base + v, q), y0 = y(base, q);
         T.g += `<rect x="${x(i) - bw / 2}" y="${y1}" width="${bw}" height="${Math.max(0, y0 - y1)}" fill="${q.color}"><title>${esc(lab(k))}: ${esc(q.name)} ${esc(fmt(v))}（計 ${esc(fmt(tops[i]))}）</title></rect>`;
         // 段が棒ぜんたい（ほかの段が 0）なら、中の数は上の合計と同じ字になるので書かない（§9.628 の採点: 「2」が上と中に並んだ）
-        if (LBL.inside && !(LBL.top && v === tops[i]) && y0 - y1 >= 13 && bw >= lf(v, q.name).length * 6.2 + 2) T.g += `<text x="${x(i)}" y="${(y0 + y1) / 2 + 4}" text-anchor="middle" class="pv-vl pv-in">${esc(lf(v, q.name))}</text>`;
+        if (LBL.inside && !(LBL.top && v === tops[i]) && y0 - y1 >= 13 && bw >= lf(v, q.name).length * 6.2 + 2) T.g += `<text x="${x(i)}" y="${(y0 + y1) / 2 + 4}" text-anchor="middle" class="${inCls(q.color)}">${esc(lf(v, q.name))}</text>`;
         base += v;
       });
     });
@@ -373,7 +373,7 @@
         const top = hi.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v, q).toFixed(1)}`).join("");
         const bot = lo.map((v, i) => `L${x(n - 1 - i).toFixed(1)},${y(lo[n - 1 - i], q).toFixed(1)}`).join("");
         T.g += `<path d="${top}${bot}Z" fill="${q.color}" opacity=".78"><title>${esc(q.name)}</title></path>`;
-        if (LBL.inside) hi.forEach((v, i) => { const h = y(lo[i], q) - y(v, q), val = q.v[i] || 0; if (val && h >= 13 && iw / n >= lf(val, q.name).length * 6.2) T.g += `<text x="${x(i)}" y="${(y(v, q) + y(lo[i], q)) / 2 + 4}" text-anchor="middle" class="pv-vl pv-in">${esc(lf(val, q.name))}</text>`; });
+        if (LBL.inside) hi.forEach((v, i) => { const h = y(lo[i], q) - y(v, q), val = q.v[i] || 0; if (val && h >= 13 && iw / n >= lf(val, q.name).length * 6.2) T.g += `<text x="${x(i)}" y="${(y(v, q) + y(lo[i], q)) / 2 + 4}" text-anchor="middle" class="${inCls(q.color)}">${esc(lf(val, q.name))}</text>`; });
         hi.forEach((v, i) => { acc[i] = v; });
       });
     }
@@ -386,7 +386,7 @@
     barQ.forEach((q, k) => { const off = -bw / 2 + k * sw; q.v.forEach((v, i) => {
       if (!v) return;
       T.g += `<rect x="${x(i) + off}" y="${y(v, q)}" width="${nb > 1 ? Math.max(1, sw - 1) : bw}" height="${Math.max(0, base0 - y(v, q))}" fill="${q.color}"><title>${esc(lab(ax.ticks[i]))}: ${esc(q.name)} ${esc(fmt(v))}</title></rect>`;
-      if (LBL.inside && !LBL.top && base0 - y(v, q) >= 16 && sw >= lf(v, q.name).length * 6.2 + 2) T.g += `<text x="${x(i) + off + sw / 2}" y="${y(v, q) + 13}" text-anchor="middle" class="pv-vl pv-in">${esc(lf(v, q.name))}</text>`;
+      if (LBL.inside && !LBL.top && base0 - y(v, q) >= 16 && sw >= lf(v, q.name).length * 6.2 + 2) T.g += `<text x="${x(i) + off + sw / 2}" y="${y(v, q) + 13}" text-anchor="middle" class="${inCls(q.color)}">${esc(lf(v, q.name))}</text>`;
     }); });
     T.barQ = barQ;
     series.filter((q) => q.kind === "area").forEach((q) => {
@@ -551,12 +551,13 @@
       const thin = thinOf(vals.flat(), bw);
       data.forEach((r, i) => {
         series.forEach((q, k) => {
-          const v = vals[i][k], h = ih * frac(v), bx = pl + gw * i + (gw - bw * series.length) / 2 + bw * k, c = fill(r, q);
+          // 0 でない値の棒は 3px から（全体の 0.1% の棒が軸の線と見分けられなかった・§9.628 の 9 回目の採点）
+          const v = vals[i][k], h = v ? Math.max(3, ih * frac(v)) : ih * frac(v), bx = pl + gw * i + (gw - bw * series.length) / 2 + bw * k, c = fill(r, q);
           const tip = `<title>${esc(m.rowName(r))}${series.length > 1 ? ` / ${esc(q.name)}` : ""}: ${esc(fmt(v))}</title>`;
           if (dir === "lollipop") g += `<line x1="${bx + bw / 2}" x2="${bx + bw / 2}" y1="${pt + ih}" y2="${pt + ih - h}" stroke="${c}" stroke-width="2"/><circle cx="${bx + bw / 2}" cy="${pt + ih - h}" r="${Math.max(3, Math.min(7, bw / 3))}" fill="${c}">${tip}</circle>`;
           else g += `<rect x="${bx}" y="${pt + ih - h}" width="${bw}" height="${h}" fill="${c}">${tip}</rect>`;
           if (labelWant(q.name) && serFmt(q.name).label !== "below" && v && (i * series.length + k) % thin === 0) g += `<text x="${bx + bw / 2}" y="${pt + ih - h - (dir === "lollipop" ? 9 : 4)}" text-anchor="middle" class="pv-vl">${esc(lf(v, q.name))}</text>`;
-          if (LBL.inside && dir !== "lollipop" && v && h >= 16 && bw >= lf(v, q.name).length * 6.2 + 2) g += `<text x="${bx + bw / 2}" y="${pt + ih - h + 13}" text-anchor="middle" class="pv-vl pv-in">${esc(lf(v, q.name))}</text>`;
+          if (LBL.inside && dir !== "lollipop" && v && h >= 16 && bw >= lf(v, q.name).length * 6.2 + 2) g += `<text x="${bx + bw / 2}" y="${pt + ih - h + 13}" text-anchor="middle" class="${inCls(q.color)}">${esc(lf(v, q.name))}</text>`;
         });
         if (i % cat.every === 0) g += cat.text(i, pl + gw * (i + 0.5), H - pb + 16);
       });
@@ -565,14 +566,15 @@
       // 名前の字の幅（いちばん長い名前を測る。幅の 4 割まで）だけ左を空ける（版 3.47.0。前は字の数 × 12.5px・詰めない形は 160px 決め打ちで、長い名前が左へはみ出した）
       const longest = Math.max(0, ...names.map((t) => textW(t)));
       const pl = Math.round(Math.max(ctx.compact ? 44 : 80, Math.min(W * 0.4, longest + 16))), pr = pad(ctx, 70, 52), pt = pad(ctx, 8, 4);
-      // 1 行の高さは 36px まで（行が少ないと棒が面いっぱいに離れて並び、何本あるか・どれが長いかを比べにくかった・§9.628）。上から詰める
-      const rh = Math.min(36, (H - pad(ctx, 30, 8)) / Math.max(data.length, 1)), bh = Math.max(3, Math.min(18, rh * 0.75 / series.length)), iw = W - pl - pr;
+      // 1 行の高さは 48px まで（表の 1 行とおよそ同じ。行が少ないと棒が面いっぱいに離れて比べにくい・§9.628）。棒は 22px まで。上から詰める
+      // （前は 36px までで、隣の表と並べると下の半分が空いた・§9.628 の 7 回目の採点）
+      const rh = Math.min(48, (H - pad(ctx, 30, 8)) / Math.max(data.length, 1)), bh = Math.max(3, Math.min(22, rh * 0.6 / series.length)), iw = W - pl - pr;
       data.forEach((r, i) => {
         g += `<text x="${pl - 8}" y="${pt + rh * (i + 0.5) + 4}" text-anchor="end" class="pv-ax">${esc(fitW(names[i], pl - 10))}</text>`;
         series.forEach((q, k) => {
           const v = vals[i][k], w = iw * frac(v), by = pt + rh * i + (rh - bh * series.length) / 2 + bh * k;
           g += `<rect x="${pl}" y="${by}" width="${w}" height="${bh}" fill="${fill(r, q)}"><title>${esc(m.rowName(r))}${series.length > 1 ? ` / ${esc(q.name)}` : ""}: ${esc(fmt(v))}</title></rect>`;
-          if (LBL.inside && v && w >= lf(v, q.name).length * 6.2 + 8 && bh >= 11) g += `<text x="${pl + w - 4}" y="${by + bh / 2 + 4}" text-anchor="end" class="pv-vl pv-in">${esc(lf(v, q.name))}</text>`;
+          if (LBL.inside && v && w >= lf(v, q.name).length * 6.2 + 8 && bh >= 11) g += `<text x="${pl + w - 4}" y="${by + bh / 2 + 4}" text-anchor="end" class="${inCls(q.color)}">${esc(lf(v, q.name))}</text>`;
           else if (series.length === 1 || LBL.top) g += `<text x="${pl + w + 6}" y="${by + bh - 2}" class="${LBL.top ? "pv-vl" : "pv-ax"}">${esc(lf(v, q.name))}</text>`;
         });
       });
@@ -706,7 +708,7 @@
           const x0 = xOf(base), x1 = xOf(base + v);
           g += `<rect x="${x0}" y="${by}" width="${Math.max(0, x1 - x0)}" height="${bh}" fill="${q.color}" opacity=".9"><title>${esc(m.rowName(r))} / ${esc(q.name)}: ${esc(fmt(raw))}（${pct(raw / sum)}）</title></rect>`;
           const t = share ? pct(raw / sum) : lf(raw);
-          if (inside && bh >= 12 && x1 - x0 >= textW(t) + 6) g += `<text x="${(x0 + x1) / 2}" y="${cy + 4}" text-anchor="middle" class="pv-vl pv-in">${esc(t)}</text>`;
+          if (inside && bh >= 12 && x1 - x0 >= textW(t) + 6) g += `<text x="${(x0 + x1) / 2}" y="${cy + 4}" text-anchor="middle" class="${inCls(q.color)}">${esc(t)}</text>`;
           base += v;
         });
         if (!share && tops[i] && (LBL.top || series.length > 1)) g += `<text x="${xOf(tops[i]) + 5}" y="${cy + 4}" class="${LBL.top ? "pv-vl" : "pv-ax"}">${esc(lf(tops[i]))}</text>`;
@@ -727,7 +729,7 @@
         const y1 = yOf(base + v), y0 = yOf(base);
         g += `<rect x="${cx - bw / 2}" y="${y1}" width="${bw}" height="${Math.max(0, y0 - y1)}" fill="${q.color}" opacity=".9"><title>${esc(m.rowName(r))} / ${esc(q.name)}: ${esc(fmt(raw))}（${pct(raw / sum)}）</title></rect>`;
         const t = share ? pct(raw / sum) : lf(raw);
-        if (inside && y0 - y1 >= 13 && bw >= t.length * 6.2 + 2) g += `<text x="${cx}" y="${(y0 + y1) / 2 + 4}" text-anchor="middle" class="pv-vl pv-in">${esc(t)}</text>`;
+        if (inside && y0 - y1 >= 13 && bw >= t.length * 6.2 + 2) g += `<text x="${cx}" y="${(y0 + y1) / 2 + 4}" text-anchor="middle" class="${inCls(q.color)}">${esc(t)}</text>`;
         base += v;
       });
       if (LBL.top && !share && tops[i]) g += `<text x="${cx}" y="${yOf(tops[i]) - 4}" text-anchor="middle" class="pv-vl">${esc(lf(tops[i]))}</text>`;
@@ -1302,6 +1304,15 @@
     if (m.agg === "count" || m.agg === "lots") return (m.agg === "count" ? "件数" : "ロット数") + show + ex;
     const a = aggOf(m.agg) || AGGS[0];
     return `${label(m.column)}の${m.agg === "pct" ? `${m.p || 90}%点` : a.n}${show}${ex}`;
+  }
+  /** 棒の中の数の字の組（地との明るさの比が大きいほう＝白い字か濃い字。前は灰の濃淡の明るい段に白い字で読めなかった・§9.628 の 8・9 回目） */
+  function inCls(color) {
+    const m = /^#([0-9a-f]{6})$/i.exec(String(color || "").trim());
+    if (!m) return "pv-vl pv-in";
+    const n = parseInt(m[1], 16), lin = (c) => { const x = c / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+    // 白と濃い字（--ink＝#17272d・L≈0.018）のうち、地との明るさの比の大きいほう（9 回目の採点: 橙・中くらいの灰の段で白い字が 3.4:1）
+    const L = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255), onWhite = 1.05 / (L + 0.05), onInk = (L + 0.05) / 0.068;
+    return onInk > onWhite ? "pv-vl pv-in is-onlight" : "pv-vl pv-in";
   }
   /** 計算の見せ方（÷1000 → 値÷1000。読めない式は書いたまま） */
   const exprText = (src) => (WL.numFormat && WL.numFormat.expr(src).text) || String(src);

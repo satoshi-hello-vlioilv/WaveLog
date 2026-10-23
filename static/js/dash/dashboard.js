@@ -337,7 +337,10 @@
     const name = (k) => (WL.dashKit.src.of(k) || {}).name || k, d = a && a.d;
     if (p.visual === "board") {
       const gs = p.groups || [];
-      return { src: [...new Set(gs.map((g) => name(g.source)).filter(Boolean))].join("・"), equip: (p.equips || []).length ? eqWord(p.equips) : "全設備", per: "", cond: "", basis: "", noPer: true, noCond: true };   // 期間・条件はまとまりごと（見出しが言う）
+      // 設備・条件は、どのまとまりも同じならパネルの項目として（違えばまとまりの見出しが言う）。期間はまとまりごと（見出しが言う）
+      const eqs = [...new Set(gs.map((g) => (g.equips || []).join("\u0001")))], cs = [...new Set(gs.map((g) => condsText(g.filters)))];
+      const equip = (p.equips || []).length ? eqWord(p.equips) : eqs.length === 1 ? (eqs[0] ? eqWord(eqs[0].split("\u0001")) : "全設備") : "まとまりごと";
+      return { src: [...new Set(gs.map((g) => name(g.source)).filter(Boolean))].join("・"), equip, per: "", cond: cs.length === 1 ? cs[0] : "", basis: "", noPer: true, noCond: cs.length !== 1 };
     }
     if (p.link && (p.link.sides || []).length) {     // 別のデータを合わせたパネル: 設備は合わせるデータの名前・条件はどのデータにもある物
       const sides = p.link.sides, c0 = condsText(sides[0].filters);

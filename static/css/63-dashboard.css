@@ -29,6 +29,7 @@
 .dp-kmeta .dash-mi{white-space:normal}
 .dash-common{display:inline-flex;align-items:baseline;gap:2px;padding:0 12px;border-left:1px solid var(--line-mid);font-size:var(--fs-sm);color:var(--ink);white-space:nowrap;min-width:0}
 .dash-common>b{font-weight:var(--fw-ui);color:var(--ink-2);margin-right:8px}
+.dash-table thead .dash-sortk{font-size:var(--fs-sm);color:var(--ink-2);font-weight:var(--fw-body)}
 .dash-table thead .dash-gcond{display:block;font-weight:var(--fw-body);color:var(--ink-2);font-size:var(--fs-sm)}
 .dash-msg{color:var(--ink-2);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
 .dash-editing{display:inline-flex;align-items:center;height:var(--ctl-h-xs);padding:0 10px;border-radius:var(--radius-pill);background:var(--look-amber-pale);border:1px solid var(--look-amber);color:var(--look-amber-dark);font-size:var(--fs-sm);font-weight:var(--fw-strong)}
@@ -132,7 +133,7 @@ body.dash-dragging{cursor:grabbing;user-select:none}
 .dash-table .dash-lots{min-width:200px}
 .dash-table td.dash-lots > div{display:flex;align-items:center;gap:10px}
 .dash-table td.dash-lots .dash-bar{flex:1;height:.85em}
-.dash-table td.dash-lots b{width:3.6em;text-align:right;font-variant-numeric:tabular-nums}
+.dash-table td.dash-lots b{width:var(--vw,3.6em);flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums}
 .dash-bar{background:var(--bg);border-radius:var(--radius-xs);overflow:hidden}
 .dash-bar i{display:block;height:100%;border-radius:var(--radius-xs);background:var(--gc,var(--teal))}
 .dash-table .dash-s{width:68px}
@@ -315,7 +316,8 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .dash-filt{display:inline-flex;align-items:center;gap:4px}
 .dash-filt svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
 .dash-filt.is-on{background:var(--teal-tint,var(--bg));border-color:var(--teal);color:var(--teal)}
-.dash-p:not(:hover):not(:focus-within) .dash-filt:not(.is-on){opacity:.75}
+/* 乗せていないパネルの「絞る」は枠と地を消して字だけ薄く（11 個の枠が題と同じ強さで並んで騒がしかった・§9.628 の 8 回目の採点 X2） */
+.dash-p:not(:hover):not(:focus-within) .dash-filt:not(.is-on){opacity:.75;border-color:transparent;background:transparent}
 .dash-pq{display:flex;flex-wrap:wrap;gap:4px 6px;margin:0 0 4px 17px;flex:0 0 auto;max-height:46px;overflow:hidden}
 .dash-pq[hidden]{display:none}
 .dash-qchip{display:inline-flex;align-items:center;gap:2px;height:22px;padding:0 2px 0 9px;border-radius:var(--radius-pill);background:var(--teal-tint,var(--bg));border:1px solid var(--card-border);
@@ -729,6 +731,7 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .og-tick{font-size:var(--fs-micro);fill:var(--muted);font-variant-numeric:tabular-nums}
 .og-unit{fill:var(--line-strong)}
 .og-dayl{font-size:var(--fs-sm);font-weight:var(--fw-strong);fill:var(--ink)}
+.og-mid{stroke:var(--muted);stroke-width:1}.og-midl{font-size:var(--fs-sm);font-weight:var(--fw-ui);fill:var(--ink-2)}
 .og-head{font-size:var(--fs-sm);fill:var(--muted);font-weight:var(--fw-strong)}
 .og-headsub{font-weight:var(--fw-body)}
 /* 見出しの題の横の札: 全体の稼働率（数を大きく）と内訳 */
@@ -1260,6 +1263,7 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .pv-pbtn{max-width:240px}
 /* 版 3.39.0: 棒の中の数値ラベル（書式 inside）・ツリーマップの字・基準線の名前 */
 .pv-vl.pv-in{fill:#fff;stroke:color-mix(in srgb,var(--ink) 32%,transparent);stroke-width:2.2px}
+.pv-vl.pv-in.is-onlight{fill:var(--ink);stroke:none}
 .pv-tm{font-size:var(--fs-sm);font-weight:var(--fw-strong);fill:#fff;paint-order:stroke;stroke:color-mix(in srgb,var(--ink) 30%,transparent);stroke-width:2.2px}.pv-tm.is-v{font-weight:var(--fw-ui);font-size:var(--fs-sm)}
 .pv-ref-t{font-weight:var(--fw-strong);paint-order:stroke;stroke:#fff;stroke-width:3px}
 /* サンキー図の節の名前（帯の上でも読めるよう白い縁） */

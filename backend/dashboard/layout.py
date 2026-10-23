@@ -840,6 +840,12 @@ def _days(n):
     return {"column": "@workday", "kind": "days", "n": n}
 
 
+def _bgroup(title, measure):
+    """自設備の合わせた表のまとまり 1 つ（直近 30 日の完了・棒。設備は表全体の equips＝この端末の設備）"""
+    return {"title": title, "source": "rec", "equip": "", "filters": [DONE], "search": "", "period": _days(30), "basis": "work",
+            "measure": measure, "cols": [], "look": "bar", "total": False, "zero": False, "color": ""}
+
+
 def _side(role, title, equips):
     """自設備の比べるデータ 1 つ（直近 30 日の完了の平均作業時間）"""
     return {"title": title, "role": role, "build": "as", "source": "rec", "equips": list(equips), "filters": [DONE], "search": "",
@@ -881,7 +887,8 @@ BUILTIN_LAYOUTS = [
         _pv("wipTotal", 0, 0, 4, 1, "仕掛ロット数", "kpi", "role:仕掛"),
         _pv("workTotal", 4, 0, 4, 1, "前日の完了", "kpi", "rec", period=YESTERDAY, filters=[DONE]),
         _pv("workMonth", 8, 0, 4, 1, "今月の完了", "kpi", "rec", period={"column": "@workday", "kind": "this_month"}, filters=[DONE]),
-        _pv("wipPurpose", 0, 1, 5, 4, "用途名ごとの仕掛ロット数", "bar", "role:仕掛", rows=[{"column": "用途名"}], sort="desc", top=15),
+        # 縦棒（§9.628 の 9 回目の採点で Y4・82 点。横棒は用途名が少ないとパネルの 7 割が空いた）
+        _pv("wipPurpose", 0, 1, 5, 4, "用途名ごとの仕掛ロット数", "column", "role:仕掛", rows=[{"column": "用途名"}], sort="desc", top=15),
         _pv("workDays", 0, 5, 12, 3, "直近 14 日の完了（本）", "time", "rec", rows=[{"column": "@workday"}], period=_days(14), filters=[DONE]),
         {"id": "board", "x": 5, "y": 1, "w": 7, "h": 4, "title": "設備ごとの仕掛と前日の実績", "visual": "board", "noTotal": True, **board_default()},
     ]}},
@@ -896,16 +903,20 @@ BUILTIN_LAYOUTS = [
             fmt={"utext": "日"}),
         _pv("mineKind", 0, 1, 6, 4, "品種ごとの平均作業時間（分）", "bar", "rec", rows=[{"column": "品種"}], measures=[{"agg": "avg", "column": WORK_TIME}],
             equips=[MINE], period=_days(30), filters=[DONE], sort="desc", top=12, fmt=WHOLE_MIN),
-        _pv("mineOp", 6, 1, 6, 4, "オペレータごとの実績", "none", "rec", rows=[{"column": "オペレータ"}],
-            measures=[{"agg": "lots"}, {"agg": "avg", "column": WORK_TIME}], equips=[MINE], period=_days(30), filters=[DONE], sort="desc", top=12,
-            grand=False),     # 総計は上の数字のパネル（完了ロット・平均作業時間）が言う（同じ数を 2 か所に出さない・§9.628）
+        # オペレータごと: 合わせた表（ロット数と平均作業時間を棒で。前は数字だけの表で、隣の棒グラフと見比べにくかった・§9.628 の 7 回目の採点）。
+        # 計は上の数字のパネル（完了ロット・平均作業時間）が言う（同じ数を 2 か所に出さない）
+        {"id": "mineOp", "x": 6, "y": 1, "w": 6, "h": 4, "title": "オペレータごとの実績", "visual": "board", "noTotal": True, "equips": [MINE],
+         "rows": {"column": "オペレータ", "part": ""},
+         "groups": [_bgroup("完了ロット数", {"agg": "lots"}), _bgroup("平均作業時間", {"agg": "avg", "column": WORK_TIME})],
+         "order": {"by": "value", "group": 0, "dir": "desc", "list": [], "hide": []}},
         _pv("mineTrend", 0, 5, 12, 3, "日ごとの完了（本）", "time", "rec", rows=[{"column": "@workday"}], equips=[MINE], period=_days(30), filters=[DONE]),
     ]}},
     # 前の「自由集計」の4つのよく使う組み合わせ（設備別効率・人数別内訳・品種別作業時間・月次推移）。自由な組み合わせはパネルを直して作る
     {"key": "analysis", "name": "作業時間の分析", "body": {"rows": 8, "panels": [
         _pv("eqEff", 0, 0, 6, 4, "設備ごとの平均作業時間（分・人数ごと）", "column", "rec", rows=[{"column": "@equip"}], cols=[{"column": "作業人数"}],
             measures=[{"agg": "avg", "column": WORK_TIME}], period={"column": "@workday", "kind": "this_month"}, filters=[DONE], fmt=WHOLE_MIN),
-        _pv("crew", 6, 0, 6, 4, "人数ごとの完了（本・設備ごと）", "stack", "rec", rows=[{"column": "作業人数"}], cols=[{"column": "@equip"}],
+        # 隣の「設備ごとの平均作業時間」と同じ軸（横＝設備・色＝人数）。前は横が人数・色が設備で、2 枚を見比べるとき軸を読み替えた（§9.628 の 7 回目の採点）
+        _pv("crew", 6, 0, 6, 4, "設備ごとの完了（本・人数ごと）", "stack", "rec", rows=[{"column": "@equip"}], cols=[{"column": "作業人数"}],
             period={"column": "@workday", "kind": "this_month"}, filters=[DONE], fmt=STACK_LABELS),
         _pv("kind", 0, 4, 6, 4, "品種ごとの平均作業時間（分）", "bar", "rec", rows=[{"column": "品種"}], measures=[{"agg": "avg", "column": WORK_TIME}],
             period={"column": "@workday", "kind": "this_month"}, filters=[DONE], sort="desc", top=15, fmt=WHOLE_MIN),

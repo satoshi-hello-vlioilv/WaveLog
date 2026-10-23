@@ -87,6 +87,22 @@ run('test_dashboard: ダッシュボード',async({page,rec,B,W,idle})=>{
    const sum=k=>m.panels.reduce((n,p)=>n+(+p[k]||0),0);
    scores.push(`${tag} ${it.name} 切れた題${sum('cutTitle')} 切れた添え書き${sum('cutMeta')} 分からない数${sum('unknown')} 元のくり返し${sum('dupSrc')} 条件n${sum('vague')} 字の上の線${sum('cross')}`);
    if(process.env.WAVELOG_SHOT)await page.screenshot({path:path.join(SHOT,`after_${tag}_${it.id.replace(/\W/g,'_')}.png`)});
+   if(it.id==='b:status'){
+    /* 合わせた表の行は数えた設備ぜんぶ（数の無い設備も 0 の行・単位つき。前は数のある設備だけで、隣のガントの設備とそろわなかった） */
+    const b=await page.evaluate(()=>({rows:[...document.querySelectorAll('#dashGrid .dash-p[data-id="board"] tbody th[scope=row]')].map(x=>x.textContent.trim()),
+     gantt:[...document.querySelectorAll('#dashGrid .dash-p[data-id="gantt"] .og-name')].map(x=>String((x.firstChild||{}).nodeValue||'').trim()),   // 字の後ろの title（乗せたときの説明）は読まない
+     zero:[...document.querySelectorAll('#dashGrid .dash-p[data-id="board"] tbody tr')].filter(tr=>/テスト設備[CD]/.test(tr.textContent)).map(tr=>[...tr.querySelectorAll('td.dash-lots b')].map(x=>x.textContent.trim()))}));
+    rec(`稼働状況: 表の設備はガントの設備とそろう（${tag}）`,b.gantt.length>0&&b.gantt.every(n=>b.rows.includes(n)),JSON.stringify(b));
+    rec(`稼働状況: 数の無い設備の分の値も単位つき（0分）（${tag}）`,b.zero.length>0&&b.zero.every(r=>r.some(x=>x==='0分')),JSON.stringify(b.zero));
+   }
+   if(it.id==='b:mine'){
+    /* オペレータごとの合わせた表: この端末の設備だけを数える（ロット数の和＝完了ロット。前は全設備を数えて 37 本と出た） */
+    const o=await page.evaluate(()=>{const n=t=>+String(t).replace(/[^\d.]/g,'');
+     const kpi=n((document.querySelector('#dashGrid .dash-p[data-id="mineLots"] .dp-num')||{}).textContent||'');
+     const lots=[...document.querySelectorAll('#dashGrid .dash-p[data-id="mineOp"] tbody tr')].map(tr=>n((tr.querySelector('td.dash-lots b')||{}).textContent||'0'));
+     return {kpi,lots,sum:lots.reduce((a,x)=>a+x,0)}});
+    rec(`自設備: オペレータの表のロット数の和は完了ロットと同じ（${tag}）`,o.lots.length>0&&o.sum===o.kpi,JSON.stringify(o));
+   }
    if(it.id==='b:standard'){
     /* 合わせた表: パネル共通に条件があるとき、条件の無いまとまり（仕掛ロット数）は「条件 なし」と言う（共通の条件で数えたと読ませない） */
     const g=await page.evaluate(()=>({common:(document.querySelector('#dashBar .dash-common')||{}).textContent||'',
@@ -94,10 +110,13 @@ run('test_dashboard: ダッシュボード',async({page,rec,B,W,idle})=>{
     rec(`合わせた表の条件の無いまとまりは「条件 なし」（${tag}）`,!/条件/.test(g.common)||g.heads.some(h=>/仕掛ロット数.*条件 なし/.test(h)),JSON.stringify(g));
    }
    if(it.id==='b:analysis'){
-    /* 同じ設備はどのパネルでも同じ色（稼働状況の直近14日＝時系列・人数別の内訳＝積み上げ・月ごとの推移＝時系列。
+    /* 同じ設備はどのパネルでも同じ色（稼働状況の直近14日・月ごとの推移＝時系列が、設備の色の1箇所 equipColor() と同じ。
        前は系列の何番目かで色を決め、時系列は 1 つずらして始まるので、同じ設備が橙と青緑に分かれた） */
-    const c=await page.evaluate(()=>['テスト設備A','テスト設備B'].map(n=>['trend14','crew','monthly'].map(id=>WL.dashPanels.drawnColor(id,n))));
+    const c=await page.evaluate(()=>['テスト設備A','テスト設備B'].map(n=>[WL.dashPanels.equipColor(n),...['trend14','monthly'].map(id=>WL.dashPanels.drawnColor(id,n))]));
     rec(`同じ設備はどのパネルでも同じ色（${tag}）`,c.every(x=>x[0]&&x.every(y=>y===x[0]))&&c[0][0]!==c[1][0],JSON.stringify(c));
+    /* 設備でない系列（人数）は色相を使わない（色相は設備だけ・§9.628）: 「設備ごとの完了（人数ごと）」の系列の色は設備の色のどれとも違う */
+    const crew=await page.evaluate(()=>{const eq=new Set(['テスト設備A','テスト設備B','テスト設備C','テスト設備D'].map(n=>WL.dashPanels.equipColor(n)));return ['2名班','3名班','4名班'].map(n=>WL.dashPanels.drawnColor('crew',n)).map(x=>[x,eq.has(x)])});
+    rec(`設備でない系列は設備の色を使わない（${tag}）`,crew.every(([x,hit])=>x&&!hit),JSON.stringify(crew));
    }
   }
   /* 物差し: 開いてから全部のパネルが数を出すまで（1回目は写しを作る・2回目からは答えの控え）。遅さを数で残す */

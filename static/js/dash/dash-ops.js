@@ -9,7 +9,7 @@
 (function(){
   "use strict";
   const { esc } = WL.dashKit;
-  const WORK = "#3f6591";     // 作業の棒は紺（量の色。色相は設備の色に使う・§9.628）
+  const WORK = "#5a6f77";     // 作業の棒は灰青（紺は量の棒の色・色相は設備の色。隣の表の量の棒と同じ紺にしない・§9.628 の 7 回目の採点）
   // ABC は順位なので 1 つの色（藍）の濃淡（A＝濃い → C＝淡い。字は A・B が白・C が墨）。ガントの色分けとは色を分ける（同じ色で別の意味にしない: 2026-10-ops の 1 回目の採点）
   const RANK = { A: { c: "#24446a", n: "A", f: "#fff" }, B: { c: "#4d6e96", n: "B", f: "#fff" }, C: { c: "#c3ccd5", n: "C", f: "#1b2733" } };
   /* 段は A・B・C に限らない（版 3.51.0。利用者の要望 2026-10-22）: 段の数（ranks.count）に合わせて、同じ藍の濃淡を A（濃い）→ 最後（淡い）に割り振る。
@@ -32,7 +32,9 @@
   const ms = (s) => Date.parse(String(s).replace(" ", "T"));
   const pad2 = (n) => String(n).padStart(2, "0");
   const pct = (r) => (r == null ? "–" : `${(r * 100).toFixed(r < 0.1 ? 1 : 0)}%`);
-  const hours = (min) => (min >= 600 ? `${Math.round(min / 60)}` : `${(min / 60).toFixed(1)}`) + " 時間";
+  // 時間の数は小数 2 桁まで（末尾の 0 は落とす）。前は 0.75 時間を「0.8」と書き、隣の稼働率 3.1%（＝0.75÷24）と合わなかった（§9.628）
+  const hnum = (min) => String(Math.round((min / 60) * 100) / 100);
+  const hours = (min) => `${hnum(min)} 時間`;
   const hm = (t) => { const d = new Date(t); return `${d.getHours()}:${pad2(d.getMinutes())}`; };
   const WD = "日月火水木金土";
   // 区間を出せないわけの短い言い方（行の札。版 3.47.0。サーバー services/operation.py の WHY と同じ順の言葉）。
@@ -72,7 +74,7 @@
     const X = (t) => LW + ((t - x0) / span) * TW;
     const g = [];
     const now = ms(d.now || "");
-    const c = { LW, TW, RW, AX, rh, X, x0, x1, span, p, colorOf, top: [], nowX: now > x0 && now < x1 ? X(now) : null };
+    const c = { LW, TW, RW, AX, rh, X, x0, x1, span, p, colorOf, top: [], vx: [], nowX: now > x0 && now < x1 ? X(now) : null };   // vx … 行を縦に通る線（作業日の境目）
     const { dayKey, mainKey } = ganttAxis(g, c, eqs, d, shown.length);
     shown.forEach((e, i) => ganttRow(g, c, e, i, dayKey, mainKey));
     // いま（期間が今日を含むとき）
@@ -108,13 +110,30 @@
     const basisWord = d.basis === "cal" ? "太陽暦" : "現場歴";
     mainDays.forEach((x, i) => {
       const a = Math.max(LW, X(ms(x[0]))), b = Math.min(LW + TW, X(ms(x[1])));
-      if (i) { g.push(`<line class="og-day" x1="${a}" x2="${a}" y1="${AX + 1}" y2="${AX + nRows * rh}"/>`); c.daySeen = true; }      // 目盛りの字に掛けない
+      if (i) { g.push(`<line class="og-day" x1="${a}" x2="${a}" y1="${AX + 1}" y2="${AX + nRows * rh}"/>`); c.daySeen = true; c.vx.push(a); }      // 目盛りの字に掛けない
       const t = ms(`${x[2]} 12:00:00`), lbl = mainDays.length > 1 || i === 0 ? dayText(t) : "";
       if (lbl && b - a > textW(lbl, 12, 700) + 6) g.push(`<g><title>${esc(`${dayText(t)} の作業日（${basisWord}）: ${hm(ms(x[0]))}〜翌 ${hm(ms(x[1]))}`)}</title><text class="og-dayl" x="${a + 3}" y="1.2em">${lbl}</text></g>`);   // 説明は字を包む g に。字の高さは字の大きさから（y＝11 だと大きい字で上が図の外へ出た）
     });
+    // 暦の 0 時が作業日の途中にあれば（現場歴）、日付が変わる所に日付の札（前は 0 の目盛りと直の境目の線だけで、翌日へ入ったことが書かれていなかった・§9.628）
+    const bounds = new Set(mainDays.map((x) => ms(x[0])));
+    const mid = new Date(x0); mid.setHours(24, 0, 0, 0);
+    for (let t = mid.getTime(); t < x1; t += 86400000) {
+      if (bounds.has(t)) continue;
+      const xm = X(t), d0 = new Date(t), lbl = `${d0.getMonth() + 1}/${d0.getDate()} 0:00`;
+      if (xm < LW + textW("00/00(土)", 12, 700) + 12 || xm + textW(lbl, 12, 600) + 3 > LW + TW) continue;   // 作業日の札・図の端に掛かるなら出さない
+      g.push(`<line class="og-mid" x1="${xm}" x2="${xm}" y1="${AX - 30}" y2="${AX - 16}"/><text class="og-midl" x="${xm + 3}" y="1.2em">${lbl}<title>${esc(`暦の日付が ${lbl} に変わります（作業日は${basisWord}の区切りのまま）`)}</title></text>`);
+    }
     g.push(`<text class="og-tick og-unit" x="${LW - 6}" y="${AX - 4}" text-anchor="end">時</text>`);
-    g.push(`<text class="og-head" x="${LW + TW + 10}" y="${AX - 4}">稼働率${RW >= 156 ? '<tspan class="og-headsub" dx="40">稼働/勤務 h</tspan>' : ""}<title>稼働率 ＝ 作業していた時間 ÷ 勤務時間（直の時間）</title></text>`);
+    g.push(`<text class="og-head" x="${LW + TW + 10}" y="${AX - 4}">稼働率${RW >= 156 ? '<tspan class="og-headsub" dx="6">下は稼働/勤務</tspan>' : ""}<title>稼働率 ＝ 作業していた時間 ÷ 勤務時間（直の時間）。下の行は稼働 ／ 勤務の時間</title></text>`);
     return { dayKey, mainKey };
+  }
+  /** 棒の無いわけの字の左端: 縦の線（作業日・直の境目・いま）の間で字が入る最初の区間。「いま」があればその右（これからの側）から探す。
+      置き場は画面の幅で変えない（§9.628 の 7 回目）・地の札で線を覆わない（8 回目の採点: 札が直の境目と日付の線を隠した）。入る区間が無ければ null */
+  function msgX(c, lines, tw) {
+    const xs = [...new Set(lines.concat(c.nowX != null ? [c.nowX] : []))].filter((x) => x > c.LW && x < c.LW + c.TW).sort((u, v) => u - v);
+    const edges = [c.LW, ...xs, c.LW + c.TW], gaps = edges.slice(1).map((b, i) => [edges[i], b]).filter(([a, b]) => b - a >= tw + 16);
+    const pick = (c.nowX != null && gaps.find(([a]) => a >= c.nowX - 0.5)) || gaps[0];
+    return pick ? pick[0] + 8 : null;
   }
   /** ガントの 1 台（勤務時間の帯・作業の棒・棒の無いわけ・設備名・稼働率） */
   function ganttRow(g, c, e, i, dayKey, mainKey) {
@@ -122,11 +141,12 @@
     const y = AX + i * rh, bh = Math.max(8, Math.round(rh * 0.62)), by = y + (rh - bh) / 2;
     g.push(`<g class="og-row" data-i="${i}"><rect class="og-off" x="${LW}" y="${y + 1}" width="${TW}" height="${rh - 2}"/>`);
     let onW = 0;
+    const lines = c.vx.slice();      // この行を縦に通る線（作業日・直の境目・いま）。棒の無いわけの字はその間に置く
     (e.windows || []).forEach((w, k) => {
       const a = X(ms(w[0])), b = X(ms(w[1]));
       onW += Math.max(0, Math.min(b, LW + TW) - Math.max(a, LW));
       g.push(`<rect class="og-on" x="${a}" y="${y + 1}" width="${Math.max(0, b - a)}" height="${rh - 2}"><title>${esc(`${w[2]}（${w[3].slice(5).replace("-", "/")}）${hm(ms(w[0]))}〜${hm(ms(w[1]))}`)}</title></rect>`);
-      if (k) { g.push(`<line class="og-sep" x1="${a}" x2="${a}" y1="${y + 1}" y2="${y + rh - 1}"/>`); c.sepSeen = true; }
+      if (k) { g.push(`<line class="og-sep" x1="${a}" x2="${a}" y1="${y + 1}" y2="${y + rh - 1}"/>`); c.sepSeen = true; lines.push(a); }
     });
     if (onW < TW - 1) c.offSeen = true;      // 勤務の外が見えている行がある（凡例に「勤務の外」を出す）
     if ((e.days || []).length && dayKey(e) !== mainKey) e.days.slice(1).forEach((x) => { const a = X(ms(x[0])); if (a > LW && a < LW + TW) g.push(`<line class="og-day is-own" x1="${a}" x2="${a}" y1="${y + 1}" y2="${y + rh - 1}"><title>${esc(`${e.name} の作業日の区切り（勤務体系 ${e.pattern || "なし"}）`)}</title></line>`); });
@@ -149,10 +169,12 @@
     const why = Object.entries(e.why || {}).map(([k, n]) => `${k} ${n} 本`).join("・");
     const msg = e.error ? `読めません: ${e.error}` : !(e.ops || []).length ? (e.noEnd ? `作業 ${e.count} 本の区間が分かりません（${why}）` : "この期間の作業はありません") : "";
     if (msg && rh >= 14) {      // 字は「いま」の線より上に、地を敷いて（§9.628。前は線が字の上を通った）。c.top は線の後に描く
-      const wt = e.error || e.noEnd ? 700 : 400, t = fitW(msg, TW - 16, 12, wt), tw = textW(t, 12, wt);
+      const wt = e.error || e.noEnd ? 700 : 400;
+      // 線の間に入らなければ短い字（「作業なし」）で入れる（9 回目の採点: 長い字が直の境目の線を覆った）。それでも入らなければ左端
+      let t = fitW(msg, TW - 16, 12, wt), tw = textW(t, 12, wt);
+      if (msgX(c, lines, tw) == null && !e.error && !e.noEnd) { t = "作業なし"; tw = textW(t, 12, wt); }
       // 「いま」の線が字を通るなら、字を線の右（入らなければ左）へ寄せる（線も字も隠さない・§9.628 の 3 回目の採点）
-      let tx = LW + 8;
-      if (c.nowX != null && c.nowX > tx - 6 && c.nowX < tx + tw + 6) tx = c.nowX + 10 + tw <= LW + TW ? c.nowX + 10 : Math.max(LW + 8, c.nowX - 10 - tw);
+      const tx = msgX(c, lines, tw) ?? LW + 8;
       c.top.push(`<rect class="og-msgbg" x="${tx - 4}" y="${y + rh / 2 - 9}" width="${tw + 8}" height="18" rx="3"/><text class="og-msg${wt === 700 ? " is-warn" : ""}" x="${tx}" y="${y + rh / 2 + 4}">${esc(t)}<title>${esc(msg)}</title></text>`);
     }
     else if (e.noEnd && rh >= 14) {     // 棒はあるが、区間の分からない作業がある: 行の右の端に琥珀の丸い札「区間なし n・わけ」（入らなければ「区間なし n」）
@@ -164,14 +186,15 @@
     }
     g.push(`<text class="og-name${e.error ? " is-err" : ""}" x="${LW - 8}" y="${y + rh / 2 + 4}" text-anchor="end">${esc(fitW(e.name, LW - 10, 12.5, 700))}<title>${esc(e.error ? `${e.name}: ${e.error}` : `${e.name}　勤務体系: ${e.pattern || "なし（稼働率を出せません）"}`)}</title></text>`);
     // 稼働率: 数（太字）と細い棒（勤務時間に対する割合）。広いときは稼働／勤務の時間も
-    const rx = LW + TW + 10, rate = e.rate, bw = RW >= 156 ? RW - 42 - 66 - 10 : RW >= 92 ? RW - 42 - 10 : 0;
+    // 稼働／勤務の時間は稼働率の下の 2 行目（どの幅でも同じ置き場。前は広いときだけ右の列に出し、1536 の幅では黙って消えた・§9.628 の 8 回目の採点）
+    const rx = LW + TW + 10, rate = e.rate, bw = RW >= 92 ? RW - 42 - 10 : 0, two = rh >= 30 && rate != null, ry = two ? y + rh / 2 - 3 : y + rh / 2 + 4.5;
     const tipR = e.error ? `${e.name}: 読めないので稼働率を出せません` : e.rate == null ? `${e.name}: 勤務体系が無いので稼働率を出せません（マスタ管理の「勤務体系」）` : `${e.name}: 稼働 ${hours(e.busyMin)} ／ 勤務 ${hours(e.shiftMin)}${e.outsideMin ? `（勤務時間の外の稼働 ${hours(e.outsideMin)}）` : ""}`;
-    g.push(`<text class="og-rate" x="${rx}" y="${y + rh / 2 + 4.5}">${pct(rate)}<title>${esc(tipR)}</title></text>`);
+    g.push(`<text class="og-rate" x="${rx}" y="${ry}">${pct(rate)}<title>${esc(tipR)}</title></text>`);
     if (bw > 14 && rate != null) {
       const bx = rx + 42;
-      g.push(`<rect class="og-rtrack" x="${bx}" y="${y + rh / 2 - 3}" width="${bw}" height="6" rx="3"/><rect class="og-rfill" x="${bx}" y="${y + rh / 2 - 3}" width="${Math.min(1, rate) * bw}" height="6" rx="3"/>`);
-      if (RW >= 156) g.push(`<text class="og-rsub" x="${bx + bw + 6}" y="${y + rh / 2 + 4}">${(e.busyMin / 60).toFixed(1)}/${(e.shiftMin / 60).toFixed(0)}<title>${esc(tipR)}</title></text>`);
+      g.push(`<rect class="og-rtrack" x="${bx}" y="${ry - 7.5}" width="${bw}" height="6" rx="3"/><rect class="og-rfill" x="${bx}" y="${ry - 7.5}" width="${Math.min(1, rate) * bw}" height="6" rx="3"/>`);
     }
+    if (two) g.push(`<text class="og-rsub" x="${rx}" y="${ry + 15}">${hnum(e.busyMin)}/${hnum(e.shiftMin)} 時間<title>${esc(tipR)}</title></text>`);
     g.push("</g>");
   }
 

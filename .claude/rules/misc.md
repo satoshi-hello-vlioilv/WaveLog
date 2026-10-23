@@ -1,4 +1,4 @@
-# そのほか（27件）
+# そのほか（29件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -14,6 +14,8 @@
 | パネルに書かない項目は共通と同じ。共通にある期間・条件を持たないパネルは「期間 すべて」「条件 なし」と書く | `test_dashboard.js` | [§9.628](../../docs/decisions/9.628.md) |
 | ダッシュボードの色相は設備だけ（`equipColor()`の1箇所・設備の木の順）。量の棒・1つの値は紺 | `test_dashboard.js` | [§9.628](../../docs/decisions/9.628.md) |
 | 数える物は1行も無くても 0（総計のマス・合わせた表のセル）。「–」は分からない値だけ | `test_dashapi.py` | [§9.628](../../docs/decisions/9.628.md) |
+| 合わせた表の行は数えた設備ぜんぶ（答えの`parts`・0 は単位つき）。並びは決めた列→隣の列→名前、並べた列の見出しに ▼ | `test_dashboard.js` | [§9.628](../../docs/decisions/9.628.md) |
+| 表の全体の設備は`equips`（`@mine`も）。まとまりの`equip`は設備の列の名前で、設備の名前ではない | `test_dashboard.js` | [§9.628](../../docs/decisions/9.628.md) |
 | 同じ数を2か所に出さない（合わせた表の「計」は`noTotal`・数字のパネルの題に単位の括弧を書かない） | `test_dashboard.js` | [§9.628](../../docs/decisions/9.628.md) |
 | 時の軸は期間の始まり〜終わり（数の無い日・月も並ぶ）。字は終わりの日から間引く | — | [§9.628](../../docs/decisions/9.628.md) |
 | 問い合わせは`WL.dashKit.fetch`の1本（`@mine`→使用設備）。元の意味は`WL.dashKit.src`の1箇所 | `test_dbequip.js` | [§9.628](../../docs/decisions/9.628.md) |

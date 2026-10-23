@@ -1,6 +1,6 @@
 /* =========================================================================
    ダッシュボードのスライサー（版 3.41.0。利用者の要望 6: 今月と先月など、時間や設備を切り替えて表示を簡単に入れ替える）
-   - 期間: 組んだまま・今日・前日・直近 7 日・今月・先月 の札と、月を送る ◀ ▶（n か月前。サーバーの期間 month）
+   - 期間: パネルの設定・今日・前日・直近 7 日・今月・先月 の札と、月を送る ◀ ▶（n か月前。サーバーの期間 month）
    - 設備: 設備グループの札（すべて・CR ライン・L ライン…。押すとそのグループの設備だけ）と、「設備…」の面（グループの見出しの下に設備のチェック）
    - 当て方（どのパネルに効くか）は dashboard-filter.js の slice。状態はこの PC の見え方（dashboard.js がダッシュボードごとに覚える）
    - 版 3.52.0（利用者の要望 2026-10-23。2026-10-dslicer の 2 回目で決めた G）: 日付の札（札の真下の暦。始めと終わりの日を押すと当たる）・
@@ -10,7 +10,7 @@
 (function(){
   "use strict";
   const { esc } = WL.dashKit;
-  const PERIODS = [["", "組んだまま", "パネルごとに組んだ期間で数えます"], ["today", "今日"], ["yesterday", "前日"], ["days", "直近 7 日"], ["this_month", "今月"], ["last_month", "先月"]];
+  const PERIODS = [["", "パネルの設定", "パネルごとに組んだ期間で数えます"], ["today", "今日"], ["yesterday", "前日"], ["days", "直近 7 日"], ["this_month", "今月"], ["last_month", "先月"]];
   const NONE = "（グループなし）";
 
   /** いまの期間が今月から何か月前か（今月 0・先月 1・n か月前 n。月でなければ null） */
@@ -46,23 +46,32 @@
   /** 道具の行に入れるスライサー。sl … いまの状態 {period, equips, set}・info = {tree, today, hits: 効くパネルの数, total, open, parts: 出す物} */
   function barHtml(sl, info) {
     const s = sl || {}, per = s.period || {}, eq = s.equips || [], k = backOf(per), parts = info.parts || PART_KEYS;
+    // 今月・先月は暦の名前（10月・9月）で書く。隣の「◀ 8月」と同じ書き方（前は「先月」と「8月」が混ざって読みにくかった・§9.628 の 8 回目の採点）
+    const monthOf = { this_month: 0, last_month: 1 };
     const chips = PERIODS.map(([kind, n, tip]) => {
-      const on = (per.kind || "") === kind && (kind !== "days" || (per.n || 7) === 7);
-      return `<button type="button" class="dsl-chip${on ? " on" : ""}" data-ds-period="${kind}" aria-pressed="${on}"${tip ? ` title="${esc(tip)}"` : ""}>${n}</button>`;
+      const on = (per.kind || "") === kind && (kind !== "days" || (per.n || 7) === 7), k0 = monthOf[kind];
+      const label = k0 == null ? n : monthName(k0, info.today), t = k0 == null ? tip : `${n}（${label}）`;
+      return `<button type="button" class="dsl-chip${on ? " on" : ""}" data-ds-period="${kind}" aria-pressed="${on}"${t ? ` title="${esc(t)}"` : ""}>${esc(label)}</button>`;
     }).join("");
-    const month = `<span class="dsl-month${k != null && k > 1 ? " on" : ""}" role="group" aria-label="月を送る">`
-      + `<button type="button" class="dsl-step" data-ds-back="1" title="前の月へ（${esc(monthName((k ?? 0) + 1, info.today))}）" aria-label="前の月へ">◀</button>`
-      + `<b title="${k == null ? "月で見るときは ◀ で前の月へ" : esc(monthName(k, info.today))}">${k == null ? "月で見る" : esc(monthName(k, info.today))}</b>`
-      + `<button type="button" class="dsl-step" data-ds-back="-1"${k == null || k <= 0 ? " disabled" : ""} title="次の月へ" aria-label="次の月へ">▶</button></span>`;
+    // 月を送る: 先月より前の月を見ていなければ、次に見られる月の名前の札「◀ 8月」（前は「◀ 月で見る ▶」で、どの月かを言わなかった・§9.628 の 7 回目の採点）。
+    // 見ていれば「◀ 8月 ▶」（真ん中がいま見ている月）
+    const back2 = monthName(2, info.today);
+    const month = k == null || k <= 1
+      ? `<button type="button" class="dsl-chip dsl-prev" data-ds-back="${2 - (k ?? 0)}" title="${esc(back2)}を見ます（続けて ◀ で前の月へ）">◀ ${esc(back2)}</button>`
+      : `<span class="dsl-month on" role="group" aria-label="月を送る">`
+        + `<button type="button" class="dsl-step" data-ds-back="1" title="前の月へ（${esc(monthName(k + 1, info.today))}）" aria-label="前の月へ">◀</button>`
+        + `<b>${esc(monthName(k, info.today))}</b>`
+        + `<button type="button" class="dsl-step" data-ds-back="-1" title="次の月へ（${esc(monthName(k - 1, info.today))}）" aria-label="次の月へ">▶</button></span>`;
     const gs = groupsOf(info.tree || {}, s.set).filter((g) => !g.none);
-    // 設備を選んでいないときは「組んだまま」（期間と同じ言葉・§9.628。前は「すべて」で、自設備のパネルが自設備だけを数えているのに全設備に読めた）
-    const gchips = `<button type="button" class="dsl-chip${eq.length ? "" : " on"}" data-ds-all aria-pressed="${!eq.length}" title="パネルごとに組んだ設備で数えます（スライサーで設備を絞らない）">組んだまま</button>`
+    // 設備を選んでいないときは「パネルの設定」（期間と同じ言葉・§9.628。前は「すべて」で、自設備のパネルが自設備だけを数えているのに全設備に読めた。
+    // 「組んだまま」は 7 回目の採点で意味を推測させると言われた）
+    const gchips = `<button type="button" class="dsl-chip${eq.length ? "" : " on"}" data-ds-all aria-pressed="${!eq.length}" title="パネルごとに組んだ設備で数えます（スライサーで設備を絞らない）">パネルの設定</button>`
       + gs.map((g) => { const on = eq.length > 0 && same(eq, g.members); return `<button type="button" class="dsl-chip${on ? " on" : ""}" data-ds-group="${esc(g.name)}" aria-pressed="${on}" title="${esc(g.name)}: ${esc(g.members.join("・"))}">${esc(g.name)}</button>`; }).join("");
     const custom = eq.length && !gs.some((g) => same(eq, g.members));
     const pick = `<button type="button" class="dsl-chip dsl-pick${custom ? " on" : ""}" data-ds-pick aria-haspopup="dialog" aria-expanded="${!!info.open}" title="設備を 1 台ずつ選びます（設備グループの見出しで、まとめて選べます）">${custom ? `設備 ${eq.length}` : "設備…"}<i aria-hidden="true">▾</i></button>`;
     const active = !!(per.kind || eq.length);
     const state = active ? `<small class="dsl-hits" title="スライサーが効いているパネルの数（期間を組んでいないパネル・設備を見分けられないパネル・「スライサーに従わない」パネルには効きません）">${info.hits} / ${info.total} 枚に効いています</small>`
-      + `<button type="button" class="dsl-clear" data-ds-clear title="スライサーを外して、組んだままに戻します">× 外す</button>` : "";
+      + `<button type="button" class="dsl-clear" data-ds-clear title="スライサーを外して、パネルの設定に戻します">× 外す</button>` : "";
     const time = [parts.includes("period") ? `<span class="dsl-chips">${chips}</span>${month}` : "", parts.includes("date") ? dateChip(per, info) : ""].filter(Boolean).join("");
     const segs = [time ? `<span class="dsl-l">期間</span>${time}` : "", parts.includes("equip") ? `<span class="dsl-l">設備</span><span class="dsl-chips">${gchips}${pick}</span>` : ""].filter(Boolean);
     return `<div class="dsl-bar${active ? " is-on" : ""}" role="group" aria-label="スライサー">${segs.join('<span class="dsl-sep" aria-hidden="true"></span>') || '<span class="dsl-l is-none">出す物がありません（スライサー ▾ で選びます）</span>'}${state}${cfgBtn(info)}</div>`;
@@ -75,7 +84,7 @@
     const popt = PERIODS.map(([kind, n]) => `<option value="${kind}"${pv === kind ? " selected" : ""}>${n}</option>`).join("")
       + (per.kind === "month" ? `<option value="month:${per.n}" selected>${esc(monthName(k, info.today))}</option>` : "");
     const gs = groupsOf(info.tree || {}, s.set).filter((g) => !g.none), gon = gs.find((g) => eq.length && same(eq, g.members));
-    const gopt = `<option value=""${eq.length ? "" : " selected"}>組んだまま</option>${gs.map((g) => `<option value="${esc(g.name)}"${gon === g ? " selected" : ""}>${esc(g.name)}</option>`).join("")}`
+    const gopt = `<option value=""${eq.length ? "" : " selected"}>パネルの設定</option>${gs.map((g) => `<option value="${esc(g.name)}"${gon === g ? " selected" : ""}>${esc(g.name)}</option>`).join("")}`
       + (eq.length && !gon ? `<option value="@custom" selected>設備 ${eq.length}</option>` : "") + `<option value="@pick">設備を選ぶ…</option>`;
     const active = !!(per.kind || eq.length);
     const rng = per.kind === "range" ? `<option value="@range" selected>${esc(rangeWord(per))}</option>` : "";
@@ -85,7 +94,7 @@
         + `<button type="button" class="dsl-step" data-ds-back="-1"${k == null || k <= 0 ? " disabled" : ""} aria-label="次の月へ" title="次の月へ">▶</button></span>` : "")
       + (parts.includes("date") ? dateChip(per, info) : "")
       + (parts.includes("equip") ? `<label class="dsl-l">設備<select data-ds-gsel aria-label="設備">${gopt}</select></label><button type="button" class="dsl-pickhold" data-ds-pick hidden aria-hidden="true" tabindex="-1"></button>` : "")
-      + (active ? `<small class="dsl-hits" title="スライサーが効いているパネルの数">${info.hits} / ${info.total} 枚</small><button type="button" class="dsl-clear" data-ds-clear title="スライサーを外して、組んだままに戻します">× 外す</button>` : "") + cfgBtn(info) + "</div>";
+      + (active ? `<small class="dsl-hits" title="スライサーが効いているパネルの数">${info.hits} / ${info.total} 枚</small><button type="button" class="dsl-clear" data-ds-clear title="スライサーを外して、パネルの設定に戻します">× 外す</button>` : "") + cfgBtn(info) + "</div>";
   }
 
   /* ---- 日付の暦（版 3.52.0）: 札の真下に開く。始めの日・終わりの日の順に押すと当たる（1 日だけは同じ日を 2 回）。打つ欄（から・まで）でも ---- */
@@ -111,7 +120,7 @@
      edit … 編集中（変えた所はダッシュボードに入り、保存すると全員に効く）。見ているときは、この PC の見え方 ---- */
   function cfgHtml(cfg, info) {
     const parts = cfg.parts || PART_KEYS, on = !cfg.off;
-    const names = { period: ["期間", "組んだまま・今日・前日・直近 7 日・今月・先月・月の ◀ ▶"], date: ["日付", "暦で日・期間を選ぶ"], equip: ["設備", "設備グループの札・設備…"] };
+    const names = { period: ["期間", "パネルの設定・今日・前日・直近 7 日・今月・先月・月の ◀ ▶"], date: ["日付", "暦で日・期間を選ぶ"], equip: ["設備", "設備グループの札・設備…"] };
     const part = (k) => `<label class="dsl-part${on ? "" : " is-dim"}"><input type="checkbox" data-ds-part="${k}"${parts.includes(k) ? " checked" : ""}${on ? "" : " disabled"}><b>${names[k][0]}</b><small>${names[k][1]}</small></label>`;
     const n = info.slicers || 0;
     return `<div class="dash-pophead"><b>スライサー</b><small>${info.edit ? "編集中: 変えた所はこのダッシュボードに入ります（保存すると全員に効きます）" : "この PC の見え方です（全員の分は編集で）"}</small></div>`
@@ -135,7 +144,7 @@
       const gh = g.name ? `<label class="dsl-gh"><input type="checkbox" data-ds-gck="${esc(g.name)}"${all ? " checked" : ""}${n && !all ? " data-mixed" : ""}><b>${esc(g.name)}</b><small>${n ? `${n} / ` : ""}${g.members.length} 台</small></label>` : "";
       return `<div class="dsl-g${g.name ? "" : " is-flat"}">${gh}<div class="dsl-ms">${g.members.map((m) => `<label class="dsl-m"><input type="checkbox" data-ds-eq="${esc(m)}"${eq.has(m) ? " checked" : ""}>${esc(m)}</label>`).join("")}</div></div>`;
     }).join("");
-    return `${head}<div class="dsl-list">${list}</div><div class="dash-popacts"><button type="button" class="dfl-link" data-ds-all>組んだままに戻す</button><span class="dash-sp"></span><button type="button" class="mm-btn-primary" data-ds-done>閉じる</button></div>`;
+    return `${head}<div class="dsl-list">${list}</div><div class="dash-popacts"><button type="button" class="dfl-link" data-ds-all>パネルの設定に戻す</button><span class="dash-sp"></span><button type="button" class="mm-btn-primary" data-ds-done>閉じる</button></div>`;
   }
   /** チェックの途中（グループの一部を選んだ）を見せる */
   const mixed = (root) => root.querySelectorAll("[data-mixed]").forEach((x) => { x.indeterminate = true; });

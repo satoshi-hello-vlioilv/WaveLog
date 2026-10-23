@@ -28,9 +28,6 @@
   const ROLE_COLOR = { target: "#7658ae", actual: "#2f7d78", base: "#4a62b0", "": "#5a6f77", diff: "#5a6f77", rate: "#b5822a" };
   const kindOf = (src) => (WL.dashKit.src.isWork(src) ? "work" : "src");
   const colorOf = (src) => SOURCE_COLOR[kindOf(src)];
-  // 名前ごとの色は、データの種類の色（藍・青緑・琥珀）を使わない（区分の色が「作業実績」などと読めないように。2026-10-grid の 2 回目の指摘）
-  // 警告の赤（前日 0 本の札・読めない）と近い赤・桃も使わない（3 回目の指摘）
-  const CAT = ["#7658ae", "#5c8a2a", "#8a5f18", "#5a6f77", "#7a7a1f", "#8e4f76"];
   /* 色の組（版 3.39.0。書式 palette。利用者の要望 7）: "" はデータの種類の色（今まで）。分類の組は dataviz の検証（色覚の差・明るさ・字の背景との差）を通した並び。
      濃淡の組は 1 つの色の明るさの段（濃い → 淡い。順位・大きさを見せる） */
   const PALETTES = {
@@ -46,7 +43,8 @@
   const drawnSer = new Map();     // パネルごとに描いた系列の形と目盛り（名前 → {kind, axis}。組む所の「自動（棒）」。版 3.46.0）
   const hash = (t) => { let h = 0; for (const ch of String(t)) h = (h * 31 + ch.codePointAt(0)) >>> 0; return h; };
   /** その図の名前の並び → 名前ごとの色（名前で決まる色。図の中で同じ色が重なれば次の色へ＝同じ図に同じ色は出さない） */
-  function catColors(names, list = CAT) {
+  /** @param {string[]} names @param {string[]} list */
+  function catColors(names, list) {
     const used = new Set(), map = new Map();
     names.forEach((n) => { let i = hash(n) % list.length; for (let k = 0; k < list.length && used.has(i); k++) i = (i + 1) % list.length; used.add(i); map.set(n, list[i]); });
     return (n) => map.get(n) || list[hash(n) % list.length];
@@ -246,7 +244,8 @@
     // 1 つの値だけの棒（縦棒・横棒・ロリポップ）は 1 色（§9.628。前は 8 項目までだと項目ごとの色で、9 項目からは 1 色＝同じ図の色が項目の数で変わり、色に意味が無かった）。
     // 項目ごとの色は、全体の内訳を言う形（ドーナツ・ツリーマップ・バブル）か、色の組を選んだときだけ
     const rowColor = (few && !["column", "bar", "lollipop"].includes(kind)) || (pal && ["column", "bar", "lollipop", "donut", "treemap", "bubble"].includes(kind) && m.nc === 0)
-      ? catColors(m.rows.filter((r) => r.type === "data").map((r) => m.rowName(r)).sort(), pal ? pal.c : CAT) : null;
+      // 設備でない項目の内訳は紺の濃淡（色相は設備だけ・§9.628。前は色相の組で、用途名のドーナツが黄緑になった）。色の組を選べばその組
+      ? catColors(m.rows.filter((r) => r.type === "data").map((r) => m.rowName(r)).sort(), pal ? pal.c : [NAVY].concat(SERIES_SHADES)) : null;
     // 別のデータを合わせた答え（版 3.40.0）: 色は役割の色（組む所の札と同じ: 目標＝紫・実績＝青緑）・目標と実績は同じ目盛り
     const link = !!d.link;
     const cols = link && !(fm.palette) ? d.measures.map((x, j) => ROLE_COLOR[x.role] || colors[j % colors.length]) : colors;
@@ -341,8 +340,11 @@
       const list = by === "manual" ? (o.list || []) : (equipOrder || []), at = (k) => { const i = list.indexOf(k); return i < 0 ? Infinity : i; };
       return shown.sort((a, b) => at(a) - at(b) || name(a, b));
     }
-    const m = models[Math.min(o.group || 0, models.length - 1)], val = (k) => { const r = m && m.rows.get(k); return r && r.total != null ? r.total : 0; };
-    return shown.sort((a, b) => (o.dir === "asc" ? val(a) - val(b) : val(b) - val(a)) || name(a, b));
+    // 値の順: 決めた列 → 同じならほかの列を左から → 名前（前は同じ値の行の並びに見て分かる決まりが無かった・§9.628 の 8 回目の採点）
+    const gi0 = Math.min(o.group || 0, models.length - 1), seq = [gi0, ...models.map((_, i) => i).filter((i) => i !== gi0)];
+    const val = (gi, k) => { const r = models[gi] && models[gi].rows.get(k); return r && r.total != null ? r.total : 0; };
+    const cmp = (a, b) => { for (const gi of seq) { const d = val(gi, b) - val(gi, a); if (d) return o.dir === "asc" ? -d : d; } return name(a, b); };
+    return shown.sort(cmp);
   }
   const NONE_GROUP = "（グループなし）";
   /** 並べた行の鍵を設備グループ（order.tree。答えの d.tree）の見出しの下にまとめる → [{name, keys, none}]（まとめないなら 1 つ・name ""）。
@@ -360,10 +362,13 @@
     return rest.length ? out.concat([{ name: NONE_GROUP, keys: rest, none: true }]) : out;
   }
   /** 合わせた表の行の鍵（いまの並び。隠した行も入れる）をグループごとに → [{name, keys}]。組む所の行の札に使う */
+  /** 行の鍵: 答えに出た行・読めなかった設備・数えた設備（設備の段なら、数の無い設備も 0 の行で並べる。前は数のある設備だけで、
+      隣のガントの設備とそろわなかった・§9.628 の 7 回目の採点。数えた設備は答えの parts＝スライサー・まとまりの設備で絞った後） */
+  const boardRowKeys = (models, rowDim) => [...new Set(models.flatMap((m) => [...m.rows.keys(), ...(rowDim === "@equip" ? [...m.failed.keys(), ...(m.parts || [])] : [])]))];
   function boardTree(p, d) {
     const gs = p.groups || [], rowDim = (p.rows || {}).column || "@equip";
     const models = gs.map((g, i) => groupModel(g, ((d && d.groups) || [])[i], rowDim));
-    const keys = [...new Set(models.flatMap((m) => [...m.rows.keys(), ...(rowDim === "@equip" ? [...m.failed.keys()] : [])]))];
+    const keys = boardRowKeys(models, rowDim);
     return groupRows(p, boardOrder({ ...p, order: { ...(p.order || {}), hide: [] } }, keys, models, d && d.equipOrder), d);
   }
   /** 合わせた表の行の鍵（いまの並び。隠した行も入れる・グループの順） */
@@ -381,7 +386,7 @@
   function boardModel(p, d) {
     const gs = p.groups || [], rowDim = (p.rows || {}).column || "@equip";
     const models = gs.map((g, i) => groupModel(g, (d.groups || [])[i], rowDim));
-    const keys = [...new Set(models.flatMap((m) => [...m.rows.keys(), ...(rowDim === "@equip" ? [...m.failed.keys()] : [])]))];
+    const keys = boardRowKeys(models, rowDim);
     const tree = groupRows(p, boardOrder(p, keys, models, d.equipOrder), d), order = tree.flatMap((g) => g.keys);
     // 0 の印: まとまりの計が 0（行が無い＝0）で、ほかのまとまりに数がある行
     const zeroOf = (gi, k) => { const r = models[gi].rows.get(k); return !(r && r.total) && models.some((m, j) => j !== gi && ((m.rows.get(k) || {}).total || 0) > 0); };
@@ -393,7 +398,7 @@
     const measOf = (g) => { const i = gs.indexOf(g), am = i >= 0 ? (((d.groups || [])[i] || {}).measures || [])[0] : null; return g ? { ...g.measure, ...(am && am.unit ? { unit: am.unit } : {}) } : null; };
     const fmtN = (n, g) => (n == null ? "–" : C.numText(n, C.measFmt(p.fmt, measOf(g)))), fmtH = (n, g) => C.numHtml(n, C.measFmt(p.fmt, measOf(g)));
     const unitWord = rowDim === "@equip" ? "設備" : "行";
-    return { p, d, gs, rowDim, models, tree, order, flags, folded, span, fmtN, fmtH, unitWord, SEG: SERIES_SHADES };
+    return { p, d, gs, rowDim, models, tree, order, flags, folded, span, fmtN, fmtH, unitWord, SEG: SERIES_SHADES, sameCond: new Set(gs.map(condOf)).size === 1 };
   }
   /** 1 つの数の札（見せ方ごと）。mx … その段の最大・base … 割合の分母 */
   function boardVal(B, g, v, mx, base) {
@@ -410,8 +415,9 @@
   function boardSingle(B, g, gi, r, col, grp) {
     const totals = [...B.models[gi].rows.values()].map((x) => x.total), v = r ? r.total : 0;
     if (g.look === "bar" || g.look === "stack") {
-      const mx = maxOf(totals);
-      return `<td class="dash-lots${grp}" style="--gc:${col}"><div><span class="dash-bar"><i style="width:${((v || 0) / mx * 100).toFixed(1)}%"></i></span><b>${v ? B.fmtH(v, g) : C.ADDITIVE.has(((g.measure || {}).agg) || "lots") ? "0" : "–"}</b></div></td>`;   // 数える物の無い行は 0（隣の列と同じ言い方・§9.628）
+      // 数の席の幅は、その列でいちばん大きい数の字を測って決める（決め打ちの 3.6em に「,」が入らず「4,800分」がはみ出した・§9.628）
+      const mx = maxOf(totals), vw = Math.max(3.6, C.textW(B.fmtN(mx, g), 10, 700) / 10 + 0.3).toFixed(2);
+      return `<td class="dash-lots${grp}" style="--gc:${col};--vw:${vw}em"><div><span class="dash-bar"><i style="width:${((v || 0) / mx * 100).toFixed(1)}%"></i></span><b>${v ? B.fmtH(v, g) : C.ADDITIVE.has(((g.measure || {}).agg) || "lots") ? B.fmtH(0, g) : "–"}</b></div></td>`;   // 数える物の無い行は 0（隣の列と同じ言い方・§9.628）
     }
     const sum = totals.reduce((a, x) => a + (x || 0), 0);
     return `<td class="num dash-s${grp}${v ? "" : " is-zero"} dash-l-${g.look}" style="--gc:${col}">${boardVal(B, g, v, maxOf(totals), sum)}</td>`;
@@ -451,14 +457,19 @@
   /** 見出しの 2 段（まとまりの題と計／列の段） */
   /** まとまりの条件は、そのまとまりの見出しの中に（§9.628。前は表の上の右寄せの1行に「作業予定・条件 1」とまとめ、どの列の何の条件か読めなかった） */
   // パネル共通に条件があるのに、このまとまりに条件が無ければ「条件 なし」と言い切る（共通の条件で数えたと読ませない）
-  const gcond = (g, common) => { const t = (g.filters || []).map((f) => WL.dashKit.condLabel(f).replace(/\s+/g, " ").trim()).join("・") || (common && common.cond ? "条件 なし" : "");
+  // どのまとまりも同じ条件なら、見出しには書かない（パネルの添え書きか「このダッシュボードの前提」が 1 回で言う。同じ字を見出しごとにくり返さない）
+  const condOf = (g) => (g.filters || []).map((f) => WL.dashKit.condLabel(f).replace(/\s+/g, " ").trim()).join("・");
+  const gcond = (g, common, same) => { const t = same ? "" : condOf(g) || (common && common.cond ? "条件 なし" : "");
     return t ? `<small class="dash-gcond" title="このまとまりの条件">${esc(t)}</small>` : ""; };
+  /** 並べている列の印（値の順のとき・その列の見出しの題の後ろに ▼ 大きい順／▲ 小さい順） */
+  const sortMark = (p, gi) => { const o = p.order || {}; if ((o.by || "value") !== "value" || Math.min(o.group || 0, (p.groups || []).length - 1) !== gi) return "";
+    const asc = o.dir === "asc"; return ` <span class="dash-sortk" title="${asc ? "小さい" : "大きい"}順に並べています（同じなら隣の列、それも同じなら名前の順）">${asc ? "▲" : "▼"}</span>`; };
   function boardHead(B) {
     const { gs, models, d, rowDim } = B;
     const head1 = gs.map((g, gi) => {
       const m = models[gi], a = (d.groups || [])[gi] || {}, cls = gi ? "dash-grp" : "";
       const tip = [a.sourceName, ...(a.mirrors || []).slice(0, 1).map((x) => x && x.at ? `元 ${ago(x.at)}` : ""), m.none ? `${rowDim === "@equip" ? "設備なし" : "空欄"} ${C.fmt(m.none)}` : ""].filter(Boolean).join("・");
-      return `<th class="${cls}${m.cols.length ? "" : (g.look === "bar" || g.look === "stack" ? " dash-lots" : " num")}" colspan="${B.span(gi)}"${m.cols.length ? "" : ' rowspan="2"'} title="${esc(tip)}">${esc(groupTitle(g, a))}${B.p.noTotal ? "" : `<small>計 ${m.total == null ? "–" : B.fmtN(m.total, g)}${unitOf(g) ? ` ${unitOf(g)}` : ""}</small>`}${gcond(g, B.common)}${m.only ? `<small class="dash-gcond">${esc(m.only.name)}：${esc(m.only.label)}のみ</small>` : ""}</th>`;
+      return `<th class="${cls}${m.cols.length ? "" : (g.look === "bar" || g.look === "stack" ? " dash-lots" : " num")}" colspan="${B.span(gi)}"${m.cols.length ? "" : ' rowspan="2"'} title="${esc(tip)}">${esc(groupTitle(g, a))}${sortMark(B.p, gi)}${B.p.noTotal ? "" : `<small>計 ${m.total == null ? "–" : B.fmtN(m.total, g)}${unitOf(g) ? ` ${unitOf(g)}` : ""}</small>`}${gcond(g, B.common, B.sameCond)}${m.only ? `<small class="dash-gcond" title="列の分け方の値が 1 つだけなので、段を畳みました">${esc(WL.dashKit.condLabel({ column: m.only.name, op: "eq", value: m.only.label }))}</small>` : ""}</th>`;
     }).join("");
     const head2 = gs.map((g, gi) => {
       const m = models[gi];
@@ -477,7 +488,7 @@
     return `${warn ? `<div class="dash-boardhead">${warn}</div>` : ""}<div class="dp-flow"></div>`;
   }
   /** 合わせた表を描く（d = {groups: [答え], equipOrder}）→ 下に出す知らせの字 */
-  /** @param {{cond?: string}} [common] 道具の行の「パネル共通」（条件が共通にあれば、条件の無いまとまりに「条件 なし」と書く） */
+  /** @param {{cond?: string}} [common] 道具の行の「このダッシュボードの前提」（条件が共通にあれば、条件の無いまとまりに「条件 なし」と書く） */
   function board(box, p, d, H, common = {}) {
     look(box, p.fmt);
     if (!d) { box.innerHTML = '<p class="dp-wait">数えています…</p>'; return ""; }
