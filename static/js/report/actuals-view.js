@@ -289,7 +289,8 @@
   const m=/^minmax\(([^,]+),1fr\)$/.exec(t);
   /* 数の列は伸ばさない・余白も詰める（見出しの字の幅か 4em の広いほう。2・7回目の採点: 1桁の列が広すぎて横に送る量が増えた） */
   if(m&&m[1]==='84px'&&numericKeys().has(k))return `max(4em,calc(${em.toFixed(2)}em + 20px))`;
-  if(m)return `minmax(max(${m[1]},${min}),1fr)`;
+  /* 伸びる列も下限の1.6倍まで（余りは表の右の何も無い所が受ける・§9.209。前後の採点: オペレータと作業人数のあいだが130px空いた） */
+  if(m){const lo=`max(${m[1]},${min})`;return `minmax(${lo},calc(${lo} * 1.6))`}
   return /^(\d+px|var\(--[\w-]+\))$/.test(t)?`max(${t},${min})`:t;
  }
  function labelOf(k){return WL.columnLayout.label(AC_TARGET,k)||k}
