@@ -645,7 +645,7 @@ def clean_panel(p, i, rows):
 ABC_A, ABC_B = 70.0, 90.0
 ABC_LIMS_MAX = 50         # 線の数の上限（51 段。段の名前は A〜Z の次が AA・AB …）
 # ABC 分析の表示項目（出す・出さないを選べる物）: 構成比・累積・ABC（ランク。棒の色と A・B の線も）・平均作業・換算係数・換算本数・パレート図・下の段の計
-ABC_ITEMS = ("share", "occ", "lshare", "cum", "rank", "avg", "factor", "conv", "chart", "foot")     # occ・lshare（占有時間・負荷構成比）は版 3.49.0
+ABC_ITEMS = ("share", "occ", "lshare", "cum", "rank", "avg", "factor", "conv", "chart", "foot", "tabs")   # tabs＝設備の札（§9.630）     # occ・lshare（占有時間・負荷構成比）は版 3.49.0
 
 
 def clean_ops(v):
@@ -890,9 +890,10 @@ BUILTIN_LAYOUTS = [
         _pv("monthRate", 8, 1, 4, 1, "今月の生産性", "kpi", "rec", measures=[PRODUCTIVITY], period=THIS_MONTH, fmt={"utext": "kg/時"}),
         # いまの作業は左上の 1 枚が言う（ガントの行の名前の下にくり返さない）
         _pv("planGantt", 0, 2, 12, 3, "本日の予定と実績", "gantt", "plan", measures=[{"agg": "count"}], period=TODAY, ops={"plan": True, "nowRow": False}),
-        # 負荷比は本数比と並ぶと読み分けにくいので伏せる（占有時間・換算係数・換算本数は残す。基準が何に効くか読めるように）
+        # 負荷比は本数比と並ぶと読み分けにくいので伏せる（占有時間・換算係数・換算本数は残す。基準が何に効くか読めるように）。
+        # 設備の札も伏せる（設備で絞るのはダッシュボードの帯の1か所）
         _pv("monthAbc", 0, 5, 12, 4, "今月の品種の ABC 分析（用途名 × 丈数 × 条数）", "abc", "rec", measures=[{"agg": "count"}], period=THIS_MONTH,
-            ops={"cls": KIND_COLS, "qty": "lots", "hide": ["lshare"]}),
+            ops={"cls": KIND_COLS, "qty": "lots", "hide": ["lshare", "tabs"]}),
     ]}},
     # 前の既定（§9.64）。前の「稼働状況」: 作業予定と進み具合（予定・作業中・遅れ）と、きょうの作業の棒（ガント）
     {"key": "status", "name": "稼働状況", "body": {"rows": 8, "panels": [

@@ -806,7 +806,8 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .oa-cum{display:inline-block;width:38px;height:6px;border-radius:var(--radius-xs);background:var(--surface-3);margin-right:5px;vertical-align:1px;overflow:hidden}
 .oa-cum i{display:block;height:100%}
 .oa-rank{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:16px;padding:0 3px;box-sizing:border-box;border-radius:var(--radius-xs);background:var(--rc);color:var(--rf,#fff);font-size:var(--fs-sm);font-weight:var(--fw-strong)}
-.oa-nend{color:var(--warn-fg);font-weight:var(--fw-strong)}
+.oa-nend{color:var(--ink-2)}   /* 数の断り書き（警告ではない・7 回目の採点: 茶赤で警告に見えた） */
+.oa-rkl{font-size:var(--fs-micro);font-weight:var(--fw-strong);fill:var(--ink-2)}
 .oa-wrap.no-x1 .oa-x1,.oa-wrap.no-x2 .oa-x2,.oa-wrap.no-x3 .oa-x3,.oa-wrap.no-x4 .oa-x4{display:none}
 .oa-table td.is-up{color:var(--warn-fg);font-weight:var(--fw-strong)}
 .oa-table td.is-none{color:var(--teal-dark)}
@@ -1408,6 +1409,8 @@ body.pv-dnd-body,body.pv-dnd-body *{cursor:grabbing;user-select:none}
 .on-wrap.is-cols .on-main{overflow:hidden;min-width:0}
 .on-wrap.is-cols .on-due{overflow:hidden;text-overflow:ellipsis;min-width:0}
 .on-why{font-size:var(--fs-sm);color:var(--look-amber-dark)}
+.on-row.on-sum{display:flex;align-items:center;gap:6px;min-height:30px;flex-wrap:nowrap;overflow:hidden}
+.on-sumt{font-size:var(--fs-sm);color:var(--ink-2);margin-right:12px;white-space:nowrap}
 .on-prog{display:block;height:6px;margin-top:4px;border-radius:var(--radius-pill);background:var(--surface-3);overflow:hidden;max-width:16em}
 .on-prog>i{display:block;height:100%;background:var(--look-slate)}
 .on-prog.is-late>i{background:var(--look-amber)}

@@ -95,7 +95,8 @@
       + `<div class="og-foot"><span class="og-key"><span><i class="og-k-on"></i>勤務時間</span>${c.offSeen ? '<span><i class="og-k-off"></i>勤務の外</span>' : ""}${c.sepSeen ? '<span><i class="og-k-sep"></i>直の境目</span>' : ""}${c.daySeen ? '<span><i class="og-k-day"></i>作業日の境目</span>' : ""}${legend ? "" : `<span${c.planSeen ? ` title="${esc(fromTip(eqs))}"` : ""}><i style="background:${WORK}"></i>${c.planSeen ? "実績" : "作業"}</span>`}${c.planSeen ? '<span title="まだ終わっていない作業・設備停止の予定開始〜予定終了（作業中は作業開始＋見積）"><i class="og-k-plan"></i>予定</span>' : ""}${c.short ? '<span title="棒の幅に全部の字が入らないので、どの棒もロット番号の下 3 桁で書いています（棒に乗せると全部出ます）">棒の字＝下 3 桁</span>' : ""}`
       + `${eqs.some((e) => (e.ops || []).some((o) => o[5] === "r")) ? '<span title="作業終了がまだ無い、いちばん新しい作業（いままでの区間）"><i class="og-k-run"></i>作業中</span>' : ""}</span>${leg}</div></div>`;
     const more = eqs.length - shown.length;
-    const idleTxt = idle.length ? `予定も実績も無い設備: ${idle.map((e) => e.name).join("・")}` : "";
+    // 予定も実績も無い設備は、行の名前の下に いまの作業 を書くときだけここで言う（書かない＝同じダッシュボードの「いまの作業」が全設備を言う。2か所に出さない・§9.630 の 7 回目）
+    const idleTxt = idle.length && (p.ops || {}).nowRow !== false ? `予定も実績も無い設備: ${idle.map((e) => e.name).join("・")}` : "";
     return [more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "", idleTxt].filter(Boolean).join("　");
   }
   /** 実績の棒の出どころ（測定データ・手入力・実績データ〈取り込み〉…）ごとの本数 → 凡例の説明の字 */
@@ -268,9 +269,11 @@
     if (!eqs.length) { box.innerHTML = '<p class="dp-empty">当たる設備がありません</p>'; return ""; }
     const o = p.ops || {}, q = d.qty || o.qty || "lots";
     if (!d.cls) { box.innerHTML = '<p class="dp-empty">品種の列を選んでください（組む所の「品種の列」）</p>'; return ""; }
-    const want = picked.has(p.id) ? picked.get(p.id) : eqs.length > 1 ? "" : eqs[0].name;
+    // 設備の札（tabs）を伏せたパネルは全設備だけ（設備で絞るのはダッシュボードの帯の1か所・§9.630 の 7 回目の採点）
+    const noTabs = (o.hide || []).includes("tabs");
+    const want = noTabs ? "" : picked.has(p.id) ? picked.get(p.id) : eqs.length > 1 ? "" : eqs[0].name;
     const cur = want === "" ? { name: "全設備", ...d.all } : eqs.find((e) => e.name === want) || eqs[0];
-    const tabs = eqs.length > 1 ? `<div class="oa-tabs" role="tablist" aria-label="設備">${[{ name: "" }].concat(eqs).map((e) => {
+    const tabs = eqs.length > 1 && !noTabs ? `<div class="oa-tabs" role="tablist" aria-label="設備">${[{ name: "" }].concat(eqs).map((e) => {
       const on = (e.name || "") === (want === "" ? "" : cur.name);
       return `<button type="button" role="tab" class="oa-tab${on ? " on" : ""}" aria-selected="${on}" data-oa-eq="${esc(e.name)}">${esc(e.name || "全設備")}</button>`;
     }).join("")}</div>` : "";
@@ -409,7 +412,8 @@
     const rows = Math.min(3, Math.max(1, ...items.map((x) => (x.parts || [x.key]).length)));
     // 右の余白は、線の札（「W 80.5%」など）のいちばん長い字が入る幅（版 3.51.0。線が増えて名前が 2 字・小数の % になると、48px では右端が切れた）
     const limTxt = ranks && !RK.each ? RK.lims.filter((v) => v < 100).map((v, i) => `${rankName(i)} ${+v}%`) : [];
-    const L = 34, R = Math.max(48, Math.ceil(textW("累積100%", 11)) + 8, ...limTxt.map((t) => Math.ceil(textW(t, 11)) + 8)), T = cut ? 26 : 12, B = 10 + 12 * rows, iw = W - L - R, ih = H - T - B, n = items.length, bw = iw / n;
+    const L = 34, R = Math.max(48, Math.ceil(textW("累積100%", 11)) + 8, ...limTxt.map((t) => Math.ceil(textW(t, 11)) + 8)), T = (cut ? 26 : 12) + (ranks ? 12 : 0), B = 10 + 12 * rows,   // 段の字（棒の上の A・B・C）の席を上に取る
+      iw = W - L - R, ih = H - T - B, n = items.length, bw = iw / n;
     const max = Math.max(...items.map((x) => x.qty)) || 1;
     const y = (v) => T + ih - (v / max) * ih, yc = (c) => T + ih - (c / 100) * ih;
     const g = [`<line class="oa-ax" x1="${L}" x2="${L + iw}" y1="${T + ih}" y2="${T + ih}"/>`];
@@ -427,6 +431,8 @@
       const r = ranks ? rs(x) : RANK.B, h = T + ih - y(x.qty);
       g.push(`<rect x="${L + i * bw + bw * 0.14}" y="${y(x.qty)}" width="${bw * 0.72}" height="${Math.max(0, h)}" fill="${r.c}" rx="1.5"><title>${esc(`${x.key || "（空欄）"}: ${ranks ? `${x.rank}・` : ""}構成比 ${x.share.toFixed(1)}%・累積 ${x.cum.toFixed(1)}%`)}</title></rect>`);
       const cx = L + i * bw + bw / 2, ps = rows > 1 ? (x.parts || [x.key]).slice(0, rows) : [x.key];
+      // 棒の上に段の字（A・B・C。色だけで言わない・§9.630 の 7 回目の採点）
+      if (ranks && bw >= 14) g.push(`<text class="oa-rkl" x="${cx}" y="${y(x.qty) - 3}" text-anchor="middle">${esc(r.n)}</text>`);
       if (bw >= 24) g.push(`<text class="oa-xl" x="${cx}" y="${T + ih + 13}" text-anchor="middle">${ps.map((v, k) => `${k ? `<tspan x="${cx}" dy="12">` : ""}${esc(fitW(v || "空", bw - 4, 11))}${k ? "</tspan>" : ""}`).join("")}</text>`);
     });
     const pts = items.map((x, i) => `${L + i * bw + bw / 2},${yc(x.cum)}`).join(" ");
@@ -463,16 +469,17 @@
     const all = d.equips || [];
     if (!all.length) { box.innerHTML = '<p class="dp-empty">当たる設備がありません</p>'; return ""; }
     // 予定が無い設備・予定を全部終えた設備は 1 行にまとめる（設備が増えても行が増えない・§9.630 の採点: 「ほか 2 台」に隠れた）
-    // 作業も次の予定も無い設備は出さない（済み・予定なしはガントと「本日」の数が言う。同じ事実を2か所に出さない・§9.630 の 6 回目の採点）。全部がそうなら1文で
+    // 作業も次の予定も無い設備は 1 行にまとめる（済み・予定なしを札の字で。全設備をこのパネルが言う＝ガントの足元では言わない・§9.630 の 7 回目）
     const none = all.filter((e) => !e.error && !e.cur && !e.next), eqs = all.filter((e) => !none.includes(e));
-    if (!eqs.length) { box.innerHTML = `<p class="dp-empty">いま作業中・待機中の設備はありません（${esc(none.map((e) => `${e.name} ${e.rows ? "済み" : "予定なし"}`).join("・"))}）</p>`; return ""; }
+    const noneRow = none.length ? `<div class="on-row on-sum">${[["済み", none.filter((e) => e.rows)], ["予定なし", none.filter((e) => !e.rows)]].filter(([, xs]) => xs.length)
+      .map(([w, xs]) => `<span class="on-tag is-none">${w}</span><span class="on-sumt">${esc(xs.map((e) => e.name).join("・"))}</span>`).join("")}</div>` : "";
     // 器の形で並べ方を選ぶ: 縦に全部入るなら行（設備ごとに 1 行）、入らず横に入るなら札を横に並べる（横長の帯に置いたとき）
     // 札の高さは 2 行（設備名・状態・次 ／ 名前・予定完了）か、入らなければ 1 行（設備名・状態・名前・予定完了。次は title）
     const nowT = ms(d.now || ""), rowH = 44, BIG_H = 96, CARD_W = 250, CARD_H = 50, LINE_H = 30, narrow = W < 600;
     const cols = H < eqs.length * rowH && Math.floor(W / CARD_W) >= Math.min(eqs.length, 2) && H >= LINE_H, line = cols && H < CARD_H;
-    const fit = cols ? Math.max(1, Math.floor(W / CARD_W)) * Math.max(1, Math.floor(H / (line ? LINE_H : CARD_H))) : Math.max(1, Math.floor(H / rowH)), shown = eqs.slice(0, fit);
+    const fit = cols ? Math.max(1, Math.floor(W / CARD_W)) * Math.max(1, Math.floor(H / (line ? LINE_H : CARD_H))) : Math.max(1, Math.floor((H - (none.length ? 30 : 0)) / rowH)), shown = eqs.slice(0, fit);
     // 縦に余るなら大きな字（ロット番号・予定完了を数字の札と同じ格に。主役が隣の数字に負けて見えた・6 回目の採点）
-    const big = !cols && H >= shown.length * BIG_H;
+    const big = !cols && H - (none.length ? 30 : 0) >= shown.length * BIG_H;
     const left = (end) => { const m = Math.round((ms(end) - nowT) / 60000); return Number.isFinite(m) ? m : null; };
     const hmOf = (t) => { const x = ms(t); return Number.isFinite(x) ? `${new Date(x).getDate() !== new Date(nowT).getDate() ? `${dayText(x)} ` : ""}${hm(x)}` : "–"; };
     const rows = shown.map((e) => {
@@ -481,7 +488,7 @@
       const tag = c ? (stop ? ["is-stop", "設備停止"] : ["is-run", "作業中"]) : e.next ? ["is-idle", "待機"] : e.rows ? ["is-none", "済み"] : ["is-none", "予定なし"];
       // 遅れは作業スケジュールの遅れ（分）で言う（予定を過ぎた作業は予定終了が「いま」へ押し出されるので、時刻の差では「あと 0 分」と出てしまう）
       const m = c ? left(c.end) : null, late = c ? Math.round(+c.late || 0) : 0;
-      const rest = late > 0 ? `<small class="is-late">予定より ${esc(WL.duration.text(late))} 遅れ</small>` : m != null && m > 0 ? `<small>あと ${esc(WL.duration.text(m))}</small>` : "";
+      const rest = late > 0 ? `<small class="is-late">${narrow ? "" : "予定より "}${esc(WL.duration.text(late))} 遅れ</small>` : m != null && m > 0 ? `<small>あと ${esc(WL.duration.text(m))}</small>` : "";
       const due = c ? `<span class="on-due" title="予定完了＝作業スケジュールの予定終了（遅れている作業は見込みの終了）">予定完了 <b>${esc(hmOf(c.end))}</b>${rest}</span>` : "";
       // 進み具合の帯（作業開始〜予定完了のうち、いままでの割合。遅れは満ちた帯を琥珀で・字は上の「あと／遅れ」が言う）
       const t0 = c ? ms(c.start) : NaN, t1 = c ? ms(c.end) : NaN, frac = late > 0 ? 1 : t1 > t0 ? Math.max(0, Math.min(1, (nowT - t0) / (t1 - t0))) : NaN;
@@ -493,9 +500,13 @@
       return `<div class="on-row"${e.next ? ` title="${esc(`次: ${e.next.name || e.next.kind || "予定"} ${hmOf(e.next.start)}〜`)}"` : ""}><b class="on-eq" title="${esc(e.name)}">${esc(e.name)}</b><span class="on-tag ${tag[0]}">${tag[1]}</span>`
         + `<span class="on-main">${name ? `<span class="on-name" title="${esc(name)}">${esc(name)}</span>` : ""}${due}${prog}${narrow && nxIn ? `<span class="on-due">${nxIn}</span>` : ""}</span>${nx}</div>`;
     }).join("");
-    box.innerHTML = `<div class="on-wrap${cols ? " is-cols" : ""}${line ? " is-line" : ""}${narrow && !cols ? " is-narrow" : ""}${big ? " is-big" : ""}" role="list" aria-label="設備ごとのいまの作業"${cols ? ` style="--on-cols:${Math.min(shown.length, Math.floor(W / CARD_W))}"` : ""}>${rows}</div>`;
+    box.innerHTML = `<div class="on-wrap${cols ? " is-cols" : ""}${line ? " is-line" : ""}${narrow && !cols ? " is-narrow" : ""}${big ? " is-big" : ""}" role="list" aria-label="設備ごとのいまの作業"${cols ? ` style="--on-cols:${Math.min(shown.length, Math.floor(W / CARD_W))}"` : ""}>${rows}${cols ? "" : noneRow}</div>`;
     const more = eqs.length - shown.length;
-    return more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "";
+    // 済み・予定なしの行が器に入らなければ（低いパネル）、行を外して足元の知らせへ回す（切れたまま残さない）
+    const wrap = box.querySelector(".on-wrap"), sum = wrap && wrap.querySelector(".on-sum");
+    const noneOut = cols || (!!sum && wrap.scrollHeight > wrap.clientHeight + 1);
+    if (noneOut && sum) sum.remove();
+    return [more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "", noneOut && none.length ? `予定の無い・済んだ設備: ${none.map((e) => e.name).join("・")}` : ""].filter(Boolean).join("　");
   }
 
   WL.dashOps = { gantt, abc, now, badge, RANK, rankStyle, rankName };

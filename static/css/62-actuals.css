@@ -83,13 +83,14 @@ body.ac-mode .pager{display:none}
 .ac-row.ac-band{position:sticky;top:0;z-index:3;min-height:var(--ac-band-h);background:var(--surface);border-bottom:0}
 .ac-row.ac-band+.ac-row.head{top:var(--ac-band-h)}
 .ac-bandc{display:flex;align-items:baseline;font-size:var(--fs-sm);color:var(--muted);border-top:2px solid var(--line-mid);margin-right:4px}
-.ac-bandc b{font-size:var(--fs-base-sm);font-weight:var(--fw-ui);color:var(--ink-2);white-space:nowrap}
+.ac-bandc b{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink-2);white-space:nowrap}
 .ac-bandc small{font-size:var(--fs-sm);white-space:nowrap}
 .ac-bandc.is-input{border-top-color:var(--teal);color:var(--teal-ink)}
 .ac-bandc.is-input b{color:var(--teal-ink)}
 .ac-bandc.is-empty{border-top-style:dashed}
 .ac-bandc{background:var(--surface)}
-.ac-bandc.is-input{background:var(--teal-tint)}
+/* 入れた項目（主役の群）の帯は濃い地と太い上線（§9.630 の 8 回目の採点で U2＝82点） */
+.ac-bandc.is-input{background:color-mix(in srgb,var(--teal) 16%,var(--surface));border-top-width:3px}
 /* 群の名前は見えている左端に留まる（横に送っても・右の群でも切れない） */
 .ac-bandin{position:sticky;left:var(--space-2);display:inline-flex;align-items:baseline;gap:var(--space-1);padding:0 var(--space-2)}
 .ac-row.head>span.ac-h-input{background:var(--teal-tint)}
@@ -106,6 +107,7 @@ body.ac-mode .pager{display:none}
 .ac-row>.ac-fix{position:sticky;z-index:1;background:inherit}
 .ac-row.head>.ac-fix{z-index:3}
 .ac-row>.ac-fix-end{box-shadow:inset -1px 0 0 var(--line-mid)}
+.ac-bandc:not(.ac-fix) .ac-bandin{position:relative;left:0;transform:translateX(var(--ac-bx,0px))}   /* 置き場は stickBand() が横の送りに合わせて決める */
 .ac-row.is-picked>.ac-fix:first-child{box-shadow:inset var(--bar-w) 0 0 var(--teal)}
 /* 帳票 ↗: ロット番号の席に乗せたときだけ（行を2回押すのと同じ1手） */
 .ac-row>span:has(.ac-rowrep){display:flex;align-items:center;gap:var(--space-2)}
