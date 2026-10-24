@@ -368,6 +368,8 @@
     // 幅: 表の列（oa-x1〜4 の順に隠す）・設備の札（入らなければ選ぶ欄に替える）・下の段（基準 → 換算本数の計 → ABC の数の順に隠す）
     const wideX = (el) => !!el && el.scrollWidth > el.clientWidth + 1, tallY = (el) => !!el && el.scrollHeight > el.clientHeight + 1;
     for (let k = 1; k <= 4 && wideX(tw); k++) wrap.classList.add(`no-x${k}`);
+    // 省いた列は名前で言う（黙って落とさない・§9.630 の前後の採点: 1536 で「本数比」が消えていた）
+    const gone = [...box.querySelectorAll(".oa-table thead th")].filter((th) => getComputedStyle(th).display === "none").map((th) => th.textContent.trim());
     const tl = box.querySelector(".oa-tabs");
     if (tl && tl.scrollWidth > tl.clientWidth + 1) {
       tl.innerHTML = `<label class="oa-tsel">設備<select data-oa-sel aria-label="設備">${[{ name: "" }].concat(eqs).map((e) => `<option value="${esc(e.name)}"${(e.name || "") === (want === "" ? "" : cur.name) ? " selected" : ""}>${esc(e.name || "全設備")}</option>`).join("")}</select></label>`;
@@ -380,9 +382,11 @@
     let rest = items.length - rows.length;
     const rowsOf = () => (tb ? tb.rows.length : 0);
     while (rowsOf() > 1 && tallY(tw)) { tb.deleteRow(-1); rest++; }
-    if (rest > 0) box.querySelector(".oa-rest").textContent = `ほか ${rest} 品種（パネルを高くすると出ます）`;
+    const goneTxt = gone.length ? `狭いので省いた列: ${gone.join("・")}` : "";
+    if (rest > 0) box.querySelector(".oa-rest").textContent = [`ほか ${rest} 品種（パネルを高くすると出ます）`, goneTxt].filter(Boolean).join("　");
+    else if (goneTxt) box.querySelector(".oa-rest").textContent = goneTxt;
     // 品種が少なくて下が空くときは、行を高くして埋める（17〜36px・§9.630 の 5 回目の採点で 28→36。2026-10-ops の 3 回目で決めた G: 表の下が大きく空いていた）
-    else if (tw && tb && tb.rows.length) {
+    if (rest <= 0 && tw && tb && tb.rows.length) {
       const free = tw.clientHeight - tw.querySelector("thead").offsetHeight, rh = Math.max(17, Math.min(36, Math.floor(free / tb.rows.length) - 1));
       if (rh > 17) tw.style.setProperty("--oa-rh", `${rh}px`);
     }
@@ -432,7 +436,9 @@
       g.push(`<rect x="${L + i * bw + bw * 0.14}" y="${y(x.qty)}" width="${bw * 0.72}" height="${Math.max(0, h)}" fill="${r.c}" rx="1.5"><title>${esc(`${x.key || "（空欄）"}: ${ranks ? `${x.rank}・` : ""}構成比 ${x.share.toFixed(1)}%・累積 ${x.cum.toFixed(1)}%`)}</title></rect>`);
       const cx = L + i * bw + bw / 2, ps = rows > 1 ? (x.parts || [x.key]).slice(0, rows) : [x.key];
       // 棒の上に段の字（A・B・C。色だけで言わない・§9.630 の 7 回目の採点）
-      if (ranks && bw >= 14) g.push(`<text class="oa-rkl" x="${cx}" y="${y(x.qty) - 3}" text-anchor="middle">${esc(r.n)}</text>`);
+      // 字は棒の中の下端（累積の折れ線と重ならない。棒の上に置くと線が通った・前後の採点）。棒が低ければ上に
+      const inBar = h >= 18;
+      if (ranks && bw >= 14) g.push(`<text class="oa-rkl${inBar ? " is-in" : ""}" x="${cx}" y="${inBar ? T + ih - 5 : y(x.qty) - 3}" text-anchor="middle"${inBar ? ` style="--rf:${r.f}"` : ""}>${esc(r.n)}</text>`);
       if (bw >= 24) g.push(`<text class="oa-xl" x="${cx}" y="${T + ih + 13}" text-anchor="middle">${ps.map((v, k) => `${k ? `<tspan x="${cx}" dy="12">` : ""}${esc(fitW(v || "空", bw - 4, 11))}${k ? "</tspan>" : ""}`).join("")}</text>`);
     });
     const pts = items.map((x, i) => `${L + i * bw + bw / 2},${yc(x.cum)}`).join(" ");

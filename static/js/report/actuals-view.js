@@ -718,7 +718,7 @@
   const bar=$id('acHead');let h=bar&&bar.querySelector('.ac-rephint');
   if(bar&&!h){
    h=document.createElement('span');h.className='ac-rephint';
-   h.innerHTML='帳票 <button type="button" class="wl-tip-i" data-tip="行を2回押す（または行に乗せて出る「帳票 ↗」）と、その1件の測定帳票を開きます。行を押して選ぶと、選んだ記録をまとめて刷れます。" aria-label="帳票の開き方">i</button>';
+   h.innerHTML='2回押すと帳票 <button type="button" class="wl-tip-i" data-tip="行を2回押す（または行に乗せて出る「帳票 ↗」）と、その1件の測定帳票を開きます。行を押して選ぶと、選んだ記録をまとめて刷れます。" aria-label="帳票の開き方">i</button>';
    bar.insertBefore(h,b||null);WL.popMenu.tips(h);
   }
   if(h)h.hidden=!!n||acState.view==='stack';

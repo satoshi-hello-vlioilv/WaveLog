@@ -94,7 +94,7 @@ body.ac-mode .pager{display:none}
 /* 群の名前は見えている左端に留まる（横に送っても・右の群でも切れない） */
 .ac-bandin{position:sticky;left:var(--space-2);display:inline-flex;align-items:baseline;gap:var(--space-1);padding:0 var(--space-2)}
 .ac-row.head>span.ac-h-input{background:var(--teal-tint)}
-.ac-rephint{color:var(--muted);white-space:nowrap;padding-left:var(--space-3);border-left:1px solid var(--line-soft);margin-left:var(--space-1)}   /* 帯の字の大きさのまま・操作のボタンと線で離す */
+.ac-rephint{color:var(--ink-2);white-space:nowrap;padding-left:var(--space-3);border-left:1px solid var(--line-soft);margin-left:var(--space-1)}   /* 帯の字の大きさのまま・操作のボタンと線で離す */
 .ac-row.ac-band:not(.head):nth-child(even),.ac-row.ac-band:hover{background:var(--surface)}
 /* 右に続く列・伏せている列の数（横に送ると数え直す・操作の帯の右端） */
 .ac-more{margin-left:auto;color:var(--ink-2);white-space:nowrap}
