@@ -74,6 +74,11 @@ body.ac-mode .pager{display:none}
 .ac-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
  padding:0 var(--space-2);position:relative}
 .ac-row.head>span{cursor:default}
+/* §9.630 ①: 見出しを押して並べ替える。並べている列は字の後ろに ▲（古い順・小さい順）／▼ */
+.ac-row.head>span[data-sort]{cursor:pointer}
+.ac-row.head>span[data-sort]:hover{color:var(--ink)}
+.ac-row.head>span.is-sorted{color:var(--ink)}
+.ac-sortmark{font-style:normal;margin-left:var(--space-1);font-size:var(--tbl-fs-mark);color:var(--teal-ink)}
 .ac-num{text-align:right;font-variant-numeric:tabular-nums}
 .ac-idx{display:flex;align-items:center;gap:var(--space-1);color:var(--ink-2)}
 .ac-pick{display:flex;align-items:center;gap:var(--space-1);cursor:pointer}

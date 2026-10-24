@@ -45,6 +45,9 @@
                 /* 一覧の見せ方（§9.553）。'line'＝1行（表示列の設定）／'stack'＝2段組（操業データ表と
                    同じ配置の盤）。**読み方の好みなのでPCごと**に覚える。 */
                 view:'line',stackFor:'',
+                /* 並べ替え（§9.630 ①「作業開始終了を…表示しソートしてリストにする」）。既定は作業開始の古い順（作業した順に読める）。
+                   見出しを押すとその列・もう一度で逆。**読み方の好みなのでPCごと**に覚える */
+                sort:{k:'作業開始',dir:1},
                 query:'',gen:0};
 
  function loadPref(){
@@ -66,13 +69,14 @@
     acState.equipment=String(v.equipment||'');
    if(v.basis==='cal')acState.basis='cal';
    if(v.view==='stack')acState.view='stack';
+   if(v.sort&&typeof v.sort.k==='string'&&v.sort.k)acState.sort={k:v.sort.k,dir:v.sort.dir===-1?-1:1};
    const d=Number(v.days);
    if(Number.isFinite(d)&&d>0&&d<=3660)acState.days=d;
   }catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  }
  function savePref(){
   try{localStorage.setItem(AC_PREF_KEY,JSON.stringify(
-   {equipment:acState.equipment,basis:acState.basis,days:acState.days,view:acState.view}))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
+   {equipment:acState.equipment,basis:acState.basis,days:acState.days,view:acState.view,sort:acState.sort}))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  }
  /* **`new Date('2026-08-18')`で組み立てないこと**（§9.195）——UTCの0時として
     読まれ、地方時へ直すと1日ずれる端末がある。地方時の年月日から文字列を作る。 */
@@ -99,19 +103,22 @@
   {k:'現場日',def:1,track:'110px',get:x=>x.workDate||'',
    note:'勤務区分マスタの日付補正が効いた日付です（暦とずれることがあります）。'},
   {k:'直',def:1,track:'72px',get:x=>x.shift||''},
-  {k:'ロット番号',def:1,track:'minmax(96px,1fr)',get:x=>x.lotNo||''},
-  {k:'検査番号',def:1,track:'minmax(84px,1fr)',get:x=>x.inspectionNo||''},
-  {k:'鋳造番号',track:'minmax(84px,1fr)',get:x=>x.castingNo||''},
-  {k:'状態',def:1,track:'78px',get:x=>x.status||''},
-  {k:'作業開始',def:1,track:'132px',get:x=>localStamp(x.workStart)},
-  {k:'作業終了',def:1,track:'132px',get:x=>localStamp(x.workEnd)},
-  {k:'実働(分)',def:1,track:'80px',cls:'ac-num',get:x=>(x.durationMin==null?'':x.durationMin)},
-  {k:'使用設備',track:'minmax(96px,1fr)',get:x=>x.equipment||''},
+  {k:'ロット番号',def:1,track:'minmax(96px,1fr)',get:x=>x.lotNo||'',covers:['basic.lotNo']},
+  {k:'検査番号',def:1,track:'minmax(84px,1fr)',get:x=>x.inspectionNo||'',covers:['basic.inspectionNo']},
+  {k:'鋳造番号',track:'minmax(84px,1fr)',get:x=>x.castingNo||'',covers:['basic.castingNo']},
+  {k:'状態',def:1,track:'78px',get:x=>x.status||'',covers:['calc.status']},
+  /* 作業開始・作業終了は測定画面で押して記録した時刻（`workTime`・§9.630 ①）。候補の「作業開始時刻」等は同じ値なので並べない（covers） */
+  {k:'作業開始',def:1,track:'132px',get:x=>localStamp(x.workStart),covers:['workTime.startAt','calc.workStart'],
+   note:'測定画面の「作業開始」で記録した時刻です。'},
+  {k:'作業終了',def:1,track:'132px',get:x=>localStamp(x.workEnd),covers:['workTime.endAt','calc.workEnd'],
+   note:'測定画面の「作業終了」で記録した時刻です。'},
+  {k:'実働(分)',def:1,track:'80px',cls:'ac-num',get:x=>(x.durationMin==null?'':x.durationMin),covers:['calc.workDuration']},
+  {k:'使用設備',track:'minmax(96px,1fr)',get:x=>x.equipment||'',covers:['calc.equipment']},
   {k:'更新者',def:1,track:'96px',get:x=>x.updatedBy||''},
   {k:'更新端末',track:'110px',get:x=>x.updatedPc||''},
   {k:'登録者',track:'96px',get:x=>x.createdBy||''},
   {k:'登録端末',track:'110px',get:x=>x.createdPc||''},
-  {k:'更新日時',track:'146px',get:x=>localStamp(x.updatedAt)||x.updatedAtDb||''},
+  {k:'更新日時',track:'146px',get:x=>localStamp(x.updatedAt)||x.updatedAtDb||'',covers:['updatedAt','calc.updatedAt']},
   {k:'日付(太陽暦)',track:'110px',get:x=>x.calDate||''},
   {k:'日付の出どころ',track:'118px',get:x=>({start:'作業開始',end:'作業終了',updated:'更新時刻'}[x.workDateFrom]||''),
    note:'現場日をどの時刻から決めたかです。同じ日付でも当たる見込みが違います。'},
@@ -161,7 +168,8 @@
     const label=String(it.label||'').trim();
     const path=String(it.path||'').trim();
     if(!label||!path)return;
-    out.push({k:label,path,track:'minmax(84px,1fr)',origin:'rec',group:g.group||'',
+    if(AC_COVERED.has(path))return;      /* 固定の列が同じ値を出している（同じ情報を2か所に出さない） */
+    out.push({k:label,path,track:'minmax(84px,1fr)',origin:'rec',group:g.group||'',use:g.use||'joined',
               /* **どの群の項目かを説明に出す**（§6。同じ「板厚」でも
                  準備で決めた値と仕掛の生の列では出どころが違う）。 */
               note:(g.group?g.group+'：':'')+(it.note||g.note||''),
@@ -171,7 +179,29 @@
               get:x=>((x&&x.fields)?(x.fields[path]??''):'')});
    });
   });
+  /* 記録に値があるのに操業データ項目マスタに無い項目（名前を変えた・消した項目）も入力した項目の列（§9.630 ①「列は入力項目すべて」・
+     値が入っている項目は伏せない＝§9.392）。値は抜粋の`opData`にあるので道を頼まない */
+  const have=new Set(out.map(c=>c.k)),defs=new Set((acState.opDefs||[]).map(d=>String(d&&d.name||'').trim()));
+  [...new Set((acState.items||[]).flatMap(x=>Object.keys(x.opData||{})))].forEach(n=>{
+   if(!n||have.has(n)||defs.has(n))return;have.add(n);   /* マスタにある名前は候補が答える（記録に残らない欄はそこで外してある） */
+   out.push({k:n,track:'minmax(84px,1fr)',origin:'rec',group:'操業データ（記録にある項目）',use:'input',
+             note:'操業データ項目マスタに無い（名前を変えた・消した）項目の、記録に残っている値です。',
+             get:x=>((x&&x.opData)?(x.opData[n]??''):'')});
+  });
   return out;
+ }
+ const AC_COVERED=new Set(AC_COLUMNS.flatMap(c=>c.covers||[]));
+ /* 列の使い方の順（§9.630 ①、利用者の指示「アプリ側で使用し入力したデータを優先的に表示し、列へ結合して追加しただけで
+    直接的に使用されていないデータは列右側へ」）。固定の列・入力した項目（左）→ それから作った値 → 結合で写しただけ（右）。
+    群の使い方はサーバーが答える（`actuals.group_use()`の1箇所）。 */
+ const USE_RANK={app:0,input:1,calc:2,joined:3};
+ /* 列名 → 使い方（1回の描画で1回だけ作る。列ごとに候補を作り直さない） */
+ const useMap=()=>new Map(allColumns().map(c=>[c.k,c.use||'app']));
+ /* 並べる順: 使い方の順 → 同じ使い方の中は保存した並び（無ければ候補の順）。固定の列の`#`は先頭、`操作`は入力の後ろ */
+ function orderKeys(keys){
+  const saved=(WL.columnLayout.get(AC_TARGET)||{}).order||[],at=new Map(saved.map((k,i)=>[k,i])),nat=new Map(keys.map((k,i)=>[k,i]));
+  const use=useMap(),rank=k=>k==='#'?-1:k==='操作'?USE_RANK.input+0.5:USE_RANK[use.get(k)||'app']??0;
+  return keys.slice().sort((a,b)=>rank(a)-rank(b)||(at.has(a)&&at.has(b)?at.get(a)-at.get(b):at.has(a)?-1:at.has(b)?1:nat.get(a)-nat.get(b)));
  }
  /* 道 → 列名。**引くのは1箇所**（設定パネルの説明も一覧のセルもここを見る）。 */
  function pathOf(k){const c=columnOf(k);return (c&&c.path)||''}
@@ -214,11 +244,13 @@
  function initialHidden(keys,layout){
   const l=layout||WL.columnLayout.get(AC_TARGET)||{};
   if((l.order||[]).length)return null;      /* 一度でも保存していれば保存値が正 */
-  const def=new Set(AC_COLUMNS.filter(c=>c.def).map(c=>c.k));
-  return (keys||allColumnKeys()).filter(k=>!def.has(k));
+  /* 既定で出すのは固定の列（def）と、測定画面で入れた項目ぜんぶ（§9.630 ①「列は入力項目すべて」）。
+     作った値・結合で写しただけの値は右に並べて、出すかは表示列で選ぶ */
+  const def=new Set(AC_COLUMNS.filter(c=>c.def).map(c=>c.k)),use=useMap();
+  return (keys||allColumnKeys()).filter(k=>!def.has(k)&&use.get(k)!=='input');
  }
  function visibleColumnKeys(){
-  const keys=allColumnKeys(),seed=initialHidden(keys);
+  const keys=orderKeys(allColumnKeys()),seed=initialHidden(keys);
   if(seed){const off=new Set(seed);return keys.filter(k=>!off.has(k))}
   return keys.filter(k=>WL.columnLayout.shows(AC_TARGET,k));
  }
@@ -411,9 +443,31 @@
 
  function filtered(){
   const q=String(acState.query||'').trim().normalize('NFKC').toLowerCase();
-  if(!q)return acState.items;
-  return acState.items.filter(x=>[x.lotNo,x.inspectionNo,x.castingNo,x.equipment,x.status]
+  const hit=!q?acState.items:acState.items.filter(x=>[x.lotNo,x.inspectionNo,x.castingNo,x.equipment,x.status]
    .map(v=>String(v||'').normalize('NFKC').toLowerCase()).join(' ').includes(q));
+  return sortItems(hit);
+ }
+ /* 並べ替え（§9.630 ①）。値はセルと同じ（作り方の式を通した生の値・`rawOf`）。空欄はどちらの向きでも最後。
+    数どうしは数で、ほかは字で（日時は「YYYY-MM-DD HH:MM」なので字の順＝時刻の順） */
+ function sortItems(items){
+  const {k,dir}=acState.sort||{};
+  if(!k||!columnOf(k)&&!WL.columnLayout.formula(AC_TARGET,k))return items;
+  const val=x=>{const v=WL.cellFormat.rawOf(AC_TARGET,rowView(x,0),k);return v==null?'':v};
+  const keyed=items.map((x,i)=>({x,i,v:val(x)}));
+  const num=v=>(typeof v==='number'?v:(String(v).trim()!==''&&Number.isFinite(+v)?+v:null));
+  keyed.sort((a,b)=>{
+   const ea=a.v==='',eb=b.v==='';
+   if(ea||eb)return ea&&eb?a.i-b.i:ea?1:-1;
+   const na=num(a.v),nb=num(b.v);
+   const c=na!=null&&nb!=null?na-nb:String(a.v).localeCompare(String(b.v),'ja',{numeric:true});
+   return (c||a.i-b.i)*(c?dir:1);
+  });
+  return keyed.map(o=>o.x);
+ }
+ function setSort(k){
+  if(!k||k==='#'||k==='操作')return;
+  acState.sort=acState.sort&&acState.sort.k===k?{k,dir:-acState.sort.dir}:{k,dir:1};
+  savePref();renderList();
  }
 
  /* ---------- 描画 ---------- */
@@ -438,8 +492,13 @@
   if(acState.view==='stack'){renderStack(list);return}
   const keys=visibleColumnKeys(),items=filtered();
   list.style.setProperty('--ac-cols',keys.map(trackOf).join(' '));
+  const so=acState.sort||{};
   const head=`<div class="ac-row head">`
-   +keys.map(k=>`<span data-col="${esc(k)}" title="${esc(labelOf(k))}">${esc(labelOf(k))}</span>`).join('')
+   +keys.map(k=>{
+    const can=k!=='#'&&k!=='操作',on=can&&so.k===k,mark=on?(so.dir===1?'▲':'▼'):'';
+    const tip=can?`${labelOf(k)}（押すと${on&&so.dir===1?'新しい順・大きい順':'古い順・小さい順'}に並べます）`:labelOf(k);
+    return `<span data-col="${esc(k)}"${can?' data-sort role="button" tabindex="0"':''}${on?` aria-sort="${so.dir===1?'ascending':'descending'}" class="is-sorted"`:''} title="${esc(tip)}">${esc(labelOf(k))}${mark?`<i class="ac-sortmark" aria-hidden="true">${mark}</i>`:''}</span>`;
+   }).join('')
    +`</div>`;
   if(!items.length){
    const why=acState.error?'読み込みに失敗しました。上の「再読込」で試せます。'
@@ -478,6 +537,14 @@
   list.append(frag);
   wireRows(list);
   bindHeadTools(list);
+  bindSortHeads(list);
+ }
+ /* 見出しを押して並べ替える（閲覧モードでも。列幅の取っ手を掴んだときは並べ替えない） */
+ function bindSortHeads(list){
+  list.querySelectorAll('.ac-row.head>span[data-sort]').forEach(cell=>{
+   cell.addEventListener('click',e=>{if(e.target.closest('.ac-grip'))return;setSort(cell.dataset.col)});
+   cell.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSort(cell.dataset.col)}});
+  });
  }
  /* 選ぶ印と帳票のボタン（1行・2段組の両方で同じ配線）。 */
  function wireRows(list){
@@ -710,5 +777,5 @@
     showToast&&showToast('測定実績を開けませんでした',e&&e.message||String(e),6000));
  });
  WL.actuals={open:openActuals,state:acState,columns:allColumns,columnKeys:allColumnKeys,
-             labelOf,rowView,cellText,target:AC_TARGET,localStamp};
+             labelOf,rowView,cellText,target:AC_TARGET,localStamp,visibleColumnKeys,setSort};
 })();

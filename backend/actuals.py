@@ -312,6 +312,16 @@ def lot_fields():
 _DERIVED_GROUP_MARKS = ('測定した値の統計', '子ロット')
 
 
+# 群の使い方（§9.630 ①、利用者の指示「アプリ側で使用し入力したデータを優先的に表示し、列へ結合して追加しただけで
+# 直接的に使用されていないデータは列右側へ」）: input＝測定画面で入れた値（準備・操業データ・作業時間）／calc＝それから作った値／
+# joined＝測定を始めたときに仕掛・品質から写しただけの値。並びと既定で出すかは画面（actuals-view.js）がこれで決める。**答えはここ1箇所**
+_GROUP_USE = (('準備で決めた値', 'input'), ('操業データ', 'input'), ('作業時間', 'input'), ('計算した値', 'calc'))
+
+
+def group_use(name):
+    return next((u for mark, u in _GROUP_USE if str(name or '').startswith(mark)), 'joined')
+
+
 def catalog(equipment=''):
     """実績の一覧に出せる項目の候補（群ごと）。**帳票の候補と同じ1箇所**から
     作り、派生値の群だけ落として理由を添える。"""
@@ -337,7 +347,7 @@ def catalog(equipment=''):
         if any(m in name for m in _DERIVED_GROUP_MARKS):
             dropped.append(name)
             continue
-        out.append(g)
+        out.append({**g, 'use': group_use(name)})
     return {'groups': out, 'dropped': dropped,
             'droppedNote': ('・'.join(dropped) + ' は測定値そのものから'
                             '**その場で計算する値**なので、一覧では扱いません'
