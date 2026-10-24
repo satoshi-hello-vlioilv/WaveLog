@@ -1,4 +1,4 @@
-# そのほか（35件）
+# そのほか（36件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ダッシュボードの写しは材料の指紋（`sources._inputs()`・共有に触れない）が同じなら作らない。作るのは元ごとに1本 | `test_dashperf.py`・`test_actimes.py` | [§9.631](../../docs/decisions/9.631.md) |
 | パネルの元の状態は`source_state()`の1箇所（ready・copying・unset）。写し中は選べて字で言い、選べないのは置き場が未設定の元だけ | `test_dashsrc.js`・`test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |
 | 予定と実績のガントは`ops.plan`（元は作業予定）。実績の棒は行の実績（出どころは`actual_from()`）、予定の枠はまだ終わっていない行（作業中は作業開始＋見積） | `test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |
 | いまの作業（作業中のロットか設備停止・予定完了＝作業開始＋見積・次の予定）は`_now_one()`の1箇所。パネル「いまの作業」もガントの行の名前の下も同じ答え | `test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |

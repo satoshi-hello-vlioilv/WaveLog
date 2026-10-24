@@ -1,4 +1,4 @@
-# 一覧と列（188件）
+# 一覧と列（191件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -11,7 +11,10 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 測定実績の列は使い方の順（記録の基本→測定画面で入れた項目〈値あり→値なし〉→作った値→仕掛から写した値）。群の使い方は`actuals.group_use()`の1箇所 | `test_acinput.js` | [§9.630](../../docs/decisions/9.630.md) |
-| 測定画面で入れた項目は既定で全部出す（期間に値の無い列は帯の「出す ▸」の1押し）。記録の基本の列は横送りで固定 | `test_acinput.js` | [§9.630](../../docs/decisions/9.630.md) |
+| 測定実績は横に送っても留める列を持たない。行の箱は列の合計の幅、列幅は`WL.list.estimateColumnWidth`の1箇所 | `test_aclayout.js`・`test_acinput.js` | [§9.631](../../docs/decisions/9.631.md) |
+| 測定実績の作業開始・終了は記録の打刻、無いほうだけ予定の行の実績（`_with_plan_times()`）。値が無くても外さない | `test_actimes.py`・`test_aclayout.js` | [§9.631](../../docs/decisions/9.631.md) |
+| 記録の値の道は`actuals._FLAT_BOXES`の1箇所（操業データは`opData`）。値が出るかの網は置いた値を分母に | `test_actimes.py`・`test_aclayout.js` | [§9.631](../../docs/decisions/9.631.md) |
+| 【§9.631で固定を外した】測定画面で入れた項目は既定で全部出す（期間に値の無い列は「出す ▸」の1押し） | `test_acinput.js` | [§9.630](../../docs/decisions/9.630.md) |
 | 測定実績の並べ替えは見出しを押す（既定は作業開始の古い順・端末に覚える）。数の列は揃えの道具へ「数」と渡して右寄せ | `test_acinput.js` | [§9.630](../../docs/decisions/9.630.md) |
 | 測定実績の帳票は行を2回押す（操作の列は既定で出さない）。行を押すと選ぶ | `test_actuals.js` | [§9.630](../../docs/decisions/9.630.md) |
 | 利用者の正規表現は入れ子の繰り返しを断る（`safe_regex`と`WL.formula.safeRegExp()`の同じ決まり）。素のまま照合しない | `test_saferegex.py` | [§9.629](../../docs/decisions/9.629.md) |

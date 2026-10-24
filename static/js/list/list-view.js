@@ -1831,7 +1831,9 @@ const COL_W_SLACK=6;
 /* 見出しの右に取る ▼（絞り込む）の席（§9.614）。**字に重ねない**——1回目の採点で「製造材質」の「質」が ▼ に
    隠れて減点された。見出しの字の幅にこの席を足して見積もる（本文の値には足さない）。 */
 const HEAD_FUNNEL_EM=1.35;
-function estimateColumnWidth(label,values,fs,padX,headExtraEm=0){
+/* `el`を渡すと、その器の書体で字幅の表を作ってから数える（測定実績の一覧のように`#grid`を描かない画面・§9.631） */
+function estimateColumnWidth(label,values,fs,padX,headExtraEm=0,el=null){
+ if(el)calibrateCharEm(getComputedStyle(el));
  const lens=[];
  for(const v of values){const w=textWidthEm(v);if(w>0)lens.push(w)}
  lens.sort((a,b)=>a-b);

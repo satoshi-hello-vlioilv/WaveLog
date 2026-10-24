@@ -1240,6 +1240,8 @@
     WL.equipment.onChange(() => { if (DS.active && DS.layout) refresh(true); });
     // 時間の書き方（「表示」の分／時間と分）を変えたら、いま出ている数を書き直す（分の値は WL.duration で書く）
     document.addEventListener("wl:duration-style", () => { if (DS.active && DS.layout) DS.layout.panels.forEach((p) => paintPanel(p.id)); });
+    // 表示サイズ（「表示」の小・中・大）を変えたら描き直す（§9.631）。パネルの中身は器と字の大きさを測って決めるので、前の大きさのままだと「大」で下が切れた
+    document.addEventListener("wl:look-change", () => { if (DS.active && DS.layout) DS.layout.panels.forEach((p) => paintPanel(p.id, true)); });
     watchSize();
   }
 

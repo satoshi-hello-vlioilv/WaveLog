@@ -20,6 +20,7 @@ from ..repositories.master_repo import (read_equipment_max_strips, read_equipmen
 from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from ..repositories import operation_repo as op
 from .. import records_export
+from ..dashboard import sources as dash_sources
 from ..logging_setup import app_logger
 from .. import db_mirror
 from ..quiet import quiet
@@ -366,7 +367,8 @@ def measurement_actuals():
   try:limit=int(request.args.get('limit') or ACTUALS_LIMIT_DEFAULT)
   except Exception as _e:quiet('数として読めない（既定で続ける）',_e);limit=ACTUALS_LIMIT_DEFAULT
   limit=max(1,min(20000,limit))
-  items=actuals.rows(equipment=eq,date_from=frm,date_to=to,basis=basis)
+  # 記録に無い作業開始・作業終了は、ガントと同じ予定の行の実績で補う(§9.631 ②)。共有の予定を確かめるのは1分に1回まで(写しの控えが持つ)
+  items=actuals.rows(equipment=eq,date_from=frm,date_to=to,basis=basis,times=dash_sources.plan_times())
   total=len(items)
   # **黙って切らない**(§CLAUDE「no silent caps」)。切ったことと件数を返し、
   # 画面が「期間を狭めてください」と書けるようにする。

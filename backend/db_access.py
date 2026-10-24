@@ -1234,7 +1234,7 @@ def read_backup_rows(path):
 # 変化を検出し、変わっていなければ読み直さない。TTL内は署名の確認(stat)すら
 # 省く(statも共有越しでは往復が発生するため)。
 BACKUP_ROWS_CACHE_TTL_SEC=20.0
-_backup_rows_cache={'rows':None,'ts':0.0,'sig':None}
+_backup_rows_cache={'rows':None,'ts':0.0,'sig':None,'ver':0}
 _backup_rows_lock=threading.Lock()
 
 def _backup_sources_signature():
@@ -1355,4 +1355,12 @@ def merged_backup_rows(force=False):
  rows=_merged_backup_rows_uncached()
  with _backup_rows_lock:
   _backup_rows_cache['rows']=rows;_backup_rows_cache['ts']=time.time();_backup_rows_cache['sig']=sig
+  _backup_rows_cache['ver']+=1
  return rows
+
+def backup_rows_version():
+ # 記録の読みの版（§9.631 ③）。読み直すたびに1つ進む——数え直すかを決める側（ダッシュボードの写し）が、
+ # 全件を比べずに「記録が変わったか」を知るための口。読みの控え（20秒・署名）は`merged_backup_rows()`の1箇所が持つ
+ merged_backup_rows()
+ with _backup_rows_lock:
+  return _backup_rows_cache['ver']

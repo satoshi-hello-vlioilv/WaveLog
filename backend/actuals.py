@@ -206,11 +206,31 @@ def _with_shift(item, conn, memo, global_rows):
     return item
 
 
-def rows(equipment=None, date_from=None, date_to=None, basis='work', force=False):
+# 時刻の出どころ（§9.631 ②）。記録の打刻＝測定画面の「作業開始」「作業終了」。無いぶんは予定の行の実績（ガントと同じ答え）で補う
+TIME_FROM_RECORD = '測定画面'
+
+
+def _with_plan_times(item, times):
+    """記録に無い作業開始・作業終了を、その記録が当たった予定の行の実績で補う（§9.631 ②、利用者の指示「測定データの登録が
+    なくても、作業開始時刻と作業終了時刻の欄は列に出せるように」）。補ったら出どころ（`timeFrom`）を言う"""
+    t = (times or {}).get(item.get('id') or '') or {}
+    had = bool(item.get('workStart') or item.get('workEnd'))
+    filled = False
+    for mine, theirs in (('workStart', 'start'), ('workEnd', 'end')):
+        if not item.get(mine) and t.get(theirs):
+            item[mine] = t[theirs]
+            filled = True
+    item['timeFrom'] = (t.get('from') or '予定の実績') if filled and not had else (
+        f"{TIME_FROM_RECORD}・{t.get('from') or '予定の実績'}" if filled else (TIME_FROM_RECORD if had else ''))
+    return item
+
+
+def rows(equipment=None, date_from=None, date_to=None, basis='work', force=False, times=None):
     """実績の行。**絞り込みはここだけ**（画面に同じ判定を書かない）。
 
     equipment: 設備名。空なら全設備。
     date_from/date_to: 'YYYY-MM-DD'（両端を含む）。空なら制限なし。
+    times: 記録ID → 予定の行の実績（`dashboard.sources.plan_times()`）。渡すと記録に無い時刻を補う（現場日・直もその時刻で決める）。
     basis: 'work'＝現場歴で切る（既定）／'cal'＝太陽暦で切る。
            **紙と画面で切り方を変えないこと**（日ごとに配る紙の件数が
            画面と合わなくなる・§9.195）。
@@ -249,6 +269,8 @@ def rows(equipment=None, date_from=None, date_to=None, basis='work', force=False
                 item = dict(item)
             if eq_norm and sr.normalize_equipment_name(item.get('equipment')) != eq_norm:
                 continue
+            if times is not None:
+                item = _with_plan_times(item, times)
             item = _with_shift(item, conn, memo, global_rows)
             key = item.get('calDate') if basis == 'cal' else item.get('workDate')
             if date_from and (not key or key < date_from):
@@ -354,20 +376,21 @@ def catalog(equipment=''):
                             '（帳票では出せます）。') if dropped else ''}
 
 
+# 「頭を落とした残り全部で1つの鍵」の道 → 抜粋の中の入れ物（§9.631 ②）。**操業データは抜粋では`opData`に置く**
+# （`_extract()`が`settings`から分ける）。前は道の字のまま`settings`→`opData`と辿っていたので、操業データの列は
+# **記録に値があっても必ず空**だった（測定実績の一覧で「この期間に値の無い列」へ外され、ダッシュボードでも数えられなかった）
+_FLAT_BOXES = (('source.', 'source'), ('qualityGrades.', 'qualityGrades'), ('settings.opData.', 'opData'))
+
+
 def _dig(item, path):
     """道 → 記録の中の値。**`report-dashboard.js`の`rpDig()`と同じ約束**——
     `source.` / `qualityGrades.` / `settings.opData.` は「頭を落とした残り
     全部で1つの鍵」（`.`で割らない。列名に`.`が入っていても壊れない・§9.285 ④）。"""
     p = str(path or '')
-    for flat in ('source.', 'qualityGrades.', 'settings.opData.'):
-        if not p.startswith(flat):
-            continue
-        bag = item
-        for k in flat[:-1].split('.'):
-            if not isinstance(bag, dict):
-                return None
-            bag = bag.get(k)
-        return bag.get(p[len(flat):]) if isinstance(bag, dict) else None
+    for flat, box in _FLAT_BOXES:
+        if p.startswith(flat):
+            bag = item.get(box) if isinstance(item, dict) else None
+            return bag.get(p[len(flat):]) if isinstance(bag, dict) else None
     v = item
     for part in p.split('.'):
         if not isinstance(v, dict):
