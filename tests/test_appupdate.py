@@ -140,7 +140,7 @@ rec('版の読み方は窓と同じ（changelog_data.py の APP_VERSION）',
     app_update.version_in((ROOT / 'backend' / 'changelog_data.py').read_text(encoding='utf-8')) == app_update.APP_VERSION
     and 'strip_prefix("APP_VERSION")' in RS)
 rec('窓は目録の項目だけを入れ替え、db・config を項目として受けない',
-    'man["payload"]' in RS and 'p == "db" || p == "config"' in RS)
+    'man["payload"]' in RS and 'const KEEP: [&str; 2] = ["db", "config"];' in RS and 'eq_ignore_ascii_case' in RS)   # 大文字の DB・Config も断る（§9.629）
 # 届かない置き場では待たせない（窓は3秒・こちらも同じ長さで打ち切る）
 probe = Path(tempfile.mkdtemp()) / 'x'
 r_ok, why = app_update.reachable(probe, wait=1)
@@ -449,6 +449,11 @@ r = app_update.delete_version('9.30.0', base12)
 rec('版を消すと、その版の札も消える', r.get('ok') and '9.30.0' not in app_update.recommendations(base12), str(app_update.recommendations(base12)))
 (base12 / app_update.RECOMMEND).write_text('{壊れた', encoding='utf-8')
 rec('札のファイルが壊れていても一覧は開く（札が無いとして読む）', app_update.recommendations(base12) == {} and len(app_update.versions(base12)) == 1)
+
+# 版に入れる道の欠片は窓（update::plain_name）と同じ決まり（§9.629）。入れた物を各 PC が断ると、版ごと配れなくなる
+bad = [r for r in ('.DS_Store', 'backend/.x.py', 'backend/a\\b.py', 'backend/c:x', 'backend/./a.py', 'backend//a.py', 'backend/../x') if app_update._payload_name(r)]
+rec('版に入れない道（.で始まる・\\・:・空の欠片・..）', not bad, str(bad))
+rec('ふつうの道は入れる', app_update._payload_name('backend/a.py') and app_update._payload_name('README.md') and app_update._payload_name('static/js/core/base.js'))
 
 ok = sum(1 for _, x in R if x)
 print(f'\n== {ok}/{len(R)} PASS ==')

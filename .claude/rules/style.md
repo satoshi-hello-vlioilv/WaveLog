@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（77件）
+# 見た目（CSS・寸法・色）（78件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 行表示の`colorKey`は英小文字・数字・`-`の名前だけ（`ROW_COLOR_KEY`）。画面は`rowStyleClassOf()`で形を見てから`class`へ | `test_scrowstyle.js` | [§9.629](../../docs/decisions/9.629.md) |
 | 表の見出しは役割の1つ（10-roles.css・`--th-h`・上下の余白0・字の大きさはセルへ）。マスタの表に縞を付けない | `test_mmunify.js` | [§9.604](../../docs/decisions/9.604.md) |
 | 送る列に`scrollbar-gutter:stable`を付けない（列を送れるとき一部のラベルが描かれなかった） | — | [§9.604](../../docs/decisions/9.604.md) |
 | 盤の面（盤・候補・木・表・詳細・要約の数）は枠で囲まず罫線1本。選んだ行は淡い地＋左の帯（90-state.css の束ね） | `test_mmboard.js` | [§9.602](../../docs/decisions/9.602.md) |

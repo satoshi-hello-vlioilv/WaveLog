@@ -212,10 +212,64 @@
     （行ごとに作り直すと200行×列で効いてくる）。 */
  const RE_MAX=200;
  const reCache=new Map();
+ /* ---------- 照合が止まらなくなる正規表現を断る（§9.629） ----------
+    利用者が書く正規表現（表示ルール・判定表の条件・式の関数）のうち、入れ子の繰り返し（`(a+)+`・
+    `(.*a){12}`）は、当たらない字が1文字増えるたびに照合の時間がおよそ倍になり、タブが固まる。
+    置き場は式の部品（`WL.formula.regexRisk`／`safeRegExp`）——表示ルール（base.js）・判定表（rule-cells.js）・式の関数が同じ1つを使う。
+    **サーバーの`backend/safe_regex.py`と同じ決まり**（網 test_saferegex が同じ見本で突き合わせる）。
+    安全なら ''、断るならその理由の字。書けるかどうかは`new RegExp`が言う。 */
+ const REGEX_NESTED='入れ子の繰り返し（例: (a+)+）は、照合が止まらなくなることがあるので使えません';
+ /** @param {string} p @param {number} i @returns {[number,boolean]} */
+ function regexQuant(p,i){
+  if(i>=p.length)return [0,false];
+  const ch=p[i];
+  if(ch==='?')return (i+1<p.length&&'+?'.includes(p[i+1]))?[2,false]:[1,false];
+  let n,many;
+  if(ch==='+'||ch==='*'){n=1;many=true}
+  else if(ch==='{'){
+   const m=/^\{(\d*)(,?)(\d*)\}/.exec(p.slice(i));
+   if(!m)return [0,false];
+   n=m[0].length;many=(!!m[2]&&!m[3])||Number(m[3]||m[1]||0)>=2;
+  }else return [0,false];
+  if(i+n<p.length&&'?+'.includes(p[i+n]))n++;
+  return [n,many];
+ }
+ function regexRisk(pattern){
+  const p=String(pattern==null?'':pattern),stack=[false];
+  let i=0;
+  while(i<p.length){
+   const ch=p[i];
+   if(ch==='\\')i+=2;
+   else if(ch==='['){
+    let j=i+1;
+    if(p[j]==='^')j++;
+    if(p[j]===']')j++;
+    while(j<p.length&&p[j]!==']')j+=p[j]==='\\'?2:1;
+    i=j+1;
+   }else if(ch==='('){
+    stack.push(false);i++;
+    if(p[i]==='?'){const m=/^\?(?:P?<[^>]*>|[:=!]|<[=!])/.exec(p.slice(i));i+=m?m[0].length:1}
+    continue;
+   }else if(ch===')'){
+    const inner=stack.length>1?stack.pop():false,[n,many]=regexQuant(p,i+1);
+    if(inner&&many)return REGEX_NESTED;
+    if(inner||many)stack[stack.length-1]=true;
+    i+=1+n;continue;
+   }else i++;
+   const [n,many]=regexQuant(p,i);
+   if(many)stack[stack.length-1]=true;
+   i+=n;
+  }
+  return '';
+ }
+ /* 断る形でも書けない形でもなければ RegExp、そうでなければ null（呼ぶ側は「当たらない」として扱う） */
+ const safeRegExp=(src,flags)=>{if(regexRisk(src))return null;try{return new RegExp(src,flags)}catch(e){return null}};
  function reOf(src,flags){
   const k=flags+'\u0000'+src;
   if(reCache.has(k))return reCache.get(k);
   if(src.length>RE_MAX)throw Error(`正規表現は${RE_MAX}文字までです`);
+  const why=regexRisk(src);      // 照合が止まらなくなる形は断る（サーバーの式も同じ・§9.629）
+  if(why)throw Error(why);
   const re=new RegExp(src,flags);
   if(reCache.size>200)reCache.clear();
   reCache.set(k,re);
@@ -503,7 +557,7 @@
   const o=opt||{};
   WL.popMenu.suggest(inp,el=>suggestItems(el,o));
  }
- window.WL.formula={compile,check,parse,sigs:SIGS,truthy,cmp,ordered,looseNum,strictNum,MAX_LEN,suggest,
+ window.WL.formula={compile,check,parse,sigs:SIGS,truthy,cmp,ordered,looseNum,strictNum,MAX_LEN,suggest,regexRisk,safeRegExp,
              /* 説明文をパネルとドキュメントで共用する(2箇所に書かない)。 */
              help:[
               ['[列名]','その行のその列の値'],

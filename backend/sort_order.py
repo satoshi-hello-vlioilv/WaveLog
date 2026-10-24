@@ -36,6 +36,7 @@
 """
 import json
 import re
+from . import safe_regex
 
 # 塊の呼び名。画面(WL.sortSpec.KINDS)と同じ順・同じ綴りにしてある。
 KINDS=('empty','num','date','text')
@@ -303,9 +304,9 @@ def rule_test(cond,row,self_col):
   R2=_operand(cond.get('right2'),row,self_col)
   return _ordered(L,R) and _ordered(L,R2) and _cmp(L,R)>=0 and _cmp(L,R2)<=0
  if op=='regex':
-  # 書き間違いで並びが壊れないように、不正な正規表現は「当たらない」。
-  try:return re.search(rs,ls) is not None
-  except re.error:return False
+  # 書き間違いで並びが壊れないように、不正な正規表現は「当たらない」。照合が止まらなくなる形も（§9.629）
+  rx=safe_regex.compile_safe(rs)
+  return rx is not None and rx.search(ls) is not None
  return False
 
 

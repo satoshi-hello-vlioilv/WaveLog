@@ -162,6 +162,15 @@ fn sha256_of(p: &Path) -> std::io::Result<String> {
     Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// 入れ替えない置き場（データ・設定）。Windows の名前は大文字小文字を区別しないので、比べるときも区別しない（§9.629）。
+const KEEP: [&str; 2] = ["db", "config"];
+
+/// 目録の道の 1 つの欠片として使ってよい名前: 空でなく、`.` で始まらず（`.`・`..`・`.update` を断る）、
+/// 区切り（`/`・`\`）とドライブの `:` を持たない。前は `/` だけで切り、欠片の中の `\` を通した（Windows では外へ出る道になる・§9.629）
+fn plain_name(p: &str) -> bool {
+    !p.is_empty() && !p.starts_with('.') && !p.contains(['/', '\\', ':'])
+}
+
 /// 版のフォルダを `stage` へ写し、manifest どおりか（大きさ・sha256）を全部確かめる。戻り値は入れ替える項目。
 pub fn stage(src: &Path, stage: &Path, progress: &dyn Fn(Step)) -> Result<Vec<String>, String> {
     let man: Value = serde_json::from_slice(
@@ -170,7 +179,7 @@ pub fn stage(src: &Path, stage: &Path, progress: &dyn Fn(Step)) -> Result<Vec<St
     .map_err(|e| format!("版の目録の形が違います: {e}"))?;
     let payload: Vec<String> = man["payload"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(str::to_owned)).collect();
     let files = man["files"].as_array().ok_or("版の目録にファイルの並びがありません")?;
-    if payload.is_empty() || payload.iter().any(|p| p.is_empty() || p.contains(['/', '\\']) || p == ".." || p == "db" || p == "config") {
+    if payload.is_empty() || payload.iter().any(|p| !plain_name(p) || KEEP.iter().any(|k| p.eq_ignore_ascii_case(k))) {
         return Err(format!("入れ替える項目が正しくありません: {payload:?}"));
     }
     let _ = std::fs::remove_dir_all(stage);
@@ -178,7 +187,7 @@ pub fn stage(src: &Path, stage: &Path, progress: &dyn Fn(Step)) -> Result<Vec<St
     for (i, f) in files.iter().enumerate() {
         let rel = f["path"].as_str().unwrap_or("");
         let parts: Vec<&str> = rel.split('/').collect();
-        if rel.is_empty() || parts.iter().any(|p| p.is_empty() || *p == ".." || p.contains(':')) || !payload.iter().any(|p| p == parts[0]) {
+        if rel.is_empty() || !parts.iter().all(|p| plain_name(p)) || !payload.iter().any(|p| p == parts[0]) {
             return Err(format!("目録に正しくない道があります: {rel}"));
         }
         let (from, to) = (parts.iter().fold(src.to_path_buf(), |a, p| a.join(p)), parts.iter().fold(stage.to_path_buf(), |a, p| a.join(p)));
@@ -377,6 +386,41 @@ pub(crate) mod tests {
         let e = release_version(&gone, REACH).unwrap_err();
         assert!(e.contains("置き場が見つかりません"), "置き場ごと無い・届かない UNC は「決めていない」と取り違えない: {e}");
         fs::remove_dir_all(&d).ok();
+    }
+
+    /// 目録の入れ替える項目と道は、アプリのフォルダの中の決まった所だけ（§9.629）。悪い目録は写す前に1つ残らず断る。
+    /// 前は `/` で切った欠片の中の `\\`（Windows では区切り）と、大文字の `DB`・`Config`・`.` を通した。
+    #[test]
+    fn stage_refuses_every_bad_manifest() {
+        let bad: Vec<(Vec<&str>, &str)> = vec![
+            (vec!["DB"], "DB/master.sqlite3"),
+            (vec!["Config"], "Config/local.json"),
+            (vec!["."], "./x"),
+            (vec![".update"], ".update/x"),
+            (vec!["backend"], "backend/..\\..\\x"),
+            (vec!["backend"], "backend/\\x"),
+            (vec!["backend"], "backend/./x"),
+            (vec!["backend"], "backend/a\\b"),
+            (vec!["backend"], "backend/c:x"),
+            (vec!["backend"], "backend/../x"),
+        ];
+        let mut passed = vec![];
+        for (i, (payload, path)) in bad.iter().enumerate() {
+            let src = tmp(&format!("bad{i}"));
+            fs::write(
+                src.join("manifest.json"),
+                serde_json::json!({"version": "9.9.9", "payload": payload,
+                "files": [{"path": path, "size": 0, "sha256": ""}]})
+                .to_string(),
+            )
+            .unwrap();
+            let st = src.join("stage");
+            if stage(&src, &st, &|_| {}).map_err(|e| e.contains("正しくない") || e.contains("正しくありません")) != Err(true) {
+                passed.push(format!("{payload:?} {path}"));
+            }
+            fs::remove_dir_all(&src).ok();
+        }
+        assert!(passed.is_empty(), "断らなかった悪い目録 {} / {}: {passed:?}", passed.len(), bad.len());
     }
 
     fn tmp(name: &str) -> PathBuf {

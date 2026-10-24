@@ -1,4 +1,4 @@
-# 一覧と列（183件）
+# 一覧と列（184件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 利用者の正規表現は入れ子の繰り返しを断る（`safe_regex`と`WL.formula.safeRegExp()`の同じ決まり）。素のまま照合しない | `test_saferegex.py` | [§9.629](../../docs/decisions/9.629.md) |
 | 狭い器の帯は2段（検索｜フィルタ ▾｜道具・見せ方 ▾／件数の札 ▾｜元データ｜遅い｜ページ）。条件の札・伏せる・結合は面へ本物を貸す | `test_listbarrows.js` | [§9.617](../../docs/decisions/9.617.md) |
 | 入らないときは畳まずに詰める（`fitBars()`の1箇所・段ごとの詰める順）。1段目は2段目の出入りで動かない | `test_listbarrows.js` | [§9.617](../../docs/decisions/9.617.md) |
 | 「フィルタ ▾」は条件の数と変更あり、件数の札は伏せの数を言う（同じ場所）。遅いは「遅い 2.6秒」の字・押すと内訳 | `test_listbarrows.js`・`test_listcache.js` | [§9.617](../../docs/decisions/9.617.md) |

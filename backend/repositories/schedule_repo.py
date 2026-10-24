@@ -921,6 +921,9 @@ def row_style_rows(c_master):
              '[題名の見せ方],[題名の位置],[題名の揃え],[題名に時間] FROM [行表示マスタ] ORDER BY [区分キー]')
  return [r for r in cur.fetchall() if (True if r[5] is None else bool(r[5]))]
 
+ROW_COLOR_KEY=_re.compile(r'(?:[a-z][a-z0-9-]{0,31})?')   # 空＝既定の色
+
+
 def row_style_upsert(c_master,key,uid,color_key='',icon='',show_icon=True,row_style_id=None,
                      title_look=None,title_place=None,title_align=None,title_time=None):
  """1件の登録・更新。区分キーが自然キー。**既定へ戻すのは行を消すこと**
@@ -929,6 +932,9 @@ def row_style_upsert(c_master,key,uid,color_key='',icon='',show_icon=True,row_st
  ensure_row_style_table(c_master)
  key=str(key or '').strip()
  if not key:raise ValueError('どの区分の見せ方かを指定してください。')
+ # 色キーは色の名前の形だけ（画面の`WL.columnTint.PALETTE`の鍵。§9.629。前は何でも保存し、区分のセルの class 属性へ入った）
+ if color_key is not None and not ROW_COLOR_KEY.fullmatch(str(color_key)):
+  raise ValueError('色の指定が読めません（英小文字・数字・- の色の名前で指定してください）。')
  flag=-1 if show_icon else 0
  cur=c_master.cursor()
  cur.execute('SELECT [行表示ID],[区分キー],[題名の見せ方],[題名の位置],[題名の揃え],[題名に時間] FROM [行表示マスタ]')

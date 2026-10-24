@@ -1560,8 +1560,8 @@ const displayRules=(()=>{
     return WL.formula.ordered(L,R)&&WL.formula.ordered(L,R2)&&compare(L,R)>=0&&compare(L,R2)<=0;
    }
    case 'regex':
-    // 書き間違いで一覧が壊れないように、不正な正規表現は「当たらない」。
-    try{return new RegExp(rs).test(ls)}catch(e){return false}
+    // 書き間違いで一覧が壊れないように、不正な正規表現は「当たらない」。照合が止まらなくなる形も（§9.629）
+    {const rx=WL.formula.safeRegExp(rs);return !!rx&&rx.test(ls)}
    default:return false;
   }
  }
@@ -1625,7 +1625,7 @@ const displayRules=(()=>{
       const v=String(r.value==null?'':r.value);
       if(v===''&&c.op!=='regex')return '0';
       /* 壊れた正規表現はルールでは「当たらない」。式に書くと式ぜんたいが読めなくなるので、偽にする。 */
-      if(c.op==='regex'){try{new RegExp(v)}catch(e){notes.add(`正規表現「${v}」は読めないので、この条件は「当たらない」にしました`);return '0'}}
+      if(c.op==='regex'&&!WL.formula.safeRegExp(v)){notes.add(`正規表現「${v}」は${WL.formula.regexRisk(v)?'使えない形な':'読めない'}ので、この条件は「当たらない」にしました`);return '0'}
       return `${fn}(${L}, ${side(r,true)})`;
      }
      const R=side(r,true);

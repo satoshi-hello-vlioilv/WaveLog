@@ -60,7 +60,8 @@
    .map(x => ({ size: num(x.size), qty: Math.max(0, num(x.qty) || 0), use: x.use || '' }))
    .filter(x => x.size > 0);
   const ringAll = (c.rings || [])
-   .map(x => ({ color: x.color || '', hex: x.hex || '', od: num(x.od),
+   // 色コードは #rrggbb だけ受ける（図の fill・style へ入る値。読めない値は色なし・§9.629）
+   .map(x => ({ color: x.color || '', hex: /^#[0-9a-f]{6}$/i.test(String(x.hex || '')) ? x.hex : '', od: num(x.od),
                 bore: num(x.bore) || num(P.ringBore), width: num(x.width),
                 qty: Math.max(0, num(x.qty) || 0),
                 lube: !!x.lube, integ: !!x.integ && !x.lube }))

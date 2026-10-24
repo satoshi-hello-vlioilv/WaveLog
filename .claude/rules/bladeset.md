@@ -1,4 +1,4 @@
-# 刃組ガイダンス（265件）
+# 刃組ガイダンス（266件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ゴムリングの色コードは`#rrggbb`だけ（`ring_upsert()`が断る・画面も形の違う値を捨てる）。SVG の属性へ字のまま入るため | `test_bladeset.py` | [§9.629](../../docs/decisions/9.629.md) |
 | 刃組の盤7画面は`WL.bsKit.frame()`の骨組み（設備の札の行→本文（送る）→足元の保存1つ）。頭は`WL.mm`の頭 | `test_partboards.js`・`test_bladeboard.js` | [§9.603](../../docs/decisions/9.603.md) |
 | 盤の欄は打っても書かない。控え（`st.edits`）に積み足元の保存でまとめて書く。行を足す・消す・名前を変えるはその場 | `test_partboards.js`・`test_ringboard.js` | [§9.603](../../docs/decisions/9.603.md) |
 | 欄を離れた後の描き直しは焦点と押した物が落ち着いてから（`later()`）。表の中の Enter は次の行の同じ欄 | `test_partboards.js`・`test_bladeboard.js` | [§9.603](../../docs/decisions/9.603.md) |

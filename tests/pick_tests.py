@@ -303,7 +303,7 @@ RULES = [
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list/list-rules.js', g('列')),
     # §9.256 式で作る自動値も同じ評価器を使う（片方だけ直した状態を作らない）
-    ('static/js/list/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
+    ('static/js/list/list-formula.js', g('test_saferegex', 'test_formula', 'test_colpreset', 'test_lcpanel',
                                     'test_opformula', 'test_formulaparity')),
     # §9.591: 一覧の道具（スライサー・色付け・拡大・Excel に出力・表示の設定）
     ('static/js/list/list-slicer.js', g('一覧', 'test_filtersavedui')),
@@ -520,6 +520,8 @@ RULES = [
     # --- サーバー(ルート) --------------------------------------------
     # §9.628 ダッシュボード: 集計（パネルの答え）・計算列（画面の式と同じ答え）・画面
     ('backend/dashboard/', g('test_dashpivot', 'test_formulaparity', 'test_dashapi', 'test_dashboard', 'test_equipgroupui')),
+    ('backend/safe_regex.py', g('test_saferegex', 'test_displayrule', 'test_dashpivot', 'test_formulaparity')),
+    ('tests/test_saferegex.py', g('test_saferegex')),
     # §9.628: ダッシュボードの画面（LotScope の移植）。前の画面を読んでいた網（自設備・稼働状況・見出し・待ち）も一緒に回す
     ('static/js/dash/', g('見た目', 'test_dashboard', 'test_dbequip', 'test_uiux', 'test_uisize', 'test_headbar', 'test_flows',
                           'test_waiting', 'test_nav', 'test_loadorder', 'test_eslint', 'test_tscheck', 'test_funclen')),

@@ -1,4 +1,4 @@
-# 起動・停止・監視（82件）
+# 起動・停止・監視（84件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 版の目録の名前は`plain_name()`の1箇所（区切り・`.`始まりを断る・payload に`db`／`config`を入れない）。サーバーも同じ | `test_appupdate.py` | [§9.629](../../docs/decisions/9.629.md) |
+| 窓の外へ開くのは`http`・`https`・`mailto`だけ（`outside_ok()`の1箇所）。`file:`は開かない | — | [§9.629](../../docs/decisions/9.629.md) |
 | 選んだファイルを送る本文はバイト列（`arrayBuffer()`）。`File`をそのまま本文にしない（窓で0バイトで届いた） | — | [§9.615](../../docs/decisions/9.615.md) |
 | 推奨の更新の札は置き場の`recommend.json`（版ごと・書くのは`set_recommend()`）。窓の読む`release.json`に入れない | `test_appupdate.py` | [§9.609](../../docs/decisions/9.609.md) |
 | 推奨の更新を知らせるかは`app_update.notice_of()`の1箇所（配る版に札・この PC が違う版・開発の作業ツリーでは出さない） | `test_appupdate.py`・`test_releaseui.js` | [§9.609](../../docs/decisions/9.609.md) |

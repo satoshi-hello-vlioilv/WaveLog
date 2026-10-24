@@ -32,7 +32,7 @@
   contains: (l, r) => !!r && l.indexOf(r) >= 0, notContains: (l, r) => !r || l.indexOf(r) < 0,
   startsWith: (l, r) => !!r && l.startsWith(r), notStartsWith: (l, r) => !r || !l.startsWith(r),
   endsWith: (l, r) => !!r && l.endsWith(r), notEndsWith: (l, r) => !r || !l.endsWith(r),
-  regex: (l, r) => { try { return !!r && new RegExp(r).test(l); } catch (_e) { return false; } }
+  regex: (l, r) => { const rx = r ? WL.formula.safeRegExp(r) : null; return !!rx && rx.test(l); }   // 照合が止まらなくなる形は当たらない（§9.629）
  };
  /* 右辺を持たない比べ方（空・空でない）。 */
  const NO_RIGHT = { empty: true, notEmpty: true };
@@ -336,6 +336,7 @@
   const re = t.match(/^\/(.+)\/$/);
   if (re) {
    if (numOnly) return { error: 'この列は数なので正規表現は使えません' };
+   if (WL.formula.regexRisk(re[1])) return { error: WL.formula.regexRisk(re[1]) };
    try { new RegExp(re[1]); } catch (_e) { return { error: '正規表現として読めません' }; }
    return { cond: { op: 'regex', value: re[1] } };
   }
