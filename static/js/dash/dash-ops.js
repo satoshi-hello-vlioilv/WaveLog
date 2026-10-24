@@ -73,9 +73,10 @@
     const RW = W >= 620 ? 156 : W >= 420 ? 92 : 56;
     const TW = Math.max(60, W - LW - RW - 8);
     const avail = H - AX - FOOT;
-    let rh = Math.min(64, Math.floor(avail / eqs.length));
+    // 行の高さは 24〜80px。棒の札（ロット番号）が読める 24px を下回るなら、入る台数だけ描いて「ほか n 台」（行を潰さない・§9.630 の 5 回目の採点: 1536 幅で棒が線になった）
+    let rh = Math.min(80, Math.floor(avail / eqs.length));
     let shown = eqs;
-    if (rh < 14) { rh = 14; shown = eqs.slice(0, Math.max(1, Math.floor(avail / 14))); }
+    if (rh < 24) { rh = 24; shown = eqs.slice(0, Math.max(1, Math.floor(avail / 24))); }
     const X = (t) => LW + ((t - x0) / span) * TW;
     const g = [];
     const now = ms(d.now || "");
@@ -377,9 +378,9 @@
     const rowsOf = () => (tb ? tb.rows.length : 0);
     while (rowsOf() > 1 && tallY(tw)) { tb.deleteRow(-1); rest++; }
     if (rest > 0) box.querySelector(".oa-rest").textContent = `ほか ${rest} 品種（パネルを高くすると出ます）`;
-    // 品種が少なくて下が空くときは、行を高くして埋める（17〜28px。2026-10-ops の 3 回目で決めた G: 表の下が大きく空いていた）
+    // 品種が少なくて下が空くときは、行を高くして埋める（17〜36px・§9.630 の 5 回目の採点で 28→36。2026-10-ops の 3 回目で決めた G: 表の下が大きく空いていた）
     else if (tw && tb && tb.rows.length) {
-      const free = tw.clientHeight - tw.querySelector("thead").offsetHeight, rh = Math.max(17, Math.min(28, Math.floor(free / tb.rows.length) - 1));
+      const free = tw.clientHeight - tw.querySelector("thead").offsetHeight, rh = Math.max(17, Math.min(36, Math.floor(free / tb.rows.length) - 1));
       if (rh > 17) tw.style.setProperty("--oa-rh", `${rh}px`);
     }
   }
@@ -462,14 +463,16 @@
     const all = d.equips || [];
     if (!all.length) { box.innerHTML = '<p class="dp-empty">当たる設備がありません</p>'; return ""; }
     // 予定が無い設備・予定を全部終えた設備は 1 行にまとめる（設備が増えても行が増えない・§9.630 の採点: 「ほか 2 台」に隠れた）
+    // 作業も次の予定も無い設備は出さない（済み・予定なしはガントと「本日」の数が言う。同じ事実を2か所に出さない・§9.630 の 6 回目の採点）。全部がそうなら1文で
     const none = all.filter((e) => !e.error && !e.cur && !e.next), eqs = all.filter((e) => !none.includes(e));
-    const noneRow = none.length ? `<div class="on-row on-sum">${[["済み", none.filter((e) => e.rows)], ["予定なし", none.filter((e) => !e.rows)]].filter(([, xs]) => xs.length)
-      .map(([w, xs]) => `<span class="on-tag is-none">${w}</span><span class="on-sumt">${esc(xs.map((e) => e.name).join("・"))}</span>`).join("")}</div>` : "";
+    if (!eqs.length) { box.innerHTML = `<p class="dp-empty">いま作業中・待機中の設備はありません（${esc(none.map((e) => `${e.name} ${e.rows ? "済み" : "予定なし"}`).join("・"))}）</p>`; return ""; }
     // 器の形で並べ方を選ぶ: 縦に全部入るなら行（設備ごとに 1 行）、入らず横に入るなら札を横に並べる（横長の帯に置いたとき）
     // 札の高さは 2 行（設備名・状態・次 ／ 名前・予定完了）か、入らなければ 1 行（設備名・状態・名前・予定完了。次は title）
-    const nowT = ms(d.now || ""), rowH = 44, CARD_W = 250, CARD_H = 50, LINE_H = 30, narrow = W < 600;
+    const nowT = ms(d.now || ""), rowH = 44, BIG_H = 96, CARD_W = 250, CARD_H = 50, LINE_H = 30, narrow = W < 600;
     const cols = H < eqs.length * rowH && Math.floor(W / CARD_W) >= Math.min(eqs.length, 2) && H >= LINE_H, line = cols && H < CARD_H;
-    const fit = cols ? Math.max(1, Math.floor(W / CARD_W)) * Math.max(1, Math.floor(H / (line ? LINE_H : CARD_H))) : Math.max(1, Math.floor((H - (none.length ? 30 : 0)) / rowH)), shown = eqs.slice(0, fit);
+    const fit = cols ? Math.max(1, Math.floor(W / CARD_W)) * Math.max(1, Math.floor(H / (line ? LINE_H : CARD_H))) : Math.max(1, Math.floor(H / rowH)), shown = eqs.slice(0, fit);
+    // 縦に余るなら大きな字（ロット番号・予定完了を数字の札と同じ格に。主役が隣の数字に負けて見えた・6 回目の採点）
+    const big = !cols && H >= shown.length * BIG_H;
     const left = (end) => { const m = Math.round((ms(end) - nowT) / 60000); return Number.isFinite(m) ? m : null; };
     const hmOf = (t) => { const x = ms(t); return Number.isFinite(x) ? `${new Date(x).getDate() !== new Date(nowT).getDate() ? `${dayText(x)} ` : ""}${hm(x)}` : "–"; };
     const rows = shown.map((e) => {
@@ -480,16 +483,19 @@
       const m = c ? left(c.end) : null, late = c ? Math.round(+c.late || 0) : 0;
       const rest = late > 0 ? `<small class="is-late">予定より ${esc(WL.duration.text(late))} 遅れ</small>` : m != null && m > 0 ? `<small>あと ${esc(WL.duration.text(m))}</small>` : "";
       const due = c ? `<span class="on-due" title="予定完了＝作業スケジュールの予定終了（遅れている作業は見込みの終了）">予定完了 <b>${esc(hmOf(c.end))}</b>${rest}</span>` : "";
+      // 進み具合の帯（作業開始〜予定完了のうち、いままでの割合。遅れは満ちた帯を琥珀で・字は上の「あと／遅れ」が言う）
+      const t0 = c ? ms(c.start) : NaN, t1 = c ? ms(c.end) : NaN, frac = late > 0 ? 1 : t1 > t0 ? Math.max(0, Math.min(1, (nowT - t0) / (t1 - t0))) : NaN;
+      const prog = c && !stop && Number.isFinite(frac) ? `<span class="on-prog${late > 0 ? " is-late" : ""}" title="作業開始 ${esc(hmOf(c.start))} 〜 予定完了 ${esc(hmOf(c.end))} のうち ${Math.round(frac * 100)}%"><i style="width:${(frac * 100).toFixed(1)}%"></i></span>` : "";
       const nxIn = e.next ? `次 ${esc(e.next.name || e.next.kind || "予定")} <b>${esc(hmOf(e.next.start))}</b>〜` : "";
       // 狭い器では「次」を名前の下の 2 行目へ（右の列にすると予定完了の字と重なった・4 回目の自分の確認）。状態の札が言うこと（済み・予定なし）を文でくり返さない
       const nx = narrow ? "" : `<span class="on-next" title="次の予定（予定開始の順）">${nxIn || "次の予定なし"}</span>`;
       const name = c ? c.name || c.kind : "";
       return `<div class="on-row"${e.next ? ` title="${esc(`次: ${e.next.name || e.next.kind || "予定"} ${hmOf(e.next.start)}〜`)}"` : ""}><b class="on-eq" title="${esc(e.name)}">${esc(e.name)}</b><span class="on-tag ${tag[0]}">${tag[1]}</span>`
-        + `<span class="on-main">${name ? `<span class="on-name" title="${esc(name)}">${esc(name)}</span>` : ""}${due}${narrow && nxIn ? `<span class="on-due">${nxIn}</span>` : ""}</span>${nx}</div>`;
+        + `<span class="on-main">${name ? `<span class="on-name" title="${esc(name)}">${esc(name)}</span>` : ""}${due}${prog}${narrow && nxIn ? `<span class="on-due">${nxIn}</span>` : ""}</span>${nx}</div>`;
     }).join("");
-    box.innerHTML = `<div class="on-wrap${cols ? " is-cols" : ""}${line ? " is-line" : ""}${narrow && !cols ? " is-narrow" : ""}" role="list" aria-label="設備ごとのいまの作業"${cols ? ` style="--on-cols:${Math.min(shown.length, Math.floor(W / CARD_W))}"` : ""}>${rows}${cols ? "" : noneRow}</div>`;
+    box.innerHTML = `<div class="on-wrap${cols ? " is-cols" : ""}${line ? " is-line" : ""}${narrow && !cols ? " is-narrow" : ""}${big ? " is-big" : ""}" role="list" aria-label="設備ごとのいまの作業"${cols ? ` style="--on-cols:${Math.min(shown.length, Math.floor(W / CARD_W))}"` : ""}>${rows}</div>`;
     const more = eqs.length - shown.length;
-    return [more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "", cols && none.length ? `予定の無い・済んだ設備: ${none.map((e) => e.name).join("・")}` : ""].filter(Boolean).join("　");
+    return more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "";
   }
 
   WL.dashOps = { gantt, abc, now, badge, RANK, rankStyle, rankName };

@@ -42,7 +42,9 @@ run('test_acinput: 測定実績の列（入力した項目を左・作業開始�
    /* 群の使い方は群の名前で数える（物差しは製品の答えに頼らない: 前のコードでも同じに測れる） */
    const kind=c=>/^(準備で決めた値|操業データ|作業時間)/.test(c.group||'')?'input':/^計算した値/.test(c.group||'')?'calc':c.path?'joined':'app';
    const cols=WL.actuals.columns(),use=new Map(cols.map(c=>[c.k,kind(c)]));
-   const head=[...document.querySelectorAll('#acList .ac-row.head>span')].map(s=>s.dataset.col),shown=head;
+   /* この期間に値の無い列は帯の「出す ▸」の1押しで出る（§9.630 の 7 回目）。その列も「出ている」に数える */
+   const head=[...document.querySelectorAll('#acList .ac-row.head>span')].map(s=>s.dataset.col);
+   const fold=document.querySelector('#acHead [data-fold]'),shown=head.concat(fold?(fold.title||'').split('・').filter(Boolean):[]);
    const inputs=cols.filter(c=>kind(c)==='input').map(c=>c.k);
    const lastInput=Math.max(-1,...head.map((k,i)=>use.get(k)==='input'||use.get(k)==='app'?i:-1));
    const joinedLeft=head.filter((k,i)=>use.get(k)==='joined'&&i<lastInput).length;
@@ -54,6 +56,21 @@ run('test_acinput: 測定実績の列（入力した項目を左・作業開始�
   rec('現場で足した操業データの項目も列に出る',m.hasOp,m.head.join(' '));
   rec(`結合で写しただけの列は入力した項目より右（左にある数 ${m.joinedLeft}）`,m.joinedLeft===0);
   rec(`同じ値の列を2つ並べない（${m.dup}）`,m.dup===0);
+  /* 値の無い列: 帯の「出す ▸」で全部出る・「外す ◂」で戻る */
+  const nFold=await page.evaluate(()=>{const f=document.querySelector('#acHead [data-fold]');return f?(f.title||'').split('・').filter(Boolean).length:0});
+  if(nFold){
+   const n0=await page.evaluate(()=>document.querySelectorAll('#acList .ac-row.head>span').length);
+   await page.click('#acHead [data-fold]');
+   await page.waitForFunction(()=>(document.querySelector('#acHead [data-fold]')||{}).getAttribute?.('aria-pressed')==='true',null,{timeout:8000});
+   const n1=await page.evaluate(()=>document.querySelectorAll('#acList .ac-row.head>span').length);
+   rec(`値の無い列は帯の1押しで全部出る（${n0}→${n1}列・${nFold}列）`,n1===n0+nFold);
+   await page.click('#acHead [data-fold]');
+   await page.waitForFunction(n0=>document.querySelectorAll('#acList .ac-row.head>span').length===n0,n0,{timeout:8000});
+   rec('もう1押しで外れる',true);
+  }
+  const fixL=await page.evaluate(()=>{const l=document.getElementById('acList');l.scrollLeft=l.scrollWidth;const h=l.querySelector('.ac-row.head>span[data-col="ロット番号"]');const r=h.getBoundingClientRect(),lr=l.getBoundingClientRect();l.scrollLeft=0;return r.left>=lr.left-1&&r.right<=lr.right});
+  rec('横に送ってもロット番号の列は残る',fixL);
+  rec('並べていない見出しにも並べ替えの印（⇅）',await page.evaluate(()=>/⇅/.test((document.querySelector('#acList .ac-row.head>span[data-col="ロット番号"]')||{}).textContent||'')));
   const order=()=>page.evaluate(TAG=>[...document.querySelectorAll('#acList .ac-row:not(.head)')].map(r=>r.textContent).filter(t=>t.includes(TAG))
     .map(t=>(t.match(new RegExp(TAG+'L(\\d)'))||[])[1]).join(''),TAG);
   rec('既定は作業開始の古い順（9時→11時→14時）',await order()==='231',await order());

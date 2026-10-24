@@ -284,7 +284,11 @@ def check_plan_layer():
         cur, nxt = e.get('cur') or {}, e.get('next') or {}
         rec('いまの作業: 作業中のロットと予定完了＝作業開始＋見積（P2・10:00＋60分＝11:00）', st == 200 and cur.get('name') == 'P2' and str(cur.get('end')).endswith('11:00:00'), (st, e, a.get('error')))
         rec('いまの作業: 次の予定（P3）', nxt.get('name') == 'P3', nxt)
-        rec('予定と実績のガントの行も、いまの作業を持つ（同じ答え）', ((eq.get('now') or {}).get('cur') or {}).get('name') == 'P2', eq.get('now'))
+        rec('既定のガントは行にいまの作業を書かない（左上の「いまの作業」が言う）', 'now' not in eq, eq.get('now'))
+        st, a = query({**hp['planGantt'], 'ops': {**hp['planGantt']['ops'], 'nowRow': True}})
+        eq = (a.get('equips') or [{}])[0]
+        rec('予定と実績のガントの行も、いまの作業を持てる（同じ答え）', ((eq.get('now') or {}).get('cur') or {}).get('name') == 'P2', eq.get('now'))
+        rec('既定の左上は「いまの作業」（依頼の順の先頭）', hp.get('now', {}).get('visual') == 'now' and (hp['now']['x'], hp['now']['y']) == (0, 0), hp.get('now'))
         # 作業中の予定完了（作業開始＋見積）がいまより後なら、後ろの予定をその分ずらして見せる（§9.630・push_of）:
         # P2 は 10:00＋180分＝13:00。いま 12:00 なので、12:30 からの P3 は 13:30 から
         es[1] = _entry(2, '作業', '着手', f'{day}T09:00', f'{day}T12:00', {'startAt': f'{day}T10:00', 'endAt': None}, est=180)

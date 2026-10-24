@@ -37,7 +37,7 @@
  const AC_PREF_KEY='ActualsViewPrefV1';
 
  const acState={equipment:'',from:'',to:'',basis:'work',days:AC_DEFAULT_DAYS,
-                items:[],total:0,truncated:false,limit:0,loading:false,error:'',
+                items:[],total:0,truncated:false,limit:0,loading:false,error:'',showEmpty:false,emptyKeys:[],
                 lotFields:[],opKeys:[],opDefs:[],equipments:[],selected:new Set(),
                 /* 記録した値の候補（§9.288 ⑧）。**サーバーが答える**——
                    帳票の候補と同じ1箇所（`report_block_repo.field_catalog()`）。 */
@@ -282,12 +282,15 @@
   const w=WL.columnLayout.width(AC_TARGET,k);
   if(w)return `${w}px`;
   const c=columnOf(k),t=(c&&c.track)||'minmax(84px,1fr)';
-  /* 伸びる列の下限は見出しの字の幅（§9.630 の採点: 「オペレ…」と切れていた）。全角 1em・半角 0.55em＋余白と並べ替えの印 */
-  if(!/^minmax\(84px/.test(t))return t;
-  const em=[...labelOf(k)].reduce((a,ch)=>a+(/[ -~]/.test(ch)?0.55:1),0);
+  if(k==='#'||k==='操作')return t;
+  /* どの列も下限は見出しの字の幅（§9.630 の採点: 「オペレ…」「ロット番…」と切れていた）。全角 1em・半角 0.55em＋余白、
+     ＋1.3em は並べ替えの印（⇅・どの見出しにも出る＝6 回目の採点）。決めた幅（px・トークン）より狭くはしない */
+  const em=[...labelOf(k)].reduce((a,ch)=>a+(/[ -~]/.test(ch)?0.55:1),0)+1.3,min=`calc(${em.toFixed(2)}em + 28px)`;
+  const m=/^minmax\(([^,]+),1fr\)$/.exec(t);
   /* 数の列は伸ばさない（見出しの字の幅か 5em の広いほう・2回目の採点: 縦割数・横割数の間が空きすぎて横に送る量が増えた） */
-  if(numericKeys().has(k))return `max(5em,calc(${em.toFixed(2)}em + 28px))`;
-  return `minmax(max(84px,calc(${em.toFixed(2)}em + 28px)),1fr)`;
+  if(m&&m[1]==='84px'&&numericKeys().has(k))return `max(5em,${min})`;
+  if(m)return `minmax(max(${m[1]},${min}),1fr)`;
+  return /^(\d+px|var\(--[\w-]+\))$/.test(t)?`max(${t},${min})`:t;
  }
  function labelOf(k){return WL.columnLayout.label(AC_TARGET,k)||k}
 
@@ -519,18 +522,26 @@
   if(acState.loading){list.innerHTML='<div class="ac-empty">読み込んでいます…</div>';return}
   list.classList.toggle('is-stack',acState.view==='stack');
   if(acState.view==='stack'){renderStack(list);return}
-  const keys=visibleColumnKeys(),items=filtered();
-  list.style.setProperty('--ac-cols',keys.map(trackOf).join(' '));
-  const so=acState.sort||{},hu=useMap(),hf=filledKeys();
+  const items=filtered(),so=acState.sort||{},hu=useMap(),hf=filledKeys();
   const grp=k=>{const u=k==='#'||k==='操作'?'app':(hu.get(k)||'app');return (u==='input'||u==='app')&&k!=='#'&&k!=='操作'&&!hf.has(k)?'empty':u};
+  /* この期間に値の無い列は既定で表から外す（§9.630 の 6 回目の採点: 表の端の畳んだ列は切れて読めなかった）。出す・外すは帯の1か所（paintMore） */
+  const all=visibleColumnKeys(),empties=all.filter(k=>grp(k)==='empty');
+  const keys=acState.showEmpty?all:all.filter(k=>grp(k)!=='empty');
+  acState.emptyKeys=empties;
+  list.style.setProperty('--ac-cols',keys.map(trackOf).join(' '));
+  /* 左の列（#〜ロット番号）は横に送っても残す（6 回目の採点: 送ると何の行か分からなくなった）。席は描いたあとに見出しで測る */
+  const nums=numericKeys(),nFix=keys.indexOf('ロット番号')+1;
+  const fixAt=i=>i<nFix?{cls:` ac-fix${i===nFix-1?' ac-fix-end':''}`,sty:` style="left:var(--ac-fx${i},0px)"`}:{cls:'',sty:''};
   const head=`<div class="ac-row head">`
-   +keys.map(k=>{
-    const can=k!=='#'&&k!=='操作',on=can&&so.k===k,mark=on?(so.dir===1?'▲ 古い順':'▼ 新しい順'):'';
+   +keys.map((k,i)=>{
+    const can=k!=='#'&&k!=='操作',on=can&&so.k===k,mark=on?(so.dir===1?'▲ 古い順':'▼ 新しい順'):can?'⇅':'';
     const tip=can?`${labelOf(k)}（押すと${on&&so.dir===1?'新しい順・大きい順':'古い順・小さい順'}に並べます）`:labelOf(k);
-    return `<span data-col="${esc(k)}" class="ac-h-${grp(k)}${on?' is-sorted':''}"${can?' data-sort role="button" tabindex="0"':''}${on?` aria-sort="${so.dir===1?'ascending':'descending'}"`:''} title="${esc(tip)}">${esc(labelOf(k))}${mark?`<i class="ac-sortmark" aria-hidden="true">${mark}</i>`:''}</span>`;
+    /* 数の列は見出しも右寄せ・印は名前の左（値の右端と名前の右端をそろえる・6 回目の採点） */
+    const num=nums.has(k),fx=fixAt(i),mk=mark?`<i class="ac-sortmark${on?'':' is-idle'}" aria-hidden="true">${mark}</i>`:'';
+    return `<span data-col="${esc(k)}" class="ac-h-${grp(k)}${on?' is-sorted':''}${num?' ac-h-num':''}${fx.cls}"${fx.sty}${can?' data-sort role="button" tabindex="0"':''}${on?` aria-sort="${so.dir===1?'ascending':'descending'}"`:''} title="${esc(tip)}">${num?mk+esc(labelOf(k)):esc(labelOf(k))+mk}</span>`;
    }).join('')
    +`</div>`;
-  const band=bandHtml(keys);
+  const band=bandHtml(keys,grp,nFix);
   if(!items.length){
    const why=acState.error?'読み込みに失敗しました。上の「再読込」で試せます。'
     :(acState.query?'絞り込み条件に一致する実績がありません。'
@@ -539,17 +550,17 @@
    paintMore(list);
    return;
   }
-  const frag=document.createDocumentFragment(),nums=numericKeys();
+  const frag=document.createDocumentFragment();
   list.innerHTML=band+head;
   items.forEach((x,i)=>{
    const view=rowView(x,i);
    const row=document.createElement('div');
    row.className='ac-row'+(acState.selected.has(x.id)?' is-picked':'');
    row.dataset.id=x.id;
-   row.innerHTML=keys.map(k=>{
-    const c=columnOf(k);
-    if(k==='#')return `<span class="ac-idx">${pickHtml(x,i)}</span>`;
-    if(k==='操作')return `<span class="ac-act"><button type="button" class="ac-row-btn" data-report="${esc(x.id)}" title="この記録の測定帳票を開きます">帳票</button></span>`;
+   row.innerHTML=keys.map((k,j)=>{
+    const c=columnOf(k),fx=fixAt(j);
+    if(k==='#')return `<span class="ac-idx${fx.cls}"${fx.sty}>${pickHtml(x,i)}</span>`;
+    if(k==='操作')return `<span class="ac-act${fx.cls}"${fx.sty}><button type="button" class="ac-row-btn" data-report="${esc(x.id)}" title="この記録の測定帳票を開きます">帳票</button></span>`;
     /* 値は作り方の式を通す（§9.489。計算列も元データの列も`rawOf()`の1本）。以前は`view[k]`のままで、
        **計算列のセルが空**だった（式を当てる道が無かった）。 */
     const raw=WL.cellFormat.rawOf(AC_TARGET,view,k);
@@ -562,12 +573,16 @@
       /* 揃えは揃えの道具の1箇所（手で決めた揃えが先）。書式の種別が無い数の列は「数」として渡す＝自動で右寄せ */
       (WL.columnAlign&&WL.columnAlign.cellClass)?WL.columnAlign.cellClass(AC_TARGET,k,(WL.columnLayout.format(AC_TARGET,k)||{}).kind||(nums.has(k)?'number':'')):'',
       out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
-    return `<span class="${esc(cls)}" data-col="${esc(k)}"`
-     +` title="${esc(raw==null?'':String(raw))}">${esc(out.text)}</span>`;
+    /* ロット番号の席に乗せたときだけ「帳票 ↗」（行を2回押す道を形でも見せる・6 回目の採点） */
+    const rep=k==='ロット番号'?`<button type="button" class="ac-rowrep" data-report="${esc(x.id)}" tabindex="-1" title="この記録の測定帳票を開きます">帳票 ↗</button>`:'';
+    return `<span class="${esc(cls)}${fx.cls}"${fx.sty} data-col="${esc(k)}"`
+     +` title="${esc(raw==null?'':String(raw))}">${rep?`<span class="ac-ct">${esc(out.text)}</span>${rep}`:esc(out.text)}</span>`;
    }).join('');
    frag.append(row);
   });
   list.append(frag);
+  const lr=list.getBoundingClientRect();
+  [...list.querySelectorAll('.ac-row.head>span')].slice(0,nFix).forEach((h,i)=>list.style.setProperty(`--ac-fx${i}`,`${Math.round(h.getBoundingClientRect().left-lr.left+list.scrollLeft-list.clientLeft)}px`));
   wireRows(list);
   bindHeadTools(list);
   bindSortHeads(list);
@@ -576,15 +591,17 @@
  /* 見出しの上の群の帯（§9.630 ①・採点 2 回目）: 記録の基本 → 測定画面で入れた項目（値のある列・値の無い列）→ 作った値 → 仕掛から写した値。
     どこまでが入力した項目かを見出しが言う。左端の札は並べ替えの状態も字で言う（▲ の印だけにしない） */
  const BAND_WORD={app:'記録の基本',input:'測定画面で入れた項目',empty:'値なし',calc:'記録から作った値',joined:'仕掛から写した値'};
- function bandHtml(keys){
-  const use=useMap(),filled=filledKeys(),runs=[];
-  keys.forEach(k=>{
-   const u=k==='#'||k==='操作'?'app':(use.get(k)||'app'),w=(u==='input'||u==='app')&&k!=='#'&&k!=='操作'&&!filled.has(k)?'empty':u,last=runs[runs.length-1];
-   if(last&&last.w===w)last.n++;else runs.push({w,n:1});
+ function bandHtml(keys,grp,nFix=0){
+  /* 固定の列（#〜ロット番号）のところで帯も区切り、その帯を固定する（横に送っても群の名前が残る）。続きの帯は名前を繰り返さない */
+  const runs=[];
+  keys.forEach((k,i)=>{
+   const w=grp(k),last=runs[runs.length-1],cut=i===nFix&&nFix>0;
+   if(last&&last.w===w&&!cut)last.n++;else runs.push({w,n:1,at:i,fix:i<nFix,cont:cut&&!!last&&last.w===w});
   });
-  /* 並べ替えの状態は見出しの「▲ 古い順」の1か所（帯にも書くと同じ情報が2か所・3回目の採点） */
-  return `<div class="ac-row ac-band" aria-hidden="true">`+runs.map(r=>`<span class="ac-bandc is-${r.w}" style="grid-column:span ${r.n}">`
-   +`<span class="ac-bandin"><b>${esc(BAND_WORD[r.w])}</b><small>${r.n}列</small></span></span>`).join('')+`</div>`;
+  runs.forEach(r=>{if(r.fix)r.total=keys.filter(k=>grp(k)===r.w).length});
+  /* 並べ替えの状態は見出しの「▲ 古い順」の1か所（帯にも書くと同じ情報が2か所・3回目の採点）。畳んだ値なしは列の数を畳む前の数で言う */
+  return `<div class="ac-row ac-band">`+runs.map(r=>`<span class="ac-bandc is-${r.w}${r.fix?` ac-fix${r.at+r.n===nFix?' ac-fix-end':''}`:''}" style="grid-column:span ${r.n}${r.fix?`;left:var(--ac-fx${r.at},0px)`:''}">`
+   +(r.cont?'':`<span class="ac-bandin"><b>${esc(BAND_WORD[r.w])}</b><small>${r.total||r.n}列</small></span>`)+`</span>`).join('')+`</div>`;
  }
  /* 右に続く列の数（§9.630 の採点: 右にまだ列があると分からなかった）。横に送ると数え直す。伏せている列の数も言う（表示列で出せる） */
  function paintMore(list){
@@ -593,10 +610,16 @@
   if(!bar)return;
   if(!el){el=document.createElement('span');el.className='ac-more';el.setAttribute('role','status');bar.appendChild(el);list.addEventListener('scroll',()=>paintMore(list),{passive:true})}
   const right=list.getBoundingClientRect().right,heads=[...list.querySelectorAll('.ac-row.head>span')];
-  const beyond=heads.filter(h=>h.getBoundingClientRect().left>=right-4).length;
+  const beyond=heads.filter(h=>h.getBoundingClientRect().right>right+2).length;   /* 途中で切れて見えている列も数える（6 回目の自分の確認: 端で切れた列が数に入っていなかった） */
   const hidden=allColumnKeys().length-visibleColumnKeys().length;
-  const parts=[beyond?`横にあと ${beyond}列 →`:'',hidden?`伏せている列 ${hidden}（表示列で出せます）`:''].filter(Boolean);
-  el.hidden=!parts.length;el.textContent=parts.join('　');
+  /* 列の入口は帯の右端の1か所: 横にあと何列 → 値の無い列（出す／外す）→ 伏せている列（表示列で出す） */
+  const ne=(acState.emptyKeys||[]).length;
+  const parts=[beyond?`<span>横にあと ${beyond}列 →</span>`:'',
+   ne?`<button type="button" class="ac-foldbtn" data-fold aria-pressed="${acState.showEmpty}" title="${esc(acState.emptyKeys.join('・'))}">この期間に値の無い列 ${ne}　${acState.showEmpty?'外す ◂':'出す ▸'}</button>`:'',
+   hidden?`<span>伏せている列 ${hidden}（表示列で出せます）</span>`:''].filter(Boolean);
+  el.hidden=!parts.length;el.innerHTML=parts.join('<i class="ac-moresep" aria-hidden="true">｜</i>');
+  const fb=el.querySelector('[data-fold]');
+  if(fb)fb.onclick=()=>{acState.showEmpty=!acState.showEmpty;renderList()};
  }
  /* 見出しを押して並べ替える（閲覧モードでも。列幅の取っ手を掴んだときは並べ替えない） */
  function bindSortHeads(list){

@@ -99,6 +99,23 @@ body.ac-mode .pager{display:none}
 .ac-more{margin-left:auto;color:var(--ink-2);white-space:nowrap}
 .ac-row[data-id]{cursor:pointer}
 .ac-sortmark{font-style:normal;margin-left:var(--space-1);font-size:var(--tbl-fs-mark);font-weight:var(--fw-ui);color:var(--teal-ink)}
+.ac-sortmark.is-idle{color:var(--muted);font-weight:var(--fw-body)}
+.ac-row.head>span.ac-h-num{text-align:right}
+.ac-row.head>span.ac-h-num .ac-sortmark{margin:0 var(--space-1) 0 0}
+/* 左の固定の列（#〜ロット番号）。地は行のもの（縞・乗せた色）を継ぐ・右端に影の線1本 */
+.ac-row>.ac-fix{position:sticky;z-index:1;background:inherit}
+.ac-row.head>.ac-fix{z-index:3}
+.ac-row>.ac-fix-end{box-shadow:inset -1px 0 0 var(--line-mid)}
+.ac-row.is-picked>.ac-fix:first-child{box-shadow:inset var(--bar-w) 0 0 var(--teal)}
+/* 帳票 ↗: ロット番号の席に乗せたときだけ（行を2回押すのと同じ1手） */
+.ac-row>span:has(.ac-rowrep){display:flex;align-items:center;gap:var(--space-2)}
+.ac-ct{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ac-rowrep{display:none;margin-left:auto;flex:0 0 auto;border:0;background:none;padding:0 var(--space-1);font:inherit;font-size:var(--fs-sm);color:var(--teal-ink);cursor:pointer}
+.ac-row:hover .ac-rowrep{display:inline}
+.ac-rowrep:hover{text-decoration:underline}
+.ac-moresep{font-style:normal;color:var(--line-mid);margin:0 var(--space-2)}
+.ac-foldbtn{border:0;background:none;padding:0;color:var(--teal-ink);font:inherit;font-size:var(--fs-sm);cursor:pointer}
+.ac-foldbtn:hover{text-decoration:underline}
 .ac-num{text-align:right;font-variant-numeric:tabular-nums}
 .ac-idx{display:flex;align-items:center;gap:var(--space-1);color:var(--ink-2)}
 .ac-pick{display:flex;align-items:center;gap:var(--space-1);cursor:pointer}
