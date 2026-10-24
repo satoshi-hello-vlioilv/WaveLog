@@ -103,12 +103,17 @@ run('test_uiux: §9.59〜§9.65 の作法',async({page,rec,setMode,W,idle,paint}
  rec('パネル側がヘッダーの画面名を繰り返さない',head.dup.length===0,JSON.stringify(head));
 
  // ---- §9.64 ダッシュボード（§9.628 でグリッドのパネルへ移した。前の3つの表示は組み込みのダッシュボード） ----
+ /* 既定は「生産の状況」（§9.630 ④。前は稼働状況・§9.64）。稼働状況は2つ目の組み込みとして残る——開いて中身を見る */
+ const defName=await page.evaluate(()=>(document.querySelector('#dashBar .dash-pick b')||{}).textContent||'');
+ rec('ダッシュボードは既定で「生産の状況」を表示する（§9.630）',defName==='生産の状況',defName);
+ await page.evaluate(()=>WL.dashboard._open('b:status'));
+ await W.until(page,()=>WL.dashboard._state().id==='b:status'&&document.querySelectorAll('#dashGrid .dash-p[data-id="board"] tbody tr').length>0,null,{ms:20000,what:'稼働状況の表が出る'});
  const dash=await page.evaluate(()=>({
   name:(document.querySelector('#dashBar .dash-pick b')||{}).textContent||'',
   kpi:document.querySelectorAll('#dashGrid .dash-p .dp-kpi').length,
   equipRows:document.querySelectorAll('#dashGrid .dash-p[data-id="board"] tbody tr').length,
  }));
- rec('ダッシュボードは既定で稼働状況を表示する',dash.name==='稼働状況',JSON.stringify(dash));
+ rec('組み込み「稼働状況」を開ける',dash.name==='稼働状況',JSON.stringify(dash));
  rec('稼働状況にKPIが4枚出る',dash.kpi===4,dash.kpi+'枚');
  rec('作業予定から設備ごとの状況が出る',dash.equipRows>0,dash.equipRows+'行');
  const built=await page.evaluate(async()=>(await (await fetch('/api/dashboards')).json()).items.filter(x=>x.builtin));

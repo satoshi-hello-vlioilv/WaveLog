@@ -184,7 +184,11 @@
     const num = box.querySelector(".dp-num"), limit = box.clientHeight || H;
     // 横に並べる形は、数そのものが収まるかだけを見る（添え書きは 2 行で切る。添え書きが長いと数が 14px まで縮んだ: 版 3.41.0）
     const over = row ? () => box.scrollHeight > limit + 1 || num.getBoundingClientRect().height > limit + 1 || num.offsetWidth > W * 0.62 : () => box.scrollHeight > limit + 1 || box.scrollWidth > box.clientWidth + 1;
-    for (let f = size; f > 12 && over(); f -= 2) num.style.setProperty("--dp-numfs", `${f - 2}px`);
+    const shrink = () => { for (let f = parseFloat(num.style.getPropertyValue("--dp-numfs")) || size; f > 12 && over(); f -= 2) num.style.setProperty("--dp-numfs", `${f - 2}px`); };
+    shrink();
+    // 添え書きの行の数は 1 行 16px の見積り。表示サイズ「大」では行が高く、2 行が器からはみ出した（§9.631・test_fit）。入らなければ 1 行にして数をもう一度合わせる
+    const meta = box.querySelector(".dp-kmeta");
+    if (meta && over() && meta.style.webkitLineClamp !== "1") { meta.style.webkitLineClamp = "1"; shrink(); }
   }
 
   /** 数字の形（版 3.39.0。書式 kpi）: 目標に対する進み。bar＝数と、目標までの横の棒（達成率）・gauge＝半円のメーター（真ん中に数・下に達成率） */

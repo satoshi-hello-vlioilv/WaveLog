@@ -104,13 +104,14 @@ run('test_fit: 中身が器から溢れていないかを、表示サイズ3段�
   const visit=async(name,fn)=>{
    await fn(); await idle();
    for(const size of SIZES){
-    await page.evaluate(s=>{document.documentElement.dataset.uiSize=s},size);
+    /* 人と同じ道（「表示」の大きさ＝`WL.uiSize.setSize`。替わったことの知らせ`wl:look-change`で、器を測って描く画面が描き直す・§9.631） */
+    await page.evaluate(s=>WL.uiSize.setSize(s),size);
     await paint();
     const r=await probe(SLACK);
     r.items.forEach(i=>findings.push({...i,screen:name,size}));
     pageX=Math.max(pageX,r.pageX);
    }
-   await page.evaluate(()=>{document.documentElement.dataset.uiSize='md'});
+   await page.evaluate(()=>WL.uiSize.setSize('md'));
    await paint();
   };
 

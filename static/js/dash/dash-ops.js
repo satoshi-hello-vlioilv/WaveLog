@@ -507,11 +507,13 @@
         + `<span class="on-main">${name ? `<span class="on-name" title="${esc(name)}">${esc(name)}</span>` : ""}${due}${prog}${narrow && nxIn ? `<span class="on-due">${nxIn}</span>` : ""}</span>${nx}</div>`;
     }).join("");
     box.innerHTML = `<div class="on-wrap${cols ? " is-cols" : ""}${line ? " is-line" : ""}${narrow && !cols ? " is-narrow" : ""}${big ? " is-big" : ""}" role="list" aria-label="設備ごとのいまの作業"${cols ? ` style="--on-cols:${Math.min(shown.length, Math.floor(W / CARD_W))}"` : ""}>${rows}${cols ? "" : noneRow}</div>`;
-    const more = eqs.length - shown.length;
+    let more = eqs.length - shown.length;
     // 済み・予定なしの行が器に入らなければ（低いパネル）、行を外して足元の知らせへ回す（切れたまま残さない）
     const wrap = box.querySelector(".on-wrap"), sum = wrap && wrap.querySelector(".on-sum");
     const noneOut = cols || (!!sum && wrap.scrollHeight > wrap.clientHeight + 1);
     if (noneOut && sum) sum.remove();
+    // 入る行の数は 1 行 44px の見積り。表示サイズ「大」では行が高く、最後の行が切れた（§9.631・test_fit）。描いたあとに測り、入らない行は「ほか n 台」へ回す
+    if (wrap && !cols) for (let r = wrap.querySelectorAll(".on-row:not(.on-sum)"); r.length > 1 && wrap.scrollHeight > wrap.clientHeight + 1; r = wrap.querySelectorAll(".on-row:not(.on-sum)")) { r[r.length - 1].remove(); more++; }
     return [more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "", noneOut && none.length ? `予定の無い・済んだ設備: ${none.map((e) => e.name).join("・")}` : ""].filter(Boolean).join("　");
   }
 

@@ -203,13 +203,16 @@
     群の使い方はサーバーが答える（`actuals.group_use()`の1箇所）。 */
  const USE_RANK={app:0,input:1,calc:2,joined:3};
  /* いま読んだ記録で値のある列（入力した項目の中は値のある列を先に・値の無い列はその後ろ。帯が数で言う）。読み直すたびに1回だけ数える */
- let filledMemo={items:null,set:new Set()};
+ let filledMemo={items:null,fx:'',set:new Set()};
  function filledKeys(){
   /* 控えは読んだ記録の並びそのもので見る（世代と件数で見ると、値を頼み直した2回目の読み込みで前の空の答えを使った・2回目の採点） */
-  if(filledMemo.items===acState.items)return filledMemo.set;
-  const set=new Set(),cols=allColumns().filter(c=>!c.virtual);
-  acState.items.forEach((x,i)=>{const v=rowView(x,i);cols.forEach(c=>{if(!set.has(c.k)&&v[c.k]!==''&&v[c.k]!=null)set.add(c.k)})});
-  filledMemo={items:acState.items,set};
+  /* 値はセルと同じ（作り方の式を通した値・`rawOf`）で見る。式で作る列（計算列）も数える——前は候補の列だけを式を通さずに数え、
+     計算列はいつも「値の無い列」として表から外れていた（§9.631・test_colsrcfx の D）。式が変われば数え直す */
+  const fx=JSON.stringify((WL.columnLayout.get(AC_TARGET)||{}).formulas||{});
+  if(filledMemo.items===acState.items&&filledMemo.fx===fx)return filledMemo.set;
+  const set=new Set(),keys=allColumnKeys().filter(k=>!AC_VIRTUAL_KEYS.has(k));
+  acState.items.forEach((x,i)=>{const v=rowView(x,i);keys.forEach(k=>{if(set.has(k))return;const r=WL.cellFormat.rawOf(AC_TARGET,v,k);if(r!==''&&r!=null)set.add(k)})});
+  filledMemo={items:acState.items,fx,set};
   return set;
  }
  /* 数の列（値のある行が全部数）。右寄せにする（ほかの表と同じ） */
