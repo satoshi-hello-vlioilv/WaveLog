@@ -1049,13 +1049,17 @@
   }
   const RULE_WORD = { prefix: "で始まる", suffix: "で終わる", contains: "を含む", equals: "と同じ", regex: "に当たる" };
   const ruleText = (r) => `「${r.value}」${RULE_WORD[r.op] || ""}`;
+  // 元の状態の字（§9.630）: 写し中は選べる（写し終えたら数える）・置き場が未設定だけ選べない
+  const SRC_WORD = { copying: "（写しています）", unset: "（置き場が未設定）" };
   function dataHtml() {
+    const cur = WL.dashKit.src.of(t.source) || {};       // role:仕掛 は役割を担う元（前は一致する札が無く、先頭の札が選ばれて見えた）
     const basis = isWork() ? `<select data-de-basis aria-label="作業日の数え方"><option value="work"${t.basis !== "cal" ? " selected" : ""}>現場歴</option><option value="cal"${t.basis === "cal" ? " selected" : ""}>太陽暦</option></select>` : "";
     const g = inSide() ? p.link.sides[gi] : null;
     // 合わせるデータ（版 3.40.0）: 役割（目標・実績）と作り方（そのまま・積み上げ）は、データの選びの上（何のデータかを先に決める）
     const side = g ? `<div class="de-row"><span class="de-l">役割</span>${segs(`role-${gi}`, ROLES, g.role || "", "役割")}<label class="pv-ck de-gt">名前<input data-de-stitle value="${esc(g.title || "")}" placeholder="${esc((srcOf(g.source) || {}).name || "")}" maxlength="40" aria-label="このデータの名前"></label></div>`
       + `<div class="de-row"><span class="de-l">作り方</span>${segs(`build-${gi}`, BUILDS, g.build || "as", "作り方")}<small class="de-hint">${g.build === "cum" ? "軸の並びに足していく（累計）" : "軸の値ごとの数のまま"}</small></div>` : "";
-    return (!parts() && p.visual !== "board" ? linkPick() : "") + side + `<div class="de-row"><label class="de-l">データ</label><select data-de-src aria-label="データ">${sources.map((x) => `<option value="${esc(x.key)}"${x.key === t.source ? " selected" : ""}${x.place ? "" : " disabled"}>${esc(x.name)}${x.place ? "" : "（場所が未設定）"}</option>`).join("")}</select>${basis}</div>`
+    return (!parts() && p.visual !== "board" ? linkPick() : "") + side + `<div class="de-row"><label class="de-l">データ</label><select data-de-src aria-label="データ">${sources.map((x) => `<option value="${esc(x.key)}"${x.key === cur.key ? " selected" : ""}${x.state === "unset" ? " disabled" : ""}>${esc(x.name)}${SRC_WORD[x.state] || ""}</option>`).join("")}</select>${basis}</div>`
+      + (cur.state === "copying" ? `<p class="de-hint is-warn" role="status">${esc(cur.name)}は共有の元をまだ手元へ写せていません。写し終えると、このパネルを数えます（選んだままで待てます）。</p>` : "")
       + equipHtml() + egroupHtml();
   }
   /** 合わせた表の札（表全体・まとまり ①②…・＋） */

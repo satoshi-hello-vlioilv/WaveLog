@@ -258,12 +258,26 @@ def check_view_mode():
         mode('edit')
 
 
+def check_source_state(tmp=None):
+    """元の状態（§9.630 ③）: 置き場が空＝unset（選べない）・写しがまだ無い＝copying（選べる）・写しがある＝ready"""
+    import tempfile
+    from backend import db_mirror
+    with tempfile.TemporaryDirectory() as d:
+        far = str(pathlib.Path(d) / 'まだ無い元.sqlite3')
+        rec('置き場が空の元は unset', sources.source_state('DASHAPI_X', {'path': ''}) == 'unset')
+        want = 'copying' if db_mirror.enabled() else 'ready'
+        got = sources.source_state('DASHAPI_X', {'path': far})
+        rec(f'写しがまだ無い元は {want}（待たずに答える）', got == want, got)
+        rec('設備ごとのファイルの元は ready（読めない設備は数えるときに名指し）', sources.source_state('DASHAPI_X', {'path': d, 'pattern': '{設備}.sqlite3'}) == 'ready')
+
+
 def main():
     flask_app.app.config['DASHBOARD_NOW'] = NOW
     made = []
     try:
         mode('edit')
         check_sources()
+        check_source_state()
         items = check_list()
         check_panels(items)
         check_fields()

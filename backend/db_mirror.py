@@ -868,6 +868,11 @@ def read_path(key, remote):
  return _copied(key, remote)
 
 
+def has_copy(key, remote):
+ """いま読める写しがあるか（待たない・写さない。元の並びに「写しています」を添えるため・§9.630）。写して読まない端末は真。"""
+ return (not enabled()) or _copied(key, remote) is not None
+
+
 def not_ready_text(key):
  """写しがまだ無いときに画面へ出す文（なぜ無いか＋写し終えたら出ること）。Quality-Analysis と同じ文。"""
  with _lock:

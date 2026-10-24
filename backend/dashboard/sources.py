@@ -375,15 +375,32 @@ def equip_ok(source):
  return _equip_spec(c['path'], entry.get('preferred') or '') is not None
 
 
+def source_state(key, entry):
+ """データソースの元の状態（§9.630）: ready（読める）・copying（共有の元をまだ手元へ写せていない＝選べるが、写し終えてから数える）・
+ unset（置き場が未設定＝選べない）。待たない・写さない（元の並びを返すたびに共有を開かない）"""
+ path = str(entry.get('path') or '').strip()
+ if not path:
+  return 'unset'
+ if entry.get('pattern'):
+  return 'ready'          # 設備ごとのファイル: 読めない設備は数えるときに名指しする（`_src_parts()`の failed）
+ try:
+  return 'ready' if db_mirror.has_copy(key, path) else 'copying'
+ except Exception as e:
+  quiet('写しの有無を確かめられない（写し中として出す）', e)
+  return 'copying'
+
+
 def source_items():
- """パネルに使える元の並び（画面の「データ」の札）: 測定データ → 作業予定 → データソース（表示順）"""
- out = [{'key': REC, 'name': REC_NAME, 'role': '', 'equip': True, 'work': True,
+ """パネルに使える元の並び（画面の「データ」の札）: 測定データ → 作業予定 → データソース（表示順）。
+ state … ready・copying・unset（`source_state()`）。前は画面が来ない鍵（place）で全部「場所が未設定」にしていた（§9.630）"""
+ out = [{'key': REC, 'name': REC_NAME, 'role': '', 'equip': True, 'work': True, 'state': 'ready',
          'hint': '作業の記録（実績データリストと同じ行）。設備ごと・作業日・直で数えられます'},
-        {'key': PLAN, 'name': PLAN_NAME, 'role': '', 'equip': True, 'work': True,
+        {'key': PLAN, 'name': PLAN_NAME, 'role': '', 'equip': True, 'work': True, 'state': 'ready',
          'hint': '作業スケジュールの予定（予定・作業中・完了）。予定開始で作業日・直を決めます'}]
  for key, v in _readable().items():
   out.append({'key': f'src:{key}', 'name': v.get('label') or key, 'role': v.get('purpose') or '', 'equip': bool(v.get('pattern')) or None,
-              'work': False, 'hint': f'データソース「{v.get("label") or key}」' + ('（設備ごとのファイル）' if v.get('pattern') else '')})
+              'work': False, 'state': source_state(key, v),
+              'hint': f'データソース「{v.get("label") or key}」' + ('（設備ごとのファイル）' if v.get('pattern') else '')})
  return out
 
 
