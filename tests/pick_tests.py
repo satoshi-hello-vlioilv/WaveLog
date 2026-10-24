@@ -184,7 +184,7 @@ G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork',
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
 # §9.248 ⑥: 見せる範囲を「実施した設備」で絞る（データ一覧・実績データ）
-G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope', 'test_recordlayout']
+G['実績'] = ['test_actuals', 'test_acinput', 'test_opsheet', 'test_eqscope', 'test_recordlayout']
 # 刃組（§9.377）。**部材マスタ・ガイダンス・設備停止の連携**は1つの仕事なので、
 # どれを触っても3本まとめて回す（計算はサーバー不要の1本、画面は1本）。
 G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_holdpick', 'test_bladesets', 'test_ringboard', 'test_bladeboard', 'test_screenprint', 'test_stopeq', 'test_partboards']
@@ -523,7 +523,7 @@ RULES = [
     ('backend/safe_regex.py', g('test_saferegex', 'test_displayrule', 'test_dashpivot', 'test_formulaparity')),
     ('tests/test_saferegex.py', g('test_saferegex')),
     # §9.628: ダッシュボードの画面（LotScope の移植）。前の画面を読んでいた網（自設備・稼働状況・見出し・待ち）も一緒に回す
-    ('static/js/dash/', g('見た目', 'test_dashboard', 'test_dbequip', 'test_uiux', 'test_uisize', 'test_headbar', 'test_flows',
+    ('static/js/dash/', g('見た目', 'test_dashboard', 'test_dashsrc', 'test_homenav', 'test_dbequip', 'test_uiux', 'test_uisize', 'test_headbar', 'test_flows',
                           'test_waiting', 'test_nav', 'test_loadorder', 'test_eslint', 'test_tscheck', 'test_funclen')),
     ('static/css/63-dashboard.css', g('見た目', 'test_dashboard', 'test_csslint')),
     ('backend/routes/masters/dashboard.py', g('test_dashapi', 'test_equipgroupui', 'test_modeguard', 'test_mastershare', 'test_routesplit')),

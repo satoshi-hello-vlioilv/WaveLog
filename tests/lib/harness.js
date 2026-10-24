@@ -62,6 +62,13 @@ async function run(title,body,opts={}){
   /* ファイル名の文字コードは UTF-8（§9.551）。この網の環境は POSIX（UTF-8 でない）なので、Chromium は日本語の
      保存の名前（a.download）を使えず「download」へ倒す——現場の Windows では日本語のまま保存される。 */
   b=await launchBrowser();
+  /* 起動時の画面（§9.630 ⑤）: 製品の既定はダッシュボード。網の多くは「起動したら仕掛一覧」を前提に書いてあるので、
+     土台が端末の覚え（`WL.startView`の鍵）に「仕掛一覧」を入れて始める。既定を見る網は`start:'dashboard'`を渡す。
+     網が自分で作る文脈（`browser.newContext`）にも同じ仕込みを当てる（書き写させない）。 */
+  const startInit=`try{if(!localStorage.getItem('WaveLogStartViewV1'))localStorage.setItem('WaveLogStartViewV1',${JSON.stringify(opts.start||'list')})}catch(e){}`;
+  const newCtx=b.newContext.bind(b);
+  b.newContext=async(...a)=>{const c=await newCtx(...a);await c.addInitScript(startInit);return c};
+  b.newPage=async(o={})=>{const c=await b.newContext(o);const pg=await c.newPage();pg.on('close',()=>c.close().catch(()=>{}));return pg};
   /* 文脈を1つ作る。`init` は最初の航行より前に走らせる小さな仕込み
      （localStorage へ使用設備を入れる等。test_listcache が使う）。 */
   const ctx=await b.newContext({viewport:opts.viewport||{width:1700,height:1000}});

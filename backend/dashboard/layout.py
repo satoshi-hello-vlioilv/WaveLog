@@ -174,13 +174,13 @@ LAYOUT_SOURCE = "dash"
 GRID_COLS = 12
 ROWS_MIN, ROWS_MAX, ROWS_DEFAULT = 4, 16, 8
 MAX_PANELS = 24
-EXTRA_VISUALS = ("kpi", "board", "gantt", "abc", "slicer")
+EXTRA_VISUALS = ("kpi", "board", "gantt", "abc", "slicer", "now")
 # 版 3.52.0（利用者の要望 2026-10-23）:
 #   visual slicer … パネルに置くスライサー。行の段 1 つ（body.rows[0]＝列）の値と数を出し、押した値で同じデータのほかのパネルを絞る
 #                    （選んだ値はこの PC の見え方。数え方はふつうのパネルと同じ集計）
 #   レイアウトの slicer … 道具の行の帯のスライサー: {off: 帯を出さない（効きもしない）, parts: 出す物 ["period"（期間の札）, "date"（日付）, "equip"（設備）] の部分}
 SLICER_PARTS = ("period", "date", "equip")
-OPS_VISUALS = ("gantt", "abc")          # 稼働（ガントチャートと稼働率）・ABC 分析と換算係数（版 3.46.0。services/operation.py）
+OPS_VISUALS = ("gantt", "abc", "now")   # 稼働（ガントチャートと稼働率）・ABC 分析と換算係数（版 3.46.0。services/operation.py）・いまの作業（§9.630 ④）
 SORTS = ("", "desc", "asc")
 TOP_MAX = 60
 _ID = re.compile(r"[A-Za-z0-9_-]{1,16}")
@@ -645,7 +645,7 @@ def clean_panel(p, i, rows):
 ABC_A, ABC_B = 70.0, 90.0
 ABC_LIMS_MAX = 50         # 線の数の上限（51 段。段の名前は A〜Z の次が AA・AB …）
 # ABC 分析の表示項目（出す・出さないを選べる物）: 構成比・累積・ABC（ランク。棒の色と A・B の線も）・平均作業・換算係数・換算本数・パレート図・下の段の計
-ABC_ITEMS = ("share", "occ", "lshare", "cum", "rank", "avg", "factor", "conv", "chart", "foot")     # occ・lshare（占有時間・負荷構成比）は版 3.49.0
+ABC_ITEMS = ("share", "occ", "lshare", "cum", "rank", "avg", "factor", "conv", "chart", "foot", "tabs")   # tabs＝設備の札（§9.630）     # occ・lshare（占有時間・負荷構成比）は版 3.49.0
 
 
 def clean_ops(v):
@@ -655,6 +655,12 @@ def clean_ops(v):
     out = {k: col(k) for k in ("start", "end", "label", "color") if col(k)}
     if v.get("span") == "lead":
         out["span"] = "lead"
+    # 予定と実績を 1 つのガントに（§9.630 ②。作業予定の元だけ）: 実績（作業開始〜作業終了）の棒に、まだ終わっていない行の予定（予定開始〜予定終了）を重ねる
+    if v.get("plan") is True:
+        out["plan"] = True
+    # 行の名前の下にいまの作業を書かない（同じダッシュボードに「いまの作業」のパネルがあるとき。2 か所に出さない）
+    if v.get("nowRow") is False:
+        out["nowRow"] = False
     # 基準の期間（地点 A。版 3.49.0。利用者の要望 2026-10-21 の 4 回目の 3）: この期間の換算係数で、パネルの期間（地点 B）の本数を換算する
     ref = _period({**v["refPeriod"], "column": "@workday"}) if isinstance(v.get("refPeriod"), dict) else None
     if ref:
@@ -864,11 +870,32 @@ def _status_board():
             "order": {"by": "value", "group": 2, "dir": "desc", "list": [], "hide": []}}
 
 
-# ★標準が無いときに開く組み込み（前の画面と同じく稼働状況から・§9.64）
-BUILTIN_DEFAULT = "b:status"
+# ★標準が無いときに開く組み込み（§9.630 ④: 「生産の状況」。前は稼働状況・§9.64）
+BUILTIN_DEFAULT = "b:home"
+TODAY = {"column": "@workday", "kind": "today"}
+THIS_MONTH = {"column": "@workday", "kind": "this_month"}
+# 品種（§9.630 ④ 利用者の指示）: 用途名 × 縦割り数（丈数）× 横割り数（条数）。ABC 分析は 3 つの列の組み合わせで分ける
+KIND_COLS = ["用途名", "縦割り数（丈数）", "横割り数（条数）"]
+# 生産性: 良品重量の合計 ÷ 作業時間の合計（分）× 60 ＝ kg/時（aggregate の ratio。1 行ずつの比の平均にしない）
+PRODUCTIVITY = {"agg": "ratio", "column": "良品重量", "per": WORK_TIME, "expr": "×60", "dec": 1}
 
 BUILTIN_LAYOUTS = [
-    # 最初の画面（BUILTIN_DEFAULT）。前の「稼働状況」（§9.64 で既定にした）: 作業予定と進み具合（予定・作業中・遅れ）と、きょうの作業の棒（ガント）
+    # 最初の画面（BUILTIN_DEFAULT・§9.630 ④）: 本日と今月の数・予定と実績のガント（行の名前の下にいまの作業と予定完了）・今月の ABC
+    # 読む順は依頼の順（いまの作業 → 本日 → 今月 → 予定と実績 → ABC）。段は 9（1536×864 でもガントの行と ABC の 8 品種が潰れない・§9.630 の 5 回目の採点）
+    {"key": "home", "name": "生産の状況", "body": {"rows": 9, "panels": [
+        _pv("now", 0, 0, 4, 2, "いまの作業", "now", "plan", measures=[{"agg": "count"}]),
+        _pv("todayLots", 4, 0, 4, 1, "本日の作業ロット", "kpi", "rec", period=TODAY),
+        _pv("todayWeight", 8, 0, 4, 1, "本日の良品重量", "kpi", "rec", measures=[{"agg": "sum", "column": "良品重量"}], period=TODAY, fmt={"utext": "kg"}),
+        _pv("monthLots", 4, 1, 4, 1, "今月の作業本数", "kpi", "rec", period=THIS_MONTH, fmt={"utext": "本"}),
+        _pv("monthRate", 8, 1, 4, 1, "今月の生産性", "kpi", "rec", measures=[PRODUCTIVITY], period=THIS_MONTH, fmt={"utext": "kg/時"}),
+        # いまの作業は左上の 1 枚が言う（ガントの行の名前の下にくり返さない）
+        _pv("planGantt", 0, 2, 12, 3, "本日の予定と実績", "gantt", "plan", measures=[{"agg": "count"}], period=TODAY, ops={"plan": True, "nowRow": False}),
+        # 負荷比は本数比と並ぶと読み分けにくいので伏せる（占有時間・換算係数・換算本数は残す。基準が何に効くか読めるように）。
+        # 設備の札も伏せる（設備で絞るのはダッシュボードの帯の1か所）
+        _pv("monthAbc", 0, 5, 12, 4, "今月の品種の ABC 分析（用途名 × 丈数 × 条数）", "abc", "rec", measures=[{"agg": "count"}], period=THIS_MONTH,
+            ops={"cls": KIND_COLS, "qty": "lots", "hide": ["lshare", "tabs"]}),
+    ]}},
+    # 前の既定（§9.64）。前の「稼働状況」: 作業予定と進み具合（予定・作業中・遅れ）と、きょうの作業の棒（ガント）
     {"key": "status", "name": "稼働状況", "body": {"rows": 8, "panels": [
         _pv("running", 0, 0, 3, 1, "稼働中の設備", "kpi", "plan", measures=[{"agg": "distinct", "column": "設備名"}], filters=[_f("状態", "eq", "着手")],
             fmt=UNIT_EQUIP),

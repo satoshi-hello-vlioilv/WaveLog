@@ -74,6 +74,50 @@ body.ac-mode .pager{display:none}
 .ac-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
  padding:0 var(--space-2);position:relative}
 .ac-row.head>span{cursor:default}
+/* §9.630 ①: 見出しを押して並べ替える。並べている列は字の後ろに ▲（古い順・小さい順）／▼ */
+.ac-row.head>span[data-sort]{cursor:pointer}
+.ac-row.head>span[data-sort]:hover{color:var(--ink)}
+.ac-row.head>span.is-sorted{color:var(--ink)}
+/* §9.630: 見出しの上の群の帯（どこまでが測定画面で入れた項目か）。見出しの行と一緒に上に留まる */
+.ac-list{--ac-band-h:calc(var(--fs-base-sm) * 1.5 + 6px)}
+.ac-row.ac-band{position:sticky;top:0;z-index:3;min-height:var(--ac-band-h);background:var(--surface);border-bottom:0}
+.ac-row.ac-band+.ac-row.head{top:var(--ac-band-h)}
+.ac-bandc{display:flex;align-items:baseline;font-size:var(--fs-sm);color:var(--muted);border-top:2px solid var(--line-mid);margin-right:4px}
+.ac-bandc b{font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink-2);white-space:nowrap}
+.ac-bandc small{font-size:var(--fs-sm);white-space:nowrap}
+.ac-bandc.is-input{border-top-color:var(--teal);color:var(--teal-ink)}
+.ac-bandc.is-input b{color:var(--teal-ink)}
+.ac-bandc.is-empty{border-top-style:dashed}
+.ac-bandc{background:var(--surface)}
+/* 入れた項目（主役の群）の帯は濃い地と太い上線（§9.630 の 8 回目の採点で U2＝82点） */
+.ac-bandc.is-input{background:color-mix(in srgb,var(--teal) 16%,var(--surface));border-top-width:3px}
+/* 群の名前は見えている左端に留まる（横に送っても・右の群でも切れない） */
+.ac-bandin{position:sticky;left:var(--space-2);display:inline-flex;align-items:baseline;gap:var(--space-1);padding:0 var(--space-2)}
+.ac-row.head>span.ac-h-input{background:var(--teal-tint)}
+.ac-rephint{color:var(--ink-2);white-space:nowrap;padding-left:var(--space-3);border-left:1px solid var(--line-soft);margin-left:var(--space-1)}   /* 帯の字の大きさのまま・操作のボタンと線で離す */
+.ac-row.ac-band:not(.head):nth-child(even),.ac-row.ac-band:hover{background:var(--surface)}
+/* 右に続く列・伏せている列の数（横に送ると数え直す・操作の帯の右端） */
+.ac-more{margin-left:auto;color:var(--ink-2);white-space:nowrap}
+.ac-row[data-id]{cursor:pointer}
+.ac-sortmark{font-style:normal;margin-left:var(--space-1);font-size:var(--tbl-fs-mark);font-weight:var(--fw-ui);color:var(--teal-ink)}
+.ac-sortmark.is-idle{color:var(--muted);font-weight:var(--fw-body)}
+.ac-row.head>span.ac-h-num{text-align:right}
+.ac-row.head>span.ac-h-num .ac-sortmark{margin:0 var(--space-1) 0 0}
+/* 左の固定の列（#〜ロット番号）。地は行のもの（縞・乗せた色）を継ぐ・右端に影の線1本 */
+.ac-row>.ac-fix{position:sticky;z-index:1;background:inherit}
+.ac-row.head>.ac-fix{z-index:3}
+.ac-row>.ac-fix-end{box-shadow:inset -1px 0 0 var(--line-mid)}
+.ac-bandc:not(.ac-fix) .ac-bandin{position:relative;left:0;transform:translateX(var(--ac-bx,0px))}   /* 置き場は stickBand() が横の送りに合わせて決める */
+.ac-row.is-picked>.ac-fix:first-child{box-shadow:inset var(--bar-w) 0 0 var(--teal)}
+/* 帳票 ↗: ロット番号の席に乗せたときだけ（行を2回押すのと同じ1手） */
+.ac-row>span:has(.ac-rowrep){display:flex;align-items:center;gap:var(--space-2)}
+.ac-ct{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ac-rowrep{display:none;margin-left:auto;flex:0 0 auto;border:0;background:none;padding:0 var(--space-1);font:inherit;font-size:var(--fs-sm);color:var(--teal-ink);cursor:pointer}
+.ac-row:hover .ac-rowrep{display:inline}
+.ac-rowrep:hover{text-decoration:underline}
+.ac-moresep{font-style:normal;color:var(--line-mid);margin:0 var(--space-2)}
+.ac-foldbtn{border:0;background:none;padding:0;color:var(--teal-ink);font:inherit;font-size:var(--fs-sm);cursor:pointer}
+.ac-foldbtn:hover{text-decoration:underline}
 .ac-num{text-align:right;font-variant-numeric:tabular-nums}
 .ac-idx{display:flex;align-items:center;gap:var(--space-1);color:var(--ink-2)}
 .ac-pick{display:flex;align-items:center;gap:var(--space-1);cursor:pointer}

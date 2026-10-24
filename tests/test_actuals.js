@@ -161,8 +161,16 @@ run('test_actuals: 実績データリスト（§9.241 ③、利用者の指示�
   rec('既定の列に現場日と直が出る',s1.heads.includes('現場日')&&s1.heads.includes('直'),
       JSON.stringify(s1.heads));
   rec('この日の実績が全部出る（状態で絞らない）',s1.mine===4,String(s1.mine));
-  rec('行から帳票を開くボタンがある',s1.帳票ボタン===s1.rows,
-      JSON.stringify({帳票:s1.帳票ボタン,行:s1.rows}));
+  /* 帳票は行を2回押して開く（§9.630: 行ごとのボタンの列をやめた）。開く口（openReportForRecord）が呼ばれたかで見る */
+  const opened=await page.evaluate(()=>{
+   const keep=window.openReportForRecord;let got='';
+   window.openReportForRecord=id=>{got=id};
+   const row=document.querySelector('#acList .ac-row[data-id] .ac-cell');
+   row&&row.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+   window.openReportForRecord=keep;
+   return {got,id:(row&&row.closest('[data-id]')||{}).dataset?.id||''};
+  });
+  rec('行を2回押すとその記録の帳票を開く',!!opened.got&&opened.got===opened.id,JSON.stringify(opened));
   rec('操業データ表の入口がある',s1.表ボタン===true,String(s1.表ボタン));
 
   /* 設備で切り替える */

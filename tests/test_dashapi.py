@@ -60,8 +60,8 @@ def check_sources():
 def check_list():
     j = client.get('/api/dashboards').get_json() or {}
     ids = [x['id'] for x in j.get('items') or [] if x.get('builtin')]
-    rec('組み込みの4つが並ぶ（稼働状況が先頭）', ids == ['b:status', 'b:standard', 'b:mine', 'b:analysis'], ids)
-    rec('★が無ければ組み込みの「稼働状況」が開く（前の画面と同じ・§9.64）', j.get('standardId') == layout.BUILTIN_DEFAULT == 'b:status', j.get('standardId'))
+    rec('組み込みの5つが並ぶ（生産の状況が先頭・§9.630 ④）', ids == ['b:home', 'b:status', 'b:standard', 'b:mine', 'b:analysis'], ids)
+    rec('★が無ければ組み込みの「生産の状況」が開く（§9.630 ④）', j.get('standardId') == layout.BUILTIN_DEFAULT == 'b:home', j.get('standardId'))
     return [x for x in j.get('items') or [] if x.get('builtin')]
 
 
@@ -191,18 +191,19 @@ def check_groups():
         rec('設備グループを消せる（POST /delete）', r.status_code == 200 and gid not in [x['id'] for x in (r.get_json() or {}).get('items') or []], r.status_code)
 
 
-def _item(i, status, start, end, minutes, crew, equipment='テスト設備A'):
+def _item(i, status, start, end, minutes, crew, equipment='テスト設備A', weight=None):
     return {'id': f'{TAG}{i}', 'equipment': equipment, 'lotNo': f'L{i}', 'status': status, 'workStart': start, 'workEnd': end,
             'durationMin': minutes, 'workDate': start[:10], 'shift': '', 'updatedAt': start, 'updatedAtDb': start,
             'basic': {'purposeName': '用途X'}, 'settings': {'crewSize': crew, 'operator': '検査太郎', 'verticalCount': 2, 'horizontalCount': 3},
-            'opData': {}, 'mother': {}, 'product': {}, 'qualityGrades': {}, 'source': {}, 'readable': True}
+            'opData': {'良品重量': weight} if weight is not None else {}, 'mother': {}, 'product': {}, 'qualityGrades': {},
+            'source': {'BOX実績_良品重量': 999} if weight is None else {}, 'readable': True}
 
 
 def check_rec_values():
     """測定データの写しの中身: 作業の記録を3件（完了2・編集中1）入れて、数・平均・作業日・ガントを数える。
     検証用のデータに記録が無いので、実績データリストの読み口（actuals.rows）を差し替える（finally で戻す）"""
     day = NOW.strftime('%Y-%m-%d')
-    items = [_item(1, '完了', f'{day} 08:00:00', f'{day} 08:30:00', 30.0, '2'), _item(2, '完了', f'{day} 09:00:00', f'{day} 10:00:00', 60.0, '3'),
+    items = [_item(1, '完了', f'{day} 08:00:00', f'{day} 08:30:00', 30.0, '2', weight=300), _item(2, '完了', f'{day} 09:00:00', f'{day} 10:00:00', 60.0, '3', weight=600),
              _item(3, '編集中', f'{day} 10:30:00', '', None, '2'), _item(4, '完了', f'{day} 07:00:00', f'{day} 08:30:00', 90.0, '2', 'テスト設備B')]
     keep = sources.actuals.rows
     sources.actuals.rows = lambda *a, **k: items
@@ -223,6 +224,19 @@ def check_rec_values():
         eq = (a.get('equips') or [{}])[0]
         rec('ガント: 区間の分かる作業 2本・終わりの無い作業は「いま動いている」か理由つき', st == 200 and eq.get('count') == 3
             and len(eq.get('ops') or []) >= 2, (st, eq.get('count'), len(eq.get('ops') or []), a.get('error')))
+        # §9.630 ④: 生産性＝良品重量の合計 ÷ 作業時間の合計（分）× 60 ＝ (300+600)/(30+60)×60 ＝ 600 kg/時（1 行ずつの比の平均ではない）
+        home = next(d for d in layout.BUILTIN_LAYOUTS if d['key'] == 'home')
+        hp = {x['id']: x for x in home['body']['panels']}
+        st, a = query({**hp['monthRate'], 'equips': ['テスト設備A'], 'filters': [{'column': '状態', 'op': 'eq', 'value': '完了'}]})
+        grand = next((c['v'] for c in a.get('cells') or [] if not c['r'] and not c['c']), None)
+        rec('生産性は合計の比（600 kg/時）', st == 200 and grand == [600.0], (st, grand, a.get('error')))
+        st, a = query({**hp['todayWeight'], 'equips': ['テスト設備A']})
+        grand = next((c['v'] for c in a.get('cells') or [] if not c['r'] and not c['c']), None)
+        rec('本日の良品重量: 操業データの良品重量、無ければ仕掛の BOX実績_良品重量（300+600+999）', st == 200 and grand == [1899.0], (st, grand, a.get('error')))
+        st, a = query({**hp['monthAbc'], 'equips': ['テスト設備A']})
+        keys = [x.get('parts') for x in ((a.get('all') or {}).get('items') or [])]
+        rec('ABC の品種は 用途名 × 丈数 × 条数 の組み合わせ', st == 200 and keys and all(len(k or []) == 3 for k in keys) and ['用途X', '2丈', '3条'] in [[str(v) for v in k] for k in keys],
+            (st, keys, a.get('error')))
         # 自設備の平均は全設備の平均と比べる（前の画面の「全設備平均との差」）: 自 45分・全 (30+60+90)/3=60分 → 差 −15分
         mine = next(d for d in layout.BUILTIN_LAYOUTS if d['key'] == 'mine')
         panel = next(p for p in mine['body']['panels'] if p['id'] == 'mineAvg')
@@ -233,6 +247,62 @@ def check_rec_values():
             (st, grand, names, a.get('error')))
     finally:
         sources.actuals.rows = keep
+        answer.forget()
+
+
+def _entry(i, kind, state, start, end, a=None, title='', est=60):
+    return {'id': i, 'kind': kind, 'state': state, 'lotNo': f'P{i}' if kind == '作業' else '', 'title': title, 'plannedStart': start, 'plannedEnd': end,
+            'estimate': {'minutes': est}, 'actual': a, 'overdueMinutes': 0, 'detail': {}, 'parentId': None}
+
+
+def check_plan_layer():
+    """§9.630 ②④: 予定と実績を重ねたガント・いまの作業。作業予定の読み口（plan_rows）を差し替える（finally で戻す）。
+    実績は行の実績（手入力・測定データ）、予定はまだ終わっていない行の予定開始〜予定終了"""
+    day = NOW.strftime('%Y-%m-%d')
+    es = [_entry(1, '作業', '完了', f'{day}T08:00', f'{day}T08:50', {'startAt': f'{day}T08:00', 'endAt': f'{day}T09:00', 'source': '手入力', 'endFrom': '手入力'}),
+          _entry(2, '作業', '着手', f'{day}T09:00', f'{day}T12:30', {'startAt': f'{day}T10:00', 'endAt': None}),
+          _entry(3, '作業', '予定', f'{day}T12:30', f'{day}T13:30'),
+          _entry(4, '設備停止', '予定', f'{day}T13:30', f'{day}T14:00', title='段取り替え')]
+    names = list(sources.PLAN_CORE)
+    keep = sources.plan_rows
+    # 署名は中身から（写しのファイル名になる。中身を変えた 2 回目も新しい写しにする）
+    sources.plan_rows = lambda: (sources._sig([names, es]), {'テスト設備A': (names, [sources._plan_core('テスト設備A', e) for e in es])})
+    answer.forget()
+    try:
+        home = next(d for d in layout.BUILTIN_LAYOUTS if d['key'] == 'home')
+        hp = {x['id']: x for x in home['body']['panels']}
+        st, a = query(hp['planGantt'])
+        eq = (a.get('equips') or [{}])[0]
+        rec('予定と実績のガント: 実績の棒 2（完了・作業中）', st == 200 and len(eq.get('ops') or []) == 2, (st, eq.get('ops'), a.get('error')))
+        rec('予定の枠 3（作業中・予定・設備停止。完了は出さない）', [x[2] for x in eq.get('plans') or []] == ['P2', 'P3', '段取り替え'], eq.get('plans'))
+        rec('作業中の予定の枠は 予定開始〜予定開始＋見積（09:00〜10:00）', (eq.get('plans') or [[0, '']])[0][1].endswith('10:00:00'), eq.get('plans'))
+        rec('ガントの出どころは実績の出どころも言う', '実績' in str(a.get('sourceName')), a.get('sourceName'))
+        rec('実績の出どころを数える（手入力 1・測定データ 1）', eq.get('from') == {'手入力': 1, '測定データ': 1}, eq.get('from'))
+        rec('作業中の実績はいままで（印 r）', any(o[5] == 'r' for o in eq.get('ops') or []), eq.get('ops'))
+        st, a = query({**hp['planGantt'], 'visual': 'now', 'ops': {}, 'period': None})
+        e = (a.get('equips') or [{}])[0]
+        cur, nxt = e.get('cur') or {}, e.get('next') or {}
+        rec('いまの作業: 作業中のロットと予定完了＝作業開始＋見積（P2・10:00＋60分＝11:00）', st == 200 and cur.get('name') == 'P2' and str(cur.get('end')).endswith('11:00:00'), (st, e, a.get('error')))
+        rec('いまの作業: 次の予定（P3）', nxt.get('name') == 'P3', nxt)
+        rec('既定のガントは行にいまの作業を書かない（左上の「いまの作業」が言う）', 'now' not in eq, eq.get('now'))
+        st, a = query({**hp['planGantt'], 'ops': {**hp['planGantt']['ops'], 'nowRow': True}})
+        eq = (a.get('equips') or [{}])[0]
+        rec('予定と実績のガントの行も、いまの作業を持てる（同じ答え）', ((eq.get('now') or {}).get('cur') or {}).get('name') == 'P2', eq.get('now'))
+        rec('既定の左上は「いまの作業」（依頼の順の先頭）', hp.get('now', {}).get('visual') == 'now' and (hp['now']['x'], hp['now']['y']) == (0, 0), hp.get('now'))
+        # 作業中の予定完了（作業開始＋見積）がいまより後なら、後ろの予定をその分ずらして見せる（§9.630・push_of）:
+        # P2 は 10:00＋180分＝13:00。いま 12:00 なので、12:30 からの P3 は 13:30 から
+        es[1] = _entry(2, '作業', '着手', f'{day}T09:00', f'{day}T12:00', {'startAt': f'{day}T10:00', 'endAt': None}, est=180)
+        answer.forget()
+        st, a = query({**hp['planGantt'], 'visual': 'now', 'ops': {}, 'period': None})
+        e2 = (a.get('equips') or [{}])[0]
+        rec('作業中の予定完了の後ろへ次の予定をずらす（次 P3 13:30〜・ずらし 60分）', str((e2.get('next') or {}).get('start')).endswith('13:30:00') and e2.get('shift') == 60.0, e2)
+        st, a = query(hp['planGantt'])
+        p3 = [x for x in ((a.get('equips') or [{}])[0].get('plans') or []) if x[2] == 'P3']
+        rec('ガントの予定の枠も同じだけずれる（P3 13:30〜14:30）', p3 and p3[0][0].endswith('13:30:00') and p3[0][1].endswith('14:30:00'), p3)
+        st, a = query({**hp['planGantt'], 'visual': 'now', 'ops': {}, 'period': None, 'source': 'rec'})
+        rec('いまの作業は作業予定でないと理由を言って断る（400）', st == 400 and '作業予定' in str(a.get('error')), (st, a.get('error')))
+    finally:
+        sources.plan_rows = keep
         answer.forget()
 
 
@@ -258,12 +328,26 @@ def check_view_mode():
         mode('edit')
 
 
+def check_source_state(tmp=None):
+    """元の状態（§9.630 ③）: 置き場が空＝unset（選べない）・写しがまだ無い＝copying（選べる）・写しがある＝ready"""
+    import tempfile
+    from backend import db_mirror
+    with tempfile.TemporaryDirectory() as d:
+        far = str(pathlib.Path(d) / 'まだ無い元.sqlite3')
+        rec('置き場が空の元は unset', sources.source_state('DASHAPI_X', {'path': ''}) == 'unset')
+        want = 'copying' if db_mirror.enabled() else 'ready'
+        got = sources.source_state('DASHAPI_X', {'path': far})
+        rec(f'写しがまだ無い元は {want}（待たずに答える）', got == want, got)
+        rec('設備ごとのファイルの元は ready（読めない設備は数えるときに名指し）', sources.source_state('DASHAPI_X', {'path': d, 'pattern': '{設備}.sqlite3'}) == 'ready')
+
+
 def main():
     flask_app.app.config['DASHBOARD_NOW'] = NOW
     made = []
     try:
         mode('edit')
         check_sources()
+        check_source_state()
         items = check_list()
         check_panels(items)
         check_fields()
@@ -271,6 +355,7 @@ def main():
         check_hidden_and_sets(made)
         check_groups()
         check_rec_values()
+        check_plan_layer()
         check_empty_total()
         check_view_mode()
     finally:

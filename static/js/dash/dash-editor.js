@@ -32,17 +32,20 @@
     { k: "slicer", n: "スライサー", tip: "行の段 1 つ目（仕掛区分・品種など）の値の札を並べ、押した値で同じデータのほかのパネルを絞ります（選びはこの PC の見え方）", icon: "M3 4h14M3 9h14M3 14h9M6 2v4M13 7v4M9 12v4" }];
   // 稼働を見る形（版 3.46.0。利用者の要望 2026-10-21 の 1・2。作業実績の作業開始・作業終了から: services/operation.py・dashboard-ops.js）
   const OPS_VIS = [{ k: "gantt", n: "稼働（ガント）", tip: "選んだ設備の作業を 1 枚のガントチャートに並べ、設備ごとの稼働率（勤務時間に対する稼働の割合）を出します", icon: "M3 5h7M6 9h9M3 13h5M10 13h6M3 17h14" },
-    { k: "abc", n: "ABC 分析", tip: "設備ごとに、品種を量の大きい順に並べて A・B・C に分け、作業時間から換算係数を出します", icon: "M3 17h14M4 15V4M8 15V8M12 15v-4M16 15v-2M4 5c3-1 8 0 12 6" }];
-  const isOps = (x) => !!x && (x.visual === "gantt" || x.visual === "abc");
+    { k: "abc", n: "ABC 分析", tip: "設備ごとに、品種を量の大きい順に並べて A・B・C に分け、作業時間から換算係数を出します", icon: "M3 17h14M4 15V4M8 15V8M12 15v-4M16 15v-2M4 5c3-1 8 0 12 6" },
+    // いまの作業（§9.630 ④）: 作業予定の着手の行（作業中のロットか設備停止）と予定完了、次の予定
+    { k: "now", n: "いまの作業", tip: "設備ごとに、いま作業中のロットか設備停止の名前と予定完了の時刻、次の予定を出します（作業予定から）", icon: "M10 3a7 7 0 1 0 0 14a7 7 0 1 0 0-14M10 6v4l3 2" }];
+  const isOps = (x) => !!x && (x.visual === "gantt" || x.visual === "abc" || x.visual === "now");
   // ABC 分析の表示項目（版 3.48.0。サーバーの dashboard.ABC_ITEMS と同じ鍵）。チェックを外すと出さない（ops.hide）
   // 版 3.49.0: 表の列の順（本数 → 平均 → 占有時間 → 本数比 → 負荷比 → 累積 → ABC → 換算係数 → 換算本数）に並べ、占有時間・負荷比を足した
   const ABC_ITEMS = [["avg", "平均作業"], ["occ", "占有時間", "本数 × 平均作業（工場をその品種が占める時間の見積もり）"], ["share", "本数比"],
     ["lshare", "負荷比", "占有時間の構成比（本数比と比べると、手間のかかる品種が分かる）"], ["cum", "累積"], ["rank", "ABC", "ABC の札・棒の色・A と B の線・下の段の品種の数"],
-    ["factor", "換算係数"], ["conv", "換算本数"], ["chart", "パレート図"], ["foot", "下の段", "ABC の品種の数・占有時間の計・基準・換算本数の計・区間なし"]];
-  const PERIODS = [["", "期間で絞らない"], ["today", "今日"], ["yesterday", "前日"], ["days", "直近 n 日（今日を含む）"], ["this_month", "今月"], ["last_month", "先月"], ["range", "日付で決める（から〜まで）"]];
+    ["factor", "換算係数"], ["conv", "換算本数"], ["chart", "パレート図"], ["foot", "下の段", "ABC の品種の数・占有時間の計・基準・換算本数の計・区間なし"],
+    ["tabs", "設備の札", "パネルの中で設備を選ぶ札（外すと全設備だけ。設備で絞るのはダッシュボードの帯）"]];
+  const PERIODS = [["", "期間で絞らない"], ["today", "今日"], ["yesterday", "前日"], ["days", "直近 n 日（今日を含む）"], ["ahead", "今日から n 日（先の予定まで）"], ["this_month", "今月"], ["last_month", "先月"], ["range", "日付で決める（から〜まで）"]];
   /** 期間の言葉（直近 n 日・日付で決めた 10/1〜10/15・今月 など） */
   const mdOf = (s) => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(s || ""); return m ? `${+m[1]}/${+m[2]}` : ""; };
-  const perName = (pr) => (!pr || !pr.kind ? "" : pr.kind === "days" ? `直近 ${pr.n || 7} 日` : pr.kind === "range" ? [mdOf(pr.from), mdOf(pr.to)].filter((v, i, a) => v && a.indexOf(v) === i).join("〜") || "日付で決める"
+  const perName = (pr) => (!pr || !pr.kind ? "" : pr.kind === "days" ? `直近 ${pr.n || 7} 日` : pr.kind === "ahead" ? `今日から ${pr.n || 2} 日` : pr.kind === "range" ? [mdOf(pr.from), mdOf(pr.to)].filter((v, i, a) => v && a.indexOf(v) === i).join("〜") || "日付で決める"
     : (PERIODS.find((k) => k[0] === pr.kind) || [null, ""])[1]);
   /** 今日から back 日前の日（YYYY-MM-DD。この PC の日付）。日付で決めるを選んだときの最初の値 */
   const isoBack = (back) => { const d = new Date(Date.now() - back * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -50,11 +53,11 @@
   const periodCtl = (pr, attr, list, label) => {
     const kind = (pr && pr.kind) || "";
     return `<select data-de-${attr}kind aria-label="${label}">${list.map(([k, n]) => `<option value="${k}"${k === kind ? " selected" : ""}>${n}</option>`).join("")}</select>`
-      + (kind === "days" ? `<input type="number" min="1" max="3660" data-de-${attr}n value="${pr.n || 7}" aria-label="日の数" class="de-n">日` : "")
+      + (kind === "days" || kind === "ahead" ? `<input type="number" min="1" max="3660" data-de-${attr}n value="${pr.n || (kind === "ahead" ? 2 : 7)}" aria-label="日の数" class="de-n">日` : "")
       + (kind === "range" ? `<input type="date" data-de-${attr}from value="${esc(pr.from || "")}" aria-label="${label}のはじめ" class="de-date">〜<input type="date" data-de-${attr}to value="${esc(pr.to || "")}" aria-label="${label}のおわり" class="de-date">` : "");
   };
   /** 種類を選び直したときの期間（日付で決めるは直近 30 日から始める） */
-  const periodOf = (old, kind, column) => (!kind ? null : { column, kind, n: (old && old.n) || 7,
+  const periodOf = (old, kind, column) => (!kind ? null : { column, kind, n: (old && old.n) || (kind === "ahead" ? 2 : 7),
     ...(kind === "range" ? { from: (old && old.from) || isoBack(29), to: (old && old.to) || isoBack(0) } : {}) });
   // 合わせた表の見せ方（版 3.39.0 で 3 → 8）。cols … 列の段があるときだけ意味のある物
   const LOOKS = [["bar", "棒と数", "棒の長さと数"], ["heat", "数と濃淡", "数の大きさを地の濃さで"], ["num", "数だけ", "数だけを並べる"],
@@ -212,7 +215,8 @@
       const ss = x.link.sides, role = (r) => (ROLES.find((y) => y[0] === r) || [null, ""])[1];
       return `${ss[0].key ? dimLabel(ss[0].key) + "ごとの" : ""}${ss.map((y) => (y.role ? role(y.role) : y.title || (srcOf(y.source) || {}).name || "データ")).join("と")}`;
     }
-    if (x.visual === "gantt") return `${x.period && x.period.kind ? `${perName(x.period)}の` : ""}設備の稼働と稼働率`;
+    if (x.visual === "now") return "いまの作業";
+    if (x.visual === "gantt") return `${x.period && x.period.kind ? `${perName(x.period)}の` : ""}${(x.ops || {}).plan && x.source === "plan" ? "予定と実績" : "設備の稼働と稼働率"}`;
     if (x.visual === "abc") { const c = [].concat((x.ops || {}).cls || []); return `${c.length ? `${c.join(" × ")}の` : "品種の"}ABC 分析と換算係数`; }
     if (x.visual === "slicer") return `${((x.body || {}).rows || []).length ? dimLabel(x.body.rows[0]) : "列の値"}で絞る`;
     if (x.visual === "board") return (x.groups || []).length ? `${dimLabel(x.rows || { column: "@equip" })}ごとの${x.groups.map((g) => g.title || P.groupTitle(g, null)).join("と")}` : "合わせた表";
@@ -255,6 +259,12 @@
   function setVisual(k) {
     if (k === "board") { if (isLink()) unlink(); toBoard(); return; }
     if (isBoard()) fromBoard();
+    if (k === "now") {                           // いまの作業（§9.630 ④）: 作業予定の行から（期間は使わない＝いま）
+      if (isLink()) unlink();
+      p.visual = k; p.ops = {}; delete p.egroup; delete p.esplit; p.period = null;
+      if (p.source !== "plan") { p.source = "plan"; delete p.equip; delete p.calc; p.filters = []; p.search = ""; host.toast("いまの作業は作業予定から出すので、データを作業予定にしました"); }
+      changed(); return;
+    }
     if (k === "gantt" || k === "abc") {           // 稼働を見る形: 作業実績（作業開始と作業終了）で数える。ガントは期間が要る（無ければ前日）
       if (isLink()) unlink();
       p.visual = k; p.ops = p.ops || {};
@@ -539,6 +549,7 @@
     const opts = (g) => C.AGGS.filter((a) => a.g === g && (num || a.any)).map((a) => `<option value="${a.k}"${m.agg === a.k ? " selected" : ""} title="${esc(a.tip || "")}">${a.n}</option>`).join("");
     const sel = m.agg === "count" || m.agg === "lots" ? "" : `<select data-de-agg="${i}" aria-label="集計のしかた">${Object.entries(grp).map(([g, n]) => { const o = opts(g); return o ? `<optgroup label="${n}">${o}</optgroup>` : ""; }).join("")}</select>`;
     const par = m.agg === "pct" ? `<label class="de-par">p<input type="number" min="1" max="99" value="${m.p || 90}" data-de-mp="${i}" aria-label="何%点か"></label>`
+      : m.agg === "ratio" ? `<label class="de-par">÷<select data-de-mper="${i}" aria-label="割る列"><option value="">割る列…</option>${((fields && fields.fields) || []).filter((f) => f.numeric && !f.error && f.column !== m.column).map((f) => `<option value="${esc(f.column)}"${f.column === m.per ? " selected" : ""}>${esc(f.column)}</option>`).join("")}</select></label>`
       : m.agg === "cpk" ? `<label class="de-par">下限<input type="number" step="any" value="${m.lsl ?? ""}" data-de-mlsl="${i}" aria-label="規格の下限"></label><label class="de-par">上限<input type="number" step="any" value="${m.usl ?? ""}" data-de-musl="${i}" aria-label="規格の上限"></label>` : "";
     const show = `<select class="de-show" data-de-show="${i}" aria-label="表し方" title="表し方（割合・累計・前との差・順位）">${C.SHOWS.map(([k, n]) => `<option value="${k}"${(m.show || "") === k ? " selected" : ""}>${k ? n : "表し方"}</option>`).join("")}</select>`;
     const name = m.agg === "count" ? "件数" : m.agg === "lots" ? "ロット数" : m.column;
@@ -555,8 +566,15 @@
     const endSel = `<div class="de-row"><label class="de-l">作業開始</label>${colSel("start", "作業開始", foundS, stamps(/作業開始|開始|着手/))}</div>`
       + `<div class="de-row"><label class="de-l">作業終了</label>${colSel("end", "作業終了", found, stamps(/作業終了|終了|完了/))}</div>`;
     const few = fs.filter((f) => pickable(f) && f.kinds >= 1 && f.kinds <= 60).map((f) => f.column);
+    if (p.visual === "now") return '<div class="de-ops"><p class="de-ophint">作業スケジュールで「着手」の行（作業中のロットか設備停止）の名前と予定完了（予定終了）を設備ごとに出します。着手の行が無い設備は「待機」と次の予定です。条件で設備・種類を絞れます。</p></div>';
     if (p.visual === "gantt") {
-      return `<div class="de-ops">${endSel}`
+      // 予定と実績を重ねる（§9.630 ②）: 作業予定の元のときだけ。重ねると、実績は行の実績（測定・手入力・取り込み）・予定は予定開始〜予定終了
+      const isPlan = t.source === "plan", layered = isPlan && o.plan;
+      const planRow = `<div class="de-row"><label class="de-l">見せる物</label>${isPlan
+        ? segs("oplan", [["", "実績だけ", "作業開始〜作業終了の棒"], ["1", "予定と実績", "実績の棒に、まだ終わっていない行の予定（予定開始〜予定終了）の枠を重ねる"]], layered ? "1" : "", "見せる物")
+        : '<small class="de-hint">予定と実績を重ねるには、データを「作業予定」にします（予定の時刻を持つのは作業予定だけ）</small>'}</div>`
+        + (layered ? `<div class="de-row"><label class="de-l">いまの作業</label>${segs("onow", [["", "行の名前の下に出す", "作業中のロットか設備停止と予定完了"], ["0", "出さない", "同じダッシュボードに「いまの作業」のパネルがあるとき"]], o.nowRow === false ? "0" : "", "いまの作業")}</div>` : "");
+      return `<div class="de-ops">${planRow}${layered ? "" : endSel}`
         + `<div class="de-row"><label class="de-l">色分け</label><select data-de-ocolor aria-label="棒の色分け">${opt("", "なし（作業は 1 色）", o.color)}${few.map((c) => opt(c, c, o.color)).join("")}</select>`
         + `<label class="pv-ck">棒の字<select data-de-olabel aria-label="棒に出す字">${opt("", "ロット番号", o.label)}${fs.filter((f) => !f.numeric).map((f) => opt(f.column, f.column, o.label)).join("")}</select></label></div>`
         + `<p class="de-ophint">稼働率 ＝ 作業していた時間 ÷ 勤務時間（マスタ管理の「勤務体系」の直の時間。勤務の外の稼働は分母にも入れず、行の説明に出します）。分割したロット（作業開始が同じ行）は 1 作業です。</p></div>`;
@@ -1049,13 +1067,17 @@
   }
   const RULE_WORD = { prefix: "で始まる", suffix: "で終わる", contains: "を含む", equals: "と同じ", regex: "に当たる" };
   const ruleText = (r) => `「${r.value}」${RULE_WORD[r.op] || ""}`;
+  // 元の状態の字（§9.630）: 写し中は選べる（写し終えたら数える）・置き場が未設定だけ選べない
+  const SRC_WORD = { copying: "（写しています）", unset: "（置き場が未設定）" };
   function dataHtml() {
+    const cur = WL.dashKit.src.of(t.source) || {};       // role:仕掛 は役割を担う元（前は一致する札が無く、先頭の札が選ばれて見えた）
     const basis = isWork() ? `<select data-de-basis aria-label="作業日の数え方"><option value="work"${t.basis !== "cal" ? " selected" : ""}>現場歴</option><option value="cal"${t.basis === "cal" ? " selected" : ""}>太陽暦</option></select>` : "";
     const g = inSide() ? p.link.sides[gi] : null;
     // 合わせるデータ（版 3.40.0）: 役割（目標・実績）と作り方（そのまま・積み上げ）は、データの選びの上（何のデータかを先に決める）
     const side = g ? `<div class="de-row"><span class="de-l">役割</span>${segs(`role-${gi}`, ROLES, g.role || "", "役割")}<label class="pv-ck de-gt">名前<input data-de-stitle value="${esc(g.title || "")}" placeholder="${esc((srcOf(g.source) || {}).name || "")}" maxlength="40" aria-label="このデータの名前"></label></div>`
       + `<div class="de-row"><span class="de-l">作り方</span>${segs(`build-${gi}`, BUILDS, g.build || "as", "作り方")}<small class="de-hint">${g.build === "cum" ? "軸の並びに足していく（累計）" : "軸の値ごとの数のまま"}</small></div>` : "";
-    return (!parts() && p.visual !== "board" ? linkPick() : "") + side + `<div class="de-row"><label class="de-l">データ</label><select data-de-src aria-label="データ">${sources.map((x) => `<option value="${esc(x.key)}"${x.key === t.source ? " selected" : ""}${x.place ? "" : " disabled"}>${esc(x.name)}${x.place ? "" : "（場所が未設定）"}</option>`).join("")}</select>${basis}</div>`
+    return (!parts() && p.visual !== "board" ? linkPick() : "") + side + `<div class="de-row"><label class="de-l">データ</label><select data-de-src aria-label="データ">${sources.map((x) => `<option value="${esc(x.key)}"${x.key === cur.key ? " selected" : ""}${x.state === "unset" ? " disabled" : ""}>${esc(x.name)}${SRC_WORD[x.state] || ""}</option>`).join("")}</select>${basis}</div>`
+      + (cur.state === "copying" ? `<p class="de-hint is-warn" role="status">${esc(cur.name)}は共有の元をまだ手元へ写せていません。写し終えると、このパネルを数えます（選んだままで待てます）。</p>` : "")
       + equipHtml() + egroupHtml();
   }
   /** 合わせた表の札（表全体・まとまり ①②…・＋） */
@@ -1363,10 +1385,12 @@
     if (x.matches("[data-de-agg]")) {
       const m = t.body.measures[+x.dataset.deAgg]; m.agg = x.value;
       if (m.agg === "pct" && !m.p) m.p = 90;
+      if (m.agg === "ratio" && !m.per) { host.toast("合計の比は「÷」の割る列を選ぶと数えます"); paint(false); return true; }
       if (m.agg === "cpk" && m.lsl == null && m.usl == null) { host.toast("Cpk は規格の下限か上限を入れると数えます"); paint(false); return true; }
       changed(false); return true;
     }
     if (x.matches("[data-de-show]")) { const m = t.body.measures[+x.dataset.deShow]; if (x.value) m.show = x.value; else delete m.show; changed(false); return true; }
+    if (x.matches("[data-de-mper]")) { const m = t.body.measures[+x.dataset.deMper]; if (x.value) m.per = x.value; else delete m.per; changed(false); return true; }
     if (x.matches("[data-de-mp]")) { t.body.measures[+x.dataset.deMp].p = Math.max(1, Math.min(99, +x.value || 90)); changed(false); return true; }
     if (x.matches("[data-de-mlsl],[data-de-musl]")) {
       const i = +(x.dataset.deMlsl ?? x.dataset.deMusl), m = t.body.measures[i], k = x.dataset.deMlsl != null ? "lsl" : "usl";
@@ -1406,6 +1430,8 @@
     if (x.matches("[data-de-ocolor]")) { setOps("color", x.value); return true; }
     if (x.matches("[data-de-olabel]")) { setOps("label", x.value); return true; }
     if (x.matches("[data-de-ocls]")) { if (x.value) setCls(clsOf(p).concat([x.value])); return true; }
+    if (x.matches("[data-de-oplan]")) { setOps("plan", x.value === "1" ? true : ""); return true; }
+    if (x.matches("[data-de-onow]")) { setOps("nowRow", x.value === "0" ? false : ""); return true; }
     if (x.matches("[data-de-oqty]")) { setOps("qty", x.value); return true; }
     if (x.matches("[data-de-oqcol]")) { if (x.value) setOps("qty", x.value); return true; }
     if (x.matches("[data-de-obase]")) { setOps("base", x.value === "avg" ? "" : x.value); return true; }

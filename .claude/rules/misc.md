@@ -1,4 +1,4 @@
-# そのほか（29件）
+# そのほか（35件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,12 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| パネルの元の状態は`source_state()`の1箇所（ready・copying・unset）。写し中は選べて字で言い、選べないのは置き場が未設定の元だけ | `test_dashsrc.js`・`test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |
+| 予定と実績のガントは`ops.plan`（元は作業予定）。実績の棒は行の実績（出どころは`actual_from()`）、予定の枠はまだ終わっていない行（作業中は作業開始＋見積） | `test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |
+| いまの作業（作業中のロットか設備停止・予定完了＝作業開始＋見積・次の予定）は`_now_one()`の1箇所。パネル「いまの作業」もガントの行の名前の下も同じ答え | `test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |
+| 合計の比は集計の種類`ratio`（列の合計 ÷ `per`の合計・両方が数の行だけ）。生産性は行ごとの比の平均にしない | `test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |
+| 既定のダッシュボードは「生産の状況」（`BUILTIN_DEFAULT`）。品種は 用途名×丈数×条数 の3列の組合せ、良品重量は`good_weight()`の1箇所 | `test_dashapi.py`・`test_dashboard.js` | [§9.630](../../docs/decisions/9.630.md) |
+| ガントの棒の札は全部入るか、1本でも入らなければパネルの全部を下3桁にそろえ、凡例で言う（1枚の中で書き方を混ぜない） | — | [§9.630](../../docs/decisions/9.630.md) |
 | ダッシュボードの添え書きは項目（元・設備・期間・条件）で持つ（`metaParts()`）。多くのパネルで同じ物は「このダッシュボードの前提」に1回 | `test_dashboard.js`・`test_dbequip.js` | [§9.628](../../docs/decisions/9.628.md) |
 | パネルに書かない項目は共通と同じ。共通にある期間・条件を持たないパネルは「期間 すべて」「条件 なし」と書く | `test_dashboard.js` | [§9.628](../../docs/decisions/9.628.md) |
 | ダッシュボードの色相は設備だけ（`equipColor()`の1箇所・設備の木の順）。量の棒・1つの値は紺 | `test_dashboard.js` | [§9.628](../../docs/decisions/9.628.md) |

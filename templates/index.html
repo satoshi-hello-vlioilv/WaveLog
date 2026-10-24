@@ -40,6 +40,11 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
      JS/CSSは毎回ディスクから配られるのにPythonは起動時のままなので、
      新しい画面が古いサーバーへ話しかけて「404」で止まる。 -->
 <div class="restart-needed" id="restartNeeded" hidden role="status"></div>
+<!-- ホーム（§9.630 ⑤）: ダッシュボードはメニューの上・起動時の初期画面（起動時の画面は「表示」で選べる・WL.startView）。
+     ボタンは dashboard.js が足す（ほかの行き先と同じ）。 -->
+<nav class="nav-group home-nav" id="homeNav" aria-label="ホーム">
+<div class="nav-group-label">ホーム</div>
+</nav>
 <nav class="nav-group" aria-label="測定データ">
 <div class="nav-group-label">測定データ</div>
 <button class="db nav-item nav-item--view" data-open-records="編集中" id="homeDrafts" type="button" title="この端末と共有DBの測定データを一覧します。作業中の続きを開く・完了した記録を見るのはここです"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>測定データ一覧</span><b id="homeDraftCount">0</b><i class="sync-warn-dot" id="homeDraftSyncWarn" hidden title="バックアップDBへ未送信のデータがあります" aria-hidden="true"></i></button>

@@ -469,7 +469,7 @@ class Part:
 
 
 # 期間（版 3.37.0。ダッシュボードのパネル）: 日付の列か作業日（現場歴／太陽暦）の「いま」から決める日の範囲
-PERIODS = {"today": "今日", "yesterday": "前日", "days": "直近 n 日", "this_month": "今月", "last_month": "先月",
+PERIODS = {"today": "今日", "yesterday": "前日", "days": "直近 n 日", "ahead": "今日から n 日", "this_month": "今月", "last_month": "先月",
            "month": "n か月前", "range": "日付で決める"}     # range（版 3.49.0）… from〜to（'YYYY-MM-DD'。両端を含む）     # month（版 3.41.0。ダッシュボードのスライサーで月を送る）… n か月前の月のはじめから終わりまで
 PERIOD_MAX_DAYS = 3660
 
@@ -491,6 +491,9 @@ def period_range(kind, n, today, frm="", to=""):
     if kind == "days":
         n = max(1, min(PERIOD_MAX_DAYS, int(n or 7)))
         return (d - timedelta(days=n - 1)).isoformat(), today
+    if kind == "ahead":          # 今日から n 日（§9.630: 予定と実績のガントで先の予定まで見る）
+        n = max(1, min(PERIOD_MAX_DAYS, int(n or 2)))
+        return today, (d + timedelta(days=n - 1)).isoformat()
     if kind == "this_month":
         return d.replace(day=1).isoformat(), today
     if kind == "last_month":
@@ -571,7 +574,7 @@ def _open_part(part, *, search, filters, rows, cols, measures, today, box, perio
             raise RuntimeError("表が 1 つもありません。")
         raw_cs = columns(c, t, part.path)
         exprs, broken, _ = calc_exprs(c, calc, raw_cs)
-        used = {str(d.get("column") or "") for d in _filter_items(rows) + _filter_items(cols)} | {str(m.get("column") or "") for m in _filter_items(measures)}
+        used = {str(d.get("column") or "") for d in _filter_items(rows) + _filter_items(cols)} | {str(m.get(k) or "") for m in _filter_items(measures) for k in ("column", "per")}
         bad = sorted(used & set(broken))
         if bad:
             raise PivotError(f"計算列「{'」「'.join(bad)}」の式が読めません（一覧の「表示列」で式を直してください）。")
@@ -616,6 +619,7 @@ def _open_part(part, *, search, filters, rows, cols, measures, today, box, perio
             else:
                 pos.append((use(d["column"]), -1))
         mpos = [use(m["column"]) if m["column"] else -1 for m in ms]
+        dpos = [use(m["per"]) if m.get("per") else -1 for m in ms]          # 合計の比の割る列（§9.630）
         bpos = use(box) if box else -1
         lots_by = "work" if start else "lot" if lot else ""
         kpos = (use(start), use(tcol)) if lots_by == "work" else (use(lot), -1) if lots_by == "lot" else (-1, -1)
@@ -624,7 +628,7 @@ def _open_part(part, *, search, filters, rows, cols, measures, today, box, perio
         if total > MAX_ROWS:
             raise PivotError(f"当たる行が多すぎます（{total:,} 行。{MAX_ROWS:,} 行まで）。条件で絞ってから集計してください。")
         data = c.execute(f"SELECT {', '.join(exprs.get(x) or qi(x) for x in need) or '1'} FROM {qi(t)}{where}", params).fetchall() if need else [()] * total
-    return {"name": part.name, "table": t, "cs": cs, "rd": rd, "cd": cd, "ms": ms, "pos": pos, "mpos": mpos, "bpos": bpos, "lots_by": lots_by,
+    return {"name": part.name, "table": t, "cs": cs, "rd": rd, "cd": cd, "ms": ms, "pos": pos, "mpos": mpos, "dpos": dpos, "bpos": bpos, "lots_by": lots_by,
             "kpos": kpos, "ppos": ppos, "start": start, "data": data, "clock": (work or {}).get("clock"), "basis": (work or {}).get("basis", "work"),
             "equip": equip, "epos": epos, "ignored": ignored, "places": {}}
 
@@ -772,7 +776,7 @@ def _count_cells(states, head, groups, gsets, multi):
     for pi, s in enumerate(states):
         keyers = [_Keyer(d, s["clock"], s["basis"], equip=s["equip"], order=pi, by_name=multi, groups=groups, sets=gsets, places=s["places"])
                   for d in s["rd"] + s["cd"]]
-        pos, mpos, bpos = s["pos"], s["mpos"], s["bpos"]
+        pos, mpos, bpos, dpos = s["pos"], s["mpos"], s["bpos"], s["dpos"]
         count += len(s["data"])
         for row in s["data"]:
             ks = []
@@ -785,16 +789,17 @@ def _count_cells(states, head, groups, gsets, multi):
             lk, single = _lot_key(s, row, pi, multi, single)
             raws = [row[p] if p >= 0 else None for p in mpos]
             vals = [num(v) if v is not None else None for v in raws]
+            dens = [num(row[p]) if p >= 0 and row[p] is not None else None for p in dpos]
             rk, ck = ks[:nr], ks[nr:]
             if bpos >= 0:
                 f = num(row[bpos])
                 if f is not None:
                     box_vals.setdefault(tuple(rk), []).append(f)
-            _add_row(cells, rk, ck, nr, nc, ms, lk if s["lots_by"] and lots_on else None, vals, raws)
+            _add_row(cells, rk, ck, nr, nc, ms, lk if s["lots_by"] and lots_on else None, vals, raws, dens)
     return cells, box_vals, seen, count
 
 
-def _add_row(cells, rk, ck, nr, nc, ms, lk, vals, raws):
+def _add_row(cells, rk, ck, nr, nc, ms, lk, vals, raws, dens=()):
     for a in range(nr + 1):
         for b in range(nc + 1):
             key = (tuple(rk[:a]), tuple(ck[:b]))
@@ -805,7 +810,7 @@ def _add_row(cells, rk, ck, nr, nc, ms, lk, vals, raws):
             if lk is not None:
                 acc[1].add(lk)
             for j, f in enumerate(vals):
-                acc[2][j].add(f, raws[j])
+                acc[2][j].add(f, raws[j], dens[j] if dens else None)
 
 
 def _truncate(cells, orders, nr, nc):

@@ -349,7 +349,9 @@
     }
     const split = d && d.esplit && (p.equips || []).length !== 1 ? `（${SPLIT_NAME[d.esplit] || ""}）` : "";
     const equip = (p.equips || []).length ? eqWord(p.equips) + split : WL.dashKit.src.isWork(p.source) ? "全設備" + split : "";
-    return { src: name(p.source) || (d && d.sourceName) || "", equip, per: d ? P.periodText(p, d, false) : "", cond: condsText(p.filters), basis: d ? P.basisOf(p, d) : "" };
+    // 予定と実績のガントは、答えが名乗る元（「作業予定（実績: 測定データ・手入力）」）を出す（実績の棒の出どころを推測させない・§9.630）
+    const own = p.visual === "gantt" && (p.ops || {}).plan && d && d.sourceName;
+    return { src: own || name(p.source) || (d && d.sourceName) || "", equip, per: d ? P.periodText(p, d, false) : "", cond: condsText(p.filters), basis: d ? P.basisOf(p, d) : "" };
   }
   /** 多くのパネル（半分以上・2 枚以上）で同じ項目 → {src, equip, per, cond, basis}（無い項目は ""）。期間は答えが揃ってから
       @returns {{src: string, equip: string, per: string, cond: string, basis: string}} */
@@ -1293,7 +1295,7 @@
   }
   const NAV_ICON = '<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg>';
   function ensureNav() {
-    const nav = document.querySelector("#analysisNav");
+    const nav = document.querySelector("#homeNav") || document.querySelector("#analysisNav");      // メニューの上（§9.630 ⑤）
     if (!nav || document.getElementById("openDashboard")) return;
     const b = document.createElement("button");
     b.type = "button"; b.id = "openDashboard"; b.className = "db nav-item nav-item--view";
@@ -1325,5 +1327,6 @@
     WL.dashboard.activate();
   }
   WL.dashboard.open = openView;
-  WL.onReady(ensureNav);
+  // 起動時の画面（§9.630 ⑤・答えは WL.startView の1箇所）。元データの一覧（/api/catalog）の答えを待たずに開く
+  WL.onReady(() => { ensureNav(); if (WL.startView.get() === "dashboard") openView(); });
 })();
