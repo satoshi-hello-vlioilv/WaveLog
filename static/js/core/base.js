@@ -2804,6 +2804,30 @@ window.WL.duration={
  STYLES:DURATION_STYLES,
 };
 
+/* ---------- 起動時に開く画面（§9.630 ⑤、利用者の指示「左メニューのダッシュボードの位置はメニュー上部に持ってきて、
+   起動時の初期画面にしてください」）----------
+   既定はダッシュボード。**この端末の見え方**の1つ（測定だけをする端末は仕掛一覧で始めたい、がありうる）なので
+   「表示」の節で選べ、端末に覚える。答えは`WL.startView.get()`の1箇所（起動の分かれ目は仕掛一覧の初期化が読む）。 */
+const START_VIEW_KEY='WaveLogStartViewV1';
+const START_VIEWS=[
+ {key:'dashboard',label:'ダッシュボード',hint:'稼働・予定と実績・今月の数'},
+ {key:'list',label:'仕掛一覧',hint:'作業予定の帯と仕掛の一覧'},
+];
+window.WL.startView={
+ VIEWS:START_VIEWS,
+ get(){
+  try{const v=localStorage.getItem(START_VIEW_KEY);if(START_VIEWS.some(x=>x.key===v))return v}
+  catch(e){WL.quiet.note('端末の覚えが読めない（既定のダッシュボードで始める）',e)}
+  return 'dashboard';
+ },
+ set(k){
+  const v=START_VIEWS.some(x=>x.key===k)?k:'dashboard';
+  try{localStorage.setItem(START_VIEW_KEY,v)}catch(e){WL.quiet.note('保存できなくても今回の起動には効かないだけ',e)}
+  document.querySelectorAll('#uiSizeMenu [data-start-view]').forEach(b=>b.classList.toggle('is-current',b.dataset.startView===v));
+  notifyLookChange();
+ },
+};
+
 /* ---------- 表示サイズ(3段階、アプリ全体) ----------
    文字サイズ・コントロールの高さ・一覧の行の高さは、すべてapp.cssの
    :rootトークンが--ui-scaleを掛けた値で決まる(docs/ARCHITECTURE.md
@@ -3101,6 +3125,17 @@ WL.lookSettings={
    if(d.key===curDur)btn.classList.add('is-current');
    btn.innerHTML=`<span>${d.label}</span><small>${d.hint}</small>`;
    btn.addEventListener('click',()=>{WL.duration.setStyle(d.key);closeMenu()});
+   menu.appendChild(btn);
+  });
+  /* 起動時に開く画面（§9.630 ⑤）。次に起動したときから効く——字でそう言う（押しても今の画面は変わらない）。 */
+  head('起動時に開く画面（次の起動から）');
+  const curStart=WL.startView.get();
+  WL.startView.VIEWS.forEach(v=>{
+   const btn=document.createElement('button');
+   btn.type='button';btn.dataset.startView=v.key;
+   if(v.key===curStart)btn.classList.add('is-current');
+   btn.innerHTML=`<span>${v.label}</span><small>${v.hint}</small>`;
+   btn.addEventListener('click',()=>{WL.startView.set(v.key);closeMenu()});
    menu.appendChild(btn);
   });
   /* 読み込み中の見せ方（§9.421 → §9.436）。**ここは行き先だけ**にした。

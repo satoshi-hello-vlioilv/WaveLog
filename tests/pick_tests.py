@@ -523,7 +523,7 @@ RULES = [
     ('backend/safe_regex.py', g('test_saferegex', 'test_displayrule', 'test_dashpivot', 'test_formulaparity')),
     ('tests/test_saferegex.py', g('test_saferegex')),
     # §9.628: ダッシュボードの画面（LotScope の移植）。前の画面を読んでいた網（自設備・稼働状況・見出し・待ち）も一緒に回す
-    ('static/js/dash/', g('見た目', 'test_dashboard', 'test_dashsrc', 'test_dbequip', 'test_uiux', 'test_uisize', 'test_headbar', 'test_flows',
+    ('static/js/dash/', g('見た目', 'test_dashboard', 'test_dashsrc', 'test_homenav', 'test_dbequip', 'test_uiux', 'test_uisize', 'test_headbar', 'test_flows',
                           'test_waiting', 'test_nav', 'test_loadorder', 'test_eslint', 'test_tscheck', 'test_funclen')),
     ('static/css/63-dashboard.css', g('見た目', 'test_dashboard', 'test_csslint')),
     ('backend/routes/masters/dashboard.py', g('test_dashapi', 'test_equipgroupui', 'test_modeguard', 'test_mastershare', 'test_routesplit')),

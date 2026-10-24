@@ -1293,7 +1293,7 @@
   }
   const NAV_ICON = '<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/></svg>';
   function ensureNav() {
-    const nav = document.querySelector("#analysisNav");
+    const nav = document.querySelector("#homeNav") || document.querySelector("#analysisNav");      // メニューの上（§9.630 ⑤）
     if (!nav || document.getElementById("openDashboard")) return;
     const b = document.createElement("button");
     b.type = "button"; b.id = "openDashboard"; b.className = "db nav-item nav-item--view";
@@ -1325,5 +1325,6 @@
     WL.dashboard.activate();
   }
   WL.dashboard.open = openView;
-  WL.onReady(ensureNav);
+  // 起動時の画面（§9.630 ⑤・答えは WL.startView の1箇所）。元データの一覧（/api/catalog）の答えを待たずに開く
+  WL.onReady(() => { ensureNav(); if (WL.startView.get() === "dashboard") openView(); });
 })();
