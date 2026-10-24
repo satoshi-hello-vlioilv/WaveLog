@@ -47,6 +47,7 @@ from .. import filter_sql
 from ..datetext import sort_key, to_date, to_datetime
 from ..sqlite_io import connect, cols, qi, tables
 from ..textnorm import normalize_equipment_name as normalize_part
+from .. import safe_regex
 
 TABLE_CANDIDATES = ["仕掛", "品質データ", "品質情報", "品質", "実績"]
 LOT_COLUMN_CANDIDATES = ["ロット番号", "ﾛｯﾄ番号", "ロット№", "LTNO"]
@@ -446,9 +447,8 @@ def compile_rules(rules):
         if not v or op not in RULE_OPS:
             continue
         if op == "regex":
-            try:
-                rx = re.compile(v, re.IGNORECASE)
-            except re.error:
+            rx = safe_regex.compile_safe(v, re.IGNORECASE)      # 照合が止まらなくなる形・読めない形は当たらない（§9.629）
+            if rx is None:
                 continue
             tests.append(lambda k, rx=rx: bool(rx.search(k)))
             continue

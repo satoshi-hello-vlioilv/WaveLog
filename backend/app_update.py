@@ -205,9 +205,10 @@ def _zip_root(names):
 
 
 def _payload_name(rel):
-    """ZIP の中の道（頭を外したもの）が版に入れる物か。危ない道（`..`・絶対）は入れない。"""
+    """ZIP の中の道（頭を外したもの）が版に入れる物か。危ない道（`..`・絶対・`\\`・`:`）は入れない。
+    欠片の決まりは窓の`update::plain_name()`と同じ（`.`で始まる名前も入れない。入れると各 PC が版ごと断る・§9.629）"""
     parts = rel.split('/')
-    if not rel or rel.startswith('/') or '..' in parts or ':' in parts[0]:
+    if not rel or any(not p or p.startswith('.') or '\\' in p or ':' in p for p in parts):
         return False
     return parts[0] in PAYLOAD and not any(p == '__pycache__' for p in parts)
 

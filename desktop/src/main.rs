@@ -266,8 +266,15 @@ fn window(app: &AppHandle, label: &str, url: WebviewUrl, splash: Arc<Splash>) ->
 }
 
 /// LotDsp など外のページは、いつものブラウザ（Edge）で開く（ログイン・LotData-Link はそちらにある・§9.521）。
+/// `file:` は渡さない（§9.629）: OS の既定のアプリで開くので、画面に字を差し込まれると共有の exe を動かす道になる。
+/// 画面は `file:` のリンクを作っていない（ドロップされた道を読むだけ）。
+/// 窓の外（いつものブラウザ・メール）へ渡してよい行き先か。答えるのはここだけ。
+fn outside_ok(u: &Url) -> bool {
+    matches!(u.scheme(), "http" | "https" | "mailto")
+}
+
 fn open_outside(app: &AppHandle, u: &Url) {
-    if matches!(u.scheme(), "http" | "https" | "mailto" | "file") {
+    if outside_ok(u) {
         use tauri_plugin_opener::OpenerExt;
         let _ = app.opener().open_url(u.as_str(), None::<&str>);
     }
@@ -586,4 +593,20 @@ fn main() {
             log("EXIT 窓を閉じた");
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 窓の外へ渡すのは http・https・mailto だけ（§9.629）。`file:` は手元・共有のファイルを既定のアプリで開いてしまう
+    #[test]
+    fn outside_refuses_file_and_odd_schemes() {
+        for ok in ["https://example.com/a", "http://lotdsp/x?y=1", "mailto:a@example.com"] {
+            assert!(outside_ok(&Url::parse(ok).unwrap()), "{ok}");
+        }
+        for bad in ["file:///C:/Windows/System32/calc.exe", "file://server/share/x.exe", "javascript:alert(1)", "ms-settings:display"] {
+            assert!(!outside_ok(&Url::parse(bad).unwrap()), "{bad}");
+        }
+    }
 }

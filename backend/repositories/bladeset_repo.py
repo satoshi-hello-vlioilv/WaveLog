@@ -1501,7 +1501,10 @@ def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
     rid = int(ring_id) if str(ring_id or '').strip() else None
     eq = _equipment_for(rid, equipment)
     w = _num(width)
-    name, tint = _txt(color), _txt(hex_code)
+    name, tint = _txt(color), _hex_norm(hex_code)
+    # 色コードは #rrggbb だけ（§9.629。前は素のまま保存し、刃組の図の fill="…" へ入って属性を抜け出せた）。空は色なし
+    if _txt(hex_code) and not tint:
+        raise ValueError('色コードは #rrggbb の形で入力してください（例: #c0392b）。')
     # 潤滑リングの行は色名が空なら「潤滑」（§9.455）。**渡していなければ触らない**。
     if lube and not name and rid is None:
         name = '潤滑'

@@ -204,6 +204,15 @@ run('test_scrowstyle: 行の見せ方・操作の整理・基準時刻・さか�
       saved.some(x=>x.key==='cat:planned'&&x.colorKey==='blue'&&x.icon==='svg:clock'),
       JSON.stringify(saved));
 
+  /* 色キーは色の名前の形（英小文字・数字・-）だけ受ける（§9.629）。前は何でも保存し、区分のセルの class 属性へ
+     そのまま入った（`x" onmouseover="…` で属性を抜け出せた）。断ったら保存されていないことまで見る */
+  const evil='x" onmouseover="window.__xss=1" a="';
+  const rEvil=await post('/api/schedule/row-style-master',{key:'cat:__xss',colorKey:evil});
+  rec('色の名前の形でない色キーは断る（保存しない）',rEvil.status===400&&!(await styles()).some(x=>x.key==='cat:__xss'),JSON.stringify(rEvil));
+  rec('画面も色キーを逃がして class に入れる（保存された古い値でも属性を抜け出さない）',
+      await page.evaluate(v=>{const f=WL.scheduleView.rowStyleClassOf;
+        return !!f&&f({colorKey:v})===''&&f({colorKey:'blue'})===' sc-rs-blue'},evil));
+
   /* ---- 5) 分類の指定は区分の指定より優先 ---- */
   const cats=await page.evaluate(()=>[...document.querySelectorAll('.sc-rs-row')]
     .map(r=>r.dataset.rs).filter(k=>k.startsWith('stopcat:')));

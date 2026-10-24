@@ -18,6 +18,7 @@ import re
 
 from ..textnorm import normalize_equipment_name as normalize_part
 from .pivot import RULE_OPS, compile_rules
+from .. import safe_regex
 
 _EQ_SPLIT = re.compile(r"[,、，\n]+")
 
@@ -83,6 +84,8 @@ def clean_rules(v):
         if not val:
             continue
         if r["op"] == "regex":
+            if safe_regex.risk(val):
+                raise GroupError(f"正規表現「{val}」は使えません（{safe_regex.risk(val)}）。")
             try:
                 re.compile(val)
             except re.error as e:

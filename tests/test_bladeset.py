@@ -102,6 +102,10 @@ rec('スペーサーの寸法が空なら断る',
     _reject(lambda: bs.spacer_upsert(c, 'u', equipment=EQ, size=None)))
 rec('ゴムリングの色名が空なら断る',
     _reject(lambda: bs.ring_upsert(c, 'u', equipment=EQ, width=10)))
+# 色コードは #rrggbb だけ（§9.629）。前は ring_upsert() が素のまま保存し、刃組の図の fill="…" へ逃がさず入った
+rec('ゴムリングの色コードが #rrggbb でなければ断る（図の属性を抜け出す字を保存しない）',
+    _reject(lambda: bs.ring_upsert(c, 'u', equipment=EQ, color='xss', width=10, hex_code='"/><image href=x onerror=alert(1)>'))
+    and _reject(lambda: bs.ring_upsert(c, 'u', equipment=EQ, color='xss', width=10, hex_code='red;background:url(//x)')))
 rec('ゴムリングの幅が空なら断る',
     _reject(lambda: bs.ring_upsert(c, 'u', equipment=EQ, color='赤')))
 

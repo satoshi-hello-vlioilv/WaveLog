@@ -24,6 +24,7 @@ import math
 import re
 import unicodedata
 from decimal import ROUND_HALF_UP, Decimal
+from .. import safe_regex
 
 MAX_LEN = 2000
 RE_MAX = 200
@@ -235,6 +236,9 @@ def js_regex(src, flags=""):
         return hit
     if len(src) > RE_MAX:
         raise FormulaError(f"正規表現は{RE_MAX}文字までです")
+    why = safe_regex.risk(src)       # 照合が止まらなくなる形は断る（画面の式も同じ・§9.629）
+    if why:
+        raise FormulaError(why)
     try:
         rx = re.compile(_translate(src), re.ASCII)
     except re.error as e:

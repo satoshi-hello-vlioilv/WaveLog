@@ -5611,10 +5611,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const b=String(d.stopSub2||'').trim();
   return a&&b?`${a} / ${b}`:(a||b);
  }
- function rowStyleClass(e){
-  const c=rowStyleOf(e).colorKey;
-  return c?(' sc-rs-'+c):'';
+ /* 行の見せ方 → 色の class（' sc-rs-<鍵>'）。鍵は色の名前の形だけ（§9.629。サーバーも同じ形だけ保存するが、
+    前に保存された値は残り得るので、HTML の文字列へ入れる所でも確かめる——前は class 属性を抜け出せた） */
+ function rowStyleClassOf(st){
+  const c=String((st&&st.colorKey)||'');
+  return /^[a-z][a-z0-9-]{0,31}$/.test(c)?(' sc-rs-'+c):'';
  }
+ function rowStyleClass(e){return rowStyleClassOf(rowStyleOf(e))}
  /* 行の代表時刻。並び替え・日付/勤務のまとめ・表示範囲の判定すべてが
     これを使う(判定ごとに別の時刻を見ると、まとめた見出しと行の日付が
     食い違う)。 */
@@ -11853,6 +11856,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 行の見せ方(§9.198)。**判定の1箇所へ外から聞ける**ようにしておく
      ——DOMを掘って色を読むと、行が1件も無い区分を確かめられない。 */
   rowStyleOf:e=>rowStyleOf(e||{}),
+  rowStyleClassOf,
   /* 内容欄で使える項目と、行から取り出した値(§9.365)。**読むだけ**——
      結合・完了突合で来た値が候補に出ているか、行から引けるかを、DOMを
      掘らずに確かめられるようにしておく（出ていないときの切り分けに要る）。 */
