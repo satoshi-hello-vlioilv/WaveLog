@@ -775,6 +775,11 @@ body.de-sizing{user-select:none;cursor:col-resize}
 .og-key i.og-k-sep{width:2px;background:var(--card-border);border:0;border-radius:0}
 .og-key i.og-k-day{width:0;border:0;border-left:1px dashed var(--muted);border-radius:0}
 .og-k-run{background:repeating-linear-gradient(45deg,var(--teal) 0 3px,var(--teal-soft) 3px 5px)}
+/* §9.630 ②: 予定の棒（縁取りの枠・中は淡い地）。実績の塗りの棒はこの上に重なる。遅れは枠の右上の三角（色だけで言わない） */
+.og-plan{fill:var(--look-slate-pale);stroke:var(--look-slate);stroke-width:1.2;stroke-dasharray:4 2}
+.og-planlate{fill:var(--look-amber-dark);pointer-events:none}
+.og-pl{font-size:var(--fs-sm);fill:var(--ink-2);pointer-events:none}
+.og-key i.og-k-plan{background:var(--look-slate-pale);border:1px dashed var(--look-slate)}
 
 .oa-wrap{display:flex;flex-direction:column;height:100%;min-height:0;gap:4px}
 .oa-tabs{display:flex;gap:4px;flex-wrap:nowrap;overflow:hidden;flex:0 0 auto}
@@ -1366,3 +1371,23 @@ body.pv-dnd-body,body.pv-dnd-body *{cursor:grabbing;user-select:none}
 @layer state {
 .dash-p table[style*="--dp-fs"]{font-size:var(--dp-fs)}
 }
+
+/* §9.630 ④: いまの作業（設備ごとに 1 行）。設備名の列は固定幅（値の左端をそろえる）・状態は札の字（色だけで言わない）・名前がいちばん大きい */
+.on-wrap{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}
+.on-row{display:grid;grid-template-columns:7.5em 4.6em minmax(0,1fr) auto;align-items:center;gap:0 10px;min-height:48px;padding:4px 2px;border-bottom:1px solid var(--line-soft)}
+.on-row:last-child{border-bottom:0}
+.on-eq{font-size:var(--fs-sm);font-weight:var(--fw-strong);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.on-tag{justify-self:start;font-size:var(--fs-sm);font-weight:var(--fw-ui);line-height:20px;padding:0 8px;border-radius:var(--radius-pill);white-space:nowrap;border:1px solid var(--line-mid);color:var(--ink-2);background:var(--surface)}
+.on-tag.is-run{background:var(--look-slate);border-color:var(--look-slate);color:#fff}
+.on-tag.is-stop{background:var(--look-amber-pale);border-color:var(--look-amber);color:var(--warn-fg)}
+.on-main{display:flex;flex-direction:column;min-width:0;gap:1px}
+.on-name{font-size:var(--fs-title);font-weight:var(--fw-strong);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.on-name.is-none{font-size:var(--fs-sm);font-weight:var(--fw-body);color:var(--muted)}
+.on-due{font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
+.on-due b{font-variant-numeric:tabular-nums;color:var(--ink);margin:0 2px}
+.on-due small{font-size:var(--fs-sm);color:var(--muted);margin-left:6px}
+.on-due small.is-late{color:var(--look-amber-dark);font-weight:var(--fw-strong)}
+.on-next{font-size:var(--fs-sm);color:var(--muted);white-space:nowrap;text-align:right}
+.on-next b{font-variant-numeric:tabular-nums;color:var(--ink-2);font-weight:var(--fw-ui)}
+.on-row.is-err{grid-template-columns:7.5em minmax(0,1fr)}
+.on-why{font-size:var(--fs-sm);color:var(--look-amber-dark)}

@@ -174,13 +174,13 @@ LAYOUT_SOURCE = "dash"
 GRID_COLS = 12
 ROWS_MIN, ROWS_MAX, ROWS_DEFAULT = 4, 16, 8
 MAX_PANELS = 24
-EXTRA_VISUALS = ("kpi", "board", "gantt", "abc", "slicer")
+EXTRA_VISUALS = ("kpi", "board", "gantt", "abc", "slicer", "now")
 # 版 3.52.0（利用者の要望 2026-10-23）:
 #   visual slicer … パネルに置くスライサー。行の段 1 つ（body.rows[0]＝列）の値と数を出し、押した値で同じデータのほかのパネルを絞る
 #                    （選んだ値はこの PC の見え方。数え方はふつうのパネルと同じ集計）
 #   レイアウトの slicer … 道具の行の帯のスライサー: {off: 帯を出さない（効きもしない）, parts: 出す物 ["period"（期間の札）, "date"（日付）, "equip"（設備）] の部分}
 SLICER_PARTS = ("period", "date", "equip")
-OPS_VISUALS = ("gantt", "abc")          # 稼働（ガントチャートと稼働率）・ABC 分析と換算係数（版 3.46.0。services/operation.py）
+OPS_VISUALS = ("gantt", "abc", "now")   # 稼働（ガントチャートと稼働率）・ABC 分析と換算係数（版 3.46.0。services/operation.py）・いまの作業（§9.630 ④）
 SORTS = ("", "desc", "asc")
 TOP_MAX = 60
 _ID = re.compile(r"[A-Za-z0-9_-]{1,16}")
@@ -655,6 +655,9 @@ def clean_ops(v):
     out = {k: col(k) for k in ("start", "end", "label", "color") if col(k)}
     if v.get("span") == "lead":
         out["span"] = "lead"
+    # 予定と実績を 1 つのガントに（§9.630 ②。作業予定の元だけ）: 実績（作業開始〜作業終了）の棒に、まだ終わっていない行の予定（予定開始〜予定終了）を重ねる
+    if v.get("plan") is True:
+        out["plan"] = True
     # 基準の期間（地点 A。版 3.49.0。利用者の要望 2026-10-21 の 4 回目の 3）: この期間の換算係数で、パネルの期間（地点 B）の本数を換算する
     ref = _period({**v["refPeriod"], "column": "@workday"}) if isinstance(v.get("refPeriod"), dict) else None
     if ref:
@@ -864,11 +867,28 @@ def _status_board():
             "order": {"by": "value", "group": 2, "dir": "desc", "list": [], "hide": []}}
 
 
-# ★標準が無いときに開く組み込み（前の画面と同じく稼働状況から・§9.64）
-BUILTIN_DEFAULT = "b:status"
+# ★標準が無いときに開く組み込み（§9.630 ④: 「生産の状況」。前は稼働状況・§9.64）
+BUILTIN_DEFAULT = "b:home"
+TODAY = {"column": "@workday", "kind": "today"}
+THIS_MONTH = {"column": "@workday", "kind": "this_month"}
+# 品種（§9.630 ④ 利用者の指示）: 用途名 × 縦割り数（丈数）× 横割り数（条数）。ABC 分析は 3 つの列の組み合わせで分ける
+KIND_COLS = ["用途名", "縦割り数（丈数）", "横割り数（条数）"]
+# 生産性: 良品重量の合計 ÷ 作業時間の合計（分）× 60 ＝ kg/時（aggregate の ratio。1 行ずつの比の平均にしない）
+PRODUCTIVITY = {"agg": "ratio", "column": "良品重量", "per": WORK_TIME, "expr": "×60", "dec": 1}
 
 BUILTIN_LAYOUTS = [
-    # 最初の画面（BUILTIN_DEFAULT）。前の「稼働状況」（§9.64 で既定にした）: 作業予定と進み具合（予定・作業中・遅れ）と、きょうの作業の棒（ガント）
+    # 最初の画面（BUILTIN_DEFAULT・§9.630 ④）: いまの作業（作業中のロットか設備停止と予定完了）・本日と今月の数・予定と実績のガント・今月の ABC
+    {"key": "home", "name": "生産の状況", "body": {"rows": 8, "panels": [
+        _pv("todayLots", 0, 0, 3, 1, "本日の作業ロット", "kpi", "rec", period=TODAY),
+        _pv("todayWeight", 3, 0, 3, 1, "本日の良品重量", "kpi", "rec", measures=[{"agg": "sum", "column": "良品重量"}], period=TODAY, fmt={"utext": "kg"}),
+        _pv("monthLots", 6, 0, 3, 1, "今月の作業本数", "kpi", "rec", period=THIS_MONTH, fmt={"utext": "本"}),
+        _pv("monthRate", 9, 0, 3, 1, "今月の生産性", "kpi", "rec", measures=[PRODUCTIVITY], period=THIS_MONTH, fmt={"utext": "kg/時"}),
+        _pv("now", 0, 1, 4, 3, "いまの作業", "now", "plan", measures=[{"agg": "count"}]),
+        _pv("planGantt", 4, 1, 8, 3, "きょうの予定と実績", "gantt", "plan", measures=[{"agg": "count"}], period=TODAY, ops={"plan": True}),
+        _pv("monthAbc", 0, 4, 12, 4, "今月の品種の ABC 分析（用途名 × 丈数 × 条数）", "abc", "rec", measures=[{"agg": "count"}], period=THIS_MONTH,
+            ops={"cls": KIND_COLS, "qty": "lots"}),
+    ]}},
+    # 前の既定（§9.64）。前の「稼働状況」: 作業予定と進み具合（予定・作業中・遅れ）と、きょうの作業の棒（ガント）
     {"key": "status", "name": "稼働状況", "body": {"rows": 8, "panels": [
         _pv("running", 0, 0, 3, 1, "稼働中の設備", "kpi", "plan", measures=[{"agg": "distinct", "column": "設備名"}], filters=[_f("状態", "eq", "着手")],
             fmt=UNIT_EQUIP),

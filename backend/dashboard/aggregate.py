@@ -8,6 +8,8 @@
                （大きな値の小さな差でも桁が落ちない）
     並び     … median（中央値）・q1（25% 点）・q3（75% 点）・iqr（四分位範囲）・pct（p% 点。p は 1〜99）・mode（最頻値） … 値の並びをためる
     種類     … distinct（種類の数。数に限らず、どの列でも。空欄は数えない）
+    比       … ratio（合計の比＝列の合計 ÷ per の列の合計。§9.630: 生産性＝良品重量の合計 ÷ 作業時間の合計。
+               1 行ずつの比の平均にしない＝短い作業の比が効きすぎる。両方が数に読める行だけを足す）
 表し方（show。値ごと）: ""（そのまま）・pct_total（総計に対する %）・pct_row（行の計に対する %）・pct_col（列の計に対する %）・
     cum（累計）・diff（前との差）・rank（順位。大きい順に 1〜） … 数え終えたセルの値から決める（apply_show）。
     累計・差・順位は、同じ親（1 つ上の段の鍵）の中で、行の並び（orders）の順に決める
@@ -27,13 +29,14 @@ SIMPLE = ("sum", "avg", "min", "max", "n", "range")
 SPREAD = ("sd", "var", "cv", "cpk")
 ORDERED = ("median", "q1", "q3", "iqr", "pct", "mode")
 KINDS = ("distinct",)
-AGGS = COUNTS + SIMPLE + SPREAD + ORDERED + KINDS
-NUMERIC = SIMPLE + SPREAD + ORDERED          # 数の列が要る
+RATIOS = ("ratio",)
+AGGS = COUNTS + SIMPLE + SPREAD + ORDERED + KINDS + RATIOS
+NUMERIC = SIMPLE + SPREAD + ORDERED + RATIOS  # 数の列が要る
 ADDITIVE = ("count", "lots", "sum", "n")     # 下の段から足し上げられる（積み上げ・割合・ドーナツに使える）
 SHOWS = ("", "pct_total", "pct_row", "pct_col", "cum", "diff", "rank")
 LABEL = {"count": "件数", "lots": "ロット数", "sum": "合計", "avg": "平均", "min": "最小", "max": "最大", "n": "個数", "range": "範囲",
          "sd": "標準偏差", "var": "分散", "cv": "変動係数(%)", "cpk": "Cpk", "median": "中央値", "q1": "25%点", "q3": "75%点",
-         "iqr": "四分位範囲", "pct": "%点", "mode": "最頻値", "distinct": "種類の数"}
+         "iqr": "四分位範囲", "pct": "%点", "mode": "最頻値", "distinct": "種類の数", "ratio": "合計の比"}
 EXPR_MAX = 60
 DEC_MAX = 6
 SHOW_LABEL = {"pct_total": "総計に対する%", "pct_row": "行の計に対する%", "pct_col": "列の計に対する%", "cum": "累計", "diff": "前との差", "rank": "順位"}
@@ -66,6 +69,11 @@ def clean(m, has_column):
         if lsl is not None and usl is not None and lsl >= usl:
             raise ValueError(f"「{col}」の Cpk の規格は、下限 < 上限にしてください。")
         out.update({k: v for k, v in (("lsl", lsl), ("usl", usl)) if v is not None})
+    if agg == "ratio":
+        per = str(m.get("per") or "")
+        if not has_column(per):
+            raise ValueError(f"「{col}」の合計の比には、割る列（per）が要ります（「{per}」がありません）。")
+        out["per"] = per
     show = str(m.get("show") or "")
     if show in SHOWS and show:
         out["show"] = show
@@ -84,7 +92,7 @@ def clean(m, has_column):
 def name(m):
     """値の見せる名前（件数・ロット数・〇〇の平均・〇〇の90%点・〇〇の平均（累計））"""
     agg = m["agg"]
-    base = LABEL[agg] if agg in COUNTS else f"{m['column']}の{m['p'] if agg == 'pct' else ''}{LABEL[agg]}"
+    base = LABEL[agg] if agg in COUNTS else f"{m['column']}÷{m.get('per', '')}" if agg == "ratio" else f"{m['column']}の{m['p'] if agg == 'pct' else ''}{LABEL[agg]}"
     return base + (f"（{SHOW_LABEL[m['show']]}）" if m.get("show") else "") + (f"［{expr_text(m['expr'])}］" if m.get("expr") else "")
 
 
@@ -107,16 +115,22 @@ def apply_expr(cells, measures):
 
 class Acc:
     """1 つのセル・1 つの値の器（値の種類で、ためる物を決める）"""
-    __slots__ = ("agg", "n", "sum", "lo", "hi", "mean", "m2", "vals", "kinds")
+    __slots__ = ("agg", "n", "sum", "lo", "hi", "mean", "m2", "vals", "kinds", "den")
 
     def __init__(self, agg):
         self.agg = agg
-        self.n, self.sum, self.lo, self.hi, self.mean, self.m2 = 0, 0.0, None, None, 0.0, 0.0
+        self.n, self.sum, self.lo, self.hi, self.mean, self.m2, self.den = 0, 0.0, None, None, 0.0, 0.0, 0.0
         self.vals = [] if agg in ORDERED else None
         self.kinds = set() if agg == "distinct" else None
 
-    def add(self, f, raw=None):
-        """f … 数に読めた値（読めなければ None）・raw … 元の値（種類の数）"""
+    def add(self, f, raw=None, den=None):
+        """f … 数に読めた値（読めなければ None）・raw … 元の値（種類の数）・den … 合計の比の割る列の値（数に読めた物か None）"""
+        if self.agg == "ratio":
+            if f is not None and den is not None:
+                self.n += 1
+                self.sum += f
+                self.den += den
+            return
         if self.kinds is not None:
             t = "" if raw is None else str(raw).strip()
             if t:
@@ -147,6 +161,8 @@ class Acc:
             return None
         if agg == "sum":
             return self.sum
+        if agg == "ratio":
+            return self.sum / self.den if self.den else None
         if agg == "avg":
             return self.sum / self.n
         if agg == "min":

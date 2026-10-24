@@ -32,8 +32,10 @@
     { k: "slicer", n: "スライサー", tip: "行の段 1 つ目（仕掛区分・品種など）の値の札を並べ、押した値で同じデータのほかのパネルを絞ります（選びはこの PC の見え方）", icon: "M3 4h14M3 9h14M3 14h9M6 2v4M13 7v4M9 12v4" }];
   // 稼働を見る形（版 3.46.0。利用者の要望 2026-10-21 の 1・2。作業実績の作業開始・作業終了から: services/operation.py・dashboard-ops.js）
   const OPS_VIS = [{ k: "gantt", n: "稼働（ガント）", tip: "選んだ設備の作業を 1 枚のガントチャートに並べ、設備ごとの稼働率（勤務時間に対する稼働の割合）を出します", icon: "M3 5h7M6 9h9M3 13h5M10 13h6M3 17h14" },
-    { k: "abc", n: "ABC 分析", tip: "設備ごとに、品種を量の大きい順に並べて A・B・C に分け、作業時間から換算係数を出します", icon: "M3 17h14M4 15V4M8 15V8M12 15v-4M16 15v-2M4 5c3-1 8 0 12 6" }];
-  const isOps = (x) => !!x && (x.visual === "gantt" || x.visual === "abc");
+    { k: "abc", n: "ABC 分析", tip: "設備ごとに、品種を量の大きい順に並べて A・B・C に分け、作業時間から換算係数を出します", icon: "M3 17h14M4 15V4M8 15V8M12 15v-4M16 15v-2M4 5c3-1 8 0 12 6" },
+    // いまの作業（§9.630 ④）: 作業予定の着手の行（作業中のロットか設備停止）と予定完了、次の予定
+    { k: "now", n: "いまの作業", tip: "設備ごとに、いま作業中のロットか設備停止の名前と予定完了の時刻、次の予定を出します（作業予定から）", icon: "M10 3a7 7 0 1 0 0 14a7 7 0 1 0 0-14M10 6v4l3 2" }];
+  const isOps = (x) => !!x && (x.visual === "gantt" || x.visual === "abc" || x.visual === "now");
   // ABC 分析の表示項目（版 3.48.0。サーバーの dashboard.ABC_ITEMS と同じ鍵）。チェックを外すと出さない（ops.hide）
   // 版 3.49.0: 表の列の順（本数 → 平均 → 占有時間 → 本数比 → 負荷比 → 累積 → ABC → 換算係数 → 換算本数）に並べ、占有時間・負荷比を足した
   const ABC_ITEMS = [["avg", "平均作業"], ["occ", "占有時間", "本数 × 平均作業（工場をその品種が占める時間の見積もり）"], ["share", "本数比"],
@@ -212,7 +214,8 @@
       const ss = x.link.sides, role = (r) => (ROLES.find((y) => y[0] === r) || [null, ""])[1];
       return `${ss[0].key ? dimLabel(ss[0].key) + "ごとの" : ""}${ss.map((y) => (y.role ? role(y.role) : y.title || (srcOf(y.source) || {}).name || "データ")).join("と")}`;
     }
-    if (x.visual === "gantt") return `${x.period && x.period.kind ? `${perName(x.period)}の` : ""}設備の稼働と稼働率`;
+    if (x.visual === "now") return "いまの作業";
+    if (x.visual === "gantt") return `${x.period && x.period.kind ? `${perName(x.period)}の` : ""}${(x.ops || {}).plan && x.source === "plan" ? "予定と実績" : "設備の稼働と稼働率"}`;
     if (x.visual === "abc") { const c = [].concat((x.ops || {}).cls || []); return `${c.length ? `${c.join(" × ")}の` : "品種の"}ABC 分析と換算係数`; }
     if (x.visual === "slicer") return `${((x.body || {}).rows || []).length ? dimLabel(x.body.rows[0]) : "列の値"}で絞る`;
     if (x.visual === "board") return (x.groups || []).length ? `${dimLabel(x.rows || { column: "@equip" })}ごとの${x.groups.map((g) => g.title || P.groupTitle(g, null)).join("と")}` : "合わせた表";
@@ -255,6 +258,12 @@
   function setVisual(k) {
     if (k === "board") { if (isLink()) unlink(); toBoard(); return; }
     if (isBoard()) fromBoard();
+    if (k === "now") {                           // いまの作業（§9.630 ④）: 作業予定の行から（期間は使わない＝いま）
+      if (isLink()) unlink();
+      p.visual = k; p.ops = {}; delete p.egroup; delete p.esplit; p.period = null;
+      if (p.source !== "plan") { p.source = "plan"; delete p.equip; delete p.calc; p.filters = []; p.search = ""; host.toast("いまの作業は作業予定から出すので、データを作業予定にしました"); }
+      changed(); return;
+    }
     if (k === "gantt" || k === "abc") {           // 稼働を見る形: 作業実績（作業開始と作業終了）で数える。ガントは期間が要る（無ければ前日）
       if (isLink()) unlink();
       p.visual = k; p.ops = p.ops || {};
@@ -539,6 +548,7 @@
     const opts = (g) => C.AGGS.filter((a) => a.g === g && (num || a.any)).map((a) => `<option value="${a.k}"${m.agg === a.k ? " selected" : ""} title="${esc(a.tip || "")}">${a.n}</option>`).join("");
     const sel = m.agg === "count" || m.agg === "lots" ? "" : `<select data-de-agg="${i}" aria-label="集計のしかた">${Object.entries(grp).map(([g, n]) => { const o = opts(g); return o ? `<optgroup label="${n}">${o}</optgroup>` : ""; }).join("")}</select>`;
     const par = m.agg === "pct" ? `<label class="de-par">p<input type="number" min="1" max="99" value="${m.p || 90}" data-de-mp="${i}" aria-label="何%点か"></label>`
+      : m.agg === "ratio" ? `<label class="de-par">÷<select data-de-mper="${i}" aria-label="割る列"><option value="">割る列…</option>${((fields && fields.fields) || []).filter((f) => f.numeric && !f.error && f.column !== m.column).map((f) => `<option value="${esc(f.column)}"${f.column === m.per ? " selected" : ""}>${esc(f.column)}</option>`).join("")}</select></label>`
       : m.agg === "cpk" ? `<label class="de-par">下限<input type="number" step="any" value="${m.lsl ?? ""}" data-de-mlsl="${i}" aria-label="規格の下限"></label><label class="de-par">上限<input type="number" step="any" value="${m.usl ?? ""}" data-de-musl="${i}" aria-label="規格の上限"></label>` : "";
     const show = `<select class="de-show" data-de-show="${i}" aria-label="表し方" title="表し方（割合・累計・前との差・順位）">${C.SHOWS.map(([k, n]) => `<option value="${k}"${(m.show || "") === k ? " selected" : ""}>${k ? n : "表し方"}</option>`).join("")}</select>`;
     const name = m.agg === "count" ? "件数" : m.agg === "lots" ? "ロット数" : m.column;
@@ -555,8 +565,14 @@
     const endSel = `<div class="de-row"><label class="de-l">作業開始</label>${colSel("start", "作業開始", foundS, stamps(/作業開始|開始|着手/))}</div>`
       + `<div class="de-row"><label class="de-l">作業終了</label>${colSel("end", "作業終了", found, stamps(/作業終了|終了|完了/))}</div>`;
     const few = fs.filter((f) => pickable(f) && f.kinds >= 1 && f.kinds <= 60).map((f) => f.column);
+    if (p.visual === "now") return '<div class="de-ops"><p class="de-ophint">作業スケジュールで「着手」の行（作業中のロットか設備停止）の名前と予定完了（予定終了）を設備ごとに出します。着手の行が無い設備は「待機」と次の予定です。条件で設備・種類を絞れます。</p></div>';
     if (p.visual === "gantt") {
-      return `<div class="de-ops">${endSel}`
+      // 予定と実績を重ねる（§9.630 ②）: 作業予定の元のときだけ。重ねると、実績は行の実績（測定・手入力・取り込み）・予定は予定開始〜予定終了
+      const isPlan = t.source === "plan", layered = isPlan && o.plan;
+      const planRow = `<div class="de-row"><label class="de-l">見せる物</label>${isPlan
+        ? segs("oplan", [["", "実績だけ", "作業開始〜作業終了の棒"], ["1", "予定と実績", "実績の棒に、まだ終わっていない行の予定（予定開始〜予定終了）の枠を重ねる"]], layered ? "1" : "", "見せる物")
+        : '<small class="de-hint">予定と実績を重ねるには、データを「作業予定」にします（予定の時刻を持つのは作業予定だけ）</small>'}</div>`;
+      return `<div class="de-ops">${planRow}${layered ? "" : endSel}`
         + `<div class="de-row"><label class="de-l">色分け</label><select data-de-ocolor aria-label="棒の色分け">${opt("", "なし（作業は 1 色）", o.color)}${few.map((c) => opt(c, c, o.color)).join("")}</select>`
         + `<label class="pv-ck">棒の字<select data-de-olabel aria-label="棒に出す字">${opt("", "ロット番号", o.label)}${fs.filter((f) => !f.numeric).map((f) => opt(f.column, f.column, o.label)).join("")}</select></label></div>`
         + `<p class="de-ophint">稼働率 ＝ 作業していた時間 ÷ 勤務時間（マスタ管理の「勤務体系」の直の時間。勤務の外の稼働は分母にも入れず、行の説明に出します）。分割したロット（作業開始が同じ行）は 1 作業です。</p></div>`;
@@ -1367,10 +1383,12 @@
     if (x.matches("[data-de-agg]")) {
       const m = t.body.measures[+x.dataset.deAgg]; m.agg = x.value;
       if (m.agg === "pct" && !m.p) m.p = 90;
+      if (m.agg === "ratio" && !m.per) { host.toast("合計の比は「÷」の割る列を選ぶと数えます"); paint(false); return true; }
       if (m.agg === "cpk" && m.lsl == null && m.usl == null) { host.toast("Cpk は規格の下限か上限を入れると数えます"); paint(false); return true; }
       changed(false); return true;
     }
     if (x.matches("[data-de-show]")) { const m = t.body.measures[+x.dataset.deShow]; if (x.value) m.show = x.value; else delete m.show; changed(false); return true; }
+    if (x.matches("[data-de-mper]")) { const m = t.body.measures[+x.dataset.deMper]; if (x.value) m.per = x.value; else delete m.per; changed(false); return true; }
     if (x.matches("[data-de-mp]")) { t.body.measures[+x.dataset.deMp].p = Math.max(1, Math.min(99, +x.value || 90)); changed(false); return true; }
     if (x.matches("[data-de-mlsl],[data-de-musl]")) {
       const i = +(x.dataset.deMlsl ?? x.dataset.deMusl), m = t.body.measures[i], k = x.dataset.deMlsl != null ? "lsl" : "usl";
@@ -1410,6 +1428,7 @@
     if (x.matches("[data-de-ocolor]")) { setOps("color", x.value); return true; }
     if (x.matches("[data-de-olabel]")) { setOps("label", x.value); return true; }
     if (x.matches("[data-de-ocls]")) { if (x.value) setCls(clsOf(p).concat([x.value])); return true; }
+    if (x.matches("[data-de-oplan]")) { setOps("plan", x.value === "1" ? true : ""); return true; }
     if (x.matches("[data-de-oqty]")) { setOps("qty", x.value); return true; }
     if (x.matches("[data-de-oqcol]")) { if (x.value) setOps("qty", x.value); return true; }
     if (x.matches("[data-de-obase]")) { setOps("base", x.value === "avg" ? "" : x.value); return true; }

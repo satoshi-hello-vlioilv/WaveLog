@@ -72,7 +72,7 @@ run('test_dashboard: ダッシュボード',async({page,rec,B,W,idle})=>{
   rec(`前のダッシュボードの画面は無い（${tag}）`,await page.evaluate(()=>!document.getElementById('dashboardPanel')&&!document.querySelector('[data-dbview]')));
   const list=await page.evaluate(async()=>(await (await fetch('/api/dashboards')).json()).items.filter(x=>x.builtin).map(x=>({id:x.id,name:x.name})));
   const times=[],scores=[];
-  rec(`組み込みのダッシュボードが4つ（${tag}）`,list.length===4,list.map(x=>x.name).join('・'));
+  rec(`組み込みのダッシュボードが5つ（生産の状況が先頭・${tag}）`,list.length===5&&list[0].name==='生産の状況',list.map(x=>x.name).join('・'));
   for(const it of list){
    const t0=Date.now();
    await page.evaluate(id=>WL.dashboard._open(id),it.id);

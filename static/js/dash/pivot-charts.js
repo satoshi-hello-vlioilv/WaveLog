@@ -1293,6 +1293,8 @@
     { k: "pct", n: "p%点", g: "stat", param: "p", tip: "小さい方から p% の所の値（90%点など）" }, { k: "mode", n: "最頻値", g: "stat", tip: "いちばん多く出た値（同じ数なら小さい方）" },
     { k: "cpk", n: "工程能力 Cpk", g: "stat", param: "spec", tip: "規格（下限・上限）に対する工程能力。min(上限−平均, 平均−下限) ÷ 3σ" },
     { k: "distinct", n: "種類の数", g: "kind", any: true, tip: "重複の無い値の数（数でない列も）" },
+    // 合計の比（§9.630 ④）: 列の合計 ÷ 割る列（per）の合計。生産性（良品重量 ÷ 作業時間）など。1 行ずつの比の平均にはしない
+    { k: "ratio", n: "合計の比", g: "basic", param: "per", tip: "この列の合計 ÷ 割る列の合計（生産性＝良品重量の合計 ÷ 作業時間の合計 など）。両方が数の行だけを足します" },
   ];
   const SHOWS = [["", "そのまま"], ["pct_total", "総計に対する%"], ["pct_row", "行の計に対する%"], ["pct_col", "列の計に対する%"], ["cum", "累計"], ["diff", "前との差"], ["rank", "順位（大きい順）"]];
   const aggOf = (k) => AGGS.find((a) => a.k === k);
@@ -1302,6 +1304,7 @@
     const show = m.show ? `（${(SHOWS.find((x) => x[0] === m.show) || ["", ""])[1]}）` : "";
     const ex = m.expr ? `［${exprText(m.expr)}］` : "";
     if (m.agg === "count" || m.agg === "lots") return (m.agg === "count" ? "件数" : "ロット数") + show + ex;
+    if (m.agg === "ratio") return `${label(m.column)}÷${label(m.per || "")}${show}${ex}`;      // サーバーの aggregate.name と同じ字
     const a = aggOf(m.agg) || AGGS[0];
     return `${label(m.column)}の${m.agg === "pct" ? `${m.p || 90}%点` : a.n}${show}${ex}`;
   }

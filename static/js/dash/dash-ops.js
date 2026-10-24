@@ -85,10 +85,17 @@
       + `<defs><pattern id="ogHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#f3f4f5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#dde1e4" stroke-width="2"/></pattern>`
       + `<pattern id="ogRun" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#fff" stroke-opacity=".4" stroke-width="3"/></pattern></defs>`
       + g.join("") + "</svg>"
-      + `<div class="og-foot"><span class="og-key"><span><i class="og-k-on"></i>勤務時間</span>${c.offSeen ? '<span><i class="og-k-off"></i>勤務の外</span>' : ""}${c.sepSeen ? '<span><i class="og-k-sep"></i>直の境目</span>' : ""}${c.daySeen ? '<span><i class="og-k-day"></i>作業日の境目</span>' : ""}${legend ? "" : `<span><i style="background:${WORK}"></i>作業</span>`}`
+      + `<div class="og-foot"><span class="og-key"><span><i class="og-k-on"></i>勤務時間</span>${c.offSeen ? '<span><i class="og-k-off"></i>勤務の外</span>' : ""}${c.sepSeen ? '<span><i class="og-k-sep"></i>直の境目</span>' : ""}${c.daySeen ? '<span><i class="og-k-day"></i>作業日の境目</span>' : ""}${legend ? "" : `<span${c.planSeen ? ` title="${esc(fromTip(eqs))}"` : ""}><i style="background:${WORK}"></i>${c.planSeen ? "実績" : "作業"}</span>`}${c.planSeen ? '<span title="まだ終わっていない作業・設備停止の予定開始〜予定終了（作業スケジュール）"><i class="og-k-plan"></i>予定</span>' : ""}`
       + `${eqs.some((e) => (e.ops || []).some((o) => o[5] === "r")) ? '<span title="作業終了がまだ無い、いちばん新しい作業（いままでの区間）"><i class="og-k-run"></i>作業中</span>' : ""}</span>${leg}</div></div>`;
     const more = eqs.length - shown.length;
     return more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "";
+  }
+  /** 実績の棒の出どころ（測定データ・手入力・実績データ〈取り込み〉…）ごとの本数 → 凡例の説明の字 */
+  function fromTip(eqs) {
+    const by = {};
+    eqs.forEach((e) => Object.entries(e.from || {}).forEach(([k, n]) => { by[k] = (by[k] || 0) + n; }));
+    const t = Object.entries(by).sort((u, v) => v[1] - u[1]).map(([k, n]) => `${k} ${n} 本`).join("・");
+    return `実績の作業開始〜作業終了（作業スケジュールの行の実績）${t ? `: ${t}` : ""}`;
   }
   /** ガントの横の目盛り（時刻・作業日の区切りと日付の札・見出し）→ 設備の作業日の区切りの鍵と、いちばん多い区切り */
   function ganttAxis(g, c, eqs, d, nRows) {
@@ -135,6 +142,22 @@
     const pick = (c.nowX != null && gaps.find(([a]) => a >= c.nowX - 0.5)) || gaps[0];
     return pick ? pick[0] + 8 : null;
   }
+  /** 予定の棒（e.plans: [[始め, 終わり, 字, 状態, 遅れ（分）]]）。字は棒に入るとき・実績の棒が無い所だけ（重ねて読ませない） */
+  function planBars(g, c, e, by, bh) {
+    const { X, x0, x1, rh } = c, pl = e.plans || [];
+    if (!pl.length) return;
+    c.planSeen = true;
+    const done = (e.ops || []).map((o) => [ms(o[0]), ms(o[1])]);
+    pl.forEach((o) => {
+      const t0 = ms(o[0]), t1 = ms(o[1]), late = +o[4] > 0, a = X(Math.max(t0, x0)), b = Math.max(a + 2, X(Math.min(t1, x1)));
+      const tip = `予定: ${o[2] || "作業"}（${o[3] || "予定"}）\n${dayText(t0)} ${hm(t0)}〜${new Date(t0).getDate() !== new Date(t1).getDate() ? `${dayText(t1)} ` : ""}${hm(t1)}（${WL.duration.text(Math.round((t1 - t0) / 60000))}）`
+        + (late ? `\n遅れ ${WL.duration.text(Math.round(+o[4]))}` : "");
+      g.push(`<rect class="og-plan${late ? " is-late" : ""}" x="${a}" y="${by - 1.5}" width="${b - a}" height="${bh + 3}" rx="2"><title>${esc(tip)}</title></rect>`);
+      if (late && b - a > 8) g.push(`<path class="og-planlate" d="M${b - 6} ${by + 1}L${b - 1} ${by + 1}L${b - 1} ${by + 6}Z"><title>${esc(tip)}</title></path>`);
+      const busy = done.some(([u, v]) => u < t1 && v > t0);
+      if (o[2] && !busy && rh >= 18 && b - a > textW(o[2], 11) + 8) g.push(`<text class="og-pl" x="${a + 4}" y="${by + bh / 2 + 3.6}">${esc(o[2])}</text>`);
+    });
+  }
   /** ガントの 1 台（勤務時間の帯・作業の棒・棒の無いわけ・設備名・稼働率） */
   function ganttRow(g, c, e, i, dayKey, mainKey) {
     const { LW, TW, RW, rh, X, x0, x1, p, colorOf } = c, AX = c.AX;
@@ -150,6 +173,9 @@
     });
     if (onW < TW - 1) c.offSeen = true;      // 勤務の外が見えている行がある（凡例に「勤務の外」を出す）
     if ((e.days || []).length && dayKey(e) !== mainKey) e.days.slice(1).forEach((x) => { const a = X(ms(x[0])); if (a > LW && a < LW + TW) g.push(`<line class="og-day is-own" x1="${a}" x2="${a}" y1="${y + 1}" y2="${y + rh - 1}"><title>${esc(`${e.name} の作業日の区切り（勤務体系 ${e.pattern || "なし"}）`)}</title></line>`); });
+    // 予定（§9.630 ②。予定と実績を重ねるガント）: まだ終わっていない行の予定開始〜予定終了を、縁取りの枠（中は淡い地）で棒の下に。
+    // 実績の棒は枠の中に重なるので、予定とのずれが見える。遅れは字（title）と枠の右の印で言う（色だけで言わない）
+    planBars(g, c, e, by, bh);
     // 棒の字は、次の棒の始まりまでに入るときだけ（版 3.47.0。前は棒の幅だけを見て、重なる次の棒が字の上に描かれた）
     const starts = (e.ops || []).map((o) => X(Math.max(ms(o[0]), x0))).sort((u, v) => u - v);
     (e.ops || []).forEach((o) => {
@@ -388,5 +414,30 @@
       + (n ? `<span class="og-nbadge" title="${esc(tip)}">区間なし ${n} 本<small>${esc(who)}</small></span>` : "");
   }
 
-  WL.dashOps = { gantt, abc, badge, RANK, rankStyle, rankName };
+  /* いまの作業（§9.630 ④。利用者の指示「現在の作業ロットもしくは設備停止名称と予定完了時刻の表示」）: 設備ごとに 1 行。
+     左から 設備名 → 状態の札（作業中・設備停止・待機。色だけで言わない＝札の字）→ 名前（ロット番号か停止の名前・いちばん大きい字）→
+     予定完了の時刻と、あと何分か・遅れ何分か → 次の予定。読む順と押す順はない（読むだけの面） */
+  function now(box, p, d, W, H) {
+    const eqs = d.equips || [];
+    if (!eqs.length) { box.innerHTML = '<p class="dp-empty">当たる設備がありません</p>'; return ""; }
+    const nowT = ms(d.now || ""), rowH = 52, fit = Math.max(1, Math.floor(H / rowH)), shown = eqs.slice(0, fit);
+    const left = (end) => { const m = Math.round((ms(end) - nowT) / 60000); return Number.isFinite(m) ? m : null; };
+    const hmOf = (t) => { const x = ms(t); return Number.isFinite(x) ? `${new Date(x).getDate() !== new Date(nowT).getDate() ? `${dayText(x)} ` : ""}${hm(x)}` : "–"; };
+    const rows = shown.map((e) => {
+      if (e.error) return `<div class="on-row is-err"><b class="on-eq">${esc(e.name)}</b><span class="on-why">読めません: ${esc(e.error)}</span></div>`;
+      const c = e.cur, stop = c && c.kind === "設備停止";
+      const tag = c ? (stop ? ["is-stop", "設備停止"] : ["is-run", "作業中"]) : ["is-idle", "待機"];
+      const m = c ? left(c.end) : null;
+      const due = c ? `<span class="on-due" title="予定完了＝作業スケジュールの予定終了">予定完了 <b>${esc(hmOf(c.end))}</b>${m == null ? "" : m >= 0 ? `<small>あと ${esc(WL.duration.text(m))}</small>` : `<small class="is-late">予定を ${esc(WL.duration.text(-m))} 過ぎています</small>`}</span>` : "";
+      const nx = e.next ? `<span class="on-next" title="次の予定（予定開始の順）">次 ${esc(e.next.name || e.next.kind || "予定")} <b>${esc(hmOf(e.next.start))}</b>〜</span>` : '<span class="on-next">次の予定なし</span>';
+      const name = c ? c.name || c.kind : "作業していません";
+      return `<div class="on-row"><b class="on-eq" title="${esc(e.name)}">${esc(e.name)}</b><span class="on-tag ${tag[0]}">${tag[1]}</span>`
+        + `<span class="on-main"><span class="on-name${c ? "" : " is-none"}" title="${esc(name)}">${esc(name)}</span>${due}</span>${nx}</div>`;
+    }).join("");
+    box.innerHTML = `<div class="on-wrap" role="list" aria-label="設備ごとのいまの作業">${rows}</div>`;
+    const more = eqs.length - shown.length;
+    return more > 0 ? `ほか ${more} 台（パネルを高くすると出ます）` : "";
+  }
+
+  WL.dashOps = { gantt, abc, now, badge, RANK, rankStyle, rankName };
 })();

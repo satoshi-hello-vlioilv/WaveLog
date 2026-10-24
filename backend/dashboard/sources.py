@@ -222,8 +222,26 @@ def _work_parts(kind, start, equips, basis):
 # ---- 測定データ（rec）: 列は実績データリストの候補（帳票と同じ1箇所・`actuals.catalog()`）＋芯の列
 # 芯の列は前の生産管理ダッシュボードの軸と指標（設備・作業人数・品種・用途名・オペレータ・入力内容・作業時間）を必ず持つ
 # （操業データ項目の顔ぶれで消えない）。同じ値の候補の列は出さない（_REC_SKIP）
+# §9.630 ④: 良品重量（kg）・縦割り数（丈数）・横割り数（条数）。品種（用途名 / 丈数×条数）を 3 つの列に分けて持つ（ABC 分析の組み合わせ）。
+# 良品重量は記録の操業データ「良品重量」→ 仕掛の行の「BOX実績_良品重量」→ 名前に「良品重量」を含む仕掛の列の順（測定を始めたときの写し）
 REC_CORE = ('記録ID', '設備名', 'ロット番号', '状態', REC_START, '作業終了', '作業時間（分）', '作業日', '直', '品種', '用途名',
-            '作業人数', 'オペレータ', '入力内容', '更新日時')
+            '縦割り数（丈数）', '横割り数（条数）', '良品重量', '作業人数', 'オペレータ', '入力内容', '更新日時')
+GOOD_WEIGHT = '良品重量'
+GOOD_WEIGHT_SOURCE = 'BOX実績_良品重量'
+
+
+def good_weight(item):
+ """記録 1 件の良品重量（数に読めなければ None。0 も 0 として返す）"""
+ op, src = item.get('opData') or {}, item.get('source') or {}
+ cands = [op.get(GOOD_WEIGHT), src.get(GOOD_WEIGHT_SOURCE)] + [v for k, v in src.items() if GOOD_WEIGHT in str(k) and k != GOOD_WEIGHT_SOURCE]
+ for v in cands:
+  try:
+   f = float(str(v).replace(',', '').strip())
+  except (TypeError, ValueError):
+   continue
+  if f == f:
+   return f
+ return None
 _REC_SKIP = {'calc.equipment', 'calc.workStart', 'calc.workEnd', 'calc.workDuration', 'calc.status', 'calc.updatedAt', 'calc.crewSize',
              'workTime.startAt', 'workTime.endAt', 'updatedAt', 'basic.lotNo', 'basic.purposeName', 'settings.crewSize', 'settings.operator',
              'settings.measureType', 'qualityInfo'}
@@ -253,7 +271,7 @@ def _rec_core(item):
  crew = str(st.get('crewSize') or '').strip()
  return [item.get('id') or '', item.get('equipment') or '', item.get('lotNo') or '', item.get('status') or '',
          _stamp(item.get('workStart')), _stamp(item.get('workEnd')), item.get('durationMin'), item.get('workDate') or '', item.get('shift') or '',
-         f'{purpose} / {v}丈×{h}条', purpose, f'{crew}名班' if crew and crew != '-' else '人数未設定',
+         f'{purpose} / {v}丈×{h}条', purpose, v, h, good_weight(item), f'{crew}名班' if crew and crew != '-' else '人数未設定',
          str(st.get('operator') or '').strip() or '-', str(st.get('measureType') or '').strip() or '-',
          _stamp(item.get('updatedAt') or item.get('updatedAtDb'))]
 
@@ -296,15 +314,28 @@ def minutes_of(m):
  return m.get('column') in MINUTE_COLUMNS and m.get('agg') in MINUTE_AGGS and not m.get('show')
 
 
-PLAN_CORE = ('設備名', '種類', '状態', 'ロット番号', '検査番号', '鋳造番号', '題名', PLAN_START, '予定終了', '見積（分）',
-             '経過（分）', '遅れ（分）', REC_START, '作業終了', '備考')
+# 作業名 … ロット番号（設備停止・申し送りは題名＝停止の名前）。ガントの棒の字・「いまの作業」の名前（§9.630）
+# 実績の出どころ … 作業開始・作業終了がどこから来たか（測定データ・手入力・実績データ〈完了突合で取り込んだ時刻〉・開始で自動…）
+PLAN_CORE = ('設備名', '種類', '状態', 'ロット番号', '検査番号', '鋳造番号', '題名', '作業名', PLAN_START, '予定終了', '見積（分）',
+             '経過（分）', '遅れ（分）', REC_START, '作業終了', '実績の出どころ', '備考')
+PLAN_END, WORK_END, WORK_NAME = '予定終了', '作業終了', '作業名'
+
+
+def actual_from(a):
+ """予定の行の実績（`schedule_calc._actual_view()`の形）→ 出どころの字。無ければ空"""
+ if not a or not a.get('startAt'):
+  return ''
+ if a.get('endFrom') == schedule_calc.JOIN_TIMES_FROM:
+  return '実績データ（取り込み）'
+ return str(a.get('source') or a.get('startFrom') or '測定データ')
 
 
 def _plan_core(eq, e):
  a = e.get('actual') or {}
  return [eq, e.get('kind') or '', e.get('state') or '', e.get('lotNo') or '', e.get('inspectionNo') or '', e.get('castingNo') or '',
-         e.get('title') or '', _stamp(e.get('plannedStart')), _stamp(e.get('plannedEnd')), (e.get('estimate') or {}).get('minutes'),
-         a.get('elapsedMinutes'), e.get('overdueMinutes') or 0, _stamp(a.get('startAt')), _stamp(a.get('endAt')), e.get('remark') or '']
+         e.get('title') or '', e.get('lotNo') or e.get('title') or '', _stamp(e.get('plannedStart')), _stamp(e.get('plannedEnd')),
+         (e.get('estimate') or {}).get('minutes'), a.get('elapsedMinutes'), e.get('overdueMinutes') or 0, _stamp(a.get('startAt')),
+         _stamp(a.get('endAt')), actual_from(a), e.get('remark') or '']
 
 
 def _plan_entries():

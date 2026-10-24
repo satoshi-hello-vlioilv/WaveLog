@@ -613,7 +613,7 @@
     d = calcd(p, d);
     const W = Math.max(60, Math.floor(size.w)), H = Math.max(40, Math.floor(size.h));
     look(box, p.fmt);
-    if (p.visual === "gantt" || p.visual === "abc") return d.kind === p.visual ? WL.dashOps[p.visual](box, p, d, W, H) : "";   // 稼働・ABC 分析（版 3.46.0。dashboard-ops.js）
+    if (p.visual === "gantt" || p.visual === "abc" || p.visual === "now") return d.kind === p.visual ? WL.dashOps[p.visual](box, p, d, W, H) : "";   // 稼働・ABC 分析（版 3.46.0）・いまの作業（§9.630。dashboard-ops.js）
     if (d.facets) return facets(box, p, d, W, H);
     if (p.visual === "slicer") return slicer(box, p, d, W, H);
     if (p.visual === "kpi") { kpi(box, p, d, W, H, sub); return ""; }
