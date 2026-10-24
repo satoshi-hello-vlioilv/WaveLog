@@ -44,7 +44,7 @@ run('test_acinput: 測定実績の列（入力した項目を左・作業開始�
    const cols=WL.actuals.columns(),use=new Map(cols.map(c=>[c.k,kind(c)]));
    /* この期間に値の無い列は帯の「出す ▸」の1押しで出る（§9.630 の 7 回目）。その列も「出ている」に数える */
    const head=[...document.querySelectorAll('#acList .ac-row.head>span')].map(s=>s.dataset.col);
-   const fold=document.querySelector('#acHead [data-fold]'),shown=head.concat(fold?(fold.title||'').split('・').filter(Boolean):[]);
+   const fold=document.querySelector('#acGuide [data-fold]'),shown=head.concat(fold?(fold.title||'').split('・').filter(Boolean):[]);
    const inputs=cols.filter(c=>kind(c)==='input').map(c=>c.k);
    const lastInput=Math.max(-1,...head.map((k,i)=>use.get(k)==='input'||use.get(k)==='app'?i:-1));
    const joinedLeft=head.filter((k,i)=>use.get(k)==='joined'&&i<lastInput).length;
@@ -57,19 +57,20 @@ run('test_acinput: 測定実績の列（入力した項目を左・作業開始�
   rec(`結合で写しただけの列は入力した項目より右（左にある数 ${m.joinedLeft}）`,m.joinedLeft===0);
   rec(`同じ値の列を2つ並べない（${m.dup}）`,m.dup===0);
   /* 値の無い列: 帯の「出す ▸」で全部出る・「外す ◂」で戻る */
-  const nFold=await page.evaluate(()=>{const f=document.querySelector('#acHead [data-fold]');return f?(f.title||'').split('・').filter(Boolean).length:0});
+  const nFold=await page.evaluate(()=>{const f=document.querySelector('#acGuide [data-fold]');return f?(f.title||'').split('・').filter(Boolean).length:0});
   if(nFold){
    const n0=await page.evaluate(()=>document.querySelectorAll('#acList .ac-row.head>span').length);
-   await page.click('#acHead [data-fold]');
-   await page.waitForFunction(()=>(document.querySelector('#acHead [data-fold]')||{}).getAttribute?.('aria-pressed')==='true',null,{timeout:8000});
+   await page.click('#acGuide [data-fold]');
+   await page.waitForFunction(()=>(document.querySelector('#acGuide [data-fold]')||{}).getAttribute?.('aria-pressed')==='true',null,{timeout:8000});
    const n1=await page.evaluate(()=>document.querySelectorAll('#acList .ac-row.head>span').length);
    rec(`値の無い列は帯の1押しで全部出る（${n0}→${n1}列・${nFold}列）`,n1===n0+nFold);
-   await page.click('#acHead [data-fold]');
+   await page.click('#acGuide [data-fold]');
    await page.waitForFunction(n0=>document.querySelectorAll('#acList .ac-row.head>span').length===n0,n0,{timeout:8000});
    rec('もう1押しで外れる',true);
   }
-  const fixL=await page.evaluate(()=>{const l=document.getElementById('acList');l.scrollLeft=l.scrollWidth;const h=l.querySelector('.ac-row.head>span[data-col="ロット番号"]');const r=h.getBoundingClientRect(),lr=l.getBoundingClientRect();l.scrollLeft=0;return r.left>=lr.left-1&&r.right<=lr.right});
-  rec('横に送ってもロット番号の列は残る',fixL);
+  /* 横に送っても留める列は持たない（§9.631 ①、利用者の指示「変に固定せず素直な挙動に」。§9.630 の「ロット番号の列は残る」を撤回） */
+  const stuck=await page.evaluate(()=>[...document.querySelectorAll('#acList .ac-row>span')].filter(c=>{const s=getComputedStyle(c);return s.position==='sticky'&&s.left!=='auto'}).length);
+  rec(`横に送ると留まる列は無い（${stuck}）`,stuck===0);
   rec('並べていない見出しにも並べ替えの印（⇅）',await page.evaluate(()=>/⇅/.test((document.querySelector('#acList .ac-row.head>span[data-col="ロット番号"]')||{}).textContent||'')));
   const order=()=>page.evaluate(TAG=>[...document.querySelectorAll('#acList .ac-row:not(.head)')].map(r=>r.textContent).filter(t=>t.includes(TAG))
     .map(t=>(t.match(new RegExp(TAG+'L(\\d)'))||[])[1]).join(''),TAG);

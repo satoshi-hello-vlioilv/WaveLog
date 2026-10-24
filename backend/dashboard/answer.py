@@ -84,8 +84,9 @@ def _remember(key, make):
 
 
 def forget():
- """控えた答えを捨てる（網・データを入れ替えたとき）"""
+ """控えた答えと写しの控えを捨てる（網・データを入れ替えたとき）"""
  _cache.clear()
+ sources.forget()
 
 
 def _count(p, parts, ctx, egroups, sets):

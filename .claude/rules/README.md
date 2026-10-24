@@ -20,7 +20,7 @@ CLAUDE.md の「画面を作るときの基準」（15項目）と、それをWa
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](api.md) | 23 |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](master-server.md) | 38 |
 | マスタ管理の画面・盤・編集モーダル | [master-ui.md](master-ui.md) | 84 |
-| `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 188 |
+| `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 191 |
 | 測定画面・操業データ項目・公差・条の設計 | [measure.md](measure.md) | 117 |
 | 刃組ガイダンス（`blade-*.js`）・部材・刃選択 | [bladeset.md](bladeset.md) | 266 |
 | 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 128 |
@@ -28,7 +28,7 @@ CLAUDE.md の「画面を作るときの基準」（15項目）と、それをWa
 | `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 70 |
 | 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 78 |
 | テストを書く・回す・後片付け | [testing.md](testing.md) | 65 |
-| どの束にも入らないもの（ダッシュボード） | [misc.md](misc.md) | 35 |
+| どの束にも入らないもの（ダッシュボード） | [misc.md](misc.md) | 36 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **1376件**（`ui-principles.md` は節で数える）。
+規則は合わせて **1380件**（`ui-principles.md` は節で数える）。

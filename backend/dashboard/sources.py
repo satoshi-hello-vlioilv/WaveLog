@@ -144,7 +144,9 @@ def _src_parts(key, equips):
 
 # ---------------------------------------------------------------- 写して数える元（rec・plan）
 _lock = threading.Lock()
-_made = {}          # 元 → (署名, ファイル, 表の並び [(設備, 表)])
+_made = {}          # 元 → (署名, ファイル, 表の並び [(設備, 表)], 材料の指紋)
+# 元ごとに作るのは同時に1本（§9.631 ③）。画面はパネルを全部いっせいに問い合わせるので、錠が無いとパネルの数だけ同じ写しを同時に作っていた
+_build_locks = {REC: threading.Lock(), PLAN: threading.Lock()}
 KEEP_FILES = 3      # 前の写しを残す数（数えている最中の問い合わせが読み終えるまで消さない）
 
 
@@ -194,16 +196,51 @@ def _cell(v):
  return '' if isinstance(v, (dict, list)) else str(v)
 
 
+def _stat(path):
+ try:
+  st = os.stat(path)
+  return [str(path), st.st_mtime_ns, st.st_size]
+ except OSError:
+  return [str(path), 0, 0]
+
+
+def _inputs(kind):
+ """材料の指紋（§9.631 ③）: 写しを作る材料が変わったかを、作らずに見分ける安い答え。**共有には触れない**（手元のファイルの署名だけ）。
+ 測定データ … 記録の読みの版（`backup_rows_version()`）と master.sqlite3（列の候補・設備の並び・勤務体系）。
+ 作業予定 … それに手元の予定の写し（`SCHEDULE_CACHE_PATH`）と「いま」の分（予定の時刻は「いま」から引き直す・§9.198）。
+ 共有の予定を写し直すか確かめる（`fetch_snapshot()`）のは作り直すときだけ＝1分に1回まで（前はパネル1枚の問い合わせごと）"""
+ base = [db_access.backup_rows_version(), _stat(db_access.DBS['MASTER']['path'])]
+ if kind == REC:
+  return base
+ return base + [_stat(schedule_sync.SCHEDULE_CACHE_PATH), datetime.now().strftime('%Y-%m-%d %H:%M')]
+
+
 def _made_for(kind, build):
- """kind の写し。build() → (署名, {設備: (列, 行)})。署名が同じなら前の写し"""
- sig, by_equip = build()
+ """kind の写し。材料の指紋が前と同じなら作らずに前の写し（§9.631 ③: 前はパネル1枚の問い合わせごとに全部の記録・予定から作り直していた）。
+ build() → (署名, {設備: (列, 行)})。作った署名が同じなら前のファイル"""
+ key = _inputs(kind)
+ with _build_locks[kind]:
+  with _lock:
+   hit = _made.get(kind)
+   if hit and hit[3] == key and hit[1].exists():
+    return hit[1], hit[2]
+  sig, by_equip = build()
+  # 指紋は作った後に取り直す: 作業予定は作る中で手元の写しを新しくする（`fetch_snapshot()`）ので、前の指紋のままだと次の問い合わせでもう1回作る。
+  # 作ったあとに入った変更は、記録なら版・予定なら「分」が変わって1分以内に拾う
+  key = _inputs(kind)
+  with _lock:
+   if hit and hit[0] == sig and hit[1].exists():
+    _made[kind] = (sig, hit[1], hit[2], key)
+    return hit[1], hit[2]
+   path, tables_ = _write(kind, sig, by_equip)
+   _made[kind] = (sig, path, tables_, key)
+   return path, tables_
+
+
+def forget():
+ """作った写しの控えを捨てる（網・データを入れ替えたとき）"""
  with _lock:
-  hit = _made.get(kind)
-  if hit and hit[0] == sig and hit[1].exists():
-   return hit[1], hit[2]
-  path, tables_ = _write(kind, sig, by_equip)
-  _made[kind] = (sig, path, tables_)
-  return path, tables_
+  _made.clear()
 
 
 def _work_parts(kind, start, equips, basis):
@@ -253,7 +290,8 @@ def rec_columns():
  out, seen = [(n, '') for n in REC_CORE], set(REC_CORE)
  for g in actuals.catalog('').get('groups') or []:
   for it in g.get('items') or []:
-   path, label = str(it.get('key') or ''), str(it.get('label') or '').strip()
+   # 候補の道は`path`（§9.631 ③: 前は`key`を読んでいて、候補の列が1本も入っていなかった＝芯の列だけで数えていた）
+   path, label = str(it.get('path') or ''), str(it.get('label') or '').strip()
    if not path or not label or path in _REC_SKIP:
     continue
    name = label if label not in seen else f'{label}（{g.get("group") or path}）'
@@ -317,8 +355,9 @@ def minutes_of(m):
 
 # 作業名 … ロット番号（設備停止・申し送りは題名＝停止の名前）。ガントの棒の字・「いまの作業」の名前（§9.630）
 # 実績の出どころ … 作業開始・作業終了がどこから来たか（測定データ・手入力・実績データ〈完了突合で取り込んだ時刻〉・開始で自動…）
+# 記録ID … この行に当たった測定の記録（`actualRecordId`）。測定実績の一覧が、ガントと同じ作業開始・作業終了を記録へ添えるのに使う（§9.631 ②）
 PLAN_CORE = ('設備名', '種類', '状態', 'ロット番号', '検査番号', '鋳造番号', '題名', '作業名', PLAN_START, '予定終了', '見積（分）',
-             '経過（分）', '遅れ（分）', REC_START, '作業終了', '実績の出どころ', '備考')
+             '経過（分）', '遅れ（分）', REC_START, '作業終了', '実績の出どころ', '備考', '記録ID')
 PLAN_END, WORK_END, WORK_NAME = '予定終了', '作業終了', '作業名'
 
 
@@ -336,7 +375,7 @@ def _plan_core(eq, e):
  return [eq, e.get('kind') or '', e.get('state') or '', e.get('lotNo') or '', e.get('inspectionNo') or '', e.get('castingNo') or '',
          e.get('title') or '', e.get('lotNo') or e.get('title') or '', _stamp(e.get('plannedStart')), _stamp(e.get('plannedEnd')),
          (e.get('estimate') or {}).get('minutes'), a.get('elapsedMinutes'), e.get('overdueMinutes') or 0, _stamp(a.get('startAt')),
-         _stamp(a.get('endAt')), actual_from(a), e.get('remark') or '']
+         _stamp(a.get('endAt')), actual_from(a), e.get('remark') or '', e.get('actualRecordId') or '']
 
 
 def _plan_entries():
@@ -372,6 +411,24 @@ def plan_rows():
   rows = [_plan_core(eq, e) + [_cell((e.get('detail') or {}).get(k)) for k in extra] for e in entries if e.get('parentId') is None]
   by[eq] = (names, rows)
  return _sig([names, now.strftime('%Y-%m-%d %H:%M'), by]), by
+
+
+def plan_times():
+ """記録ID → {start, end, from}: 予定の行に当たった記録の、ガントと同じ作業開始・作業終了（§9.631 ②）。
+ 材料はダッシュボードの作業予定の写し（作るのは材料が変わったときだけ・共有の予定を確かめるのは1分に1回まで）。
+ 作業予定の共有先が未設定・読めないときは空（測定実績は記録の時刻だけで出す）"""
+ try:
+  path, tables_ = _made_for(PLAN, plan_rows)
+ except SourceFail as f:
+  quiet('作業予定を読めない（記録の時刻だけで出す）', f.error)
+  return {}
+ out = {}
+ with connect(path, True, 'sqlite') as c:
+  for _eq, t in tables_:
+   for rid, st, en, frm in c.execute(f'SELECT {qi("記録ID")},{qi(REC_START)},{qi(WORK_END)},{qi("実績の出どころ")} FROM {qi(t)}'):
+    if rid and (st or en):
+     out[str(rid)] = {'start': st or '', 'end': en or '', 'from': frm or ''}
+ return out
 
 
 # ---------------------------------------------------------------- 入口
