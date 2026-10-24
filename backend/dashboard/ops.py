@@ -624,6 +624,13 @@ def ops_answer(p, ctx):
     hit = answer._remember(key, lambda: _ops_count(p, answer.order_parts(parts, p.get("eorder")), o, period, now))
     if "error" in hit:
         return hit
+    if p["visual"] == "gantt" and plan_layer(p, o):
+        # 予定と実績のガントの出どころ: 予定は作業予定・実績の棒は行の実績（測定データ・手入力・取り込み…）。どこから来た時刻かを推測させない
+        froms = {}
+        for e in hit.get("equips") or []:
+            for k, n in (e.get("from") or {}).items():
+                froms[k] = froms.get(k, 0) + n
+        name = f"{name}（実績: {'・'.join(sorted(froms, key=lambda k: -froms[k]))}）" if froms else name
     return {**hit, "failed": failed + hit.get("skipped", []), "sourceName": name, "now": stamp}
 
 
@@ -631,6 +638,17 @@ def ops_answer(p, ctx):
 # 設備ごとに、いま動いている行（状態が着手＝作業中のロットか設備停止）と、その予定完了（予定終了）。動いていなければ次の予定。
 # 元は作業予定だけ（作業スケジュールの予定の行。予定完了の時刻を持つのは予定だけ）。条件（filters・search）はほかのパネルと同じに効く
 NOW_COLUMNS = ("種類", "状態", sources.WORK_NAME, sources.PLAN_START, sources.PLAN_END, sources.REC_START, "遅れ（分）", "経過（分）", "見積（分）")
+
+
+def due_of(x):
+    """予定完了の時刻: 作業中の行は 作業開始＋見積（予定の計算では作業中の予定終了はいつも「いま」＝schedule_calc._ongoing。
+    見積を超えた分は遅れ（分））。ほかは予定終了。§9.630 の採点: 予定完了がいまの時刻に張り付いて読めなかった"""
+    st, est = x.get(sources.REC_START), x.get("見積（分）")
+    if x.get("状態") == "着手" and st and isinstance(est, (int, float)):
+        t = _dt(str(st))
+        if t:
+            return _iso(t + timedelta(minutes=float(est)))
+    return x.get(sources.PLAN_END) or ""
 
 
 def now_count(p, parts, now):
@@ -656,11 +674,32 @@ def _now_one(p, part, now):
         return {"name": part.name, "error": str(e), "cur": None, "next": None}
     items = [dict(zip(NOW_COLUMNS, r)) for r in rows]
     one = lambda x: {"kind": x["種類"] or "", "name": str(x[sources.WORK_NAME] or ""), "start": x[sources.REC_START] or x[sources.PLAN_START] or "",   # noqa: E731
-                     "end": x[sources.PLAN_END] or "", "late": x["遅れ（分）"] or 0, "elapsed": x["経過（分）"], "estimate": x["見積（分）"]}
+                     "end": due_of(x), "late": x["遅れ（分）"] or 0, "elapsed": x["経過（分）"], "estimate": x["見積（分）"]}
     cur = sorted((x for x in items if x["状態"] == "着手"), key=lambda x: str(x[sources.REC_START] or ""), reverse=True)
     nxt = sorted((x for x in items if x["状態"] == "予定" and x[sources.PLAN_START]), key=lambda x: str(x[sources.PLAN_START]))
-    return {"name": part.name, "cur": one(cur[0]) if cur else None, "next": one(nxt[0]) if nxt else None, "more": max(0, len(cur) - 1),
-            "left": len([x for x in items if x["状態"] == "予定"])}
+    shift = push_of(cur[0], now) if cur else timedelta(0)
+    n1 = one(nxt[0]) if nxt else None
+    if n1 and shift:
+        n1["start"] = _shifted(n1["start"], shift, now)
+    return {"name": part.name, "cur": one(cur[0]) if cur else None, "next": n1, "more": max(0, len(cur) - 1),
+            "left": len([x for x in items if x["状態"] == "予定"]), "rows": len(items),     # rows … 予定の行の数（0＝予定が無い・ある＝残りが無い）
+            "shift": round(shift.total_seconds() / 60, 1)}
+
+
+def push_of(x, now):
+    """作業中の行の後ろの予定をずらす量（§9.630 の採点: 予定完了 4:57 なのに次の予定が 4:00 から始まって見えた）。
+    作業スケジュールの計算は作業中の作業の後ろを「いま」から並べ直す（schedule_calc._ongoing）。ダッシュボードの予定の枠と「次」は、
+    作業中の作業の予定完了（作業開始＋見積）が先ならその分だけ後ろへ見せる（作業スケジュールの計算そのものは変えない）。設備停止は計算が既に見積の終わりから並べる"""
+    if x.get("種類") == "設備停止":
+        return timedelta(0)
+    t = _dt(str(due_of(x) or ""))
+    return max(timedelta(0), t - now) if t else timedelta(0)
+
+
+def _shifted(stamp, shift, now):
+    """いまより後に始まる予定だけをずらす（いまより前に始まった・作業中の行は動かさない）"""
+    t = _dt(str(stamp or ""))
+    return _iso(t + shift) if t and t >= now - timedelta(minutes=1) else stamp
 
 
 def _ops_head(p, period, rng, start_col, end_col, equips, skipped):
@@ -697,24 +736,36 @@ def _gantt_one(p, part, o, period, now):
     wd = work_days(clock, *r["range"], basis) if r["range"] else []
     g = gantt(part.name, r, wins, label=label or r["lot"] or "", color=o.get("color") or "", days=wd)
     if layered:
-        g["plans"] = _plan_bars(p, part, period, now, label, g["view"])
+        nw = _now_one(p, part, now)
+        g["plans"] = _plan_bars(p, part, period, now, label, g["view"], timedelta(minutes=nw.get("shift") or 0))
         g["from"] = _from_counts(r)
+        # いまの作業（作業中のロットか設備停止と予定完了・次の予定）を行の名前の下に（「いまの作業」のパネルと同じ答え・§9.630 の採点:
+        # 同じ設備のことを 2 枚のパネルに分けて言わない）
+        if o.get("nowRow") is not False:
+            g["now"] = {k: v for k, v in nw.items() if k != "name"}
     return r, {**g, "pattern": "勤務体系" if clock.segments else ""}
 
 
-def _plan_bars(p, part, period, now, label, view):
+def _plan_bars(p, part, period, now, label, view, shift=timedelta(0)):
     """まだ終わっていない行（予定・作業中）の予定の棒 → [[始め, 終わり, 字, 状態, 遅れ（分）]]（予定開始の順・見る範囲に掛かる物だけ）。
     稼働率・本数には入れない（予定は稼働していない）"""
     flt = list(p["filters"]) + [{"column": "状態", "op": "neq", "value": "完了"}]
     r = read_ops(part, search=p["search"], filters=json.dumps(flt, ensure_ascii=False), today=now.date(), calc=p.get("calc"),
-                 period=period, now=now, start=sources.PLAN_START, end=sources.PLAN_END, cols=[c for c in (label, "状態", "遅れ（分）") if c], reach=True)
+                 period=period, now=now, start=sources.PLAN_START, end=sources.PLAN_END, cols=[c for c in (label, "状態", "遅れ（分）", "見積（分）") if c], reach=True)
     lo, hi = (datetime.fromisoformat(view[0]), datetime.fromisoformat(view[1])) if view else (None, None)
     out = []
     for x in r["ops"]:
         if x["end"] is None or x.get("running") or (lo and (x["end"] <= lo or x["start"] >= hi)):
             continue
         v = x["values"]
-        out.append([_iso(x["start"]), _iso(x["end"]), str(v.get(label) or "") if label else "", str(v.get("状態") or ""), v.get("遅れ（分）") or 0])
+        start, end = x["start"], x["end"]
+        if v.get("状態") == "着手" and isinstance(v.get("見積（分）"), (int, float)):
+            end = start + timedelta(minutes=float(v["見積（分）"]))       # 作業中の予定は 始まり＋見積（予定終了は「いま」なので）
+        elif shift and start >= now - timedelta(minutes=1):
+            start, end = start + shift, end + shift                     # 作業中の作業の予定完了の後ろへ（push_of）
+        if lo and start >= hi:
+            continue
+        out.append([_iso(start), _iso(end), str(v.get(label) or "") if label else "", str(v.get("状態") or ""), v.get("遅れ（分）") or 0])
         if len(out) >= MAX_OPS:
             break
     return out

@@ -658,6 +658,9 @@ def clean_ops(v):
     # 予定と実績を 1 つのガントに（§9.630 ②。作業予定の元だけ）: 実績（作業開始〜作業終了）の棒に、まだ終わっていない行の予定（予定開始〜予定終了）を重ねる
     if v.get("plan") is True:
         out["plan"] = True
+    # 行の名前の下にいまの作業を書かない（同じダッシュボードに「いまの作業」のパネルがあるとき。2 か所に出さない）
+    if v.get("nowRow") is False:
+        out["nowRow"] = False
     # 基準の期間（地点 A。版 3.49.0。利用者の要望 2026-10-21 の 4 回目の 3）: この期間の換算係数で、パネルの期間（地点 B）の本数を換算する
     ref = _period({**v["refPeriod"], "column": "@workday"}) if isinstance(v.get("refPeriod"), dict) else None
     if ref:
@@ -877,16 +880,16 @@ KIND_COLS = ["用途名", "縦割り数（丈数）", "横割り数（条数）"
 PRODUCTIVITY = {"agg": "ratio", "column": "良品重量", "per": WORK_TIME, "expr": "×60", "dec": 1}
 
 BUILTIN_LAYOUTS = [
-    # 最初の画面（BUILTIN_DEFAULT・§9.630 ④）: いまの作業（作業中のロットか設備停止と予定完了）・本日と今月の数・予定と実績のガント・今月の ABC
+    # 最初の画面（BUILTIN_DEFAULT・§9.630 ④）: 本日と今月の数・予定と実績のガント（行の名前の下にいまの作業と予定完了）・今月の ABC
     {"key": "home", "name": "生産の状況", "body": {"rows": 8, "panels": [
         _pv("todayLots", 0, 0, 3, 1, "本日の作業ロット", "kpi", "rec", period=TODAY),
         _pv("todayWeight", 3, 0, 3, 1, "本日の良品重量", "kpi", "rec", measures=[{"agg": "sum", "column": "良品重量"}], period=TODAY, fmt={"utext": "kg"}),
         _pv("monthLots", 6, 0, 3, 1, "今月の作業本数", "kpi", "rec", period=THIS_MONTH, fmt={"utext": "本"}),
         _pv("monthRate", 9, 0, 3, 1, "今月の生産性", "kpi", "rec", measures=[PRODUCTIVITY], period=THIS_MONTH, fmt={"utext": "kg/時"}),
-        _pv("now", 0, 1, 4, 3, "いまの作業", "now", "plan", measures=[{"agg": "count"}]),
-        _pv("planGantt", 4, 1, 8, 3, "きょうの予定と実績", "gantt", "plan", measures=[{"agg": "count"}], period=TODAY, ops={"plan": True}),
+        _pv("planGantt", 0, 1, 12, 3, "本日の予定と実績", "gantt", "plan", measures=[{"agg": "count"}], period=TODAY, ops={"plan": True}),
+        # 負荷比は本数比と並ぶと読み分けにくいので伏せる（占有時間・換算係数・換算本数は残す。基準が何に効くか読めるように）
         _pv("monthAbc", 0, 4, 12, 4, "今月の品種の ABC 分析（用途名 × 丈数 × 条数）", "abc", "rec", measures=[{"agg": "count"}], period=THIS_MONTH,
-            ops={"cls": KIND_COLS, "qty": "lots"}),
+            ops={"cls": KIND_COLS, "qty": "lots", "hide": ["lshare"]}),
     ]}},
     # 前の既定（§9.64）。前の「稼働状況」: 作業予定と進み具合（予定・作業中・遅れ）と、きょうの作業の棒（ガント）
     {"key": "status", "name": "稼働状況", "body": {"rows": 8, "panels": [

@@ -469,7 +469,7 @@ class Part:
 
 
 # 期間（版 3.37.0。ダッシュボードのパネル）: 日付の列か作業日（現場歴／太陽暦）の「いま」から決める日の範囲
-PERIODS = {"today": "今日", "yesterday": "前日", "days": "直近 n 日", "this_month": "今月", "last_month": "先月",
+PERIODS = {"today": "今日", "yesterday": "前日", "days": "直近 n 日", "ahead": "今日から n 日", "this_month": "今月", "last_month": "先月",
            "month": "n か月前", "range": "日付で決める"}     # range（版 3.49.0）… from〜to（'YYYY-MM-DD'。両端を含む）     # month（版 3.41.0。ダッシュボードのスライサーで月を送る）… n か月前の月のはじめから終わりまで
 PERIOD_MAX_DAYS = 3660
 
@@ -491,6 +491,9 @@ def period_range(kind, n, today, frm="", to=""):
     if kind == "days":
         n = max(1, min(PERIOD_MAX_DAYS, int(n or 7)))
         return (d - timedelta(days=n - 1)).isoformat(), today
+    if kind == "ahead":          # 今日から n 日（§9.630: 予定と実績のガントで先の予定まで見る）
+        n = max(1, min(PERIOD_MAX_DAYS, int(n or 2)))
+        return today, (d + timedelta(days=n - 1)).isoformat()
     if kind == "this_month":
         return d.replace(day=1).isoformat(), today
     if kind == "last_month":

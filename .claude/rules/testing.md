@@ -1,4 +1,4 @@
-# 検証（テスト）（64件）
+# 検証（テスト）（65件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -13,6 +13,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 網の土台は起動時の画面を「仕掛一覧」にして始める（網が作る文脈にも）。既定（ダッシュボード）を見る網は`start:'dashboard'` | `test_homenav.js` | [§9.630](../../docs/decisions/9.630.md) |
 | 網が借りるマスタの行（検証用設備の停止内容）はフィクスチャが中身ごと戻す（`make_fixture`の`_STOP_FIX`） | `test_actualmatch.py`・`test_scstop.js` | [§9.595](../../docs/decisions/9.595.md)・[§9.598](../../docs/decisions/9.598.md) |
 | 字の寸法を見る網が落ちたら書体のせいにせず、決め打ちの寸法（px・em の係数・式の変数の`parseFloat`）を疑う | `test_fit.js`・`test_listperf.js` | [§9.594](../../docs/decisions/9.594.md) |
 | 左メニューの行き先は`W.nav(page,sel)`で押す（全幅の画面＝マスタ管理は左を伏せるので「戻る」で出てから） | `test_mmshell.js` | [§9.593](../../docs/decisions/9.593.md) |

@@ -108,29 +108,32 @@
   {k:'鋳造番号',track:'minmax(84px,1fr)',get:x=>x.castingNo||'',covers:['basic.castingNo']},
   {k:'状態',def:1,track:'78px',get:x=>x.status||'',covers:['calc.status']},
   /* 作業開始・作業終了は測定画面で押して記録した時刻（`workTime`・§9.630 ①）。候補の「作業開始時刻」等は同じ値なので並べない（covers） */
-  {k:'作業開始',def:1,track:'132px',get:x=>localStamp(x.workStart),covers:['workTime.startAt','calc.workStart'],
+  /* 日時の列は「2026-10-01 08:00」が切れない規格の幅（--w-md・§9.630 の採点: 132px で「08:…」と切れていた） */
+  {k:'作業開始',def:1,use:'input',track:'var(--w-md)',get:x=>localStamp(x.workStart),covers:['workTime.startAt','calc.workStart'],
    note:'測定画面の「作業開始」で記録した時刻です。'},
-  {k:'作業終了',def:1,track:'132px',get:x=>localStamp(x.workEnd),covers:['workTime.endAt','calc.workEnd'],
+  {k:'作業終了',def:1,use:'input',track:'var(--w-md)',get:x=>localStamp(x.workEnd),covers:['workTime.endAt','calc.workEnd'],
    note:'測定画面の「作業終了」で記録した時刻です。'},
-  {k:'実働(分)',def:1,track:'80px',cls:'ac-num',get:x=>(x.durationMin==null?'':x.durationMin),covers:['calc.workDuration']},
+  {k:'実働(分)',def:1,use:'input',track:'80px',cls:'ac-num',get:x=>(x.durationMin==null?'':x.durationMin),covers:['calc.workDuration']},
   {k:'使用設備',track:'minmax(96px,1fr)',get:x=>x.equipment||'',covers:['calc.equipment']},
   {k:'更新者',def:1,track:'96px',get:x=>x.updatedBy||''},
   {k:'更新端末',track:'110px',get:x=>x.updatedPc||''},
   {k:'登録者',track:'96px',get:x=>x.createdBy||''},
   {k:'登録端末',track:'110px',get:x=>x.createdPc||''},
-  {k:'更新日時',track:'146px',get:x=>localStamp(x.updatedAt)||x.updatedAtDb||'',covers:['updatedAt','calc.updatedAt']},
+  {k:'更新日時',track:'var(--w-md)',get:x=>localStamp(x.updatedAt)||x.updatedAtDb||'',covers:['updatedAt','calc.updatedAt']},
   {k:'日付(太陽暦)',track:'110px',get:x=>x.calDate||''},
   {k:'日付の出どころ',track:'118px',get:x=>({start:'作業開始',end:'作業終了',updated:'更新時刻'}[x.workDateFrom]||''),
    note:'現場日をどの時刻から決めたかです。同じ日付でも当たる見込みが違います。'},
   {k:'記録ID',track:'minmax(140px,1fr)',get:x=>x.id||''},
-  {k:'操作',virtual:true,def:1,track:'128px',cls:'ac-act'},
+  /* 帳票は行を押して選び、上の「選んだ行の帳票」で刷る・行を2回押すとその1件の帳票（§9.630 の採点: 125px の列に 40px のボタンが
+     行の数だけ並び、入力した項目を右へ押した）。列は「表示列」で出せる */
+  {k:'操作',virtual:true,track:'var(--w-xs)',cls:'ac-act'},
  ];
  /* 値を持たない列（§9.105。**「出す/出さない」には従う**）。形は
     データ一覧の`RECORD_VIRTUAL`と同じ**辞書**——列の設定パネルが
     `panelSrc.virtual()[k].label` で引く。 */
  const AC_VIRTUAL={
   '#':{label:'#（行番号）',note:'絞り込んだあとの並びで数えた番号と、帳票をまとめて刷るための選択です。'},
-  '操作':{label:'操作',note:'この記録の測定帳票を開くボタン。消しても、上の「選択した帳票」からは刷れます。'},
+  '操作':{label:'操作',note:'この記録の測定帳票を開くボタン。出さなくても、行を2回押すと帳票が開きます（まとめて刷るのは上の「選んだ行の帳票」）。'},
  };
  const AC_VIRTUAL_KEYS=new Set(Object.keys(AC_VIRTUAL));
 
@@ -195,12 +198,33 @@
     直接的に使用されていないデータは列右側へ」）。固定の列・入力した項目（左）→ それから作った値 → 結合で写しただけ（右）。
     群の使い方はサーバーが答える（`actuals.group_use()`の1箇所）。 */
  const USE_RANK={app:0,input:1,calc:2,joined:3};
+ /* いま読んだ記録で値のある列（入力した項目の中は値のある列を先に・値の無い列はその後ろ。帯が数で言う）。読み直すたびに1回だけ数える */
+ let filledMemo={items:null,set:new Set()};
+ function filledKeys(){
+  /* 控えは読んだ記録の並びそのもので見る（世代と件数で見ると、値を頼み直した2回目の読み込みで前の空の答えを使った・2回目の採点） */
+  if(filledMemo.items===acState.items)return filledMemo.set;
+  const set=new Set(),cols=allColumns().filter(c=>!c.virtual);
+  acState.items.forEach((x,i)=>{const v=rowView(x,i);cols.forEach(c=>{if(!set.has(c.k)&&v[c.k]!==''&&v[c.k]!=null)set.add(c.k)})});
+  filledMemo={items:acState.items,set};
+  return set;
+ }
+ /* 数の列（値のある行が全部数）。右寄せにする（ほかの表と同じ） */
+ function numericKeys(){
+  if(numMemo.items===acState.items)return numMemo.set;
+  const ok=new Map();
+  acState.items.forEach((x,i)=>{const v=rowView(x,i);Object.keys(v).forEach(k=>{const t=v[k];if(t===''||t==null||ok.get(k)===false)return;ok.set(k,typeof t==='number'||/^-?[\d,]+(\.\d+)?$/.test(String(t).trim()))})});
+  numMemo={items:acState.items,set:new Set([...ok].filter(([,v])=>v).map(([k])=>k))};
+  return numMemo.set;
+ }
+ let numMemo={items:null,set:new Set()};
  /* 列名 → 使い方（1回の描画で1回だけ作る。列ごとに候補を作り直さない） */
  const useMap=()=>new Map(allColumns().map(c=>[c.k,c.use||'app']));
  /* 並べる順: 使い方の順 → 同じ使い方の中は保存した並び（無ければ候補の順）。固定の列の`#`は先頭、`操作`は入力の後ろ */
  function orderKeys(keys){
   const saved=(WL.columnLayout.get(AC_TARGET)||{}).order||[],at=new Map(saved.map((k,i)=>[k,i])),nat=new Map(keys.map((k,i)=>[k,i]));
-  const use=useMap(),rank=k=>k==='#'?-1:k==='操作'?USE_RANK.input+0.5:USE_RANK[use.get(k)||'app']??0;
+  const use=useMap(),filled=filledKeys();
+  /* 値の無い列（記録の基本・入れた項目）は入れた項目の後ろ（帯が「この期間は値なし」と言う）。作った値・写した値はその右 */
+  const rank=k=>{if(k==='#')return -1;if(k==='操作')return -0.5;const u=use.get(k)||'app',r=USE_RANK[u]??0;return (u==='input'||u==='app')&&!filled.has(k)?USE_RANK.input+0.5:r};
   return keys.slice().sort((a,b)=>rank(a)-rank(b)||(at.has(a)&&at.has(b)?at.get(a)-at.get(b):at.has(a)?-1:at.has(b)?1:nat.get(a)-nat.get(b)));
  }
  /* 道 → 列名。**引くのは1箇所**（設定パネルの説明も一覧のセルもここを見る）。 */
@@ -257,8 +281,13 @@
  function trackOf(k){
   const w=WL.columnLayout.width(AC_TARGET,k);
   if(w)return `${w}px`;
-  const c=columnOf(k);
-  return (c&&c.track)||'minmax(84px,1fr)';
+  const c=columnOf(k),t=(c&&c.track)||'minmax(84px,1fr)';
+  /* 伸びる列の下限は見出しの字の幅（§9.630 の採点: 「オペレ…」と切れていた）。全角 1em・半角 0.55em＋余白と並べ替えの印 */
+  if(!/^minmax\(84px/.test(t))return t;
+  const em=[...labelOf(k)].reduce((a,ch)=>a+(/[ -~]/.test(ch)?0.55:1),0);
+  /* 数の列は伸ばさない（見出しの字の幅か 5em の広いほう・2回目の採点: 縦割数・横割数の間が空きすぎて横に送る量が増えた） */
+  if(numericKeys().has(k))return `max(5em,calc(${em.toFixed(2)}em + 28px))`;
+  return `minmax(max(84px,calc(${em.toFixed(2)}em + 28px)),1fr)`;
  }
  function labelOf(k){return WL.columnLayout.label(AC_TARGET,k)||k}
 
@@ -492,23 +521,26 @@
   if(acState.view==='stack'){renderStack(list);return}
   const keys=visibleColumnKeys(),items=filtered();
   list.style.setProperty('--ac-cols',keys.map(trackOf).join(' '));
-  const so=acState.sort||{};
+  const so=acState.sort||{},hu=useMap(),hf=filledKeys();
+  const grp=k=>{const u=k==='#'||k==='操作'?'app':(hu.get(k)||'app');return (u==='input'||u==='app')&&k!=='#'&&k!=='操作'&&!hf.has(k)?'empty':u};
   const head=`<div class="ac-row head">`
    +keys.map(k=>{
-    const can=k!=='#'&&k!=='操作',on=can&&so.k===k,mark=on?(so.dir===1?'▲':'▼'):'';
+    const can=k!=='#'&&k!=='操作',on=can&&so.k===k,mark=on?(so.dir===1?'▲ 古い順':'▼ 新しい順'):'';
     const tip=can?`${labelOf(k)}（押すと${on&&so.dir===1?'新しい順・大きい順':'古い順・小さい順'}に並べます）`:labelOf(k);
-    return `<span data-col="${esc(k)}"${can?' data-sort role="button" tabindex="0"':''}${on?` aria-sort="${so.dir===1?'ascending':'descending'}" class="is-sorted"`:''} title="${esc(tip)}">${esc(labelOf(k))}${mark?`<i class="ac-sortmark" aria-hidden="true">${mark}</i>`:''}</span>`;
+    return `<span data-col="${esc(k)}" class="ac-h-${grp(k)}${on?' is-sorted':''}"${can?' data-sort role="button" tabindex="0"':''}${on?` aria-sort="${so.dir===1?'ascending':'descending'}"`:''} title="${esc(tip)}">${esc(labelOf(k))}${mark?`<i class="ac-sortmark" aria-hidden="true">${mark}</i>`:''}</span>`;
    }).join('')
    +`</div>`;
+  const band=bandHtml(keys);
   if(!items.length){
    const why=acState.error?'読み込みに失敗しました。上の「再読込」で試せます。'
     :(acState.query?'絞り込み条件に一致する実績がありません。'
       :'この設備・期間には記録された実績がありません。期間を広げるか、設備を「すべての設備」にしてみてください。');
-   list.innerHTML=head+`<div class="ac-empty">${esc(why)}</div>`;
+   list.innerHTML=band+head+`<div class="ac-empty">${esc(why)}</div>`;
+   paintMore(list);
    return;
   }
-  const frag=document.createDocumentFragment();
-  list.innerHTML=head;
+  const frag=document.createDocumentFragment(),nums=numericKeys();
+  list.innerHTML=band+head;
   items.forEach((x,i)=>{
    const view=rowView(x,i);
    const row=document.createElement('div');
@@ -527,7 +559,8 @@
        インラインの直値を増やさない・§CLAUDE 7）。揃えも既存の道具を
        そのまま呼ぶ（§9.239 ④）。 */
     const cls=['ac-cell',(c&&c.cls)||'',
-      (WL.columnAlign&&WL.columnAlign.cellClass)?WL.columnAlign.cellClass(AC_TARGET,k):'',
+      /* 揃えは揃えの道具の1箇所（手で決めた揃えが先）。書式の種別が無い数の列は「数」として渡す＝自動で右寄せ */
+      (WL.columnAlign&&WL.columnAlign.cellClass)?WL.columnAlign.cellClass(AC_TARGET,k,(WL.columnLayout.format(AC_TARGET,k)||{}).kind||(nums.has(k)?'number':'')):'',
       out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
     return `<span class="${esc(cls)}" data-col="${esc(k)}"`
      +` title="${esc(raw==null?'':String(raw))}">${esc(out.text)}</span>`;
@@ -538,6 +571,32 @@
   wireRows(list);
   bindHeadTools(list);
   bindSortHeads(list);
+  paintMore(list);
+ }
+ /* 見出しの上の群の帯（§9.630 ①・採点 2 回目）: 記録の基本 → 測定画面で入れた項目（値のある列・値の無い列）→ 作った値 → 仕掛から写した値。
+    どこまでが入力した項目かを見出しが言う。左端の札は並べ替えの状態も字で言う（▲ の印だけにしない） */
+ const BAND_WORD={app:'記録の基本',input:'測定画面で入れた項目',empty:'値なし',calc:'記録から作った値',joined:'仕掛から写した値'};
+ function bandHtml(keys){
+  const use=useMap(),filled=filledKeys(),runs=[];
+  keys.forEach(k=>{
+   const u=k==='#'||k==='操作'?'app':(use.get(k)||'app'),w=(u==='input'||u==='app')&&k!=='#'&&k!=='操作'&&!filled.has(k)?'empty':u,last=runs[runs.length-1];
+   if(last&&last.w===w)last.n++;else runs.push({w,n:1});
+  });
+  /* 並べ替えの状態は見出しの「▲ 古い順」の1か所（帯にも書くと同じ情報が2か所・3回目の採点） */
+  return `<div class="ac-row ac-band" aria-hidden="true">`+runs.map(r=>`<span class="ac-bandc is-${r.w}" style="grid-column:span ${r.n}">`
+   +`<span class="ac-bandin"><b>${esc(BAND_WORD[r.w])}</b><small>${r.n}列</small></span></span>`).join('')+`</div>`;
+ }
+ /* 右に続く列の数（§9.630 の採点: 右にまだ列があると分からなかった）。横に送ると数え直す。伏せている列の数も言う（表示列で出せる） */
+ function paintMore(list){
+  /* 置き場は操作の帯の右端（一覧の上に重ねない＝値を隠さない） */
+  const bar=$id('acHead');let el=bar&&bar.querySelector('.ac-more');
+  if(!bar)return;
+  if(!el){el=document.createElement('span');el.className='ac-more';el.setAttribute('role','status');bar.appendChild(el);list.addEventListener('scroll',()=>paintMore(list),{passive:true})}
+  const right=list.getBoundingClientRect().right,heads=[...list.querySelectorAll('.ac-row.head>span')];
+  const beyond=heads.filter(h=>h.getBoundingClientRect().left>=right-4).length;
+  const hidden=allColumnKeys().length-visibleColumnKeys().length;
+  const parts=[beyond?`横にあと ${beyond}列 →`:'',hidden?`伏せている列 ${hidden}（表示列で出せます）`:''].filter(Boolean);
+  el.hidden=!parts.length;el.textContent=parts.join('　');
  }
  /* 見出しを押して並べ替える（閲覧モードでも。列幅の取っ手を掴んだときは並べ替えない） */
  function bindSortHeads(list){
@@ -548,6 +607,15 @@
  }
  /* 選ぶ印と帳票のボタン（1行・2段組の両方で同じ配線）。 */
  function wireRows(list){
+  /* 行を押すと選ぶ（もう一度で外す）・2回押すとその1件の帳票（§9.630 の採点: 帳票のボタンの列をやめた） */
+  list.querySelectorAll('.ac-row[data-id]').forEach(row=>{
+   row.addEventListener('click',e=>{
+    if(e.target.closest('input,button,a,.ac-grip'))return;
+    const cb=row.querySelector('[data-pick]');if(cb)cb.click();     // 印と同じ道（2回押すと選んで外れる＝選びは変わらない）
+   });
+   row.addEventListener('dblclick',e=>{if(e.target.closest('input,button,a'))return;openReport(row.dataset.id)});
+   row.title='押すと選ぶ・2回押すとこの記録の測定帳票を開きます';
+  });
   list.querySelectorAll('[data-pick]').forEach(cb=>cb.onclick=e=>{
    e.stopPropagation();
    const id=cb.dataset.pick;
@@ -609,7 +677,11 @@
  function syncSelectionUi(){
   const n=acState.selected.size;
   const c=$id('acReportCount');if(c)c.textContent=String(n);
-  const b=$id('acReport');if(b)b.disabled=!n;
+  const b=$id('acReport');if(b){b.disabled=!n;b.hidden=!n}
+  /* 選ぶまでは入口を字で言う（押せないボタンを入口に見せない・2回目の採点） */
+  const bar=$id('acHead');let h=bar&&bar.querySelector('.ac-rephint');
+  if(bar&&!h){h=document.createElement('span');h.className='ac-rephint';h.textContent='帳票: 行を2回押すと開く・押して選ぶとまとめて刷れます';bar.insertBefore(h,b||null)}
+  if(h)h.hidden=!!n||acState.view==='stack';
  }
  /* 見出しの取っ手と右クリックは**既存の道具をそのまま呼ぶ**（§9.164。
     書き写すと、直したときに片方だけ直った状態になる）。 */

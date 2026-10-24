@@ -223,6 +223,7 @@ def _work_parts(kind, start, equips, basis):
 # 芯の列は前の生産管理ダッシュボードの軸と指標（設備・作業人数・品種・用途名・オペレータ・入力内容・作業時間）を必ず持つ
 # （操業データ項目の顔ぶれで消えない）。同じ値の候補の列は出さない（_REC_SKIP）
 # §9.630 ④: 良品重量（kg）・縦割り数（丈数）・横割り数（条数）。品種（用途名 / 丈数×条数）を 3 つの列に分けて持つ（ABC 分析の組み合わせ）。
+# 丈数・条数は単位つきの字（「2丈」「3条」。品種の分け方の値なので、図の軸・表で単位を推測させない・§9.630 の採点）
 # 良品重量は記録の操業データ「良品重量」→ 仕掛の行の「BOX実績_良品重量」→ 名前に「良品重量」を含む仕掛の列の順（測定を始めたときの写し）
 REC_CORE = ('記録ID', '設備名', 'ロット番号', '状態', REC_START, '作業終了', '作業時間（分）', '作業日', '直', '品種', '用途名',
             '縦割り数（丈数）', '横割り数（条数）', '良品重量', '作業人数', 'オペレータ', '入力内容', '更新日時')
@@ -271,7 +272,7 @@ def _rec_core(item):
  crew = str(st.get('crewSize') or '').strip()
  return [item.get('id') or '', item.get('equipment') or '', item.get('lotNo') or '', item.get('status') or '',
          _stamp(item.get('workStart')), _stamp(item.get('workEnd')), item.get('durationMin'), item.get('workDate') or '', item.get('shift') or '',
-         f'{purpose} / {v}丈×{h}条', purpose, v, h, good_weight(item), f'{crew}名班' if crew and crew != '-' else '人数未設定',
+         f'{purpose} / {v}丈×{h}条', purpose, f'{v}丈', f'{h}条', good_weight(item), f'{crew}名班' if crew and crew != '-' else '人数未設定',
          str(st.get('operator') or '').strip() or '-', str(st.get('measureType') or '').strip() or '-',
          _stamp(item.get('updatedAt') or item.get('updatedAtDb'))]
 

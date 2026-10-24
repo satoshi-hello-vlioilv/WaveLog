@@ -349,7 +349,9 @@
     }
     const split = d && d.esplit && (p.equips || []).length !== 1 ? `（${SPLIT_NAME[d.esplit] || ""}）` : "";
     const equip = (p.equips || []).length ? eqWord(p.equips) + split : WL.dashKit.src.isWork(p.source) ? "全設備" + split : "";
-    return { src: name(p.source) || (d && d.sourceName) || "", equip, per: d ? P.periodText(p, d, false) : "", cond: condsText(p.filters), basis: d ? P.basisOf(p, d) : "" };
+    // 予定と実績のガントは、答えが名乗る元（「作業予定（実績: 測定データ・手入力）」）を出す（実績の棒の出どころを推測させない・§9.630）
+    const own = p.visual === "gantt" && (p.ops || {}).plan && d && d.sourceName;
+    return { src: own || name(p.source) || (d && d.sourceName) || "", equip, per: d ? P.periodText(p, d, false) : "", cond: condsText(p.filters), basis: d ? P.basisOf(p, d) : "" };
   }
   /** 多くのパネル（半分以上・2 枚以上）で同じ項目 → {src, equip, per, cond, basis}（無い項目は ""）。期間は答えが揃ってから
       @returns {{src: string, equip: string, per: string, cond: string, basis: string}} */

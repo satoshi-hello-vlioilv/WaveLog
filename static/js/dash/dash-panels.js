@@ -91,7 +91,7 @@
     const ymd = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ""); return m ? `${m[1]}/${+m[2]}/${+m[3]}` : iso || ""; };
     const cross = r && String(r.from).slice(0, 4) !== String(r.to).slice(0, 4);
     const span = r ? (r.from === r.to ? md(r.from) : cross ? `${ymd(r.from)}〜${ymd(r.to)}` : `${md(r.from)}〜${md(r.to)}`) : "";
-    const name = pr.kind === "days" ? `直近 ${pr.n} 日` : pr.kind === "range" ? "" : pr.name;     // 日付で決めた期間は日付だけ（版 3.52.0。1280 の数字のパネルで添え書きが 2 段に折れた）
+    const name = pr.kind === "days" ? `直近 ${pr.n} 日` : pr.kind === "ahead" ? `今日から ${pr.n} 日` : pr.kind === "range" ? "" : pr.name;     // 日付で決めた期間は日付だけ（版 3.52.0。1280 の数字のパネルで添え書きが 2 段に折れた）
     return `${name ? name + " " : ""}${span}${basis}${(pr.ranges || []).length > 1 ? "・設備で日が違います" : ""}`;
   }
   /** 期間の日付をどう数えるか（作業日なら現場歴／太陽暦・ほかは列の名前）。期間が無ければ "" */
@@ -294,7 +294,7 @@
     const word = g.measure.agg === "lots" ? (WL.dashKit.src.isWork(g.source) ? "作業の数" : "ロット数") : measName(g.measure);
     const pr = a && a.period, r = pr && (pr.ranges || [])[0];
     if (pr && r) {
-      const name = pr.kind === "days" ? `直近 ${pr.n} 日` : pr.kind === "range" ? "" : pr.name, span = r.from === r.to ? md(r.from) : `${md(r.from)}〜${md(r.to)}`;
+      const name = pr.kind === "days" ? `直近 ${pr.n} 日` : pr.kind === "ahead" ? `今日から ${pr.n} 日` : pr.kind === "range" ? "" : pr.name, span = r.from === r.to ? md(r.from) : `${md(r.from)}〜${md(r.to)}`;
       return `${name ? name + " " : ""}${span} の${word}${pr.column === "@workday" ? `（${g.basis === "cal" ? "太陽暦" : "現場歴"}）` : ""}`;
     }
     return `${(a && a.sourceName) || ""}${a && a.sourceName ? "の" : ""}${word}`;

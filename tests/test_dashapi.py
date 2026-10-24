@@ -235,7 +235,7 @@ def check_rec_values():
         rec('本日の良品重量: 操業データの良品重量、無ければ仕掛の BOX実績_良品重量（300+600+999）', st == 200 and grand == [1899.0], (st, grand, a.get('error')))
         st, a = query({**hp['monthAbc'], 'equips': ['テスト設備A']})
         keys = [x.get('parts') for x in ((a.get('all') or {}).get('items') or [])]
-        rec('ABC の品種は 用途名 × 丈数 × 条数 の組み合わせ', st == 200 and keys and all(len(k or []) == 3 for k in keys) and ['用途X', '2', '3'] in [[str(v) for v in k] for k in keys],
+        rec('ABC の品種は 用途名 × 丈数 × 条数 の組み合わせ', st == 200 and keys and all(len(k or []) == 3 for k in keys) and ['用途X', '2丈', '3条'] in [[str(v) for v in k] for k in keys],
             (st, keys, a.get('error')))
         # 自設備の平均は全設備の平均と比べる（前の画面の「全設備平均との差」）: 自 45分・全 (30+60+90)/3=60分 → 差 −15分
         mine = next(d for d in layout.BUILTIN_LAYOUTS if d['key'] == 'mine')
@@ -250,9 +250,9 @@ def check_rec_values():
         answer.forget()
 
 
-def _entry(i, kind, state, start, end, a=None, title=''):
+def _entry(i, kind, state, start, end, a=None, title='', est=60):
     return {'id': i, 'kind': kind, 'state': state, 'lotNo': f'P{i}' if kind == '作業' else '', 'title': title, 'plannedStart': start, 'plannedEnd': end,
-            'estimate': {'minutes': 60}, 'actual': a, 'overdueMinutes': 0, 'detail': {}, 'parentId': None}
+            'estimate': {'minutes': est}, 'actual': a, 'overdueMinutes': 0, 'detail': {}, 'parentId': None}
 
 
 def check_plan_layer():
@@ -265,7 +265,8 @@ def check_plan_layer():
           _entry(4, '設備停止', '予定', f'{day}T13:30', f'{day}T14:00', title='段取り替え')]
     names = list(sources.PLAN_CORE)
     keep = sources.plan_rows
-    sources.plan_rows = lambda: (f'test-{NOW.isoformat()}', {'テスト設備A': (names, [sources._plan_core('テスト設備A', e) for e in es])})
+    # 署名は中身から（写しのファイル名になる。中身を変えた 2 回目も新しい写しにする）
+    sources.plan_rows = lambda: (sources._sig([names, es]), {'テスト設備A': (names, [sources._plan_core('テスト設備A', e) for e in es])})
     answer.forget()
     try:
         home = next(d for d in layout.BUILTIN_LAYOUTS if d['key'] == 'home')
@@ -274,14 +275,27 @@ def check_plan_layer():
         eq = (a.get('equips') or [{}])[0]
         rec('予定と実績のガント: 実績の棒 2（完了・作業中）', st == 200 and len(eq.get('ops') or []) == 2, (st, eq.get('ops'), a.get('error')))
         rec('予定の枠 3（作業中・予定・設備停止。完了は出さない）', [x[2] for x in eq.get('plans') or []] == ['P2', 'P3', '段取り替え'], eq.get('plans'))
+        rec('作業中の予定の枠は 予定開始〜予定開始＋見積（09:00〜10:00）', (eq.get('plans') or [[0, '']])[0][1].endswith('10:00:00'), eq.get('plans'))
+        rec('ガントの出どころは実績の出どころも言う', '実績' in str(a.get('sourceName')), a.get('sourceName'))
         rec('実績の出どころを数える（手入力 1・測定データ 1）', eq.get('from') == {'手入力': 1, '測定データ': 1}, eq.get('from'))
         rec('作業中の実績はいままで（印 r）', any(o[5] == 'r' for o in eq.get('ops') or []), eq.get('ops'))
-        st, a = query(hp['now'])
+        st, a = query({**hp['planGantt'], 'visual': 'now', 'ops': {}, 'period': None})
         e = (a.get('equips') or [{}])[0]
         cur, nxt = e.get('cur') or {}, e.get('next') or {}
-        rec('いまの作業: 作業中のロットと予定完了（P2・12:30）', st == 200 and cur.get('name') == 'P2' and str(cur.get('end')).endswith('12:30:00'), (st, e, a.get('error')))
+        rec('いまの作業: 作業中のロットと予定完了＝作業開始＋見積（P2・10:00＋60分＝11:00）', st == 200 and cur.get('name') == 'P2' and str(cur.get('end')).endswith('11:00:00'), (st, e, a.get('error')))
         rec('いまの作業: 次の予定（P3）', nxt.get('name') == 'P3', nxt)
-        st, a = query({**hp['now'], 'source': 'rec'})
+        rec('予定と実績のガントの行も、いまの作業を持つ（同じ答え）', ((eq.get('now') or {}).get('cur') or {}).get('name') == 'P2', eq.get('now'))
+        # 作業中の予定完了（作業開始＋見積）がいまより後なら、後ろの予定をその分ずらして見せる（§9.630・push_of）:
+        # P2 は 10:00＋180分＝13:00。いま 12:00 なので、12:30 からの P3 は 13:30 から
+        es[1] = _entry(2, '作業', '着手', f'{day}T09:00', f'{day}T12:00', {'startAt': f'{day}T10:00', 'endAt': None}, est=180)
+        answer.forget()
+        st, a = query({**hp['planGantt'], 'visual': 'now', 'ops': {}, 'period': None})
+        e2 = (a.get('equips') or [{}])[0]
+        rec('作業中の予定完了の後ろへ次の予定をずらす（次 P3 13:30〜・ずらし 60分）', str((e2.get('next') or {}).get('start')).endswith('13:30:00') and e2.get('shift') == 60.0, e2)
+        st, a = query(hp['planGantt'])
+        p3 = [x for x in ((a.get('equips') or [{}])[0].get('plans') or []) if x[2] == 'P3']
+        rec('ガントの予定の枠も同じだけずれる（P3 13:30〜14:30）', p3 and p3[0][0].endswith('13:30:00') and p3[0][1].endswith('14:30:00'), p3)
+        st, a = query({**hp['planGantt'], 'visual': 'now', 'ops': {}, 'period': None, 'source': 'rec'})
         rec('いまの作業は作業予定でないと理由を言って断る（400）', st == 400 and '作業予定' in str(a.get('error')), (st, a.get('error')))
     finally:
         sources.plan_rows = keep

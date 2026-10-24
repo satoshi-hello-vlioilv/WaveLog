@@ -78,7 +78,27 @@ body.ac-mode .pager{display:none}
 .ac-row.head>span[data-sort]{cursor:pointer}
 .ac-row.head>span[data-sort]:hover{color:var(--ink)}
 .ac-row.head>span.is-sorted{color:var(--ink)}
-.ac-sortmark{font-style:normal;margin-left:var(--space-1);font-size:var(--tbl-fs-mark);color:var(--teal-ink)}
+/* §9.630: 見出しの上の群の帯（どこまでが測定画面で入れた項目か）。見出しの行と一緒に上に留まる */
+.ac-list{--ac-band-h:calc(var(--fs-base-sm) * 1.5 + 6px)}
+.ac-row.ac-band{position:sticky;top:0;z-index:3;min-height:var(--ac-band-h);background:var(--surface);border-bottom:0}
+.ac-row.ac-band+.ac-row.head{top:var(--ac-band-h)}
+.ac-bandc{display:flex;align-items:baseline;font-size:var(--fs-sm);color:var(--muted);border-top:2px solid var(--line-mid);margin-right:4px}
+.ac-bandc b{font-size:var(--fs-base-sm);font-weight:var(--fw-ui);color:var(--ink-2);white-space:nowrap}
+.ac-bandc small{font-size:var(--fs-sm);white-space:nowrap}
+.ac-bandc.is-input{border-top-color:var(--teal);color:var(--teal-ink)}
+.ac-bandc.is-input b{color:var(--teal-ink)}
+.ac-bandc.is-empty{border-top-style:dashed}
+.ac-bandc{background:var(--surface)}
+.ac-bandc.is-input{background:var(--teal-tint)}
+/* 群の名前は見えている左端に留まる（横に送っても・右の群でも切れない） */
+.ac-bandin{position:sticky;left:var(--space-2);display:inline-flex;align-items:baseline;gap:var(--space-1);padding:0 var(--space-2)}
+.ac-row.head>span.ac-h-input{background:var(--teal-tint)}
+.ac-rephint{color:var(--muted);white-space:nowrap;padding-left:var(--space-3);border-left:1px solid var(--line-soft);margin-left:var(--space-1)}   /* 帯の字の大きさのまま・操作のボタンと線で離す */
+.ac-row.ac-band:not(.head):nth-child(even),.ac-row.ac-band:hover{background:var(--surface)}
+/* 右に続く列・伏せている列の数（横に送ると数え直す・操作の帯の右端） */
+.ac-more{margin-left:auto;color:var(--ink-2);white-space:nowrap}
+.ac-row[data-id]{cursor:pointer}
+.ac-sortmark{font-style:normal;margin-left:var(--space-1);font-size:var(--tbl-fs-mark);font-weight:var(--fw-ui);color:var(--teal-ink)}
 .ac-num{text-align:right;font-variant-numeric:tabular-nums}
 .ac-idx{display:flex;align-items:center;gap:var(--space-1);color:var(--ink-2)}
 .ac-pick{display:flex;align-items:center;gap:var(--space-1);cursor:pointer}

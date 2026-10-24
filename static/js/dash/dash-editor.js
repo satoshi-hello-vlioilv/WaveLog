@@ -41,10 +41,10 @@
   const ABC_ITEMS = [["avg", "平均作業"], ["occ", "占有時間", "本数 × 平均作業（工場をその品種が占める時間の見積もり）"], ["share", "本数比"],
     ["lshare", "負荷比", "占有時間の構成比（本数比と比べると、手間のかかる品種が分かる）"], ["cum", "累積"], ["rank", "ABC", "ABC の札・棒の色・A と B の線・下の段の品種の数"],
     ["factor", "換算係数"], ["conv", "換算本数"], ["chart", "パレート図"], ["foot", "下の段", "ABC の品種の数・占有時間の計・基準・換算本数の計・区間なし"]];
-  const PERIODS = [["", "期間で絞らない"], ["today", "今日"], ["yesterday", "前日"], ["days", "直近 n 日（今日を含む）"], ["this_month", "今月"], ["last_month", "先月"], ["range", "日付で決める（から〜まで）"]];
+  const PERIODS = [["", "期間で絞らない"], ["today", "今日"], ["yesterday", "前日"], ["days", "直近 n 日（今日を含む）"], ["ahead", "今日から n 日（先の予定まで）"], ["this_month", "今月"], ["last_month", "先月"], ["range", "日付で決める（から〜まで）"]];
   /** 期間の言葉（直近 n 日・日付で決めた 10/1〜10/15・今月 など） */
   const mdOf = (s) => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(s || ""); return m ? `${+m[1]}/${+m[2]}` : ""; };
-  const perName = (pr) => (!pr || !pr.kind ? "" : pr.kind === "days" ? `直近 ${pr.n || 7} 日` : pr.kind === "range" ? [mdOf(pr.from), mdOf(pr.to)].filter((v, i, a) => v && a.indexOf(v) === i).join("〜") || "日付で決める"
+  const perName = (pr) => (!pr || !pr.kind ? "" : pr.kind === "days" ? `直近 ${pr.n || 7} 日` : pr.kind === "ahead" ? `今日から ${pr.n || 2} 日` : pr.kind === "range" ? [mdOf(pr.from), mdOf(pr.to)].filter((v, i, a) => v && a.indexOf(v) === i).join("〜") || "日付で決める"
     : (PERIODS.find((k) => k[0] === pr.kind) || [null, ""])[1]);
   /** 今日から back 日前の日（YYYY-MM-DD。この PC の日付）。日付で決めるを選んだときの最初の値 */
   const isoBack = (back) => { const d = new Date(Date.now() - back * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -52,11 +52,11 @@
   const periodCtl = (pr, attr, list, label) => {
     const kind = (pr && pr.kind) || "";
     return `<select data-de-${attr}kind aria-label="${label}">${list.map(([k, n]) => `<option value="${k}"${k === kind ? " selected" : ""}>${n}</option>`).join("")}</select>`
-      + (kind === "days" ? `<input type="number" min="1" max="3660" data-de-${attr}n value="${pr.n || 7}" aria-label="日の数" class="de-n">日` : "")
+      + (kind === "days" || kind === "ahead" ? `<input type="number" min="1" max="3660" data-de-${attr}n value="${pr.n || (kind === "ahead" ? 2 : 7)}" aria-label="日の数" class="de-n">日` : "")
       + (kind === "range" ? `<input type="date" data-de-${attr}from value="${esc(pr.from || "")}" aria-label="${label}のはじめ" class="de-date">〜<input type="date" data-de-${attr}to value="${esc(pr.to || "")}" aria-label="${label}のおわり" class="de-date">` : "");
   };
   /** 種類を選び直したときの期間（日付で決めるは直近 30 日から始める） */
-  const periodOf = (old, kind, column) => (!kind ? null : { column, kind, n: (old && old.n) || 7,
+  const periodOf = (old, kind, column) => (!kind ? null : { column, kind, n: (old && old.n) || (kind === "ahead" ? 2 : 7),
     ...(kind === "range" ? { from: (old && old.from) || isoBack(29), to: (old && old.to) || isoBack(0) } : {}) });
   // 合わせた表の見せ方（版 3.39.0 で 3 → 8）。cols … 列の段があるときだけ意味のある物
   const LOOKS = [["bar", "棒と数", "棒の長さと数"], ["heat", "数と濃淡", "数の大きさを地の濃さで"], ["num", "数だけ", "数だけを並べる"],
@@ -571,7 +571,8 @@
       const isPlan = t.source === "plan", layered = isPlan && o.plan;
       const planRow = `<div class="de-row"><label class="de-l">見せる物</label>${isPlan
         ? segs("oplan", [["", "実績だけ", "作業開始〜作業終了の棒"], ["1", "予定と実績", "実績の棒に、まだ終わっていない行の予定（予定開始〜予定終了）の枠を重ねる"]], layered ? "1" : "", "見せる物")
-        : '<small class="de-hint">予定と実績を重ねるには、データを「作業予定」にします（予定の時刻を持つのは作業予定だけ）</small>'}</div>`;
+        : '<small class="de-hint">予定と実績を重ねるには、データを「作業予定」にします（予定の時刻を持つのは作業予定だけ）</small>'}</div>`
+        + (layered ? `<div class="de-row"><label class="de-l">いまの作業</label>${segs("onow", [["", "行の名前の下に出す", "作業中のロットか設備停止と予定完了"], ["0", "出さない", "同じダッシュボードに「いまの作業」のパネルがあるとき"]], o.nowRow === false ? "0" : "", "いまの作業")}</div>` : "");
       return `<div class="de-ops">${planRow}${layered ? "" : endSel}`
         + `<div class="de-row"><label class="de-l">色分け</label><select data-de-ocolor aria-label="棒の色分け">${opt("", "なし（作業は 1 色）", o.color)}${few.map((c) => opt(c, c, o.color)).join("")}</select>`
         + `<label class="pv-ck">棒の字<select data-de-olabel aria-label="棒に出す字">${opt("", "ロット番号", o.label)}${fs.filter((f) => !f.numeric).map((f) => opt(f.column, f.column, o.label)).join("")}</select></label></div>`
@@ -1429,6 +1430,7 @@
     if (x.matches("[data-de-olabel]")) { setOps("label", x.value); return true; }
     if (x.matches("[data-de-ocls]")) { if (x.value) setCls(clsOf(p).concat([x.value])); return true; }
     if (x.matches("[data-de-oplan]")) { setOps("plan", x.value === "1" ? true : ""); return true; }
+    if (x.matches("[data-de-onow]")) { setOps("nowRow", x.value === "0" ? false : ""); return true; }
     if (x.matches("[data-de-oqty]")) { setOps("qty", x.value); return true; }
     if (x.matches("[data-de-oqcol]")) { if (x.value) setOps("qty", x.value); return true; }
     if (x.matches("[data-de-obase]")) { setOps("base", x.value === "avg" ? "" : x.value); return true; }
