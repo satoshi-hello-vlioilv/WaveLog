@@ -34,6 +34,9 @@ from backend.dashboard import answer, layout, sources  # noqa: E402 パスを通
 R = []
 client = flask_app.app.test_client()
 TAG = 'DASHAPI'
+# 「いま」はきょうの昼に止める。記録は 07:00〜10:30 に置くので、壁時計のままだと夜明け前（0時〜現場日の始まり）は
+# 記録が「まだ来ない時刻」・前の作業日に入り、作業日の段とガントと平均が数えられなかった（UTC 0:05 と 1:25 に落ちた）
+NOW = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
 
 
 def rec(name, ok, detail=''):
@@ -198,7 +201,7 @@ def _item(i, status, start, end, minutes, crew, equipment='テスト設備A'):
 def check_rec_values():
     """測定データの写しの中身: 作業の記録を3件（完了2・編集中1）入れて、数・平均・作業日・ガントを数える。
     検証用のデータに記録が無いので、実績データリストの読み口（actuals.rows）を差し替える（finally で戻す）"""
-    day = datetime.now().strftime('%Y-%m-%d')
+    day = NOW.strftime('%Y-%m-%d')
     items = [_item(1, '完了', f'{day} 08:00:00', f'{day} 08:30:00', 30.0, '2'), _item(2, '完了', f'{day} 09:00:00', f'{day} 10:00:00', 60.0, '3'),
              _item(3, '編集中', f'{day} 10:30:00', '', None, '2'), _item(4, '完了', f'{day} 07:00:00', f'{day} 08:30:00', 90.0, '2', 'テスト設備B')]
     keep = sources.actuals.rows
@@ -256,7 +259,7 @@ def check_view_mode():
 
 
 def main():
-    flask_app.app.config['DASHBOARD_NOW'] = datetime.now()
+    flask_app.app.config['DASHBOARD_NOW'] = NOW
     made = []
     try:
         mode('edit')
