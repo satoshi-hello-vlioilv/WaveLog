@@ -18,22 +18,8 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// 答え（HTTP の答えと同じ中身）。
-#[derive(Debug, Clone)]
-pub struct Reply {
-    pub status: u16,
-    pub headers: Vec<(String, String)>,
-    pub body: Vec<u8>,
-}
-
-/// 問い合わせ（窓が受けた HTTP の問い合わせを、そのまま渡す形）。
-pub struct Ask<'a> {
-    pub method: &'a str,
-    pub path: &'a str,
-    pub query: &'a str,
-    pub headers: Vec<(String, String)>,
-    pub body: &'a [u8],
-}
+/// 答えと問い合わせの形は業務の入口（`wavelog_core`）と同じ物（窓・HTTP の入口・Rust の答えが1つの形を使う）。
+pub use wavelog_core::{Ask, Reply};
 
 /// 枠の約束の版。program/sidecar.py の PROTOCOL と同じ数（枠の形を変えたら両方を1つ上げる）。
 pub const PROTOCOL: u64 = 1;

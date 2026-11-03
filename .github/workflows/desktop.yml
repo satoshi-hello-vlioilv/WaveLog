@@ -73,7 +73,8 @@ jobs:
         working-directory: desktop
         env:
           WAVELOG_PYTHON: python
-        run: cargo test --locked
+        # 窓と業務（core・§9.633）の両方。HTTP の入口（serve）も試験する
+        run: cargo test --workspace --locked --features wavelog-core/serve
 
       - name: exe を作る
         working-directory: desktop

@@ -4,12 +4,22 @@
 ブラウザ版の起動の道（待機画面・二重起動の判定・タブが0件で終わる見張り）は§9.548で外した。
 ここは、画面を HTTP で開いて確かめる網（Playwright）と手元の開発のために、**同じアプリを
 同じ背景処理で**立てるだけ: `python3 program/app.py`。止めるのは`POST /api/shutdown`（片付けを通る）。
+
+Rust の HTTP の入口（`desktop/core/src/bin/serve.rs`・§9.633）の内側に立てるときは、`WAVELOG_HTTP_PORT`で
+**この入口のポートだけ**を変える（書込役の LAN の受け口`PORT+1`と、画面が読む`PORT`の値は変えない）。
 """
+import os
 
 from backend.launcher import services
 from backend.config import HOST, PORT
 from backend.logging_setup import launcher_logger
 from backend.paths import ensure_local_dirs
+
+
+def http_port():
+ """この入口が開くポート。既定は`PORT`、Rust の入口の内側では`WAVELOG_HTTP_PORT`（§9.633）。"""
+ v=os.environ.get('WAVELOG_HTTP_PORT','').strip()
+ return int(v) if v.isdigit() else PORT
 
 
 def run():
@@ -21,13 +31,14 @@ def run():
  # 写し・見張り・書込役は**窓口によらず同じ**に始める（§9.544）。手順は`services.start()`の1箇所
  # ——デスクトップ版の窓口(program/sidecar.py)も同じ関数を呼ぶ。網の書込役もこれで本番とそろう。
  services.start(log)
- log.info('開発・網の入口: 起動します (%s:%s)',HOST,PORT)
+ port=http_port()
+ log.info('開発・網の入口: 起動します (%s:%s)',HOST,port)
  try:
   # threaded=True: 1件の遅い問い合わせ（共有の不調）が、ほかの問い合わせ（在席・終了）を
   # 道連れにしない（リクエストごとにDB接続を個別に開くのでスレッド間で共有しない）。
-  flask_app.run(host=HOST,port=PORT,debug=False,threaded=True)
+  flask_app.run(host=HOST,port=port,debug=False,threaded=True)
  except OSError as e:
-  log.error('開発・網の入口: 起動できませんでした: %s（ポート %s を他が使っている可能性）',e,PORT)
+  log.error('開発・網の入口: 起動できませんでした: %s（ポート %s を他が使っている可能性）',e,port)
   raise
  log.info('開発・網の入口: 終了しました')
 

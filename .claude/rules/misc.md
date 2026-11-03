@@ -1,4 +1,4 @@
-# そのほか（36件）
+# そのほか（40件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| Rust が答えるかは`routes::ROUTES`の1箇所、答えは`Core::answer()`（窓も HTTP の入口も通る）。移したら Python の側を消す | `test_rustplan.py` | [§9.633](../../docs/decisions/9.633.md) |
+| 影（`Shadow`）は読むだけの GET。比べ方は`shadow::compare()`の1箇所（JSON は値・数は字）。不一致0件で Serve へ | `test_rustplan.py` | [§9.633](../../docs/decisions/9.633.md) |
+| 書き手の対応表`docs/RUST_WRITERS.md`は`rust_progress.py --write`で作る（手で書かない）。`OWNS`を Python が書かない | `test_rustplan.py` | [§9.633](../../docs/decisions/9.633.md) |
+| 業務の Python は Rust へ移す（書き手で切る）。新しい機能は移した領域なら Rust・まだなら Python・移している最中の単位には足さない | — | [§9.632](../../docs/decisions/9.632.md) |
 | ダッシュボードの写しは材料の指紋（`sources._inputs()`・共有に触れない）が同じなら作らない。作るのは元ごとに1本 | `test_dashperf.py`・`test_actimes.py` | [§9.631](../../docs/decisions/9.631.md) |
 | パネルの元の状態は`source_state()`の1箇所（ready・copying・unset）。写し中は選べて字で言い、選べないのは置き場が未設定の元だけ | `test_dashsrc.js`・`test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |
 | 予定と実績のガントは`ops.plan`（元は作業予定）。実績の棒は行の実績（出どころは`actual_from()`）、予定の枠はまだ終わっていない行（作業中は作業開始＋見積） | `test_dashapi.py` | [§9.630](../../docs/decisions/9.630.md) |

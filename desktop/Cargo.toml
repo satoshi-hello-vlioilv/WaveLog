@@ -1,3 +1,7 @@
+[workspace]
+# 窓（この包み）と業務（core・§9.633）。業務は Tauri も Windows も知らない（Linux で cargo test が全部回る）
+members = ["core"]
+
 [package]
 name = "wavelog-desktop"
 version = "1.0.0"
@@ -24,6 +28,8 @@ tauri-plugin-single-instance = "2.5"
 tauri-plugin-opener = "2.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 業務（Python から移す先・ルートの表・影の比較・§9.633）
+wavelog-core = { path = "core" }
 # 更新で写した物を確かめる（src/update.rs・§9.555）。Tauri が既に使っている版
 sha2 = "0.10"
 
@@ -37,4 +43,5 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
-panic = "abort"
+# 業務の答えの途中で止まっても窓ごと落とさない（500 で返す・§9.633）。abort だと catch_unwind が効かない
+panic = "unwind"

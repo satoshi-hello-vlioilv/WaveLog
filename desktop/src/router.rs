@@ -1,21 +1,18 @@
-//! 画面（WebView）からの問い合わせの振り分け（§9.544）。得意なほうが答える:
-//!   - /static/…           … Rust がディスクから直接返す（JS・CSS の部品・three.js・アイコン。Python を通さず速い）
-//!     連結した CSS（/css/app.css・/css/boot.css）は Python が作るのでそちらへ回す
+//! 画面（WebView）からの問い合わせの振り分け（§9.544・§9.633）。得意なほうが答える:
 //!   - 窓そのものの操作      … Rust（終了・自己診断。main.rs が native として渡す）
-//!   - それ以外（画面・API） … Python（サイドカー）へそのまま渡す。答えはブラウザ版と同じ
+//!   - /static/…           … Rust がディスクから直接返す（`wavelog_core::statics`・HTTP の入口と同じ答え）
+//!     連結した CSS（/css/app.css・/css/boot.css）は Python が作るのでそちらへ回す
+//!   - それ以外（画面・API） … 業務の入口（`wavelog_core::Core::answer`）。ルートの表に載ったものは Rust、
+//!     残りは Python（サイドカー）へそのまま渡す。答えはブラウザ版と同じ
 //!
 //! 画面の JS は fetch("/api/...") のまま（同じ置き場への問い合わせ）で、ポートも CORS も要らない。
 
 use crate::sidecar::{Ask, Reply, RequestError, Supervisor};
-use serde_json::json;
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 use tauri::http::{Request, Response};
-
-/// 問い合わせを答えに変える係（試験では作り物に差し替える）。
-pub trait Backend: Send + Sync {
-    fn ask(&self, ask: &Ask) -> Reply;
-}
+pub use wavelog_core::{error_reply, Backend};
+use wavelog_core::{statics::static_file, By, Core};
 
 /// 長い問い合わせ（RNE の抽出・共有の写し直し・共有スケジュールの書込サイクル）を待てる長さ。
 const ASK_WAIT: Duration = Duration::from_secs(600);
@@ -47,23 +44,16 @@ impl Backend for Supervisor {
     }
 }
 
-pub fn error_reply(status: u16, kind: &str, message: &str) -> Reply {
-    Reply {
-        status,
-        headers: vec![("Content-Type".into(), "application/json".into())],
-        body: serde_json::to_vec(&json!({"error": message, "kind": kind})).unwrap_or_default(),
-    }
-}
-
 /// 窓そのものが答える問い合わせ（method, path, 本文）→ 答え。None ならほかへ回す。
 pub type Native = Box<dyn Fn(&str, &str, &[u8]) -> Option<Reply> + Send + Sync>;
 
-/// Python が答えたあとに窓が見る（終了ボタンのあと、中身が片付けて終わったら窓も閉じる等）。
+/// 業務の入口が答えたあとに窓が見る（終了ボタンのあと、中身が片付けて終わったら窓も閉じる等）。
 pub type After = Box<dyn Fn(&str, &str, u16) + Send + Sync>;
 
 pub struct Router<B: Backend> {
     pub static_dir: PathBuf,
     pub backend: B,
+    pub core: Core,
     pub native: Native,
     pub after: After,
 }
@@ -80,9 +70,9 @@ impl<B: Backend> Router<B> {
             (static_file(&self.static_dir, rest, query), "shell")
         } else {
             let headers = req.headers().iter().filter_map(|(k, v)| Some((k.as_str().to_string(), v.to_str().ok()?.to_string()))).collect();
-            let r = self.backend.ask(&Ask { method, path, query, headers, body: req.body() });
+            let (r, by) = self.core.answer(&Ask { method, path, query, headers, body: req.body() }, &self.backend);
             (self.after)(method, path, r.status);
-            (r, "python")
+            (r, if by == By::Rust { "rust" } else { "python" })
         };
         to_response(reply, by)
     }
@@ -98,72 +88,10 @@ fn to_response(r: Reply, by: &str) -> Response<Vec<u8>> {
     b.body(r.body).unwrap_or_else(|_| Response::builder().status(500).body(Vec::new()).unwrap())
 }
 
-/// /static/ の下のファイル。static フォルダの外へは出ない（.. や絶対パスは断る）。
-pub fn static_file(root: &Path, rest: &str, query: &str) -> Reply {
-    let decoded = percent_decode(rest);
-    let rel = Path::new(&decoded);
-    if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
-        return error_reply(404, "not_found", "ありません。");
-    }
-    match std::fs::read(root.join(rel)) {
-        Ok(body) => {
-            // 版の付いた URL（?t=資材の更新時刻。index.html の起動ローダーが付ける・§9.97）は中身が変わらないので長く使い回す。
-            // ブラウザ版（program/app.py の cache_policy）と同じ答え
-            let cache = if query.split('&').any(|kv| kv.starts_with("t=")) { "public, max-age=31536000, immutable" } else { "no-cache" };
-            Reply {
-                status: 200,
-                headers: vec![("Content-Type".into(), mime(&decoded).into()), ("Cache-Control".into(), cache.into())],
-                body,
-            }
-        }
-        Err(_) => error_reply(404, "not_found", "ありません。"),
-    }
-}
-
-pub fn mime(path: &str) -> &'static str {
-    let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-    match ext.as_str() {
-        "js" | "mjs" => "text/javascript; charset=utf-8",
-        "css" => "text/css; charset=utf-8",
-        "html" | "htm" => "text/html; charset=utf-8",
-        "json" | "map" => "application/json",
-        "svg" => "image/svg+xml",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "ico" => "image/x-icon",
-        "woff" => "font/woff",
-        "woff2" => "font/woff2",
-        "ttf" => "font/ttf",
-        "wasm" => "application/wasm",
-        "txt" | "md" => "text/plain; charset=utf-8",
-        _ => "application/octet-stream",
-    }
-}
-
-fn percent_decode(s: &str) -> String {
-    let hex = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
-                out.push(h << 4 | l);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::sync::Mutex;
 
     struct Echo(Mutex<Vec<String>>);
@@ -178,6 +106,7 @@ mod tests {
         Router {
             static_dir: dir.to_path_buf(),
             backend: Echo(Mutex::default()),
+            core: Core::new(None),
             native: Box::new(|m, p, _| (m == "GET" && p == "/__desktop/info").then(|| error_reply(200, "info", "窓"))),
             after: Box::new(|_, _, _| {}),
         }
@@ -224,15 +153,8 @@ mod tests {
             "python",
             "/static でも GET・HEAD 以外は Python へ"
         );
+        let st = r.handle(&req("GET", "wavelog://localhost/__rust/status", b""));
+        assert_eq!(st.headers()["x-wavelog-by"], "rust", "移行の状態は業務の入口（Rust）が答える");
         std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn decode() {
-        assert_eq!(percent_decode("a%20b%E6%97%A5"), "a b日");
-        assert_eq!(percent_decode("100%"), "100%");
-        assert_eq!(percent_decode("%zz"), "%zz");
-        assert_eq!(percent_decode("%日本"), "%日本", "% の後ろが文字でも落ちない");
-        assert_eq!(percent_decode("a%4"), "a%4");
     }
 }

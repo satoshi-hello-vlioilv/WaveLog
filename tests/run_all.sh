@@ -6,6 +6,7 @@
 #         tests/run_all.sh --changed    変更ファイルに関係するものだけ(§9.103)
 #         tests/run_all.sh --pure       サーバー不要の網だけ・並列(§9.337)
 #         tests/run_all.sh --smoke      起動・一覧・スケジュール・測定 各1本
+#         WAVELOG_SERVE=rust tests/run_all.sh …  外側を Rust の HTTP の入口（wavelog-serve）にして回す（§9.633）
 #
 # このランナーが保証すること(手作業だった前後処理をここへ集約):
 #  1. パス設定マスタ(仕掛/品質/共有スケジュールの接続先)を実行前に退避し、
@@ -60,7 +61,7 @@ fi
 # 互いの状態を触らないことが「純粋」の定義なので、並列にしてよい。
 # **`--pure` はパス設定の差し替えも見せ方の戻しもしない**（差し替えが要る
 # 網は、そもそもここに載っていない）。
-PURE_TESTS="test_apiguard test_appupdate test_assetcache test_atomicio test_body test_browserdir test_bladeset \
+PURE_TESTS="test_apiguard test_rustplan test_appupdate test_assetcache test_atomicio test_body test_browserdir test_bladeset \
 test_changelog test_cleanup test_csslint test_dblayer test_dbmirror \
 test_dbopen test_ddllint test_displayrule test_docindex test_dskeylint \
 test_eqstd test_lfpoints test_error test_eslint test_faststart test_filtersaved test_flags \
@@ -221,7 +222,22 @@ restore_master(){
 fingerprint(){
   python3 "$ROOT/tests/state_fp.py" 2>/dev/null
 }
-server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
+# **Rust の HTTP の入口を通して回す**（`WAVELOG_SERVE=rust`・§9.633）: 外側の 5029 を Rust（`wavelog-serve`）、
+# 内側の 5030 を Python（`program/app.py`）にする。表に無い問い合わせは Rust が内側へそのまま渡すので、
+# 網は窓と同じ道（業務の入口`Core::answer`・静的ファイル）を通る。既定（空）は今までどおり Python だけ。
+SERVE="${WAVELOG_SERVE:-}"
+INNER_PORT=5030
+INNER=http://127.0.0.1:$INNER_PORT
+RUST_SERVE="$ROOT/desktop/target/debug/wavelog-serve"
+if [ "$SERVE" = rust ]; then
+  echo "== Rust の HTTP の入口を作る（cargo build -p wavelog-core --features serve）"
+  ( cd "$ROOT/desktop" && cargo build -q -p wavelog-core --features serve --bin wavelog-serve ) || { echo "!! wavelog-serve を作れませんでした" >&2; exit 1; }
+fi
+if [ "$SERVE" = rust ]; then
+  server_up(){ curl -s -m 3 -o /dev/null "$INNER/" 2>/dev/null && curl -s -m 3 -o /dev/null "$API/__rust/status" 2>/dev/null; }
+else
+  server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
+fi
 
 # テストが異常終了するとPlaywrightのChromiumが残る。残った画面は設備の
 # 編集セッションを掴んだままハートビートを打ち続けるため、後続のスケジュール
@@ -231,17 +247,28 @@ server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
 reap_browsers(){ pkill -f -- '--user-data-dir=/tmp/playwright_chromiumdev_profile' >/dev/null 2>&1; true; }
 # 網のサーバーは**開発と網の入口**（`program/app.py`・§9.548）。止めるのは`/api/shutdown`（片付けを通る）、
 # 応じなければ同じ入口の名前で止める（ブラウザ版の process_manager・instance.json は外した）。
+# 前の実行がどちらの形（Python だけ／Rust の入口＋内側の Python）で立てたかに依らず、**両方のポートが空くまで**止める。
+# 片方だけ見ると、残った側がポートを掴んだまま次の起動が「Address already in use」で失敗する（§9.633 で踏んだ）
+any_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null || curl -s -m 3 -o /dev/null "$INNER/" 2>/dev/null; }
 stop_server(){
   curl -s -m 3 -X POST "$API/api/shutdown" >/dev/null 2>&1
-  for _ in $(seq 1 20); do server_up || return 0; sleep 0.5; done
-  pkill -f -- 'program/app.py' >/dev/null 2>&1; sleep 1; true
+  for _ in $(seq 1 20); do curl -s -m 3 -o /dev/null "$INNER/" 2>/dev/null || break; sleep 0.5; done
+  pkill -f -- "$RUST_SERVE" >/dev/null 2>&1
+  for _ in $(seq 1 20); do any_up || return 0; sleep 0.5; done
+  pkill -f -- 'program/app.py' >/dev/null 2>&1
+  sleep 1; true
 }
 restart_server(){
   stop_server
   # 裏へ回すのは**単純な命令1つ**（§9.552で踏んだ）。`cd && nohup … &`だと「cd と nohup の組」ごと裏の子シェルになり、
   # その子シェルがサーバーの終わりを待ち続ける。呼び出しに`>/dev/null`が付いていると、bash が退避した元の出力
   # （fd 10/11）を子シェルが握ったままになり、`run_all.sh … | tail`の管が閉じない（サーバーが動く限り固まる）。
-  ( cd "$ROOT" || exit 1; nohup python3 -u program/app.py >"$ROOT/tests/server.log" 2>&1 & )
+  if [ "$SERVE" = rust ]; then
+    ( cd "$ROOT" || exit 1; WAVELOG_HTTP_PORT=$INNER_PORT nohup python3 -u program/app.py >"$ROOT/tests/server.log" 2>&1 & )
+    ( nohup "$RUST_SERVE" --port 5029 --inner $INNER_PORT --static "$ROOT/static" --log-dir "$ROOT/tests" >"$ROOT/tests/server_rust.log" 2>&1 & )
+  else
+    ( cd "$ROOT" || exit 1; nohup python3 -u program/app.py >"$ROOT/tests/server.log" 2>&1 & )
+  fi
   for _ in $(seq 1 30); do server_up && return 0; sleep 1; done
   echo "!! サーバーを起動できませんでした ($ROOT/tests/server.log を確認)" >&2
   return 1
@@ -551,7 +578,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
-         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_lfpoints test_actualmatch test_finishjoin test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_browserdir test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_recshare test_recfresh test_reccopyreason test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers test_waitlint test_importlint test_funclen test_bladeset test_stopsub test_shortcut test_schedhist test_portdep test_sidecar test_terminalstore test_appupdate test_tscheck test_strictstart test_stoprule test_listtools test_boxactual test_donestops test_doneflow test_lotident test_modalwords test_fieldreorder test_seedrevise test_filtersaved test_dashpivot test_formulaparity test_dashapi test_dashperf test_actimes test_saferegex; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_lfpoints test_actualmatch test_finishjoin test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_browserdir test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_recshare test_recfresh test_reccopyreason test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers test_waitlint test_importlint test_funclen test_bladeset test_stopsub test_shortcut test_schedhist test_portdep test_sidecar test_terminalstore test_appupdate test_tscheck test_strictstart test_stoprule test_listtools test_boxactual test_donestops test_doneflow test_lotident test_modalwords test_fieldreorder test_seedrevise test_filtersaved test_dashpivot test_formulaparity test_dashapi test_dashperf test_actimes test_saferegex test_rustplan; do run python3 $t.py; done
 
 # ---- 落ちた本を単独で回し直して切り分ける（§9.356） -------------------
 # 「通しでだけ落ちる」と「単独でも落ちる」は**直し方がまるで違う**:
