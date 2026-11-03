@@ -22,7 +22,7 @@
 分けると、内部の話に見える本物の不具合修正を伏せてしまう——付いていない=
 利用者向け、という安全側にしてある。
 """
-APP_VERSION='2.524.0'
+APP_VERSION='2.525.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
@@ -37,6 +37,10 @@ def is_dev(entry):
 
 
 CHANGELOG=[
+ {'version':'2.525.0','dev':True,'notes':[
+  'Python→Rust の移行 P1a（§9.634）。依存の無い純粋な関数6つ（字の正規化・真偽の読み方・日時の読み方・正規表現の危険の判定・値の四則演算・判定表の整え方）を wavelog-core へ写した。ルートはまだ移していないので、答えは何も変わらない。',
+  'Python が正の試験表（tests/fixtures/parity・6 領域 245 問）を足した。Rust は cargo test の parity が全問 Python と同じ答えを返し、網 test_parity は表が今の Python の答えと同じかを見る。',
+ ]},
  {'version':'2.524.0','dev':True,'notes':[
   'Python→Rust の移行 P0（§9.633）。業務のクレート wavelog-core（desktop/core）を足し、窓の振り分けを Core::answer() の1箇所へ通した（ルートの表・影の比較・/__rust/status）。移したルートはまだ 0本で、答えは何も変わらない。',
   '開発と網の HTTP の入口 wavelog-serve（WAVELOG_SERVE=rust tests/run_all.sh で、表に無い物は内側の Python 5030 へ）。煙テストは Python だけ 184/184・Rust の入口を通して 184/184。',

@@ -201,6 +201,15 @@ def tests_reading_backend():
     return sum(1 for p in (ROOT / 'tests').glob('test_*.py') if pat.search(p.read_text(encoding='utf-8')))
 
 
+def parity_counts():
+    fns, n = set(), 0
+    for p in sorted((ROOT / 'tests' / 'fixtures' / 'parity').glob('*.json')):
+        for c in json.loads(p.read_text(encoding='utf-8')):
+            fns.add(p.stem + '.' + c['fn'])
+            n += 1
+    return {'parity_functions': len(fns), 'parity_cases': n}
+
+
 def measure():
     routes, owns = rust_table()
     py = python_routes()
@@ -214,6 +223,8 @@ def measure():
         'python_tests_reading_backend': tests_reading_backend(),
         'tables_written_by_python': len([k for k in w if k != '(式で決まる)']),
         'dynamic_writers': len(w.get('(式で決まる)', {})),
+        # P1（§9.634）: Rust へ写した純粋な関数と、Python と突き合わせている問いの数（tests/fixtures/parity）
+        **parity_counts(),
     }
 
 

@@ -1,0 +1,213 @@
+[
+{
+"fn": "flag_of",
+"args": [
+null
+],
+"want": null
+},
+{
+"fn": "flag_of",
+"args": [
+""
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+" "
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"無効"
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+" 無効 "
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"有効"
+],
+"want": true
+},
+{
+"fn": "flag_of",
+"args": [
+"出さない"
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"しない"
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"できない"
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"載せない"
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"false"
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"False"
+],
+"want": true
+},
+{
+"fn": "flag_of",
+"args": [
+"0"
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"1"
+],
+"want": true
+},
+{
+"fn": "flag_of",
+"args": [
+"true"
+],
+"want": true
+},
+{
+"fn": "flag_of",
+"args": [
+true
+],
+"want": true
+},
+{
+"fn": "flag_of",
+"args": [
+false
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+0
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+1
+],
+"want": true
+},
+{
+"fn": "flag_of",
+"args": [
+2.5
+],
+"want": true
+},
+{
+"fn": "flag_of",
+"args": [
+0.0
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"登録しない"
+],
+"want": false
+},
+{
+"fn": "flag_of",
+"args": [
+"x"
+],
+"want": true
+},
+{
+"fn": "text_or",
+"args": [
+{
+"enabledText": "無効",
+"enabled": true
+},
+"enabled"
+],
+"want": "無効"
+},
+{
+"fn": "text_or",
+"args": [
+{
+"enabled": false
+},
+"enabled"
+],
+"want": false
+},
+{
+"fn": "text_or",
+"args": [
+{},
+"enabled"
+],
+"want": null
+},
+{
+"fn": "text_or",
+"args": [
+{
+"enabledText": null,
+"enabled": 1
+},
+"enabled"
+],
+"want": 1
+},
+{
+"fn": "text_or",
+"args": [
+{
+"enabledText": ""
+},
+"enabled"
+],
+"want": ""
+}
+]

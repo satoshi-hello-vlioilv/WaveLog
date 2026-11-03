@@ -1,0 +1,254 @@
+[
+{
+"fn": "normalize_equipment_name",
+"args": [
+""
+],
+"want": ""
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+" "
+],
+"want": ""
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+null
+],
+"want": ""
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"ＡＢＣ　１２３"
+],
+"want": "ABC 123"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"abc"
+],
+"want": "ABC"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+" Line-1 "
+],
+"want": "LINE-1"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"ｶﾞｲﾄﾞ"
+],
+"want": "ガイド"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"Straße"
+],
+"want": "STRASSE"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"ǅ"
+],
+"want": "DŽ"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"①②"
+],
+"want": "12"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"ﬁ"
+],
+"want": "FI"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"　設備Ａ　"
+],
+"want": "設備A"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"\u001c設備\u001f"
+],
+"want": "設備"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"İstanbul"
+],
+"want": "İSTANBUL"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+"ΣΑΣ"
+],
+"want": "ΣΑΣ"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+12
+],
+"want": "12"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+1.5
+],
+"want": "1.5"
+},
+{
+"fn": "normalize_equipment_name",
+"args": [
+true
+],
+"want": "TRUE"
+},
+{
+"fn": "search_fold",
+"args": [
+""
+],
+"want": ""
+},
+{
+"fn": "search_fold",
+"args": [
+" "
+],
+"want": " "
+},
+{
+"fn": "search_fold",
+"args": [
+null
+],
+"want": ""
+},
+{
+"fn": "search_fold",
+"args": [
+"ＡＢＣ　１２３"
+],
+"want": "abc 123"
+},
+{
+"fn": "search_fold",
+"args": [
+"abc"
+],
+"want": "abc"
+},
+{
+"fn": "search_fold",
+"args": [
+" Line-1 "
+],
+"want": " line-1 "
+},
+{
+"fn": "search_fold",
+"args": [
+"ｶﾞｲﾄﾞ"
+],
+"want": "ガイド"
+},
+{
+"fn": "search_fold",
+"args": [
+"Straße"
+],
+"want": "strasse"
+},
+{
+"fn": "search_fold",
+"args": [
+"ǅ"
+],
+"want": "dž"
+},
+{
+"fn": "search_fold",
+"args": [
+"①②"
+],
+"want": "12"
+},
+{
+"fn": "search_fold",
+"args": [
+"ﬁ"
+],
+"want": "fi"
+},
+{
+"fn": "search_fold",
+"args": [
+"　設備Ａ　"
+],
+"want": " 設備a "
+},
+{
+"fn": "search_fold",
+"args": [
+"\u001c設備\u001f"
+],
+"want": "\u001c設備\u001f"
+},
+{
+"fn": "search_fold",
+"args": [
+"İstanbul"
+],
+"want": "i̇stanbul"
+},
+{
+"fn": "search_fold",
+"args": [
+"ΣΑΣ"
+],
+"want": "σασ"
+},
+{
+"fn": "search_fold",
+"args": [
+12
+],
+"want": "12"
+},
+{
+"fn": "search_fold",
+"args": [
+1.5
+],
+"want": "1.5"
+},
+{
+"fn": "search_fold",
+"args": [
+true
+],
+"want": "true"
+}
+]
