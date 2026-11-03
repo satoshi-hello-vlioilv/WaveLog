@@ -58,6 +58,8 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_funclen',
           # §9.329 REVIEW 3-2: db_access の層と、読み込みの副作用（1秒未満）
           'test_dblayer',
+          # §9.633: Python→Rust の移行の決まり（書き手の対応表は backend のどの .py の SQL でも変わる・数秒）
+          'test_rustplan',
           'test_body',
           # §9.332: 紙まわりの写しが増えていないこと
           'test_printcore',
@@ -659,7 +661,9 @@ RULES = [
     ('program/requirements.txt', g('起動', 'test_noaccess')),
     # デスクトップ版の窓（§9.544・Rust）。窓口の枠と起動画面の色を見る網を回す
     # （Rust そのものは cargo test と CI の自己診断・.github/workflows/desktop.yml）。
-    ('desktop/', g('test_sidecar', 'test_boot', 'test_bootui')),
+    ('desktop/', g('test_sidecar', 'test_boot', 'test_bootui', 'test_rustplan')),
+    ('tests/lib/rust_progress.py', ['test_rustplan']),
+    ('backend/launcher/server.py', g('起動', 'test_rustplan')),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

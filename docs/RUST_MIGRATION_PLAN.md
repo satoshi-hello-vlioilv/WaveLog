@@ -1,6 +1,6 @@
 # 業務の Python を Rust へ移す——計画
 
-**状態: 計画（まだ1行も移していない）。** 決めたことと経緯は [§9.632](decisions/9.632.md)。前の住み分けは [§9.563](decisions/9.563.md)。
+**状態: P0（土台と物差し）済み・[§9.633](decisions/9.633.md)。移したルートはまだ 0本。** 決めたことと経緯は [§9.632](decisions/9.632.md)。前の住み分けは [§9.563](decisions/9.563.md)。
 窓（`desktop/`）の作りは [`DESKTOP_MIGRATION_DESIGN.md`](DESKTOP_MIGRATION_DESIGN.md)。
 
 ## 1. 目的と範囲
@@ -26,17 +26,18 @@
 |---|---|
 | 業務の Python（`backend/`） | 約4.7万行（このほか更新履歴の字 7.4千行） |
 | 内訳 | 保存の層（`repositories/`）1.42万／ルート 0.96万／ダッシュボード 0.57万／予定 0.56万／共有DB・写し・錠 0.56万／起動・更新 0.32万／そのほか（結合・Excel・並べ替え等）0.23万／RNE 0.08万 |
-| ルート | 270本（多い順に `schedule.py` 40・`masters/bladeset*.py` 38・`masters/operation.py` 16・`core.py` 16） |
+| ルート | 270本の定義（道×メソッドで数えると 273・§5 の物差しの数え方。多い順に `schedule.py` 40・`masters/bladeset*.py` 38・`masters/operation.py` 16・`core.py` 16） |
 | 背景で動くスレッド | 15か所（写し・共有スケジュールの見張り・書込役・RNE・在席） |
 | 外の部品 | flask だけ。ほかは標準ライブラリ（json・sqlite3・threading・re・unicodedata・zipfile・ctypes） |
-| 網 | JS 236本（ほぼ全部 HTTP 越し＝答える側が Rust でもそのまま使える）／Python 112本（うち 91本が `backend` を直に読み込む） |
+| 網 | JS 236本（ほぼ全部 HTTP 越し＝答える側が Rust でもそのまま使える）／Python 112本（うち 83本が製品の Python を直に読み込む。計画を書いた時点の「91本」は数え方の誤り・§9.633） |
 | Rust（`desktop/`） | 約3.1千行。`router.rs` が `/static/` だけ自分で返し、残りを Python（`program/sidecar.py`）へ渡す |
 
 ## 3. 移し方の土台
 
 ### 3.1 窓の振り分けを継ぎ目にする
 
-`router.rs` の `Backend` の前に **「Rust が答えるルートの表」** を置き、表に無い問い合わせだけを Python へ回す。
+`router.rs` の `Backend` の前に **「Rust が答えるルートの表」**（`desktop/core/src/routes.rs` の `ROUTES`）を置き、
+表に無い問い合わせだけを Python へ回す。答えを決めるのは `wavelog_core::Core::answer()` の1箇所（P0 で入れた・§9.633）。
 1本ずつ表へ足していき、最後に Python へ回す先が無くなったら窓口ごと外す。画面と JS の網は1行も変えない。
 
 ### 3.2 移す単位は「ルート」ではなく「書き手」
@@ -58,6 +59,8 @@
 ### 3.4 開発と網のための HTTP の入口も Rust に持たせる
 
 窓の枠（`frame.rs`）でも HTTP でも **同じハンドラ** が答える。JS の網は HTTP の入口を叩く（いまの `program/app.py` の役目）。
+P0 で `wavelog-serve`（`desktop/core/src/bin/serve.rs`）を入れた。表に無い問い合わせは、内側に立てた `program/app.py`
+（`WAVELOG_HTTP_PORT=5030`）へそのまま渡す。網は `WAVELOG_SERVE=rust tests/run_all.sh …` でこの入口を通る。
 ポートを開くのは開発と網のときだけで、利用者の起動はいままでどおり窓だけ（§9.548）。
 
 ### 3.5 Rust の置き場
@@ -70,13 +73,13 @@
 
 | 段 | 移すもの | 終わった印 |
 |---|---|---|
-| **P0 土台** | ワークスペースを分ける・「Rust が答える表＋Python へ回す」の振り分け・影で比べる仕組みと不一致の記録・HTTP の入口・書き手の対応表・物差し（§5）の基準値 | 数を出す仕組みが動く。移したルートは 0本 |
+| **P0 土台**（済み・§9.633） | ワークスペースを分ける・「Rust が答える表＋Python へ回す」の振り分け・影で比べる仕組みと不一致の記録・HTTP の入口・書き手の対応表・物差し（§5）の基準値 | 数を出す仕組みが動く。移したルートは 0本 |
 | **P1 純粋な関数** | 字の正規化（NFKC）・真偽の読み方（`flags`）・日時（`datetext`）・並べ替え（`sort_order`）・`filter_sql`・`rule_cells`・`safe_regex`・式の評価器（`dashboard/formula`・`num_expr`。JS の `WL.formula` と**共通の試験表**を作る）・更新履歴（字をデータファイルへ出す）・CSS の連結・`index.html`（minijinja） | 試験表で Python と答えが一致する |
 | **P2 読むだけのルート** | 仕掛・品質の一覧（写しを読むだけ）・ダッシュボードの計算・ログの閲覧 | 影の不一致が 0件 |
 | **P3 保存と共有の層** | `sqlite_io`・`db_access`・`db_mirror`・錠・`master_share`・`storage_layout`・`paths`・`terminal_store`・在席（`presence`） | 写す・書く役が Rust だけになる |
 | **P4 マスタ** | 表の群ごとに（設備・操業データ・ロール・刃組・帳票・フィルタ・列・アクセス権限・結合） | 群ごとに切り替えた |
 | **P5 予定** | 予定の展開（`schedule_calc`）・共有スケジュールの書込サイクル（`schedule_sync`）・書込役（`schedule_owner`）・見張り・突合（`actual_match`・`actual_keep`）・履歴・換算係数 | **いちばん危ない段**。1つの単位として切り替える |
-| **P6 残り** | 測定記録・更新の置き場（`app_update`）・ショートカット（`desktop_shortcut`）・Excel（`xlsx_io`）・RNE（Navigator の DLL を `libloading` で呼ぶ。DLL は 64bit・exe も 64bit） | 270本すべて Rust |
+| **P6 残り** | 測定記録・更新の置き場（`app_update`）・ショートカット（`desktop_shortcut`）・Excel（`xlsx_io`）・RNE（Navigator の DLL を `libloading` で呼ぶ。DLL は 64bit・exe も 64bit） | 全ルートが Rust |
 | **P7 撤去** | `program/sidecar.py`・`program/app.py`・flask・Python を探す処理（`locate::python()`）・`protocol` の版・Store 版の決まり（§9.318・§9.496）・`program/requirements.txt`・`.claude/rules/` と決定記録の更新 | 窓が Python を起こさない |
 
 **P2 を終えた時点で実測し、続けるかをもう一度決める**（移した行数あたりの日数・影の不一致の出方・exe の大きさ）。
@@ -88,14 +91,18 @@ P7 で版の中身（`PAYLOAD`）から `backend`・`program/*.py` が外れ、`
 
 ## 5. 物差し（各段の前後で同じ数を測る）
 
+数は `python3 tests/lib/rust_progress.py` が今のコードから出す（写しを持たない）。決まりは網 `test_rustplan.py` が見張る。
+
 | 数 | いま | 目標 |
 |---|---|---|
-| Python が答えるルート | 270 | 0 |
+| Python が答えるルート（道×メソッド） | 273 | 0 |
 | 影の比較の不一致（単位ごと） | — | 切り替える前に 0 |
 | 書き手が2言語にまたがる事実 | 0 | どの時点でも 0 |
-| 業務の Python の行数 | 約4.7万 | 0 |
-| JS の網 236本の結果 | P0 で基準を取る | 変わらない |
-| Python の網で `backend` を読む 91本 → `cargo test` へ移した数 | 0／91 | 91／91 |
+| 業務の Python の行数（更新履歴の字を除く） | 48,264 | 0 |
+| Python が書く表（書き手の対応表 `docs/RUST_WRITERS.md`） | 51（表の名前が式で決まる書き手 25） | 0 |
+| 煙テスト（`--smoke`）の結果・Python だけ／Rust の入口を通す | 184/184・184/184（73秒・87秒） | 変わらない |
+| JS の網 236本の結果（通し） | **未計測**（通しは利用者の指示で回す・CLAUDE.md の A） | 変わらない |
+| 製品の Python を直に読む網 83本 → `cargo test` へ移した数 | 0／83 | 83／83 |
 | 起動〜画面の秒・メモリ・exe の大きさ | **未計測**（Windows の実機で P0 に測る） | 悪くならない |
 
 ## 6. 先に分かっている危険

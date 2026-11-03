@@ -1,0 +1,20 @@
+[package]
+name = "wavelog-core"
+version = "0.1.0"
+description = "WaveLog の業務（Python から Rust へ移す先・docs/RUST_MIGRATION_PLAN.md）。窓（Tauri）も Windows も知らない"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[features]
+# 開発と網のための HTTP の入口（bin/serve.rs）。窓の exe には入れない
+serve = ["dep:tiny_http"]
+
+[dependencies]
+serde_json = "1"
+tiny_http = { version = "0.12", optional = true }
+
+[[bin]]
+name = "wavelog-serve"
+path = "src/bin/serve.rs"
+required-features = ["serve"]

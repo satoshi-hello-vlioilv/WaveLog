@@ -3,7 +3,9 @@
 //! 役割の分け方:
 //!   - Rust（この exe）: 窓・起動と終了・1つだけ起動・静的ファイル・中身（Python）の監督と起こし直し・外のリンク・
 //!     デスクトップのショートカット（`--lnk`・決めるのは Python・§9.552）
-//!   - Python（program/sidecar.py）: 画面と API のすべて（Flask のアプリそのまま）。**共有DBの管理も Python のまま**
+//!   - 業務の入口（`wavelog_core`・§9.633）: ルートの表に載せたものは Rust が答え、残りを Python へ回す
+//!     （業務を Python から Rust へ移している途中・docs/RUST_MIGRATION_PLAN.md）
+//!   - Python（program/sidecar.py）: 表に無い画面と API（Flask のアプリそのまま）。**共有DBの管理も Python のまま**
 //!     （錠・改訂番号・写し・在席・書込役。ブラウザ版の端末と同じ作法で共有へ書くため。§9.544）
 //!   - 画面（WebView2）: これまでと同じ HTML/JS/CSS。問い合わせは自前の仕組み（wavelog）で Rust が受ける
 //!
@@ -208,11 +210,7 @@ fn after(app: AppHandle, slot: Arc<OnceLock<AppRouter>>) -> After {
 }
 
 fn json_reply(v: &serde_json::Value) -> Reply {
-    Reply {
-        status: 200,
-        headers: vec![("Content-Type".into(), "application/json".into())],
-        body: serde_json::to_vec(v).unwrap_or_default(),
-    }
+    Reply::json(200, v)
 }
 
 /// 窓を作る（主の窓・別の窓で同じ決まり: 外のリンクはいつものブラウザで開く）。
@@ -496,7 +494,9 @@ fn start(app: AppHandle, slot: Arc<OnceLock<AppRouter>>, splash: Arc<Splash>, fr
         "exe": std::env::current_exe().unwrap_or_default(), "entry": launch::entry_path(), "backend": ready, "url": app_url("/").as_str(),
     });
     let static_dir = program.parent().unwrap_or(Path::new(".")).join("static");
-    let _ = slot.set(Router { static_dir, backend: sup, native: native(app.clone(), info), after: after(app.clone(), slot.clone()) });
+    // 業務の入口（ルートの表・影の比較・§9.633）。影の違いは作業場所の logs/shadow.jsonl へ
+    let core = wavelog_core::Core::new(Some(locate::local_root().join("logs")));
+    let _ = slot.set(Router { static_dir, backend: sup, core, native: native(app.clone(), info), after: after(app.clone(), slot.clone()) });
     splash.step(&app, "open", "now", "画面を開いています…");
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.navigate(app_url("/"));

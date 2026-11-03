@@ -22,7 +22,7 @@
 分けると、内部の話に見える本物の不具合修正を伏せてしまう——付いていない=
 利用者向け、という安全側にしてある。
 """
-APP_VERSION='2.523.1'
+APP_VERSION='2.524.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
@@ -37,6 +37,11 @@ def is_dev(entry):
 
 
 CHANGELOG=[
+ {'version':'2.524.0','dev':True,'notes':[
+  'Python→Rust の移行 P0（§9.633）。業務のクレート wavelog-core（desktop/core）を足し、窓の振り分けを Core::answer() の1箇所へ通した（ルートの表・影の比較・/__rust/status）。移したルートはまだ 0本で、答えは何も変わらない。',
+  '開発と網の HTTP の入口 wavelog-serve（WAVELOG_SERVE=rust tests/run_all.sh で、表に無い物は内側の Python 5030 へ）。煙テストは Python だけ 184/184・Rust の入口を通して 184/184。',
+  '物差し tests/lib/rust_progress.py と網 test_rustplan（Serve が Python に残らない・OWNS を Python が書かない・書き手の対応表 docs/RUST_WRITERS.md が今のコードと同じ）。release の panic を unwind にした（Rust の答えの途中で止まっても窓ごと落とさず 500 で返す）。',
+ ]},
  {'version':'2.523.1','dev':True,'notes':[
   '業務の Python を Rust へ移す計画を書いた（docs/RUST_MIGRATION_PLAN.md・§9.632）。範囲は製品が動く部分だけ。窓の振り分けに「Rust が答えるルートの表」を置き、影で比べて不一致が 0件の単位から切り替える。移す単位は書き手で切る。まだ1行も移していない。',
  ]},
