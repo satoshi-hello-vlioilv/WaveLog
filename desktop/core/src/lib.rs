@@ -16,11 +16,13 @@ pub mod statics;
 
 // P1（§9.634）: Python から移した純粋な関数。答えが Python と同じかは試験表（tests/fixtures/parity）が見る
 pub mod datetext;
+pub mod filter_sql;
 pub mod flags;
 pub mod num_expr;
 pub mod pyish;
 pub mod rule_cells;
 pub mod safe_regex;
+pub mod sort_order;
 pub mod textnorm;
 
 use serde_json::{json, Value};

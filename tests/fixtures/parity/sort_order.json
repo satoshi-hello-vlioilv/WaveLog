@@ -1,0 +1,5393 @@
+[
+{
+"fn": "num_of",
+"args": [
+null
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+""
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+" "
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+"12"
+],
+"want": 12.0
+},
+{
+"fn": "num_of",
+"args": [
+" 12 "
+],
+"want": 12.0
+},
+{
+"fn": "num_of",
+"args": [
+"1,200"
+],
+"want": 1200.0
+},
+{
+"fn": "num_of",
+"args": [
+"1,2"
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+"12,00"
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+"-1,234.5"
+],
+"want": -1234.5
+},
+{
+"fn": "num_of",
+"args": [
+"+.5"
+],
+"want": 0.5
+},
+{
+"fn": "num_of",
+"args": [
+".5"
+],
+"want": 0.5
+},
+{
+"fn": "num_of",
+"args": [
+"5."
+],
+"want": 5.0
+},
+{
+"fn": "num_of",
+"args": [
+"1e3"
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+"abc"
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+"１２"
+],
+"want": 12.0
+},
+{
+"fn": "num_of",
+"args": [
+"١٢"
+],
+"want": 12.0
+},
+{
+"fn": "num_of",
+"args": [
+true
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+false
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+0
+],
+"want": 0.0
+},
+{
+"fn": "num_of",
+"args": [
+3
+],
+"want": 3.0
+},
+{
+"fn": "num_of",
+"args": [
+2.5
+],
+"want": 2.5
+},
+{
+"fn": "num_of",
+"args": [
+"12A"
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+"1,234,567"
+],
+"want": 1234567.0
+},
+{
+"fn": "num_of",
+"args": [
+",123"
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+"-"
+],
+"want": null
+},
+{
+"fn": "num_of",
+"args": [
+"00012"
+],
+"want": 12.0
+},
+{
+"fn": "date_key",
+"args": [
+null
+],
+"want": null
+},
+{
+"fn": "date_key",
+"args": [
+""
+],
+"want": null
+},
+{
+"fn": "date_key",
+"args": [
+"2026/08/01"
+],
+"want": "20260801000000"
+},
+{
+"fn": "date_key",
+"args": [
+"2026-8-1 9:30"
+],
+"want": "20260801093000"
+},
+{
+"fn": "date_key",
+"args": [
+"2026.08.01T09:30:15"
+],
+"want": "20260801093015"
+},
+{
+"fn": "date_key",
+"args": [
+"20260801"
+],
+"want": null
+},
+{
+"fn": "date_key",
+"args": [
+"20260801 0930"
+],
+"want": "20260801093000"
+},
+{
+"fn": "date_key",
+"args": [
+"202608010930"
+],
+"want": "20260801093000"
+},
+{
+"fn": "date_key",
+"args": [
+"20260801T093015"
+],
+"want": "20260801093015"
+},
+{
+"fn": "date_key",
+"args": [
+"2026/13/01"
+],
+"want": null
+},
+{
+"fn": "date_key",
+"args": [
+"2026/02/31"
+],
+"want": "20260231000000"
+},
+{
+"fn": "date_key",
+"args": [
+"2026/08/01 24:00"
+],
+"want": null
+},
+{
+"fn": "date_key",
+"args": [
+"２０２６/８/１"
+],
+"want": "20260801000000"
+},
+{
+"fn": "date_key",
+"args": [
+"26/08/01"
+],
+"want": null
+},
+{
+"fn": "date_key",
+"args": [
+"x"
+],
+"want": null
+},
+{
+"fn": "classify",
+"args": [
+null
+],
+"want": "empty"
+},
+{
+"fn": "classify",
+"args": [
+""
+],
+"want": "empty"
+},
+{
+"fn": "classify",
+"args": [
+" "
+],
+"want": "empty"
+},
+{
+"fn": "classify",
+"args": [
+"12"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+" 12 "
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"1,200"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"1,2"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"12,00"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"-1,234.5"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"+.5"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+".5"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"5."
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"1e3"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"abc"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"１２"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"١٢"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+true
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+false
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+0
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+3
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+2.5
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"12A"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"1,234,567"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+",123"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"-"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"00012"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+null
+],
+"want": "empty"
+},
+{
+"fn": "classify",
+"args": [
+""
+],
+"want": "empty"
+},
+{
+"fn": "classify",
+"args": [
+"2026/08/01"
+],
+"want": "date"
+},
+{
+"fn": "classify",
+"args": [
+"2026-8-1 9:30"
+],
+"want": "date"
+},
+{
+"fn": "classify",
+"args": [
+"2026.08.01T09:30:15"
+],
+"want": "date"
+},
+{
+"fn": "classify",
+"args": [
+"20260801"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"20260801 0930"
+],
+"want": "date"
+},
+{
+"fn": "classify",
+"args": [
+"202608010930"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"20260801T093015"
+],
+"want": "date"
+},
+{
+"fn": "classify",
+"args": [
+"2026/13/01"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"2026/02/31"
+],
+"want": "date"
+},
+{
+"fn": "classify",
+"args": [
+"2026/08/01 24:00"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"２０２６/８/１"
+],
+"want": "date"
+},
+{
+"fn": "classify",
+"args": [
+"26/08/01"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"x"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+null
+],
+"want": "empty"
+},
+{
+"fn": "classify",
+"args": [
+""
+],
+"want": "empty"
+},
+{
+"fn": "classify",
+"args": [
+"A2"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"A10"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"ロット3-12"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+"１２"
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+"x9999999999999999999999999"
+],
+"want": "text"
+},
+{
+"fn": "classify",
+"args": [
+0
+],
+"want": "num"
+},
+{
+"fn": "classify",
+"args": [
+12
+],
+"want": "num"
+},
+{
+"fn": "natural_key",
+"args": [
+null
+],
+"want": ""
+},
+{
+"fn": "natural_key",
+"args": [
+""
+],
+"want": ""
+},
+{
+"fn": "natural_key",
+"args": [
+"A2"
+],
+"want": "A00000000000000000002"
+},
+{
+"fn": "natural_key",
+"args": [
+"A10"
+],
+"want": "A00000000000000000010"
+},
+{
+"fn": "natural_key",
+"args": [
+"ロット3-12"
+],
+"want": "ロット00000000000000000003-00000000000000000012"
+},
+{
+"fn": "natural_key",
+"args": [
+"１２"
+],
+"want": "000000000000000000１２"
+},
+{
+"fn": "natural_key",
+"args": [
+"x9999999999999999999999999"
+],
+"want": "x9999999999999999999999999"
+},
+{
+"fn": "natural_key",
+"args": [
+0
+],
+"want": ""
+},
+{
+"fn": "natural_key",
+"args": [
+12
+],
+"want": "00000000000000000012"
+},
+{
+"fn": "normalize_spec",
+"args": [
+null
+],
+"want": null
+},
+{
+"fn": "normalize_spec",
+"args": [
+""
+],
+"want": null
+},
+{
+"fn": "normalize_spec",
+"args": [
+{}
+],
+"want": null
+},
+{
+"fn": "normalize_spec",
+"args": [
+"x"
+],
+"want": null
+},
+{
+"fn": "normalize_spec",
+"args": [
+"{\"buckets\":[\"num\",\"text\"]}"
+],
+"want": {
+"buckets": [
+"num",
+"text",
+"empty",
+"date"
+],
+"on": "raw",
+"natural": false
+}
+},
+{
+"fn": "normalize_spec",
+"args": [
+{
+"buckets": [
+"text",
+"num",
+"zz",
+"num"
+]
+}
+],
+"want": {
+"buckets": [
+"text",
+"num",
+"empty",
+"date"
+],
+"on": "raw",
+"natural": false
+}
+},
+{
+"fn": "normalize_spec",
+"args": [
+{
+"on": "display"
+}
+],
+"want": {
+"buckets": [],
+"on": "display",
+"natural": false
+}
+},
+{
+"fn": "normalize_spec",
+"args": [
+{
+"natural": 1
+}
+],
+"want": {
+"buckets": [],
+"on": "raw",
+"natural": true
+}
+},
+{
+"fn": "normalize_spec",
+"args": [
+{
+"buckets": "num"
+}
+],
+"want": null
+},
+{
+"fn": "normalize_spec",
+"args": [
+{
+"buckets": {
+"date": 1,
+"empty": 2
+}
+}
+],
+"want": {
+"buckets": [
+"date",
+"empty",
+"num",
+"text"
+],
+"on": "raw",
+"natural": false
+}
+},
+{
+"fn": "normalize_spec",
+"args": [
+{
+"buckets": [
+null,
+" date "
+]
+}
+],
+"want": {
+"buckets": [
+"date",
+"empty",
+"num",
+"text"
+],
+"on": "raw",
+"natural": false
+}
+},
+{
+"fn": "normalize_spec",
+"args": [
+[
+1
+]
+],
+"want": null
+},
+{
+"fn": "normalize_spec",
+"args": [
+0
+],
+"want": null
+},
+{
+"fn": "spec_json",
+"args": [
+null
+],
+"want": ""
+},
+{
+"fn": "spec_json",
+"args": [
+""
+],
+"want": ""
+},
+{
+"fn": "spec_json",
+"args": [
+{}
+],
+"want": ""
+},
+{
+"fn": "spec_json",
+"args": [
+"x"
+],
+"want": ""
+},
+{
+"fn": "spec_json",
+"args": [
+"{\"buckets\":[\"num\",\"text\"]}"
+],
+"want": "{\"buckets\": [\"num\", \"text\", \"empty\", \"date\"], \"natural\": false, \"on\": \"raw\"}"
+},
+{
+"fn": "spec_json",
+"args": [
+{
+"buckets": [
+"text",
+"num",
+"zz",
+"num"
+]
+}
+],
+"want": "{\"buckets\": [\"text\", \"num\", \"empty\", \"date\"], \"natural\": false, \"on\": \"raw\"}"
+},
+{
+"fn": "spec_json",
+"args": [
+{
+"on": "display"
+}
+],
+"want": "{\"buckets\": [], \"natural\": false, \"on\": \"display\"}"
+},
+{
+"fn": "spec_json",
+"args": [
+{
+"natural": 1
+}
+],
+"want": "{\"buckets\": [], \"natural\": true, \"on\": \"raw\"}"
+},
+{
+"fn": "spec_json",
+"args": [
+{
+"buckets": "num"
+}
+],
+"want": ""
+},
+{
+"fn": "spec_json",
+"args": [
+{
+"buckets": {
+"date": 1,
+"empty": 2
+}
+}
+],
+"want": "{\"buckets\": [\"date\", \"empty\", \"num\", \"text\"], \"natural\": false, \"on\": \"raw\"}"
+},
+{
+"fn": "spec_json",
+"args": [
+{
+"buckets": [
+null,
+" date "
+]
+}
+],
+"want": "{\"buckets\": [\"date\", \"empty\", \"num\", \"text\"], \"natural\": false, \"on\": \"raw\"}"
+},
+{
+"fn": "spec_json",
+"args": [
+[
+1
+]
+],
+"want": ""
+},
+{
+"fn": "spec_json",
+"args": [
+0
+],
+"want": ""
+},
+{
+"fn": "describe",
+"args": [
+null
+],
+"want": "既定（種類で分けない）"
+},
+{
+"fn": "describe",
+"args": [
+""
+],
+"want": "既定（種類で分けない）"
+},
+{
+"fn": "describe",
+"args": [
+{}
+],
+"want": "既定（種類で分けない）"
+},
+{
+"fn": "describe",
+"args": [
+"x"
+],
+"want": "既定（種類で分けない）"
+},
+{
+"fn": "describe",
+"args": [
+"{\"buckets\":[\"num\",\"text\"]}"
+],
+"want": "数値 → 文字列 → 空欄 → 日付／生の値で並べる"
+},
+{
+"fn": "describe",
+"args": [
+{
+"buckets": [
+"text",
+"num",
+"zz",
+"num"
+]
+}
+],
+"want": "文字列 → 数値 → 空欄 → 日付／生の値で並べる"
+},
+{
+"fn": "describe",
+"args": [
+{
+"on": "display"
+}
+],
+"want": "変換後の文字で並べる"
+},
+{
+"fn": "describe",
+"args": [
+{
+"natural": 1
+}
+],
+"want": "数字混じりは人の読む順／生の値で並べる"
+},
+{
+"fn": "describe",
+"args": [
+{
+"buckets": "num"
+}
+],
+"want": "既定（種類で分けない）"
+},
+{
+"fn": "describe",
+"args": [
+{
+"buckets": {
+"date": 1,
+"empty": 2
+}
+}
+],
+"want": "日付 → 空欄 → 数値 → 文字列／生の値で並べる"
+},
+{
+"fn": "describe",
+"args": [
+{
+"buckets": [
+null,
+" date "
+]
+}
+],
+"want": "日付 → 空欄 → 数値 → 文字列／生の値で並べる"
+},
+{
+"fn": "describe",
+"args": [
+[
+1
+]
+],
+"want": "既定（種類で分けない）"
+},
+{
+"fn": "describe",
+"args": [
+0
+],
+"want": "既定（種類で分けない）"
+},
+{
+"fn": "value_key",
+"args": [
+null,
+null
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+""
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+" "
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"12"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+" 12 "
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"1,200"
+],
+"want": [
+0,
+1200.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"1,2"
+],
+"want": [
+1,
+0.0,
+"1,2"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"12,00"
+],
+"want": [
+1,
+0.0,
+"12,00"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"-1,234.5"
+],
+"want": [
+0,
+-1234.5,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"+.5"
+],
+"want": [
+0,
+0.5,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+".5"
+],
+"want": [
+0,
+0.5,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"5."
+],
+"want": [
+0,
+5.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"1e3"
+],
+"want": [
+1,
+0.0,
+"1e3"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"abc"
+],
+"want": [
+1,
+0.0,
+"abc"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"１２"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"١٢"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+true
+],
+"want": [
+1,
+0.0,
+"True"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+false
+],
+"want": [
+1,
+0.0,
+"False"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+0
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+3
+],
+"want": [
+0,
+3.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+2.5
+],
+"want": [
+0,
+2.5,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"12A"
+],
+"want": [
+1,
+0.0,
+"12A"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"1,234,567"
+],
+"want": [
+0,
+1234567.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+",123"
+],
+"want": [
+1,
+0.0,
+",123"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"-"
+],
+"want": [
+1,
+0.0,
+"-"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"00012"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+null
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+""
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"2026/08/01"
+],
+"want": [
+1,
+0.0,
+"20260801000000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"2026-8-1 9:30"
+],
+"want": [
+1,
+0.0,
+"20260801093000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"2026.08.01T09:30:15"
+],
+"want": [
+1,
+0.0,
+"20260801093015"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"20260801"
+],
+"want": [
+0,
+20260801.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"20260801 0930"
+],
+"want": [
+1,
+0.0,
+"20260801093000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"202608010930"
+],
+"want": [
+0,
+202608010930.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"20260801T093015"
+],
+"want": [
+1,
+0.0,
+"20260801093015"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"2026/13/01"
+],
+"want": [
+1,
+0.0,
+"2026/13/01"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"2026/02/31"
+],
+"want": [
+1,
+0.0,
+"20260231000000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"2026/08/01 24:00"
+],
+"want": [
+1,
+0.0,
+"2026/08/01 24:00"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"２０２６/８/１"
+],
+"want": [
+1,
+0.0,
+"20260801000000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"26/08/01"
+],
+"want": [
+1,
+0.0,
+"26/08/01"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"x"
+],
+"want": [
+1,
+0.0,
+"x"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+null
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+""
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"A2"
+],
+"want": [
+1,
+0.0,
+"A2"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"A10"
+],
+"want": [
+1,
+0.0,
+"A10"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"ロット3-12"
+],
+"want": [
+1,
+0.0,
+"ロット3-12"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"１２"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+"x9999999999999999999999999"
+],
+"want": [
+1,
+0.0,
+"x9999999999999999999999999"
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+0
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+null,
+12
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+null
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+""
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+" "
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"12"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+" 12 "
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"1,200"
+],
+"want": [
+0,
+1200.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"1,2"
+],
+"want": [
+1,
+0.0,
+"00000000000000000001,00000000000000000002"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"12,00"
+],
+"want": [
+1,
+0.0,
+"00000000000000000012,00000000000000000000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"-1,234.5"
+],
+"want": [
+0,
+-1234.5,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"+.5"
+],
+"want": [
+0,
+0.5,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+".5"
+],
+"want": [
+0,
+0.5,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"5."
+],
+"want": [
+0,
+5.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"1e3"
+],
+"want": [
+1,
+0.0,
+"00000000000000000001e00000000000000000003"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"abc"
+],
+"want": [
+1,
+0.0,
+"abc"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"１２"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"١٢"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+true
+],
+"want": [
+1,
+0.0,
+"True"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+false
+],
+"want": [
+1,
+0.0,
+"False"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+0
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+3
+],
+"want": [
+0,
+3.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+2.5
+],
+"want": [
+0,
+2.5,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"12A"
+],
+"want": [
+1,
+0.0,
+"00000000000000000012A"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"1,234,567"
+],
+"want": [
+0,
+1234567.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+",123"
+],
+"want": [
+1,
+0.0,
+",00000000000000000123"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"-"
+],
+"want": [
+1,
+0.0,
+"-"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"00012"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+null
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+""
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"2026/08/01"
+],
+"want": [
+1,
+0.0,
+"20260801000000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"2026-8-1 9:30"
+],
+"want": [
+1,
+0.0,
+"20260801093000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"2026.08.01T09:30:15"
+],
+"want": [
+1,
+0.0,
+"20260801093015"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"20260801"
+],
+"want": [
+0,
+20260801.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"20260801 0930"
+],
+"want": [
+1,
+0.0,
+"20260801093000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"202608010930"
+],
+"want": [
+0,
+202608010930.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"20260801T093015"
+],
+"want": [
+1,
+0.0,
+"20260801093015"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"2026/13/01"
+],
+"want": [
+1,
+0.0,
+"00000000000000002026/00000000000000000013/00000000000000000001"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"2026/02/31"
+],
+"want": [
+1,
+0.0,
+"20260231000000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"2026/08/01 24:00"
+],
+"want": [
+1,
+0.0,
+"00000000000000002026/00000000000000000008/00000000000000000001 00000000000000000024:00000000000000000000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"２０２６/８/１"
+],
+"want": [
+1,
+0.0,
+"20260801000000"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"26/08/01"
+],
+"want": [
+1,
+0.0,
+"00000000000000000026/00000000000000000008/00000000000000000001"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"x"
+],
+"want": [
+1,
+0.0,
+"x"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+null
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+""
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"A2"
+],
+"want": [
+1,
+0.0,
+"A00000000000000000002"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"A10"
+],
+"want": [
+1,
+0.0,
+"A00000000000000000010"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"ロット3-12"
+],
+"want": [
+1,
+0.0,
+"ロット00000000000000000003-00000000000000000012"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"１２"
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+"x9999999999999999999999999"
+],
+"want": [
+1,
+0.0,
+"x9999999999999999999999999"
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+0
+],
+"want": [
+0,
+0.0,
+""
+]
+},
+{
+"fn": "value_key",
+"args": [
+{
+"natural": true
+},
+12
+],
+"want": [
+0,
+12.0,
+""
+]
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+null
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+""
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+" "
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+"12"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+" 12 "
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+"1,200"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+"1,2"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+"12,00"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+"-1,234.5"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+"+.5"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+".5"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+null,
+"5."
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+null
+],
+"want": 1
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+""
+],
+"want": 1
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+" "
+],
+"want": 1
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+"12"
+],
+"want": 2
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+" 12 "
+],
+"want": 2
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+"1,200"
+],
+"want": 2
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+"1,2"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+"12,00"
+],
+"want": 0
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+"-1,234.5"
+],
+"want": 2
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+"+.5"
+],
+"want": 2
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+".5"
+],
+"want": 2
+},
+{
+"fn": "bucket_rank",
+"args": [
+{
+"buckets": [
+"text",
+"empty"
+]
+},
+"5."
+],
+"want": 2
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+"12"
+],
+"want": "12"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+"12.5"
+],
+"want": "12.5"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+"0.0001"
+],
+"want": "0.0001"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+"1234567.891"
+],
+"want": "1.23457e+06"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+"1,200"
+],
+"want": "1200"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+"-0"
+],
+"want": "0"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+"x"
+],
+"want": "x"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+""
+],
+"want": ""
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+1e-07
+],
+"want": "1e-07"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number"
+},
+123456789
+],
+"want": "123456789"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": 2
+},
+"1.005"
+],
+"want": "1.00"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": 2
+},
+"2.675"
+],
+"want": "2.67"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": 2
+},
+"0.125"
+],
+"want": "0.12"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": 2
+},
+"-1.5"
+],
+"want": "-1.50"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": 2
+},
+"12"
+],
+"want": "12.00"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": "0"
+},
+"2.5"
+],
+"want": "2"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": "0"
+},
+"3.5"
+],
+"want": "4"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": "0"
+},
+"-2.5"
+],
+"want": "-2"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": "x"
+},
+"2.5"
+],
+"want": "2.5"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": -1
+},
+"2.5"
+],
+"want": "2.5"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": 1.9,
+"thousands": true,
+"prefix": "¥",
+"suffix": "円"
+},
+"1234567.25"
+],
+"want": "¥1,234,567.2円"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": 1.9,
+"thousands": true,
+"prefix": "¥",
+"suffix": "円"
+},
+"-1234"
+],
+"want": "¥-1,234.0円"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"decimals": 1.9,
+"thousands": true,
+"prefix": "¥",
+"suffix": "円"
+},
+"999"
+],
+"want": "¥999.0円"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"thousands": true
+},
+"1234567"
+],
+"want": "1,234,567"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"thousands": true
+},
+"0.00001234"
+],
+"want": "1.234e-05"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "number",
+"thousands": true
+},
+"12345678901"
+],
+"want": "12,345,678,901"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime"
+},
+"2026/08/01 09:05"
+],
+"want": "2026/08/01"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime"
+},
+"20260801"
+],
+"want": "2026/08/01"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime"
+},
+"9:05"
+],
+"want": "9:05"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime"
+},
+"x"
+],
+"want": "x"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime"
+},
+""
+],
+"want": ""
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime",
+"pattern": "yy/M/d (ddd) H:m:s tt 'yyyy'"
+},
+"2026/08/01 09:05:07"
+],
+"want": "26/8/1 (土) 9:5:7 午前 yyyy"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime",
+"pattern": "yy/M/d (ddd) H:m:s tt 'yyyy'"
+},
+"2026/08/02 15:00"
+],
+"want": "26/8/2 (日) 15:0:0 午後 yyyy"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime",
+"pattern": "yyyy年MM月dd日 dddd hh:mm"
+},
+"2026/08/03 00:30"
+],
+"want": "2026年08月03日 月曜日 12:30"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime",
+"pattern": "yyyy年MM月dd日 dddd hh:mm"
+},
+"2026/08/03 12:30"
+],
+"want": "2026年08月03日 月曜日 12:30"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "datetime",
+"pattern": "yyyy HH:mm"
+},
+"9:05"
+],
+"want": "9:05"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "text",
+"prefix": "[",
+"suffix": "]"
+},
+" a "
+],
+"want": "[a]"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "text",
+"prefix": "[",
+"suffix": "]"
+},
+"b"
+],
+"want": "[b]"
+},
+{
+"fn": "format_value",
+"args": [
+{
+"kind": "zz"
+},
+"a"
+],
+"want": "a"
+},
+{
+"fn": "format_value",
+"args": [
+null,
+"a"
+],
+"want": "a"
+},
+{
+"fn": "format_value",
+"args": [
+null,
+null
+],
+"want": ""
+},
+{
+"fn": "format_value",
+"args": [
+null,
+3
+],
+"want": "3"
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "self"
+},
+"op": "ne",
+"right": {
+"kind": "value",
+"value": "1.5"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": false
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "contains",
+"right": {
+"kind": "value",
+"value": "US"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "contains",
+"right": {
+"kind": "value",
+"value": ""
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": false
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "startsWith",
+"right": {
+"kind": "value",
+"value": "SUS"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "endsWith",
+"right": {
+"kind": "value",
+"value": "304"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "幅"
+},
+"op": "gt",
+"right": {
+"kind": "value",
+"value": "999"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": false
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "ge",
+"right": {
+"kind": "value",
+"value": "SUS"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "self"
+},
+"op": "between",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"right2": {
+"kind": "value",
+"value": "2"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "self"
+},
+"op": "le",
+"right": {
+"kind": "column",
+"column": "幅"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "empty"
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "無い"
+},
+"op": "notEmpty"
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": false
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "regex",
+"right": {
+"kind": "value",
+"value": "^SUS\\d{3}$"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "regex",
+"right": {
+"kind": "value",
+"value": "(a+)+"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": false
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "regex",
+"right": {
+"kind": "value",
+"value": "[unclosed"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": false
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "regex",
+"right": {
+"kind": "value",
+"value": "(?i)sus"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": null,
+"op": "eq",
+"right": {
+"kind": "value",
+"value": ""
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "value",
+"value": null
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": null
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "value",
+"value": 3
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "3.0"
+}
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": true
+},
+{
+"fn": "rule_test",
+"args": [
+{
+"left": {
+"kind": "self"
+},
+"op": "zz"
+},
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": false
+},
+{
+"fn": "rule_match",
+"args": [
+[
+{
+"text": "薄い",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+},
+{
+"text": "既定",
+"conditions": []
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": {
+"text": "薄い",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+}
+},
+{
+"fn": "rule_match",
+"args": [
+[
+{
+"text": "x",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "ne",
+"right": {
+"kind": "value",
+"value": "1.5"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "contains",
+"right": {
+"kind": "value",
+"value": "US"
+},
+"join": "or"
+}
+]
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": {
+"text": "x",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "ne",
+"right": {
+"kind": "value",
+"value": "1.5"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "contains",
+"right": {
+"kind": "value",
+"value": "US"
+},
+"join": "or"
+}
+]
+}
+},
+{
+"fn": "rule_match",
+"args": [
+[
+{
+"text": "g",
+"conditions": [
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+},
+{
+"left": {
+"kind": "column",
+"column": "幅"
+},
+"op": "gt",
+"right": {
+"kind": "value",
+"value": "999"
+}
+}
+]
+},
+{
+"text": "",
+"conditions": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "endsWith",
+"right": {
+"kind": "value",
+"value": "304"
+}
+}
+]
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": {
+"text": "g",
+"conditions": [
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+},
+{
+"left": {
+"kind": "column",
+"column": "幅"
+},
+"op": "gt",
+"right": {
+"kind": "value",
+"value": "999"
+}
+}
+]
+}
+},
+{
+"fn": "rule_match",
+"args": [
+[
+{
+"text": "e",
+"conditions": [
+{
+"kind": "group",
+"conditions": []
+}
+]
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": null
+},
+{
+"fn": "rule_match",
+"args": [
+[
+{
+"text": "=a+1",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": {
+"text": "=a+1",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+}
+},
+{
+"fn": "rule_match",
+"args": [
+[
+{
+"text": "f",
+"conditions": [
+{
+"op": "formula"
+}
+]
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": null
+},
+{
+"fn": "rule_match",
+"args": [
+[
+{
+"text": "c",
+"conditions": [
+{
+"left": {
+"kind": "calc"
+},
+"op": "eq"
+}
+]
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": {
+"text": "c",
+"conditions": [
+{
+"left": {
+"kind": "calc"
+},
+"op": "eq"
+}
+]
+}
+},
+{
+"fn": "rule_match",
+"args": [
+[
+{
+"text": "n",
+"conditions": [
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+}
+]
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": {
+"text": "n",
+"conditions": [
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+}
+]
+}
+},
+{
+"fn": "rules_need_formula",
+"args": [
+[
+{
+"text": "薄い",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+},
+{
+"text": "既定",
+"conditions": []
+}
+]
+],
+"want": false
+},
+{
+"fn": "rules_need_formula",
+"args": [
+[
+{
+"text": "x",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "ne",
+"right": {
+"kind": "value",
+"value": "1.5"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "contains",
+"right": {
+"kind": "value",
+"value": "US"
+},
+"join": "or"
+}
+]
+}
+]
+],
+"want": false
+},
+{
+"fn": "rules_need_formula",
+"args": [
+[
+{
+"text": "g",
+"conditions": [
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+},
+{
+"left": {
+"kind": "column",
+"column": "幅"
+},
+"op": "gt",
+"right": {
+"kind": "value",
+"value": "999"
+}
+}
+]
+},
+{
+"text": "",
+"conditions": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "endsWith",
+"right": {
+"kind": "value",
+"value": "304"
+}
+}
+]
+}
+]
+],
+"want": false
+},
+{
+"fn": "rules_need_formula",
+"args": [
+[
+{
+"text": "e",
+"conditions": [
+{
+"kind": "group",
+"conditions": []
+}
+]
+}
+]
+],
+"want": false
+},
+{
+"fn": "rules_need_formula",
+"args": [
+[
+{
+"text": "=a+1",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+}
+]
+],
+"want": true
+},
+{
+"fn": "rules_need_formula",
+"args": [
+[
+{
+"text": "f",
+"conditions": [
+{
+"op": "formula"
+}
+]
+}
+]
+],
+"want": true
+},
+{
+"fn": "rules_need_formula",
+"args": [
+[
+{
+"text": "c",
+"conditions": [
+{
+"left": {
+"kind": "calc"
+},
+"op": "eq"
+}
+]
+}
+]
+],
+"want": true
+},
+{
+"fn": "rules_need_formula",
+"args": [
+[
+{
+"text": "n",
+"conditions": [
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+}
+]
+}
+]
+],
+"want": false
+},
+{
+"fn": "rule_leaves",
+"args": [
+[
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+],
+"want": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+},
+{
+"fn": "rule_leaves",
+"args": [
+[
+{
+"left": {
+"kind": "self"
+},
+"op": "ne",
+"right": {
+"kind": "value",
+"value": "1.5"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "contains",
+"right": {
+"kind": "value",
+"value": "US"
+},
+"join": "or"
+}
+]
+],
+"want": [
+{
+"left": {
+"kind": "self"
+},
+"op": "ne",
+"right": {
+"kind": "value",
+"value": "1.5"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "contains",
+"right": {
+"kind": "value",
+"value": "US"
+},
+"join": "or"
+}
+]
+},
+{
+"fn": "rule_leaves",
+"args": [
+[
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+},
+{
+"left": {
+"kind": "column",
+"column": "幅"
+},
+"op": "gt",
+"right": {
+"kind": "value",
+"value": "999"
+}
+}
+]
+],
+"want": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+},
+{
+"left": {
+"kind": "column",
+"column": "幅"
+},
+"op": "gt",
+"right": {
+"kind": "value",
+"value": "999"
+}
+}
+]
+},
+{
+"fn": "rule_leaves",
+"args": [
+[
+{
+"kind": "group",
+"conditions": []
+}
+]
+],
+"want": []
+},
+{
+"fn": "rule_leaves",
+"args": [
+[
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+],
+"want": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+},
+{
+"fn": "rule_leaves",
+"args": [
+[
+{
+"op": "formula"
+}
+]
+],
+"want": [
+{
+"op": "formula"
+}
+]
+},
+{
+"fn": "rule_leaves",
+"args": [
+[
+{
+"left": {
+"kind": "calc"
+},
+"op": "eq"
+}
+]
+],
+"want": [
+{
+"left": {
+"kind": "calc"
+},
+"op": "eq"
+}
+]
+},
+{
+"fn": "rule_leaves",
+"args": [
+[
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+}
+]
+],
+"want": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+},
+{
+"fn": "display_text",
+"args": [
+"1.5",
+null,
+[
+{
+"text": "薄い",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+}
+]
+},
+{
+"text": "既定",
+"conditions": []
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": "薄い"
+},
+{
+"fn": "display_text",
+"args": [
+"9",
+{
+"kind": "number",
+"decimals": 1
+},
+[
+{
+"text": "g",
+"conditions": [
+{
+"kind": "group",
+"conditions": [
+{
+"left": {
+"kind": "self"
+},
+"op": "eq",
+"right": {
+"kind": "value",
+"value": "1.50"
+}
+},
+{
+"left": {
+"kind": "column",
+"column": "空"
+},
+"op": "lt",
+"right": {
+"kind": "value",
+"value": "1"
+},
+"join": "or"
+}
+]
+},
+{
+"left": {
+"kind": "column",
+"column": "幅"
+},
+"op": "gt",
+"right": {
+"kind": "value",
+"value": "999"
+}
+}
+]
+},
+{
+"text": "",
+"conditions": [
+{
+"left": {
+"kind": "column",
+"column": "名"
+},
+"op": "endsWith",
+"right": {
+"kind": "value",
+"value": "304"
+}
+}
+]
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": "g"
+},
+{
+"fn": "display_text",
+"args": [
+"9",
+{
+"kind": "text",
+"suffix": "mm"
+},
+null,
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": "9mm"
+},
+{
+"fn": "display_text",
+"args": [
+"",
+{
+"kind": "number"
+},
+null,
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": ""
+},
+{
+"fn": "display_text",
+"args": [
+"7",
+null,
+[
+{
+"text": null,
+"conditions": []
+}
+],
+{
+"厚": "1.5",
+"幅": "1,200",
+"名": "SUS304",
+"空": "",
+"日": "2026/08/01"
+},
+"厚"
+],
+"want": "7"
+},
+{
+"fn": "order_rows",
+"args": [
+[
+{
+"id": 0,
+"v": "10",
+"w": "b"
+},
+{
+"id": 1,
+"v": "3",
+"w": "a"
+},
+{
+"id": 2,
+"v": "",
+"w": "a"
+},
+{
+"id": 3,
+"v": "A10",
+"w": "c"
+},
+{
+"id": 4,
+"v": "A2",
+"w": "b"
+},
+{
+"id": 5,
+"v": "2026/08/01",
+"w": "a"
+},
+{
+"id": 6,
+"v": null,
+"w": "c"
+},
+{
+"id": 7,
+"v": "3",
+"w": "b"
+},
+{
+"id": 8,
+"v": "1,200",
+"w": "a"
+},
+{
+"id": 9,
+"v": "a",
+"w": "b"
+},
+{
+"id": 10,
+"v": "2025-1-1 9:00",
+"w": "c"
+},
+{
+"id": 11,
+"v": " ",
+"w": "a"
+}
+],
+[
+{
+"col": "v"
+}
+]
+],
+"want": [
+2,
+6,
+11,
+1,
+7,
+0,
+8,
+10,
+5,
+3,
+4,
+9
+]
+},
+{
+"fn": "order_rows",
+"args": [
+[
+{
+"id": 0,
+"v": "10",
+"w": "b"
+},
+{
+"id": 1,
+"v": "3",
+"w": "a"
+},
+{
+"id": 2,
+"v": "",
+"w": "a"
+},
+{
+"id": 3,
+"v": "A10",
+"w": "c"
+},
+{
+"id": 4,
+"v": "A2",
+"w": "b"
+},
+{
+"id": 5,
+"v": "2026/08/01",
+"w": "a"
+},
+{
+"id": 6,
+"v": null,
+"w": "c"
+},
+{
+"id": 7,
+"v": "3",
+"w": "b"
+},
+{
+"id": 8,
+"v": "1,200",
+"w": "a"
+},
+{
+"id": 9,
+"v": "a",
+"w": "b"
+},
+{
+"id": 10,
+"v": "2025-1-1 9:00",
+"w": "c"
+},
+{
+"id": 11,
+"v": " ",
+"w": "a"
+}
+],
+[
+{
+"col": "v",
+"dir": "desc"
+}
+]
+],
+"want": [
+9,
+4,
+3,
+5,
+10,
+8,
+0,
+1,
+7,
+2,
+6,
+11
+]
+},
+{
+"fn": "order_rows",
+"args": [
+[
+{
+"id": 0,
+"v": "10",
+"w": "b"
+},
+{
+"id": 1,
+"v": "3",
+"w": "a"
+},
+{
+"id": 2,
+"v": "",
+"w": "a"
+},
+{
+"id": 3,
+"v": "A10",
+"w": "c"
+},
+{
+"id": 4,
+"v": "A2",
+"w": "b"
+},
+{
+"id": 5,
+"v": "2026/08/01",
+"w": "a"
+},
+{
+"id": 6,
+"v": null,
+"w": "c"
+},
+{
+"id": 7,
+"v": "3",
+"w": "b"
+},
+{
+"id": 8,
+"v": "1,200",
+"w": "a"
+},
+{
+"id": 9,
+"v": "a",
+"w": "b"
+},
+{
+"id": 10,
+"v": "2025-1-1 9:00",
+"w": "c"
+},
+{
+"id": 11,
+"v": " ",
+"w": "a"
+}
+],
+[
+{
+"col": "v",
+"spec": {
+"buckets": [
+"text",
+"num",
+"date",
+"empty"
+]
+}
+}
+]
+],
+"want": [
+3,
+4,
+9,
+1,
+7,
+0,
+8,
+10,
+5,
+2,
+6,
+11
+]
+},
+{
+"fn": "order_rows",
+"args": [
+[
+{
+"id": 0,
+"v": "10",
+"w": "b"
+},
+{
+"id": 1,
+"v": "3",
+"w": "a"
+},
+{
+"id": 2,
+"v": "",
+"w": "a"
+},
+{
+"id": 3,
+"v": "A10",
+"w": "c"
+},
+{
+"id": 4,
+"v": "A2",
+"w": "b"
+},
+{
+"id": 5,
+"v": "2026/08/01",
+"w": "a"
+},
+{
+"id": 6,
+"v": null,
+"w": "c"
+},
+{
+"id": 7,
+"v": "3",
+"w": "b"
+},
+{
+"id": 8,
+"v": "1,200",
+"w": "a"
+},
+{
+"id": 9,
+"v": "a",
+"w": "b"
+},
+{
+"id": 10,
+"v": "2025-1-1 9:00",
+"w": "c"
+},
+{
+"id": 11,
+"v": " ",
+"w": "a"
+}
+],
+[
+{
+"col": "v",
+"dir": "DESC",
+"spec": {
+"buckets": [
+"empty",
+"num"
+],
+"natural": true
+}
+}
+]
+],
+"want": [
+2,
+6,
+11,
+8,
+0,
+1,
+7,
+9,
+3,
+4,
+5,
+10
+]
+},
+{
+"fn": "order_rows",
+"args": [
+[
+{
+"id": 0,
+"v": "10",
+"w": "b"
+},
+{
+"id": 1,
+"v": "3",
+"w": "a"
+},
+{
+"id": 2,
+"v": "",
+"w": "a"
+},
+{
+"id": 3,
+"v": "A10",
+"w": "c"
+},
+{
+"id": 4,
+"v": "A2",
+"w": "b"
+},
+{
+"id": 5,
+"v": "2026/08/01",
+"w": "a"
+},
+{
+"id": 6,
+"v": null,
+"w": "c"
+},
+{
+"id": 7,
+"v": "3",
+"w": "b"
+},
+{
+"id": 8,
+"v": "1,200",
+"w": "a"
+},
+{
+"id": 9,
+"v": "a",
+"w": "b"
+},
+{
+"id": 10,
+"v": "2025-1-1 9:00",
+"w": "c"
+},
+{
+"id": 11,
+"v": " ",
+"w": "a"
+}
+],
+[
+{
+"col": "w"
+},
+{
+"col": "v",
+"dir": "desc"
+}
+]
+],
+"want": [
+5,
+8,
+1,
+2,
+11,
+9,
+4,
+0,
+7,
+3,
+10,
+6
+]
+},
+{
+"fn": "order_rows",
+"args": [
+[
+{
+"id": 0,
+"v": "10",
+"w": "b"
+},
+{
+"id": 1,
+"v": "3",
+"w": "a"
+},
+{
+"id": 2,
+"v": "",
+"w": "a"
+},
+{
+"id": 3,
+"v": "A10",
+"w": "c"
+},
+{
+"id": 4,
+"v": "A2",
+"w": "b"
+},
+{
+"id": 5,
+"v": "2026/08/01",
+"w": "a"
+},
+{
+"id": 6,
+"v": null,
+"w": "c"
+},
+{
+"id": 7,
+"v": "3",
+"w": "b"
+},
+{
+"id": 8,
+"v": "1,200",
+"w": "a"
+},
+{
+"id": 9,
+"v": "a",
+"w": "b"
+},
+{
+"id": 10,
+"v": "2025-1-1 9:00",
+"w": "c"
+},
+{
+"id": 11,
+"v": " ",
+"w": "a"
+}
+],
+[
+{
+"col": "w",
+"dir": "desc",
+"spec": {
+"natural": true
+}
+},
+{
+"col": "v"
+}
+]
+],
+"want": [
+6,
+10,
+3,
+7,
+0,
+4,
+9,
+2,
+11,
+1,
+8,
+5
+]
+},
+{
+"fn": "order_rows",
+"args": [
+[
+{
+"id": 0,
+"v": "10",
+"w": "b"
+},
+{
+"id": 1,
+"v": "3",
+"w": "a"
+},
+{
+"id": 2,
+"v": "",
+"w": "a"
+},
+{
+"id": 3,
+"v": "A10",
+"w": "c"
+},
+{
+"id": 4,
+"v": "A2",
+"w": "b"
+},
+{
+"id": 5,
+"v": "2026/08/01",
+"w": "a"
+},
+{
+"id": 6,
+"v": null,
+"w": "c"
+},
+{
+"id": 7,
+"v": "3",
+"w": "b"
+},
+{
+"id": 8,
+"v": "1,200",
+"w": "a"
+},
+{
+"id": 9,
+"v": "a",
+"w": "b"
+},
+{
+"id": 10,
+"v": "2025-1-1 9:00",
+"w": "c"
+},
+{
+"id": 11,
+"v": " ",
+"w": "a"
+}
+],
+[]
+],
+"want": [
+0,
+1,
+2,
+3,
+4,
+5,
+6,
+7,
+8,
+9,
+10,
+11
+]
+}
+]

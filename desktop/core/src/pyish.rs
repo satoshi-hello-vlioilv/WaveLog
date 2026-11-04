@@ -138,6 +138,168 @@ pub fn take_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
+/// `'%g' % f`（有効数字 6 桁・指数は 10^-5 未満と 10^6 以上・末尾の 0 を落とす）。
+pub fn py_g(f: f64) -> String {
+    if f.is_nan() {
+        return "nan".into();
+    }
+    if f.is_infinite() {
+        return if f > 0.0 { "inf".into() } else { "-inf".into() };
+    }
+    if f == 0.0 {
+        return if f.is_sign_negative() { "-0".into() } else { "0".into() };
+    }
+    let sci = format!("{f:.5e}"); // 有効数字 6 桁へ丸めた形（例 1.23457e6）
+    let (mant, exp) = sci.split_once('e').unwrap_or((&sci, "0"));
+    let exp: i32 = exp.parse().unwrap_or(0);
+    let trim = |t: String| -> String {
+        if t.contains('.') {
+            t.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            t
+        }
+    };
+    if (-4..6).contains(&exp) {
+        trim(format!("{f:.*}", (5 - exp) as usize))
+    } else {
+        format!("{}e{}{:02}", trim(mant.to_string()), if exp < 0 { '-' } else { '+' }, exp.abs())
+    }
+}
+
+/// `float(字)`（前後の空白・全角などの数字・数字のあいだの `_`・inf／nan も読む）。読めなければ None。
+pub fn py_float(s: &str) -> Option<f64> {
+    let t = ascii_digits(py_strip(s));
+    let b = t.as_bytes();
+    for (i, c) in b.iter().enumerate() {
+        if *c == b'_' && !(i > 0 && b[i - 1].is_ascii_digit() && b.get(i + 1).is_some_and(u8::is_ascii_digit)) {
+            return None;
+        }
+    }
+    let t = t.replace('_', "");
+    let body = t.trim_start_matches(['+', '-']);
+    if t.len() - body.len() > 1 {
+        return None;
+    }
+    let word = body.to_ascii_lowercase();
+    if matches!(word.as_str(), "inf" | "infinity" | "nan") {
+        return t.parse().ok();
+    }
+    // 数字・小数点・指数だけ（Rust が受けて Python が受けない形を落とす）
+    let ok = !body.is_empty() && body.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'));
+    if !ok || !body.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
+        return None;
+    }
+    t.parse().ok()
+}
+
+/// `json.dumps(値, ensure_ascii=False)`（区切りは `", "`・`": "`、小数は Python の書き方。辞書は鍵の名前順＝`sort_keys=True` の形）。
+pub fn py_dumps(v: &Value) -> String {
+    match v {
+        Value::Null => "null".into(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) if n.is_f64() => {
+            let f = n.as_f64().unwrap_or(f64::NAN);
+            if f.is_finite() {
+                py_float_repr(f)
+            } else if f.is_nan() {
+                "NaN".into()
+            } else if f > 0.0 {
+                "Infinity".into()
+            } else {
+                "-Infinity".into()
+            }
+        }
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => serde_json::to_string(s).unwrap_or_default(),
+        Value::Array(a) => format!("[{}]", a.iter().map(py_dumps).collect::<Vec<_>>().join(", ")),
+        Value::Object(o) => {
+            let parts: Vec<String> =
+                o.iter().map(|(k, x)| format!("{}: {}", serde_json::to_string(k).unwrap_or_default(), py_dumps(x))).collect();
+            format!("{{{}}}", parts.join(", "))
+        }
+    }
+}
+
+/// 暦の日（`datetime.date`）。年は 1〜9999。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Date {
+    pub y: i64,
+    pub m: i64,
+    pub d: i64,
+}
+
+impl Date {
+    pub fn new(y: i64, m: i64, d: i64) -> Option<Date> {
+        ((1..=9999).contains(&y) && (1..=12).contains(&m) && d >= 1 && d <= month_days(y, m)).then_some(Date { y, m, d })
+    }
+
+    /// 'YYYY-MM-DD'（`date.fromisoformat` の形だけ）。
+    pub fn parse_iso(s: &str) -> Option<Date> {
+        let b = s.as_bytes();
+        if b.len() != 10 || b[4] != b'-' || b[7] != b'-' || !b.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit()) {
+            return None;
+        }
+        Date::new(s[..4].parse().ok()?, s[5..7].parse().ok()?, s[8..].parse().ok()?)
+    }
+
+    pub fn iso(&self) -> String {
+        format!("{:04}-{:02}-{:02}", self.y, self.m, self.d)
+    }
+
+    /// 0001-01-01 を 1 とする通し日（`date.toordinal()`）。
+    pub fn ordinal(&self) -> i64 {
+        let y = self.y - 1;
+        let before = y * 365 + y / 4 - y / 100 + y / 400;
+        let in_year: i64 = (1..self.m).map(|m| month_days(self.y, m)).sum();
+        before + in_year + self.d
+    }
+
+    pub fn from_ordinal(n: i64) -> Option<Date> {
+        if n < 1 {
+            return None;
+        }
+        // 400 年の周期で寄せてから 1 年ずつ
+        let mut y = (n - 1) / 146_097 * 400 + 1;
+        let mut left = (n - 1) % 146_097 + 1;
+        loop {
+            let len = if is_leap(y) { 366 } else { 365 };
+            if left <= len {
+                break;
+            }
+            left -= len;
+            y += 1;
+        }
+        let mut m = 1;
+        while left > month_days(y, m) {
+            left -= month_days(y, m);
+            m += 1;
+        }
+        Date::new(y, m, left)
+    }
+
+    pub fn add_days(&self, days: i64) -> Option<Date> {
+        Date::from_ordinal(self.ordinal() + days)
+    }
+
+    /// 曜日（`isoweekday() % 7`＝日曜 0〜土曜 6）。
+    pub fn weekday_sun0(&self) -> usize {
+        (self.ordinal() % 7) as usize
+    }
+}
+
+pub fn is_leap(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+pub fn month_days(y: i64, m: i64) -> i64 {
+    match m {
+        2 if is_leap(y) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +332,30 @@ mod tests {
         assert_eq!(digit_value('/'), None);
         assert_eq!(py_int("２０２６"), Some(2026));
         assert_eq!(py_strip("\x1c\u{3000} a \u{3000}\x1f"), "a");
+    }
+
+    #[test]
+    fn g_float_dumps_dates() {
+        for (f, want) in [
+            (1234567.891, "1.23457e+06"),
+            (0.0001, "0.0001"),
+            (0.00001234, "1.234e-05"),
+            (12.5, "12.5"),
+            (100000.0, "100000"),
+            (1e6, "1e+06"),
+        ] {
+            assert_eq!(py_g(f), want, "{f}");
+        }
+        assert_eq!(py_float(" 1_0 "), Some(10.0));
+        assert_eq!(py_float("1__0"), None);
+        assert_eq!(py_float("２.５"), Some(2.5));
+        assert_eq!(py_float("e5"), None);
+        assert_eq!(py_float("--1"), None);
+        assert_eq!(py_dumps(&serde_json::json!(["a", 1.0, null, {"b": true}])), r#"["a", 1.0, null, {"b": true}]"#);
+        let d = Date::new(2024, 2, 29).unwrap();
+        assert_eq!(Date::from_ordinal(d.ordinal()), Some(d));
+        assert_eq!(Date::new(1, 1, 1).unwrap().ordinal(), 1);
+        assert_eq!(Date::new(2026, 8, 2).unwrap().weekday_sun0(), 0, "2026-08-02 は日曜");
+        assert_eq!(d.add_days(1).unwrap().iso(), "2024-03-01");
     }
 }

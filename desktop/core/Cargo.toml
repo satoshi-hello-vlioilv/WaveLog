@@ -17,6 +17,8 @@ regex = "1"
 # 字の正規化（NFKC）と大文字・小文字の畳み方（casefold）。Python の unicodedata.normalize・str.casefold と同じ答えにする
 unicode-normalization = "0.1"
 caseless = "0.2"
+# 利用者が書いた正規表現の照合（表示ルール・ダッシュボードの式・§9.635）。後読み・後方参照も読む
+fancy-regex = "0.20"
 tiny_http = { version = "0.12", optional = true }
 
 [[bin]]

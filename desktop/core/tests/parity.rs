@@ -4,8 +4,10 @@
 //! どの領域のどの問いで何が違ったかを全部並べて落ちる（最初の1件で止めない）。
 
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
-use wavelog_core::{datetext, flags, num_expr, rule_cells, safe_regex, textnorm};
+use wavelog_core::pyish::Date;
+use wavelog_core::{datetext, filter_sql, flags, num_expr, rule_cells, safe_regex, sort_order, textnorm};
 
 fn dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity")
@@ -61,7 +63,85 @@ fn call(area: &str, fun: &str, a: &[Value]) -> Result<Value, String> {
         ("rule_cells", "normalize_conditions") => json!(rule_cells::normalize_conditions(&arg(0), &field_ok)),
         ("rule_cells", "normalize_cols") => json!(rule_cells::normalize_cols(&arg(0), &field_ok)),
         ("rule_cells", "table_cols") => json!(rule_cells::table_cols(&arg(0), &arg(1), &field_ok)),
+        ("sort_order", _) => sort_call(fun, a)?,
+        ("filter_sql", _) => filter_call(fun, a)?,
         _ => return Err(format!("Rust に {area}.{fun} がありません")),
+    })
+}
+
+fn strs(v: &Value) -> Vec<String> {
+    v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
+}
+
+fn arr(v: &Value) -> Vec<Value> {
+    v.as_array().cloned().unwrap_or_default()
+}
+
+fn obj(v: &Value) -> serde_json::Map<String, Value> {
+    v.as_object().cloned().unwrap_or_default()
+}
+
+fn exprs(v: &Value) -> BTreeMap<String, String> {
+    obj(v).into_iter().map(|(k, x)| (k, x.as_str().unwrap_or("").to_string())).collect()
+}
+
+fn day(v: &Value) -> Result<Date, String> {
+    Date::parse_iso(v.as_str().unwrap_or("")).ok_or_else(|| format!("日付でない: {v}"))
+}
+
+fn sort_call(fun: &str, a: &[Value]) -> Result<Value, String> {
+    use sort_order as so;
+    let arg = |i: usize| a.get(i).cloned().unwrap_or(Value::Null);
+    let spec = |i: usize| so::Spec::of(&arg(i));
+    Ok(match fun {
+        "num_of" => json!(so::num_of(&arg(0))),
+        "date_key" => json!(so::date_key(&arg(0))),
+        "classify" => json!(so::classify(&arg(0))),
+        "natural_key" => json!(so::natural_key(&arg(0))),
+        "normalize_spec" => so::normalize_spec(&arg(0)).map_or(Value::Null, |s| s.to_value()),
+        "spec_json" => json!(so::spec_json(&arg(0))),
+        "describe" => json!(so::describe(&arg(0))),
+        "value_key" => {
+            let k = so::value_key(&spec(0), &arg(1));
+            json!([k.0, k.1, k.2])
+        }
+        "bucket_rank" => json!(so::bucket_rank(&spec(0), &arg(1))),
+        "format_value" => json!(so::format_value(&arg(0), &arg(1))),
+        "rule_test" => json!(so::rule_test(&arg(0), &obj(&arg(1)), arg(2).as_str().unwrap_or(""))),
+        "rule_match" => so::rule_match(&arr(&arg(0)), &obj(&arg(1)), arg(2).as_str().unwrap_or("")).cloned().unwrap_or(Value::Null),
+        "rules_need_formula" => json!(so::rules_need_formula(&arr(&arg(0)))),
+        "rule_leaves" => json!(so::rule_leaves(&arr(&arg(0)))),
+        "display_text" => json!(so::display_text(&arg(0), &arg(1), &arr(&arg(2)), &obj(&arg(3)), arg(4).as_str().unwrap_or(""))),
+        "order_rows" => {
+            let rows = arr(&arg(0));
+            let col = |r: &Value, k: &Value| r.get(k["col"].as_str().unwrap_or("")).cloned().unwrap_or(Value::Null);
+            json!(so::order_rows(&rows, &arr(&arg(1)), &col).iter().map(|r| r["id"].clone()).collect::<Vec<_>>())
+        }
+        _ => return Err(format!("Rust に sort_order.{fun} がありません")),
+    })
+}
+
+fn filter_call(fun: &str, a: &[Value]) -> Result<Value, String> {
+    use filter_sql as fs;
+    let arg = |i: usize| a.get(i).cloned().unwrap_or(Value::Null);
+    Ok(match fun {
+        "safe_filters" => json!(fs::safe_filters(&arg(0), &strs(&arg(1)), &strs(&arg(2)))),
+        "build_filter_where" => {
+            let (p, q) = fs::build_filter_where(&arr(&arg(0)), day(&arg(1))?, &exprs(&arg(2)));
+            json!([p, q])
+        }
+        "cutoff_date" => json!(fs::cutoff_date(arg(0).as_str().unwrap_or(""), &arg(1), day(&arg(2))?)),
+        "date_range" => {
+            let (lo, hi) = fs::date_range(&arg(0));
+            json!([lo, hi])
+        }
+        "slice_key" => json!(fs::slice_key(arg(0).as_str().unwrap_or(""), arg(1).as_str().unwrap_or(""))),
+        "search_filter_where" => {
+            let (p, q) = fs::search_filter_where(&strs(&arg(0)), &arg(1), &arg(2), day(&arg(3))?, &exprs(&arg(4)));
+            json!([p, q])
+        }
+        "ignored_filter_columns" => json!(fs::ignored_filter_columns(&arg(0), &strs(&arg(1)), &strs(&arg(2)))),
+        _ => return Err(format!("Rust に filter_sql.{fun} がありません")),
     })
 }
 
