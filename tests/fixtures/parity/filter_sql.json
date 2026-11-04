@@ -1,0 +1,3102 @@
+[
+{
+"fn": "safe_filters",
+"args": [
+null,
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "safe_filters",
+"args": [
+"",
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "safe_filters",
+"args": [
+"x",
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "safe_filters",
+"args": [
+"{}",
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "safe_filters",
+"args": [
+[],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "safe_filters",
+"args": [
+[
+{
+"column": "名",
+"op": "contains",
+"value": " SUS "
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+{
+"column": "名",
+"op": "contains",
+"value": "SUS"
+}
+]
+},
+{
+"fn": "safe_filters",
+"args": [
+[
+{
+"column": "名"
+},
+{
+"column": "無い",
+"op": "eq",
+"value": "1"
+},
+{
+"column": "名",
+"op": "zz",
+"value": "1"
+},
+"bad",
+{
+"column": " 厚 ",
+"op": " gte ",
+"value": 5
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+{
+"column": "名",
+"op": "contains",
+"value": ""
+},
+{
+"column": "厚",
+"op": "gte",
+"value": "5"
+}
+]
+},
+{
+"fn": "safe_filters",
+"args": [
+[
+{
+"column": "名",
+"op": "in",
+"value": [
+"A",
+"",
+3,
+null,
+true
+]
+},
+{
+"column": "名",
+"op": "not_in",
+"value": [
+"A",
+"B"
+]
+},
+{
+"column": "名",
+"op": "not_in",
+"value": [
+"",
+"B"
+]
+},
+{
+"column": "名",
+"op": "not_in",
+"value": []
+},
+{
+"column": "名",
+"op": "in",
+"value": "[\"x\"]"
+},
+{
+"column": "日",
+"op": "in",
+"value": [
+"2026-08"
+],
+"key": "month"
+},
+{
+"column": "日",
+"op": "not_in",
+"value": [
+"2026"
+],
+"key": "year"
+},
+{
+"column": "日",
+"op": "in",
+"value": [
+"2026-08-01"
+],
+"key": "date"
+},
+{
+"column": "日",
+"op": "in",
+"value": [
+"x"
+],
+"key": "week"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+{
+"column": "名",
+"op": "in",
+"value": "[\"A\", \"\", \"3\", \"None\", \"True\"]"
+},
+{
+"column": "名",
+"op": "not_in",
+"value": "[\"A\", \"B\"]"
+},
+{
+"column": "名",
+"op": "not_in",
+"value": "[\"\", \"B\"]"
+},
+{
+"column": "名",
+"op": "not_in",
+"value": "[]"
+},
+{
+"column": "名",
+"op": "in",
+"value": "[\"x\"]"
+},
+{
+"column": "日",
+"op": "in",
+"value": "[\"2026-08\"]",
+"key": "month"
+},
+{
+"column": "日",
+"op": "not_in",
+"value": "[\"2026\"]",
+"key": "year"
+},
+{
+"column": "日",
+"op": "in",
+"value": "[\"2026-08-01\"]",
+"key": "date"
+},
+{
+"column": "日",
+"op": "in",
+"value": "[\"x\"]"
+}
+]
+},
+{
+"fn": "safe_filters",
+"args": [
+[
+{
+"column": "名",
+"op": "eq",
+"value": "a"
+},
+{
+"column": "名",
+"op": "neq",
+"value": "a"
+},
+{
+"column": "名",
+"op": "starts",
+"value": "a"
+},
+{
+"column": "名",
+"op": "ends",
+"value": "a"
+},
+{
+"column": "名",
+"op": "not_contains",
+"value": "a"
+},
+{
+"column": "名",
+"op": "empty"
+},
+{
+"column": "名",
+"op": "not_empty"
+},
+{
+"column": "名",
+"op": "starts_any",
+"value": "A,,B"
+},
+{
+"column": "名",
+"op": "starts_any",
+"value": ""
+},
+{
+"column": "a]b",
+"op": "eq",
+"value": "x"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+{
+"column": "名",
+"op": "eq",
+"value": "a"
+},
+{
+"column": "名",
+"op": "neq",
+"value": "a"
+},
+{
+"column": "名",
+"op": "starts",
+"value": "a"
+},
+{
+"column": "名",
+"op": "ends",
+"value": "a"
+},
+{
+"column": "名",
+"op": "not_contains",
+"value": "a"
+},
+{
+"column": "名",
+"op": "empty",
+"value": ""
+},
+{
+"column": "名",
+"op": "not_empty",
+"value": ""
+},
+{
+"column": "名",
+"op": "starts_any",
+"value": "A,,B"
+},
+{
+"column": "名",
+"op": "starts_any",
+"value": ""
+},
+{
+"column": "a]b",
+"op": "eq",
+"value": "x"
+}
+]
+},
+{
+"fn": "safe_filters",
+"args": [
+[
+{
+"column": "厚",
+"op": "gt",
+"value": "1,200"
+},
+{
+"column": "厚",
+"op": "lte",
+"value": "abc"
+},
+{
+"column": "厚",
+"op": "lt",
+"value": ".5"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+{
+"column": "厚",
+"op": "gt",
+"value": "1,200"
+},
+{
+"column": "厚",
+"op": "lte",
+"value": "abc"
+},
+{
+"column": "厚",
+"op": "lt",
+"value": ".5"
+}
+]
+},
+{
+"fn": "safe_filters",
+"args": [
+[
+{
+"column": "日",
+"op": "date_range",
+"value": "2026-08-01..2026-08-31"
+},
+{
+"column": "日",
+"op": "date_range",
+"value": "..2026-02-30"
+},
+{
+"column": "日",
+"op": "date_range",
+"value": "x"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "7"
+},
+{
+"column": "日",
+"op": "within_weeks",
+"value": " 2.9 "
+},
+{
+"column": "日",
+"op": "within_months",
+"value": "1"
+},
+{
+"column": "日",
+"op": "within_months",
+"value": "13"
+},
+{
+"column": "日",
+"op": "within_years",
+"value": "-3"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "x"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "1_0"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+{
+"column": "日",
+"op": "date_range",
+"value": "2026-08-01..2026-08-31"
+},
+{
+"column": "日",
+"op": "date_range",
+"value": "..2026-02-30"
+},
+{
+"column": "日",
+"op": "date_range",
+"value": "x"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "7"
+},
+{
+"column": "日",
+"op": "within_weeks",
+"value": "2.9"
+},
+{
+"column": "日",
+"op": "within_months",
+"value": "1"
+},
+{
+"column": "日",
+"op": "within_months",
+"value": "13"
+},
+{
+"column": "日",
+"op": "within_years",
+"value": "-3"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "x"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "1_0"
+}
+]
+},
+{
+"fn": "safe_filters",
+"args": [
+[
+{
+"column": "k",
+"op": "tuple_in",
+"value": [
+[
+"A",
+1
+],
+[
+"B",
+null
+],
+[
+"C",
+true
+],
+[
+"D"
+],
+[
+2.5,
+"x"
+],
+"z"
+],
+"columns": [
+"名",
+"厚"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": "[]",
+"columns": [
+"名"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": [],
+"columns": [
+"名",
+"名"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": [],
+"columns": [
+"無い"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": "x",
+"columns": [
+"名"
+]
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+{
+"column": "k",
+"op": "tuple_in",
+"value": "[[\"A\", 1], [\"B\", null], [\"C\", true], [\"D\"], [2.5, \"x\"], \"z\"]",
+"columns": [
+"名",
+"厚"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": "[]",
+"columns": [
+"名"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": "x",
+"columns": [
+"名"
+]
+}
+]
+},
+{
+"fn": "safe_filters",
+"args": [
+[
+{
+"column": "c0",
+"op": "eq"
+},
+{
+"column": "c1",
+"op": "eq"
+},
+{
+"column": "c2",
+"op": "eq"
+},
+{
+"column": "c3",
+"op": "eq"
+},
+{
+"column": "c4",
+"op": "eq"
+},
+{
+"column": "c5",
+"op": "eq"
+},
+{
+"column": "c6",
+"op": "eq"
+},
+{
+"column": "c7",
+"op": "eq"
+},
+{
+"column": "c8",
+"op": "eq"
+},
+{
+"column": "c9",
+"op": "eq"
+},
+{
+"column": "c10",
+"op": "eq"
+},
+{
+"column": "c11",
+"op": "eq"
+},
+{
+"column": "c12",
+"op": "eq"
+},
+{
+"column": "c13",
+"op": "eq"
+},
+{
+"column": "c14",
+"op": "eq"
+},
+{
+"column": "c15",
+"op": "eq"
+},
+{
+"column": "c16",
+"op": "eq"
+},
+{
+"column": "c17",
+"op": "eq"
+},
+{
+"column": "c18",
+"op": "eq"
+},
+{
+"column": "c19",
+"op": "eq"
+},
+{
+"column": "c20",
+"op": "eq"
+},
+{
+"column": "c21",
+"op": "eq"
+},
+{
+"column": "c22",
+"op": "eq"
+},
+{
+"column": "c23",
+"op": "eq"
+},
+{
+"column": "c24",
+"op": "eq"
+},
+{
+"column": "c25",
+"op": "eq"
+},
+{
+"column": "c26",
+"op": "eq"
+},
+{
+"column": "c27",
+"op": "eq"
+},
+{
+"column": "c28",
+"op": "eq"
+},
+{
+"column": "c29",
+"op": "eq"
+},
+{
+"column": "c30",
+"op": "eq"
+},
+{
+"column": "c31",
+"op": "eq"
+},
+{
+"column": "c32",
+"op": "eq"
+},
+{
+"column": "c33",
+"op": "eq"
+},
+{
+"column": "c34",
+"op": "eq"
+},
+{
+"column": "c35",
+"op": "eq"
+},
+{
+"column": "c36",
+"op": "eq"
+},
+{
+"column": "c37",
+"op": "eq"
+},
+{
+"column": "c38",
+"op": "eq"
+},
+{
+"column": "c39",
+"op": "eq"
+},
+{
+"column": "c40",
+"op": "eq"
+},
+{
+"column": "c41",
+"op": "eq"
+},
+{
+"column": "c42",
+"op": "eq"
+},
+{
+"column": "c43",
+"op": "eq"
+},
+{
+"column": "c44",
+"op": "eq"
+},
+{
+"column": "c45",
+"op": "eq"
+},
+{
+"column": "c46",
+"op": "eq"
+},
+{
+"column": "c47",
+"op": "eq"
+},
+{
+"column": "c48",
+"op": "eq"
+},
+{
+"column": "c49",
+"op": "eq"
+},
+{
+"column": "c50",
+"op": "eq"
+},
+{
+"column": "c51",
+"op": "eq"
+},
+{
+"column": "c52",
+"op": "eq"
+},
+{
+"column": "c53",
+"op": "eq"
+},
+{
+"column": "c54",
+"op": "eq"
+},
+{
+"column": "c55",
+"op": "eq"
+},
+{
+"column": "c56",
+"op": "eq"
+},
+{
+"column": "c57",
+"op": "eq"
+},
+{
+"column": "c58",
+"op": "eq"
+},
+{
+"column": "c59",
+"op": "eq"
+},
+{
+"column": "c60",
+"op": "eq"
+},
+{
+"column": "c61",
+"op": "eq"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "build_filter_where",
+"args": [
+[],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[],
+[]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[],
+[]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[],
+[]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[],
+[]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[],
+[]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[
+{
+"column": "名",
+"op": "contains",
+"value": "SUS"
+}
+],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[
+"CStr([名]) LIKE ?"
+],
+[
+"%SUS%"
+]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[
+{
+"column": "名",
+"op": "contains",
+"value": ""
+},
+{
+"column": "厚",
+"op": "gte",
+"value": "5"
+}
+],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[
+"CStr([名]) LIKE ?",
+"NumOf([厚]) >= ?"
+],
+[
+"%%",
+5.0
+]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[
+{
+"column": "名",
+"op": "in",
+"value": "[\"A\", \"\", \"3\", \"None\", \"True\"]"
+},
+{
+"column": "名",
+"op": "not_in",
+"value": "[\"A\", \"B\"]"
+},
+{
+"column": "名",
+"op": "not_in",
+"value": "[\"\", \"B\"]"
+},
+{
+"column": "名",
+"op": "not_in",
+"value": "[]"
+},
+{
+"column": "名",
+"op": "in",
+"value": "[\"x\"]"
+},
+{
+"column": "日",
+"op": "in",
+"value": "[\"2026-08\"]",
+"key": "month"
+},
+{
+"column": "日",
+"op": "not_in",
+"value": "[\"2026\"]",
+"key": "year"
+},
+{
+"column": "日",
+"op": "in",
+"value": "[\"2026-08-01\"]",
+"key": "date"
+},
+{
+"column": "日",
+"op": "in",
+"value": "[\"x\"]"
+}
+],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[
+"(CStr([名]) IN (?,?,?,?) OR ([名] IS NULL OR CStr([名])=''))",
+"(NOT (CStr([名]) IN (?,?)) OR [名] IS NULL)",
+"NOT (CStr([名]) IN (?) OR ([名] IS NULL OR CStr([名])=''))",
+"1=1",
+"(CStr([名]) IN (?))",
+"(COALESCE(SUBSTR(ToDate([日]),1,7),CStr([日])) IN (?))",
+"(NOT (COALESCE(SUBSTR(ToDate([日]),1,4),CStr([日])) IN (?)) OR [日] IS NULL)",
+"(COALESCE(ToDate([日]),CStr([日])) IN (?))",
+"(CStr([日]) IN (?))"
+],
+[
+"A",
+"3",
+"None",
+"True",
+"A",
+"B",
+"B",
+"x",
+"2026-08",
+"2026",
+"2026-08-01",
+"x"
+]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[
+{
+"column": "名",
+"op": "eq",
+"value": "a"
+},
+{
+"column": "名",
+"op": "neq",
+"value": "a"
+},
+{
+"column": "名",
+"op": "starts",
+"value": "a"
+},
+{
+"column": "名",
+"op": "ends",
+"value": "a"
+},
+{
+"column": "名",
+"op": "not_contains",
+"value": "a"
+},
+{
+"column": "名",
+"op": "empty",
+"value": ""
+},
+{
+"column": "名",
+"op": "not_empty",
+"value": ""
+},
+{
+"column": "名",
+"op": "starts_any",
+"value": "A,,B"
+},
+{
+"column": "名",
+"op": "starts_any",
+"value": ""
+},
+{
+"column": "a]b",
+"op": "eq",
+"value": "x"
+}
+],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[
+"CStr([名])=?",
+"(CStr([名])<>? OR [名] IS NULL)",
+"CStr([名]) LIKE ?",
+"CStr([名]) LIKE ?",
+"(CStr([名]) NOT LIKE ? OR [名] IS NULL)",
+"([名] IS NULL OR CStr([名])='')",
+"([名] IS NOT NULL AND CStr([名])<>'')",
+"(CStr([名]) LIKE ? OR CStr([名]) LIKE ?)",
+"0=1",
+"CStr([a]]b])=?"
+],
+[
+"a",
+"a",
+"a%",
+"%a",
+"%a%",
+"A%",
+"B%",
+"x"
+]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[
+{
+"column": "厚",
+"op": "gt",
+"value": "1,200"
+},
+{
+"column": "厚",
+"op": "lte",
+"value": "abc"
+},
+{
+"column": "厚",
+"op": "lt",
+"value": ".5"
+}
+],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[
+"NumOf([厚]) > ?",
+"0=1",
+"NumOf([厚]) < ?"
+],
+[
+1200.0,
+0.5
+]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[
+{
+"column": "日",
+"op": "date_range",
+"value": "2026-08-01..2026-08-31"
+},
+{
+"column": "日",
+"op": "date_range",
+"value": "..2026-02-30"
+},
+{
+"column": "日",
+"op": "date_range",
+"value": "x"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "7"
+},
+{
+"column": "日",
+"op": "within_weeks",
+"value": "2.9"
+},
+{
+"column": "日",
+"op": "within_months",
+"value": "1"
+},
+{
+"column": "日",
+"op": "within_months",
+"value": "13"
+},
+{
+"column": "日",
+"op": "within_years",
+"value": "-3"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "x"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "1_0"
+}
+],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[
+"(ToDate([日]) IS NOT NULL AND ToDate([日]) >= ? AND ToDate([日]) <= ?)",
+"(ToDate([日]) IS NOT NULL)",
+"(ToDate([日]) IS NOT NULL)",
+"ToDate([日]) >= ?",
+"ToDate([日]) >= ?",
+"ToDate([日]) >= ?",
+"ToDate([日]) >= ?",
+"ToDate([日]) >= ?",
+"ToDate([日]) >= ?",
+"ToDate([日]) >= ?"
+],
+[
+"2026-08-01",
+"2026-08-31",
+"2026-03-24",
+"2026-03-17",
+"2026-02-28",
+"2025-02-28",
+"2026-03-31",
+"2026-03-31",
+"2026-03-21"
+]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[
+{
+"column": "k",
+"op": "tuple_in",
+"value": "[[\"A\", 1], [\"B\", null], [\"C\", true], [\"D\"], [2.5, \"x\"], \"z\"]",
+"columns": [
+"名",
+"厚"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": "[]",
+"columns": [
+"名"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": "x",
+"columns": [
+"名"
+]
+}
+],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[
+"(([名] IS ? AND [厚] IS ?) OR ([名] IS ? AND [厚] IS ?) OR ([名] IS ? AND [厚] IS ?))",
+"0=1",
+"0=1"
+],
+[
+"A",
+1,
+"B",
+null,
+2.5,
+"x"
+]
+]
+},
+{
+"fn": "build_filter_where",
+"args": [
+[],
+"2026-03-31",
+{
+"計": "(A+B)"
+}
+],
+"want": [
+[],
+[]
+]
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"0",
+"2026-03-31"
+],
+"want": "2026-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"0",
+"2024-02-29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"0",
+"2026-01-15"
+],
+"want": "2026-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"1",
+"2026-03-31"
+],
+"want": "2026-03-30"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"1",
+"2024-02-29"
+],
+"want": "2024-02-28"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"1",
+"2026-01-15"
+],
+"want": "2026-01-14"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"12",
+"2026-03-31"
+],
+"want": "2026-03-19"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"12",
+"2024-02-29"
+],
+"want": "2024-02-17"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"12",
+"2026-01-15"
+],
+"want": "2026-01-03"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"25",
+"2026-03-31"
+],
+"want": "2026-03-06"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"25",
+"2024-02-29"
+],
+"want": "2024-02-04"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"25",
+"2026-01-15"
+],
+"want": "2025-12-21"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+" 3.9 ",
+"2026-03-31"
+],
+"want": "2026-03-28"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+" 3.9 ",
+"2024-02-29"
+],
+"want": "2024-02-26"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+" 3.9 ",
+"2026-01-15"
+],
+"want": "2026-01-12"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"x",
+"2026-03-31"
+],
+"want": "2026-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"x",
+"2024-02-29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_days",
+"x",
+"2026-01-15"
+],
+"want": "2026-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"0",
+"2026-03-31"
+],
+"want": "2026-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"0",
+"2024-02-29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"0",
+"2026-01-15"
+],
+"want": "2026-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"1",
+"2026-03-31"
+],
+"want": "2026-03-24"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"1",
+"2024-02-29"
+],
+"want": "2024-02-22"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"1",
+"2026-01-15"
+],
+"want": "2026-01-08"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"12",
+"2026-03-31"
+],
+"want": "2026-01-06"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"12",
+"2024-02-29"
+],
+"want": "2023-12-07"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"12",
+"2026-01-15"
+],
+"want": "2025-10-23"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"25",
+"2026-03-31"
+],
+"want": "2025-10-07"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"25",
+"2024-02-29"
+],
+"want": "2023-09-07"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"25",
+"2026-01-15"
+],
+"want": "2025-07-24"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+" 3.9 ",
+"2026-03-31"
+],
+"want": "2026-03-10"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+" 3.9 ",
+"2024-02-29"
+],
+"want": "2024-02-08"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+" 3.9 ",
+"2026-01-15"
+],
+"want": "2025-12-25"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"x",
+"2026-03-31"
+],
+"want": "2026-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"x",
+"2024-02-29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_weeks",
+"x",
+"2026-01-15"
+],
+"want": "2026-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"0",
+"2026-03-31"
+],
+"want": "2026-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"0",
+"2024-02-29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"0",
+"2026-01-15"
+],
+"want": "2026-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"1",
+"2026-03-31"
+],
+"want": "2026-02-28"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"1",
+"2024-02-29"
+],
+"want": "2024-01-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"1",
+"2026-01-15"
+],
+"want": "2025-12-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"12",
+"2026-03-31"
+],
+"want": "2025-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"12",
+"2024-02-29"
+],
+"want": "2023-02-28"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"12",
+"2026-01-15"
+],
+"want": "2025-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"25",
+"2026-03-31"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"25",
+"2024-02-29"
+],
+"want": "2022-01-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"25",
+"2026-01-15"
+],
+"want": "2023-12-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+" 3.9 ",
+"2026-03-31"
+],
+"want": "2025-12-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+" 3.9 ",
+"2024-02-29"
+],
+"want": "2023-11-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+" 3.9 ",
+"2026-01-15"
+],
+"want": "2025-10-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"x",
+"2026-03-31"
+],
+"want": "2026-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"x",
+"2024-02-29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_months",
+"x",
+"2026-01-15"
+],
+"want": "2026-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"0",
+"2026-03-31"
+],
+"want": "2026-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"0",
+"2024-02-29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"0",
+"2026-01-15"
+],
+"want": "2026-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"1",
+"2026-03-31"
+],
+"want": "2025-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"1",
+"2024-02-29"
+],
+"want": "2023-02-28"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"1",
+"2026-01-15"
+],
+"want": "2025-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"12",
+"2026-03-31"
+],
+"want": "2014-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"12",
+"2024-02-29"
+],
+"want": "2012-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"12",
+"2026-01-15"
+],
+"want": "2014-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"25",
+"2026-03-31"
+],
+"want": "2001-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"25",
+"2024-02-29"
+],
+"want": "1999-02-28"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"25",
+"2026-01-15"
+],
+"want": "2001-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+" 3.9 ",
+"2026-03-31"
+],
+"want": "2023-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+" 3.9 ",
+"2024-02-29"
+],
+"want": "2021-02-28"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+" 3.9 ",
+"2026-01-15"
+],
+"want": "2023-01-15"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"x",
+"2026-03-31"
+],
+"want": "2026-03-31"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"x",
+"2024-02-29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "cutoff_date",
+"args": [
+"within_years",
+"x",
+"2026-01-15"
+],
+"want": "2026-01-15"
+},
+{
+"fn": "date_range",
+"args": [
+"2026-08-01..2026-08-31"
+],
+"want": [
+"2026-08-01",
+"2026-08-31"
+]
+},
+{
+"fn": "date_range",
+"args": [
+".."
+],
+"want": [
+null,
+null
+]
+},
+{
+"fn": "date_range",
+"args": [
+""
+],
+"want": [
+null,
+null
+]
+},
+{
+"fn": "date_range",
+"args": [
+null
+],
+"want": [
+null,
+null
+]
+},
+{
+"fn": "date_range",
+"args": [
+"2026-8-1.."
+],
+"want": [
+null,
+null
+]
+},
+{
+"fn": "date_range",
+"args": [
+"..2024-02-29"
+],
+"want": [
+null,
+"2024-02-29"
+]
+},
+{
+"fn": "date_range",
+"args": [
+"2026-02-29..x"
+],
+"want": [
+null,
+null
+]
+},
+{
+"fn": "date_range",
+"args": [
+"a..b..c"
+],
+"want": [
+null,
+null
+]
+},
+{
+"fn": "slice_key",
+"args": [
+"[日]",
+""
+],
+"want": "CStr([日])"
+},
+{
+"fn": "slice_key",
+"args": [
+"[日]",
+"date"
+],
+"want": "COALESCE(ToDate([日]),CStr([日]))"
+},
+{
+"fn": "slice_key",
+"args": [
+"[日]",
+"month"
+],
+"want": "COALESCE(SUBSTR(ToDate([日]),1,7),CStr([日]))"
+},
+{
+"fn": "slice_key",
+"args": [
+"[日]",
+"year"
+],
+"want": "COALESCE(SUBSTR(ToDate([日]),1,4),CStr([日]))"
+},
+{
+"fn": "slice_key",
+"args": [
+"[日]",
+"week"
+],
+"want": "CStr([日])"
+},
+{
+"fn": "search_filter_where",
+"args": [
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+"",
+"",
+"2026-03-31",
+null
+],
+"want": [
+[],
+[]
+]
+},
+{
+"fn": "search_filter_where",
+"args": [
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+" a ",
+"",
+"2026-03-31",
+null
+],
+"want": [
+[
+"(CStr([名]) LIKE ? OR CStr([厚]) LIKE ? OR CStr([日]) LIKE ? OR CStr([a]]b]) LIKE ?)"
+],
+[
+"%a%",
+"%a%",
+"%a%",
+"%a%"
+]
+]
+},
+{
+"fn": "search_filter_where",
+"args": [
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+"x",
+"[{\"column\": \"名\", \"op\": \"contains\", \"value\": \" SUS \"}]",
+"2026-03-31",
+{
+"計": "X"
+}
+],
+"want": [
+[
+"(CStr([名]) LIKE ? OR CStr([厚]) LIKE ? OR CStr([日]) LIKE ? OR CStr([a]]b]) LIKE ?)",
+"CStr([名]) LIKE ?"
+],
+[
+"%x%",
+"%x%",
+"%x%",
+"%x%",
+"%SUS%"
+]
+]
+},
+{
+"fn": "search_filter_where",
+"args": [
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+"",
+[
+{
+"column": "計",
+"op": "gt",
+"value": "1"
+}
+],
+"2026-03-31",
+{
+"計": "(A*2)"
+}
+],
+"want": [
+[
+"NumOf((A*2)) > ?"
+],
+[
+1.0
+]
+]
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+null,
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+"",
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+"x",
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+"{}",
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[
+{
+"column": "名",
+"op": "contains",
+"value": " SUS "
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[
+{
+"column": "名"
+},
+{
+"column": "無い",
+"op": "eq",
+"value": "1"
+},
+{
+"column": "名",
+"op": "zz",
+"value": "1"
+},
+"bad",
+{
+"column": " 厚 ",
+"op": " gte ",
+"value": 5
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+"無い"
+]
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[
+{
+"column": "名",
+"op": "in",
+"value": [
+"A",
+"",
+3,
+null,
+true
+]
+},
+{
+"column": "名",
+"op": "not_in",
+"value": [
+"A",
+"B"
+]
+},
+{
+"column": "名",
+"op": "not_in",
+"value": [
+"",
+"B"
+]
+},
+{
+"column": "名",
+"op": "not_in",
+"value": []
+},
+{
+"column": "名",
+"op": "in",
+"value": "[\"x\"]"
+},
+{
+"column": "日",
+"op": "in",
+"value": [
+"2026-08"
+],
+"key": "month"
+},
+{
+"column": "日",
+"op": "not_in",
+"value": [
+"2026"
+],
+"key": "year"
+},
+{
+"column": "日",
+"op": "in",
+"value": [
+"2026-08-01"
+],
+"key": "date"
+},
+{
+"column": "日",
+"op": "in",
+"value": [
+"x"
+],
+"key": "week"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[
+{
+"column": "名",
+"op": "eq",
+"value": "a"
+},
+{
+"column": "名",
+"op": "neq",
+"value": "a"
+},
+{
+"column": "名",
+"op": "starts",
+"value": "a"
+},
+{
+"column": "名",
+"op": "ends",
+"value": "a"
+},
+{
+"column": "名",
+"op": "not_contains",
+"value": "a"
+},
+{
+"column": "名",
+"op": "empty"
+},
+{
+"column": "名",
+"op": "not_empty"
+},
+{
+"column": "名",
+"op": "starts_any",
+"value": "A,,B"
+},
+{
+"column": "名",
+"op": "starts_any",
+"value": ""
+},
+{
+"column": "a]b",
+"op": "eq",
+"value": "x"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[
+{
+"column": "厚",
+"op": "gt",
+"value": "1,200"
+},
+{
+"column": "厚",
+"op": "lte",
+"value": "abc"
+},
+{
+"column": "厚",
+"op": "lt",
+"value": ".5"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[
+{
+"column": "日",
+"op": "date_range",
+"value": "2026-08-01..2026-08-31"
+},
+{
+"column": "日",
+"op": "date_range",
+"value": "..2026-02-30"
+},
+{
+"column": "日",
+"op": "date_range",
+"value": "x"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "7"
+},
+{
+"column": "日",
+"op": "within_weeks",
+"value": " 2.9 "
+},
+{
+"column": "日",
+"op": "within_months",
+"value": "1"
+},
+{
+"column": "日",
+"op": "within_months",
+"value": "13"
+},
+{
+"column": "日",
+"op": "within_years",
+"value": "-3"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "x"
+},
+{
+"column": "日",
+"op": "within_days",
+"value": "1_0"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[
+{
+"column": "k",
+"op": "tuple_in",
+"value": [
+[
+"A",
+1
+],
+[
+"B",
+null
+],
+[
+"C",
+true
+],
+[
+"D"
+],
+[
+2.5,
+"x"
+],
+"z"
+],
+"columns": [
+"名",
+"厚"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": "[]",
+"columns": [
+"名"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": [],
+"columns": [
+"名",
+"名"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": [],
+"columns": [
+"無い"
+]
+},
+{
+"column": "k",
+"op": "tuple_in",
+"value": "x",
+"columns": [
+"名"
+]
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": []
+},
+{
+"fn": "ignored_filter_columns",
+"args": [
+[
+{
+"column": "c0",
+"op": "eq"
+},
+{
+"column": "c1",
+"op": "eq"
+},
+{
+"column": "c2",
+"op": "eq"
+},
+{
+"column": "c3",
+"op": "eq"
+},
+{
+"column": "c4",
+"op": "eq"
+},
+{
+"column": "c5",
+"op": "eq"
+},
+{
+"column": "c6",
+"op": "eq"
+},
+{
+"column": "c7",
+"op": "eq"
+},
+{
+"column": "c8",
+"op": "eq"
+},
+{
+"column": "c9",
+"op": "eq"
+},
+{
+"column": "c10",
+"op": "eq"
+},
+{
+"column": "c11",
+"op": "eq"
+},
+{
+"column": "c12",
+"op": "eq"
+},
+{
+"column": "c13",
+"op": "eq"
+},
+{
+"column": "c14",
+"op": "eq"
+},
+{
+"column": "c15",
+"op": "eq"
+},
+{
+"column": "c16",
+"op": "eq"
+},
+{
+"column": "c17",
+"op": "eq"
+},
+{
+"column": "c18",
+"op": "eq"
+},
+{
+"column": "c19",
+"op": "eq"
+},
+{
+"column": "c20",
+"op": "eq"
+},
+{
+"column": "c21",
+"op": "eq"
+},
+{
+"column": "c22",
+"op": "eq"
+},
+{
+"column": "c23",
+"op": "eq"
+},
+{
+"column": "c24",
+"op": "eq"
+},
+{
+"column": "c25",
+"op": "eq"
+},
+{
+"column": "c26",
+"op": "eq"
+},
+{
+"column": "c27",
+"op": "eq"
+},
+{
+"column": "c28",
+"op": "eq"
+},
+{
+"column": "c29",
+"op": "eq"
+},
+{
+"column": "c30",
+"op": "eq"
+},
+{
+"column": "c31",
+"op": "eq"
+},
+{
+"column": "c32",
+"op": "eq"
+},
+{
+"column": "c33",
+"op": "eq"
+},
+{
+"column": "c34",
+"op": "eq"
+},
+{
+"column": "c35",
+"op": "eq"
+},
+{
+"column": "c36",
+"op": "eq"
+},
+{
+"column": "c37",
+"op": "eq"
+},
+{
+"column": "c38",
+"op": "eq"
+},
+{
+"column": "c39",
+"op": "eq"
+},
+{
+"column": "c40",
+"op": "eq"
+},
+{
+"column": "c41",
+"op": "eq"
+},
+{
+"column": "c42",
+"op": "eq"
+},
+{
+"column": "c43",
+"op": "eq"
+},
+{
+"column": "c44",
+"op": "eq"
+},
+{
+"column": "c45",
+"op": "eq"
+},
+{
+"column": "c46",
+"op": "eq"
+},
+{
+"column": "c47",
+"op": "eq"
+},
+{
+"column": "c48",
+"op": "eq"
+},
+{
+"column": "c49",
+"op": "eq"
+},
+{
+"column": "c50",
+"op": "eq"
+},
+{
+"column": "c51",
+"op": "eq"
+},
+{
+"column": "c52",
+"op": "eq"
+},
+{
+"column": "c53",
+"op": "eq"
+},
+{
+"column": "c54",
+"op": "eq"
+},
+{
+"column": "c55",
+"op": "eq"
+},
+{
+"column": "c56",
+"op": "eq"
+},
+{
+"column": "c57",
+"op": "eq"
+},
+{
+"column": "c58",
+"op": "eq"
+},
+{
+"column": "c59",
+"op": "eq"
+},
+{
+"column": "c60",
+"op": "eq"
+},
+{
+"column": "c61",
+"op": "eq"
+}
+],
+[
+"名",
+"厚",
+"日",
+"a]b"
+],
+[
+"計"
+]
+],
+"want": [
+"c0",
+"c1",
+"c2",
+"c3",
+"c4",
+"c5",
+"c6",
+"c7",
+"c8",
+"c9",
+"c10",
+"c11",
+"c12",
+"c13",
+"c14",
+"c15",
+"c16",
+"c17",
+"c18",
+"c19",
+"c20",
+"c21",
+"c22",
+"c23",
+"c24",
+"c25",
+"c26",
+"c27",
+"c28",
+"c29",
+"c30",
+"c31",
+"c32",
+"c33",
+"c34",
+"c35",
+"c36",
+"c37",
+"c38",
+"c39",
+"c40",
+"c41",
+"c42",
+"c43",
+"c44",
+"c45",
+"c46",
+"c47",
+"c48",
+"c49",
+"c50",
+"c51",
+"c52",
+"c53",
+"c54",
+"c55",
+"c56",
+"c57",
+"c58",
+"c59",
+"c60",
+"c61",
+"（60件を越えた2件の条件）"
+]
+}
+]

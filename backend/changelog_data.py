@@ -22,7 +22,7 @@
 分けると、内部の話に見える本物の不具合修正を伏せてしまう——付いていない=
 利用者向け、という安全側にしてある。
 """
-APP_VERSION='2.525.0'
+APP_VERSION='2.526.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
@@ -37,6 +37,10 @@ def is_dev(entry):
 
 
 CHANGELOG=[
+ {'version':'2.526.0','dev':True,'notes':[
+  'Python→Rust の移行 P1b（§9.635）。並べ替えの決まり・表示の書式・表示ルール（sort_order）と、一覧の絞り込みの SQL（filter_sql）を wavelog-core へ写した。ルートはまだ移していないので、答えは何も変わらない。',
+  '試験表を 8 領域・735 問にした（P1a の 245 問＋並べ替え 362 問＋絞り込み 128 問）。Rust は全問 Python と同じ答えを返す。利用者の正規表現（表示ルール）の照合は fancy-regex。',
+ ]},
  {'version':'2.525.0','dev':True,'notes':[
   'Python→Rust の移行 P1a（§9.634）。依存の無い純粋な関数6つ（字の正規化・真偽の読み方・日時の読み方・正規表現の危険の判定・値の四則演算・判定表の整え方）を wavelog-core へ写した。ルートはまだ移していないので、答えは何も変わらない。',
   'Python が正の試験表（tests/fixtures/parity・6 領域 245 問）を足した。Rust は cargo test の parity が全問 Python と同じ答えを返し、網 test_parity は表が今の Python の答えと同じかを見る。',

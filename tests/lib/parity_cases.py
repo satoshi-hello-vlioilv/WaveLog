@@ -22,7 +22,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'tests' / 'fixtures' / 'parity'
 sys.path.insert(0, str(ROOT))
 
-from backend import datetext, flags, rule_cells, safe_regex, textnorm  # noqa: E402
+import datetime  # noqa: E402
+
+from backend import datetext, filter_sql, flags, rule_cells, safe_regex, sort_order, textnorm  # noqa: E402
 from backend.dashboard import num_expr  # noqa: E402
 
 # ---- 問い ---------------------------------------------------------------------------------------------------------
@@ -68,6 +70,103 @@ _CONDS = [
 _COLS = [None, 'x', [], ['板厚', '材質', '板厚', ' 幅 ', '不明', None, 'source.厚'], ['板厚'] * 3 + ['source.c%d' % i for i in range(50)]]
 
 
+# ---- P1b（§9.635）: 並べ替え・表示の書式・表示ルール・絞り込みの SQL ---------------------------------------------------
+_NUMS = [None, '', ' ', '12', ' 12 ', '1,200', '1,2', '12,00', '-1,234.5', '+.5', '.5', '5.', '1e3', 'abc', '１２', '١٢', True, False,
+         0, 3, 2.5, '12A', '1,234,567', ',123', '-', '00012']
+_DATEKEYS = [None, '', '2026/08/01', '2026-8-1 9:30', '2026.08.01T09:30:15', '20260801', '20260801 0930', '202608010930',
+             '20260801T093015', '2026/13/01', '2026/02/31', '2026/08/01 24:00', '２０２６/８/１', '26/08/01', 'x']
+_NATURAL = [None, '', 'A2', 'A10', 'ロット3-12', '１２', 'x' + '9' * 25, 0, 12]
+_SPECS = [None, '', {}, 'x', '{"buckets":["num","text"]}', {'buckets': ['text', 'num', 'zz', 'num']}, {'on': 'display'},
+          {'natural': 1}, {'buckets': 'num'}, {'buckets': {'date': 1, 'empty': 2}}, {'buckets': [None, ' date ']}, [1], 0]
+_FMT = [
+    ({'kind': 'number'}, ['12', '12.5', '0.0001', '1234567.891', '1,200', '-0', 'x', '', 1e-7, 123456789]),
+    ({'kind': 'number', 'decimals': 2}, ['1.005', '2.675', '0.125', '-1.5', '12']),
+    ({'kind': 'number', 'decimals': '0'}, ['2.5', '3.5', '-2.5']),
+    ({'kind': 'number', 'decimals': 'x'}, ['2.5']),
+    ({'kind': 'number', 'decimals': -1}, ['2.5']),
+    ({'kind': 'number', 'decimals': 1.9, 'thousands': True, 'prefix': '¥', 'suffix': '円'}, ['1234567.25', '-1234', '999']),
+    ({'kind': 'number', 'thousands': True}, ['1234567', '0.00001234', '12345678901']),
+    ({'kind': 'datetime'}, ['2026/08/01 09:05', '20260801', '9:05', 'x', '']),
+    ({'kind': 'datetime', 'pattern': "yy/M/d (ddd) H:m:s tt 'yyyy'"}, ['2026/08/01 09:05:07', '2026/08/02 15:00']),
+    ({'kind': 'datetime', 'pattern': 'yyyy年MM月dd日 dddd hh:mm'}, ['2026/08/03 00:30', '2026/08/03 12:30']),
+    ({'kind': 'datetime', 'pattern': 'yyyy HH:mm'}, ['9:05']),
+    ({'kind': 'text', 'prefix': '[', 'suffix': ']'}, [' a ', 'b']),
+    ({'kind': 'zz'}, ['a']),
+    (None, ['a', None, 3]),
+]
+_ROW = {'厚': '1.5', '幅': '1,200', '名': 'SUS304', '空': '', '日': '2026/08/01'}
+_RULE_CONDS = [
+    {'left': {'kind': 'self'}, 'op': 'eq', 'right': {'kind': 'value', 'value': '1.50'}},
+    {'left': {'kind': 'self'}, 'op': 'ne', 'right': {'kind': 'value', 'value': '1.5'}},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'contains', 'right': {'kind': 'value', 'value': 'US'}},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'contains', 'right': {'kind': 'value', 'value': ''}},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'startsWith', 'right': {'kind': 'value', 'value': 'SUS'}},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'endsWith', 'right': {'kind': 'value', 'value': '304'}},
+    {'left': {'kind': 'column', 'column': '幅'}, 'op': 'gt', 'right': {'kind': 'value', 'value': '999'}},
+    {'left': {'kind': 'column', 'column': '空'}, 'op': 'lt', 'right': {'kind': 'value', 'value': '1'}},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'ge', 'right': {'kind': 'value', 'value': 'SUS'}},
+    {'left': {'kind': 'self'}, 'op': 'between', 'right': {'kind': 'value', 'value': '1'}, 'right2': {'kind': 'value', 'value': '2'}},
+    {'left': {'kind': 'self'}, 'op': 'le', 'right': {'kind': 'column', 'column': '幅'}},
+    {'left': {'kind': 'column', 'column': '空'}, 'op': 'empty'},
+    {'left': {'kind': 'column', 'column': '無い'}, 'op': 'notEmpty'},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'regex', 'right': {'kind': 'value', 'value': r'^SUS\d{3}$'}},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'regex', 'right': {'kind': 'value', 'value': '(a+)+'}},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'regex', 'right': {'kind': 'value', 'value': '[unclosed'}},
+    {'left': {'kind': 'column', 'column': '名'}, 'op': 'regex', 'right': {'kind': 'value', 'value': '(?i)sus'}},
+    {'left': None, 'op': 'eq', 'right': {'kind': 'value', 'value': ''}},
+    {'left': {'kind': 'value', 'value': None}, 'op': 'eq', 'right': {'kind': 'value', 'value': None}},
+    {'left': {'kind': 'value', 'value': 3}, 'op': 'eq', 'right': {'kind': 'value', 'value': '3.0'}},
+    {'left': {'kind': 'self'}, 'op': 'zz'},
+]
+_GROUP = {'kind': 'group', 'conditions': [_RULE_CONDS[0], dict(_RULE_CONDS[7], join='or')]}
+_RULE_ROWS = [
+    [{'text': '薄い', 'conditions': [_RULE_CONDS[0]]}, {'text': '既定', 'conditions': []}],
+    [{'text': 'x', 'conditions': [_RULE_CONDS[1], dict(_RULE_CONDS[2], join='or')]}],
+    [{'text': 'g', 'conditions': [_GROUP, _RULE_CONDS[6]]}, {'text': '', 'conditions': [_RULE_CONDS[5]]}],
+    [{'text': 'e', 'conditions': [{'kind': 'group', 'conditions': []}]}],
+    [{'text': '=a+1', 'conditions': [_RULE_CONDS[0]]}],
+    [{'text': 'f', 'conditions': [{'op': 'formula'}]}],
+    [{'text': 'c', 'conditions': [{'left': {'kind': 'calc'}, 'op': 'eq'}]}],
+    [{'text': 'n', 'conditions': [_GROUP]}],
+]
+_SORT_ROWS = [{'id': i, 'v': v, 'w': w} for i, (v, w) in enumerate(
+    [('10', 'b'), ('3', 'a'), ('', 'a'), ('A10', 'c'), ('A2', 'b'), ('2026/08/01', 'a'), (None, 'c'), ('3', 'b'), ('1,200', 'a'),
+     ('a', 'b'), ('2025-1-1 9:00', 'c'), (' ', 'a')])]
+_SORT_KEYS = [
+    [{'col': 'v'}], [{'col': 'v', 'dir': 'desc'}], [{'col': 'v', 'spec': {'buckets': ['text', 'num', 'date', 'empty']}}],
+    [{'col': 'v', 'dir': 'DESC', 'spec': {'buckets': ['empty', 'num'], 'natural': True}}],
+    [{'col': 'w'}, {'col': 'v', 'dir': 'desc'}], [{'col': 'w', 'dir': 'desc', 'spec': {'natural': True}}, {'col': 'v'}], []]
+_TABLE_COLS = ['名', '厚', '日', 'a]b']
+_FILTERS = [
+    None, '', 'x', '{}', [], [{'column': '名', 'op': 'contains', 'value': ' SUS '}],
+    [{'column': '名'}, {'column': '無い', 'op': 'eq', 'value': '1'}, {'column': '名', 'op': 'zz', 'value': '1'}, 'bad',
+     {'column': ' 厚 ', 'op': ' gte ', 'value': 5}],
+    [{'column': '名', 'op': 'in', 'value': ['A', '', 3, None, True]}, {'column': '名', 'op': 'not_in', 'value': ['A', 'B']},
+     {'column': '名', 'op': 'not_in', 'value': ['', 'B']}, {'column': '名', 'op': 'not_in', 'value': []}, {'column': '名', 'op': 'in', 'value': '["x"]'},
+     {'column': '日', 'op': 'in', 'value': ['2026-08'], 'key': 'month'}, {'column': '日', 'op': 'not_in', 'value': ['2026'], 'key': 'year'},
+     {'column': '日', 'op': 'in', 'value': ['2026-08-01'], 'key': 'date'}, {'column': '日', 'op': 'in', 'value': ['x'], 'key': 'week'}],
+    [{'column': '名', 'op': 'eq', 'value': 'a'}, {'column': '名', 'op': 'neq', 'value': 'a'}, {'column': '名', 'op': 'starts', 'value': 'a'},
+     {'column': '名', 'op': 'ends', 'value': 'a'}, {'column': '名', 'op': 'not_contains', 'value': 'a'}, {'column': '名', 'op': 'empty'},
+     {'column': '名', 'op': 'not_empty'}, {'column': '名', 'op': 'starts_any', 'value': 'A,,B'}, {'column': '名', 'op': 'starts_any', 'value': ''},
+     {'column': 'a]b', 'op': 'eq', 'value': 'x'}],
+    [{'column': '厚', 'op': 'gt', 'value': '1,200'}, {'column': '厚', 'op': 'lte', 'value': 'abc'}, {'column': '厚', 'op': 'lt', 'value': '.5'}],
+    [{'column': '日', 'op': 'date_range', 'value': '2026-08-01..2026-08-31'}, {'column': '日', 'op': 'date_range', 'value': '..2026-02-30'},
+     {'column': '日', 'op': 'date_range', 'value': 'x'}, {'column': '日', 'op': 'within_days', 'value': '7'},
+     {'column': '日', 'op': 'within_weeks', 'value': ' 2.9 '}, {'column': '日', 'op': 'within_months', 'value': '1'},
+     {'column': '日', 'op': 'within_months', 'value': '13'}, {'column': '日', 'op': 'within_years', 'value': '-3'},
+     {'column': '日', 'op': 'within_days', 'value': 'x'}, {'column': '日', 'op': 'within_days', 'value': '1_0'}],
+    [{'column': 'k', 'op': 'tuple_in', 'value': [['A', 1], ['B', None], ['C', True], ['D'], [2.5, 'x'], 'z'], 'columns': ['名', '厚']},
+     {'column': 'k', 'op': 'tuple_in', 'value': '[]', 'columns': ['名']}, {'column': 'k', 'op': 'tuple_in', 'value': [], 'columns': ['名', '名']},
+     {'column': 'k', 'op': 'tuple_in', 'value': [], 'columns': ['無い']}, {'column': 'k', 'op': 'tuple_in', 'value': 'x', 'columns': ['名']}],
+    [{'column': f'c{i}', 'op': 'eq'} for i in range(62)],
+]
+_TODAYS = ['2026-03-31', '2024-02-29', '2026-01-15']
+
+
+def _today(s):
+    return datetime.date.fromisoformat(s)
+
+
 def _field_ok(field):
     """試験の列の見分け: 決めた列か、`source.`の付いた列（呼ぶ側が渡す`field_ok`の代わり）。"""
     return field in _ALLOWED or rule_cells.prefixed_field(field, 'source.')
@@ -97,7 +196,38 @@ def cases():
          [('normalize_cols', [c], lambda c: rule_cells.normalize_cols(c, _field_ok)) for c in _COLS] + \
          [('table_cols', [['材質'], [{'conditions': [{'field': '板厚'}, {'field': '材質'}]}, {'conditions': None}, {}]],
            lambda s, r: rule_cells.table_cols(s, r, _field_ok))]
-    return {'textnorm': tn, 'flags': fl, 'datetext': dt, 'safe_regex': rx, 'num_expr': ne, 'rule_cells': rc}
+    so = [('num_of', [v], sort_order.num_of) for v in _NUMS] + \
+         [('date_key', [v], sort_order.date_key) for v in _DATEKEYS] + \
+         [('classify', [v], sort_order.classify) for v in _NUMS + _DATEKEYS + _NATURAL] + \
+         [('natural_key', [v], sort_order.natural_key) for v in _NATURAL] + \
+         [('normalize_spec', [x], sort_order.normalize_spec) for x in _SPECS] + \
+         [('spec_json', [x], sort_order.spec_json) for x in _SPECS] + \
+         [('describe', [x], sort_order.describe) for x in _SPECS] + \
+         [('value_key', [sp, v], sort_order.value_key) for sp in (None, {'natural': True}) for v in _NUMS + _DATEKEYS + _NATURAL] + \
+         [('bucket_rank', [sp, v], sort_order.bucket_rank) for sp in (None, {'buckets': ['text', 'empty']}) for v in _NUMS[:12]] + \
+         [('format_value', [sp, v], sort_order.format_value) for sp, vs in _FMT for v in vs] + \
+         [('rule_test', [c, _ROW, '厚'], sort_order.rule_test) for c in _RULE_CONDS] + \
+         [('rule_match', [r, _ROW, '厚'], sort_order.rule_match) for r in _RULE_ROWS] + \
+         [('rules_need_formula', [r], sort_order.rules_need_formula) for r in _RULE_ROWS] + \
+         [('rule_leaves', [r[0]['conditions']], sort_order.rule_leaves) for r in _RULE_ROWS] + \
+         [('display_text', [raw, fmt, rows, _ROW, '厚'], sort_order.display_text) for raw, fmt, rows in
+          (('1.5', None, _RULE_ROWS[0]), ('9', {'kind': 'number', 'decimals': 1}, _RULE_ROWS[2]), ('9', {'kind': 'text', 'suffix': 'mm'}, None),
+           ('', {'kind': 'number'}, None), ('7', None, [{'text': None, 'conditions': []}]))] + \
+         [('order_rows', [_SORT_ROWS, k], lambda rows, keys: [r['id'] for r in sort_order.order_rows(rows, keys, lambda r, k: r.get(k['col']))])
+          for k in _SORT_KEYS]
+    fs = [('safe_filters', [f, _TABLE_COLS, ['計']], filter_sql.safe_filters) for f in _FILTERS] + \
+         [('build_filter_where', [filter_sql.safe_filters(f, _TABLE_COLS, ['計']), t, {'計': '(A+B)'}],
+           lambda f, t, e: filter_sql.build_filter_where(f, _today(t), e)) for f in _FILTERS for t in _TODAYS[:1]] + \
+         [('cutoff_date', [op, v, t], lambda op, v, t: filter_sql.cutoff_date(op, v, _today(t)))
+          for op in filter_sql.RELATIVE_OPS for v in ('0', '1', '12', '25', ' 3.9 ', 'x') for t in _TODAYS] + \
+         [('date_range', [v], filter_sql.date_range) for v in ('2026-08-01..2026-08-31', '..', '', None, '2026-8-1..', '..2024-02-29', '2026-02-29..x', 'a..b..c')] + \
+         [('slice_key', ['[日]', k], filter_sql.slice_key) for k in ('', 'date', 'month', 'year', 'week')] + \
+         [('search_filter_where', [_TABLE_COLS, q, f, '2026-03-31', e], lambda cs, q, f, t, e: filter_sql.search_filter_where(cs, q, f, _today(t), e))
+          for q, f, e in (('', '', None), (' a ', '', None), ('x', json.dumps(_FILTERS[5], ensure_ascii=False), {'計': 'X'}),
+                          ('', [{'column': '計', 'op': 'gt', 'value': '1'}], {'計': '(A*2)'}))] + \
+         [('ignored_filter_columns', [f, _TABLE_COLS, ['計']], filter_sql.ignored_filter_columns) for f in _FILTERS]
+    return {'textnorm': tn, 'flags': fl, 'datetext': dt, 'safe_regex': rx, 'num_expr': ne, 'rule_cells': rc,
+            'sort_order': so, 'filter_sql': fs}
 
 
 def _plain(v):

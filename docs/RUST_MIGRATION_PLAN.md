@@ -1,6 +1,6 @@
 # 業務の Python を Rust へ移す——計画
 
-**状態: P0（土台と物差し・[§9.633](decisions/9.633.md)）と P1a（純粋な関数6つ・[§9.634](decisions/9.634.md)）済み。移したルートはまだ 0本。** 決めたことと経緯は [§9.632](decisions/9.632.md)。前の住み分けは [§9.563](decisions/9.563.md)。
+**状態: P0（土台と物差し・[§9.633](decisions/9.633.md)）・P1a（純粋な関数6つ・[§9.634](decisions/9.634.md)）・P1b（並べ替え・書式・絞り込み・[§9.635](decisions/9.635.md)）済み。移したルートはまだ 0本。** 決めたことと経緯は [§9.632](decisions/9.632.md)。前の住み分けは [§9.563](decisions/9.563.md)。
 窓（`desktop/`）の作りは [`DESKTOP_MIGRATION_DESIGN.md`](DESKTOP_MIGRATION_DESIGN.md)。
 
 ## 1. 目的と範囲
@@ -74,7 +74,7 @@ P0 で `wavelog-serve`（`desktop/core/src/bin/serve.rs`）を入れた。表に
 | 段 | 移すもの | 終わった印 |
 |---|---|---|
 | **P0 土台**（済み・§9.633） | ワークスペースを分ける・「Rust が答える表＋Python へ回す」の振り分け・影で比べる仕組みと不一致の記録・HTTP の入口・書き手の対応表・物差し（§5）の基準値 | 数を出す仕組みが動く。移したルートは 0本 |
-| **P1 純粋な関数**（P1a 済み・§9.634。残りは P1b 並べ替え・絞り込み／P1c 式／P1d CSS・画面・更新履歴） | 字の正規化（NFKC）・真偽の読み方（`flags`）・日時（`datetext`）・並べ替え（`sort_order`）・`filter_sql`・`rule_cells`・`safe_regex`・式の評価器（`dashboard/formula`・`num_expr`。JS の `WL.formula` と**共通の試験表**を作る）・更新履歴（字をデータファイルへ出す）・CSS の連結・`index.html`（minijinja） | 試験表で Python と答えが一致する |
+| **P1 純粋な関数**（P1a・P1b 済み・§9.634・§9.635。残りは P1c 式／P1d CSS・画面・更新履歴） | 字の正規化（NFKC）・真偽の読み方（`flags`）・日時（`datetext`）・並べ替え（`sort_order`）・`filter_sql`・`rule_cells`・`safe_regex`・式の評価器（`dashboard/formula`・`num_expr`。JS の `WL.formula` と**共通の試験表**を作る）・更新履歴（字をデータファイルへ出す）・CSS の連結・`index.html`（minijinja） | 試験表で Python と答えが一致する |
 | **P2 読むだけのルート** | 仕掛・品質の一覧（写しを読むだけ）・ダッシュボードの計算・ログの閲覧 | 影の不一致が 0件 |
 | **P3 保存と共有の層** | `sqlite_io`・`db_access`・`db_mirror`・錠・`master_share`・`storage_layout`・`paths`・`terminal_store`・在席（`presence`） | 写す・書く役が Rust だけになる |
 | **P4 マスタ** | 表の群ごとに（設備・操業データ・ロール・刃組・帳票・フィルタ・列・アクセス権限・結合） | 群ごとに切り替えた |
