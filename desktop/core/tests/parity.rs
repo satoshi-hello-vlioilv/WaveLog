@@ -6,6 +6,7 @@
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use wavelog_core::formula::{self as fx, V};
 use wavelog_core::pyish::Date;
 use wavelog_core::{datetext, filter_sql, flags, num_expr, rule_cells, safe_regex, sort_order, textnorm};
 
@@ -65,6 +66,7 @@ fn call(area: &str, fun: &str, a: &[Value]) -> Result<Value, String> {
         ("rule_cells", "table_cols") => json!(rule_cells::table_cols(&arg(0), &arg(1), &field_ok)),
         ("sort_order", _) => sort_call(fun, a)?,
         ("filter_sql", _) => filter_call(fun, a)?,
+        ("formula", _) => formula_call(fun, a)?,
         _ => return Err(format!("Rust に {area}.{fun} がありません")),
     })
 }
@@ -145,6 +147,76 @@ fn filter_call(fun: &str, a: &[Value]) -> Result<Value, String> {
     })
 }
 
+fn formula_call(fun: &str, a: &[Value]) -> Result<Value, String> {
+    let arg = |i: usize| a.get(i).cloned().unwrap_or(Value::Null);
+    let calc = || {
+        let p = |a: &str, b: &str| (a.to_string(), b.to_string());
+        let formulas = [
+            p("区分", "if([板厚(表示)] > 1, '厚', '薄')"),
+            p("倍", "[重量] * 2"),
+            p("倍の倍", "[倍] * 2"),
+            p("重量", "[重量] + 1"),
+            p("自分", "[自分]"),
+            p("壊れ", "[A"),
+        ];
+        fx::CalcColumns::new(&formulas, &[p("板厚", "板厚(表示)")], &["板厚".to_string(), "重量".to_string()])
+    };
+    Ok(match fun {
+        "answer" => {
+            let expr = arg(0).as_str().unwrap_or("").to_string();
+            let chk = fx::check(&expr);
+            if chk["ok"] != json!(true) {
+                return Ok(json!({"ok": false, "error": chk["error"]}));
+            }
+            let row = obj(&arg(1));
+            let f = fx::Formula::new(&expr).map_err(|e| format!("{e:?}"))?;
+            let v = f.run(&|c: &str| row.get(c).map_or(V::Null, V::from_json));
+            let text = fx::u16_json(&fx::text_of(&v));
+            match v {
+                V::Num(x) if !x.is_finite() => json!({"ok": true, "value": format!("#{}", fx::js_num_text(x)), "text": text}),
+                other => json!({"ok": true, "value": other.to_json(), "text": text}),
+            }
+        }
+        "calc_columns" => {
+            let c = calc();
+            json!({"calcs": c.calcs, "broken": c.compiled.iter().filter(|(_, f)| f.is_none()).map(|(k, _)| k.clone()).collect::<Vec<_>>()})
+        }
+        "calc_run" => {
+            let c = calc();
+            let name = arg(0).as_str().unwrap_or("").to_string();
+            if c.broken(&name) {
+                json!({"broken": true})
+            } else {
+                let vals: Vec<V> = arr(&arg(1)).iter().map(V::from_json).collect();
+                json!({"deps": c.raw_deps(&name), "value": c.run(&name, &vals).to_json()})
+            }
+        }
+        "sql_value" => fx::sql_value(&V::from_json(&arg(0))).to_json(),
+        "clean_calc" => fx::clean_calc(&arg(0)).unwrap_or(Value::Null),
+        "check" => fx::check(arg(0).as_str().unwrap_or("")),
+        _ => return Err(format!("Rust に formula.{fun} がありません")),
+    })
+}
+
+/// 式の答えの比べ方（画面との突き合わせ `test_formulaparity.same` と同じ: 壊れた正規表現の理由は前半だけ・数は実数で）。
+fn same_answer(got: &Value, want: &Value) -> bool {
+    if got == want {
+        return true;
+    }
+    if got["ok"] != want["ok"] {
+        return false;
+    }
+    if want["ok"] == json!(false) {
+        let head = "の正規表現として読めません: ";
+        let (g, w) = (got["error"].as_str().unwrap_or(""), want["error"].as_str().unwrap_or(""));
+        return g.contains(head) && w.contains(head) && g.split(head).next() == w.split(head).next();
+    }
+    match (got["value"].as_f64(), want["value"].as_f64()) {
+        (Some(x), Some(y)) => x == y && got["text"] == want["text"],
+        _ => false,
+    }
+}
+
 #[test]
 fn every_case_matches_python() {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir()).expect("試験表の置き場").filter_map(|e| e.ok().map(|e| e.path())).collect();
@@ -159,7 +231,7 @@ fn every_case_matches_python() {
             n += 1;
             let (fun, args, want) = (c["fn"].as_str().unwrap_or(""), c["args"].as_array().cloned().unwrap_or_default(), &c["want"]);
             match call(&area, fun, &args) {
-                Ok(got) if &got == want => {}
+                Ok(got) if &got == want || (area == "formula" && fun == "answer" && same_answer(&got, want)) => {}
                 Ok(got) => bad.push(format!("{area}.{fun}({}) → Rust {got} / Python {want}", Value::Array(args))),
                 Err(e) => bad.push(e),
             }

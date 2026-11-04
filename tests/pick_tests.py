@@ -674,6 +674,8 @@ RULES = [
     ('backend/rule_cells.py', ['test_parity']),
     ('backend/sort_order.py', ['test_parity']),
     ('backend/filter_sql.py', ['test_parity']),
+    ('backend/dashboard/formula.py', ['test_parity']),
+    ('tests/test_formulaparity.py', ['test_parity']),
     ('backend/launcher/server.py', g('起動', 'test_rustplan')),
     ('program/', g('起動')),
 
