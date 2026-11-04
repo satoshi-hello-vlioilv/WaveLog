@@ -12,6 +12,11 @@ serve = ["dep:tiny_http"]
 
 [dependencies]
 serde_json = "1"
+# 日時の読み方の型（datetext・§9.634）。Tauri が既に使っている版
+regex = "1"
+# 字の正規化（NFKC）と大文字・小文字の畳み方（casefold）。Python の unicodedata.normalize・str.casefold と同じ答えにする
+unicode-normalization = "0.1"
+caseless = "0.2"
 tiny_http = { version = "0.12", optional = true }
 
 [[bin]]

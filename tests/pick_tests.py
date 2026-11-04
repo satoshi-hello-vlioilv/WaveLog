@@ -663,6 +663,15 @@ RULES = [
     # （Rust そのものは cargo test と CI の自己診断・.github/workflows/desktop.yml）。
     ('desktop/', g('test_sidecar', 'test_boot', 'test_bootui', 'test_rustplan')),
     ('tests/lib/rust_progress.py', ['test_rustplan']),
+    # §9.634: Python→Rust の試験表（答えの正は Python。写した関数を直したら表を作り直す）
+    ('tests/lib/parity_cases.py', ['test_parity', 'test_rustplan']),
+    ('tests/fixtures/parity/', ['test_parity', 'test_rustplan']),
+    ('backend/textnorm.py', ['test_parity']),
+    ('backend/flags.py', ['test_parity']),
+    ('backend/datetext.py', ['test_parity']),
+    ('backend/safe_regex.py', ['test_parity']),
+    ('backend/dashboard/num_expr.py', ['test_parity']),
+    ('backend/rule_cells.py', ['test_parity']),
     ('backend/launcher/server.py', g('起動', 'test_rustplan')),
     ('program/', g('起動')),
 

@@ -1,4 +1,4 @@
-# そのほか（40件）
+# そのほか（41件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 写した関数の答えの正は Python。試験表は`parity_cases.py --write`で作り、Rust は`tests/parity.rs`で合わせる | `test_parity.py` | [§9.634](../../docs/decisions/9.634.md) |
 | Rust が答えるかは`routes::ROUTES`の1箇所、答えは`Core::answer()`（窓も HTTP の入口も通る）。移したら Python の側を消す | `test_rustplan.py` | [§9.633](../../docs/decisions/9.633.md) |
 | 影（`Shadow`）は読むだけの GET。比べ方は`shadow::compare()`の1箇所（JSON は値・数は字）。不一致0件で Serve へ | `test_rustplan.py` | [§9.633](../../docs/decisions/9.633.md) |
 | 書き手の対応表`docs/RUST_WRITERS.md`は`rust_progress.py --write`で作る（手で書かない）。`OWNS`を Python が書かない | `test_rustplan.py` | [§9.633](../../docs/decisions/9.633.md) |

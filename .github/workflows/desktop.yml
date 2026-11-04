@@ -19,9 +19,9 @@ name: desktop
 on:
   push:
     branches: [main]
-    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "tests/fixtures/parity/**", ".github/workflows/desktop.yml"]
   pull_request:
-    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "tests/fixtures/parity/**", ".github/workflows/desktop.yml"]
   workflow_dispatch:
 
 permissions:

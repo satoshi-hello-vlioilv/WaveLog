@@ -1,0 +1,458 @@
+[
+{
+"fn": "prefixed_field",
+"args": [
+"source.ロット",
+"source."
+],
+"want": true
+},
+{
+"fn": "prefixed_field",
+"args": [
+"source.",
+"source."
+],
+"want": false
+},
+{
+"fn": "prefixed_field",
+"args": [
+" source.a ",
+"source."
+],
+"want": true
+},
+{
+"fn": "prefixed_field",
+"args": [
+"source.a[1]",
+"source."
+],
+"want": false
+},
+{
+"fn": "prefixed_field",
+"args": [
+"x.a",
+"source."
+],
+"want": false
+},
+{
+"fn": "prefixed_field",
+"args": [
+"source.あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ",
+"source."
+],
+"want": true
+},
+{
+"fn": "prefixed_field",
+"args": [
+"source.ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ",
+"source."
+],
+"want": false
+},
+{
+"fn": "prefixed_field",
+"args": [
+null,
+"source."
+],
+"want": false
+},
+{
+"fn": "normalize_conditions",
+"args": [
+null
+],
+"want": []
+},
+{
+"fn": "normalize_conditions",
+"args": [
+"x"
+],
+"want": []
+},
+{
+"fn": "normalize_conditions",
+"args": [
+[]
+],
+"want": []
+},
+{
+"fn": "normalize_conditions",
+"args": [
+[
+{
+"field": "板厚",
+"op": "ge",
+"value": " 1.5 "
+},
+{
+"field": "材質",
+"op": "eq",
+"value": "SUS"
+}
+]
+],
+"want": [
+{
+"field": "板厚",
+"op": "ge",
+"value": "1.5"
+},
+{
+"field": "材質",
+"op": "eq",
+"value": "SUS"
+}
+]
+},
+{
+"fn": "normalize_conditions",
+"args": [
+[
+{
+"field": "板厚",
+"op": "between",
+"value": "1",
+"value2": "2"
+},
+{
+"field": "幅",
+"op": "empty",
+"value": "x"
+}
+]
+],
+"want": [
+{
+"field": "板厚",
+"op": "between",
+"value": "1",
+"value2": "2"
+},
+{
+"field": "幅",
+"op": "empty",
+"value": ""
+}
+]
+},
+{
+"fn": "normalize_conditions",
+"args": [
+[
+{
+"field": "不明",
+"op": "eq",
+"value": "1"
+},
+{
+"field": "板厚",
+"op": "zz",
+"value": "1"
+},
+"bad",
+{
+"field": "材質",
+"op": "contains",
+"value": null
+}
+]
+],
+"want": [
+{
+"field": "材質",
+"op": "contains",
+"value": ""
+}
+]
+},
+{
+"fn": "normalize_conditions",
+"args": [
+[
+{
+"field": "板厚",
+"op": "eq",
+"value": "1",
+"or": true
+},
+{
+"field": "板厚",
+"op": "eq",
+"value": "2",
+"or": true
+},
+{
+"field": "材質",
+"op": "eq",
+"value": "A",
+"or": "yes"
+}
+]
+],
+"want": [
+{
+"field": "板厚",
+"op": "eq",
+"value": "1"
+},
+{
+"field": "板厚",
+"op": "eq",
+"value": "2",
+"or": true
+},
+{
+"field": "材質",
+"op": "eq",
+"value": "A"
+}
+]
+},
+{
+"fn": "normalize_conditions",
+"args": [
+[
+{
+"field": " 板厚 ",
+"op": " regex ",
+"value": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+},
+{
+"field": "source.厚",
+"op": "notEmpty"
+}
+]
+],
+"want": [
+{
+"field": "板厚",
+"op": "regex",
+"value": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+},
+{
+"field": "source.厚",
+"op": "notEmpty",
+"value": ""
+}
+]
+},
+{
+"fn": "normalize_conditions",
+"args": [
+[
+{
+"field": "板厚",
+"op": "eq",
+"value": 5
+},
+{
+"field": "板厚",
+"op": "lt",
+"value": 1.0
+},
+{
+"field": "板厚",
+"op": "gt",
+"value": true
+}
+]
+],
+"want": [
+{
+"field": "板厚",
+"op": "eq",
+"value": "5"
+},
+{
+"field": "板厚",
+"op": "lt",
+"value": "1.0"
+},
+{
+"field": "板厚",
+"op": "gt",
+"value": "True"
+}
+]
+},
+{
+"fn": "normalize_cols",
+"args": [
+null
+],
+"want": []
+},
+{
+"fn": "normalize_cols",
+"args": [
+"x"
+],
+"want": []
+},
+{
+"fn": "normalize_cols",
+"args": [
+[]
+],
+"want": []
+},
+{
+"fn": "normalize_cols",
+"args": [
+[
+"板厚",
+"材質",
+"板厚",
+" 幅 ",
+"不明",
+null,
+"source.厚"
+]
+],
+"want": [
+"板厚",
+"材質",
+"幅",
+"source.厚"
+]
+},
+{
+"fn": "normalize_cols",
+"args": [
+[
+"板厚",
+"板厚",
+"板厚",
+"source.c0",
+"source.c1",
+"source.c2",
+"source.c3",
+"source.c4",
+"source.c5",
+"source.c6",
+"source.c7",
+"source.c8",
+"source.c9",
+"source.c10",
+"source.c11",
+"source.c12",
+"source.c13",
+"source.c14",
+"source.c15",
+"source.c16",
+"source.c17",
+"source.c18",
+"source.c19",
+"source.c20",
+"source.c21",
+"source.c22",
+"source.c23",
+"source.c24",
+"source.c25",
+"source.c26",
+"source.c27",
+"source.c28",
+"source.c29",
+"source.c30",
+"source.c31",
+"source.c32",
+"source.c33",
+"source.c34",
+"source.c35",
+"source.c36",
+"source.c37",
+"source.c38",
+"source.c39",
+"source.c40",
+"source.c41",
+"source.c42",
+"source.c43",
+"source.c44",
+"source.c45",
+"source.c46",
+"source.c47",
+"source.c48",
+"source.c49"
+]
+],
+"want": [
+"板厚",
+"source.c0",
+"source.c1",
+"source.c2",
+"source.c3",
+"source.c4",
+"source.c5",
+"source.c6",
+"source.c7",
+"source.c8",
+"source.c9",
+"source.c10",
+"source.c11",
+"source.c12",
+"source.c13",
+"source.c14",
+"source.c15",
+"source.c16",
+"source.c17",
+"source.c18",
+"source.c19",
+"source.c20",
+"source.c21",
+"source.c22",
+"source.c23",
+"source.c24",
+"source.c25",
+"source.c26",
+"source.c27",
+"source.c28",
+"source.c29",
+"source.c30",
+"source.c31",
+"source.c32",
+"source.c33",
+"source.c34",
+"source.c35",
+"source.c36",
+"source.c37",
+"source.c38"
+]
+},
+{
+"fn": "table_cols",
+"args": [
+[
+"材質"
+],
+[
+{
+"conditions": [
+{
+"field": "板厚"
+},
+{
+"field": "材質"
+}
+]
+},
+{
+"conditions": null
+},
+{}
+]
+],
+"want": [
+"材質",
+"板厚"
+]
+}
+]

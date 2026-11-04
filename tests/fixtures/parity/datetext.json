@@ -1,0 +1,695 @@
+[
+{
+"fn": "sort_key",
+"args": [
+null
+],
+"want": null
+},
+{
+"fn": "sort_key",
+"args": [
+""
+],
+"want": null
+},
+{
+"fn": "sort_key",
+"args": [
+"  "
+],
+"want": null
+},
+{
+"fn": "sort_key",
+"args": [
+" 54"
+],
+"want": 54.0
+},
+{
+"fn": "sort_key",
+"args": [
+"1e-05"
+],
+"want": 1e-05
+},
+{
+"fn": "sort_key",
+"args": [
+"1.5"
+],
+"want": 1.5
+},
+{
+"fn": "sort_key",
+"args": [
+"-3"
+],
+"want": -3.0
+},
+{
+"fn": "sort_key",
+"args": [
+"+2"
+],
+"want": 2.0
+},
+{
+"fn": "sort_key",
+"args": [
+"e"
+],
+"want": "e"
+},
+{
+"fn": "sort_key",
+"args": [
+"."
+],
+"want": "."
+},
+{
+"fn": "sort_key",
+"args": [
+"1,000"
+],
+"want": "1,000"
+},
+{
+"fn": "sort_key",
+"args": [
+"abc"
+],
+"want": "abc"
+},
+{
+"fn": "sort_key",
+"args": [
+" abc "
+],
+"want": "abc"
+},
+{
+"fn": "sort_key",
+"args": [
+54
+],
+"want": 54
+},
+{
+"fn": "sort_key",
+"args": [
+1.5
+],
+"want": 1.5
+},
+{
+"fn": "sort_key",
+"args": [
+"１２"
+],
+"want": "１２"
+},
+{
+"fn": "sort_key",
+"args": [
+"1.2.3"
+],
+"want": "1.2.3"
+},
+{
+"fn": "sort_key",
+"args": [
+"1e400"
+],
+"want": {
+"$float": "inf"
+}
+},
+{
+"fn": "sort_key",
+"args": [
+"0x10"
+],
+"want": "0x10"
+},
+{
+"fn": "sort_key",
+"args": [
+"inf"
+],
+"want": "inf"
+},
+{
+"fn": "sort_key",
+"args": [
+"nan"
+],
+"want": "nan"
+},
+{
+"fn": "sort_key",
+"args": [
+"12abc"
+],
+"want": "12abc"
+},
+{
+"fn": "to_date",
+"args": [
+null
+],
+"want": null
+},
+{
+"fn": "to_date",
+"args": [
+""
+],
+"want": null
+},
+{
+"fn": "to_date",
+"args": [
+"  "
+],
+"want": null
+},
+{
+"fn": "to_date",
+"args": [
+"2026/9/5"
+],
+"want": "2026-09-05"
+},
+{
+"fn": "to_date",
+"args": [
+"2026-09-28 10:00"
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+"2026.09.28"
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+"2026-09-28T10:00"
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+"2026年9月28日"
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+"2026年 9月 28日 午後"
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+"20260928"
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+"20260928 1200"
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+"26/09/28 23:48:54"
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+"2026/02/29"
+],
+"want": null
+},
+{
+"fn": "to_date",
+"args": [
+"2024/02/29"
+],
+"want": "2024-02-29"
+},
+{
+"fn": "to_date",
+"args": [
+"2026/13/01"
+],
+"want": null
+},
+{
+"fn": "to_date",
+"args": [
+"２０２６/９/５"
+],
+"want": "2026-09-05"
+},
+{
+"fn": "to_date",
+"args": [
+"２０２６年９月５日"
+],
+"want": "2026-09-05"
+},
+{
+"fn": "to_date",
+"args": [
+"٢٠٢٦-٠٩-٠٥"
+],
+"want": "2026-09-05"
+},
+{
+"fn": "to_date",
+"args": [
+"abc"
+],
+"want": null
+},
+{
+"fn": "to_date",
+"args": [
+"2026/9"
+],
+"want": null
+},
+{
+"fn": "to_date",
+"args": [
+20260928
+],
+"want": "2026-09-28"
+},
+{
+"fn": "to_date",
+"args": [
+2026.5
+],
+"want": null
+},
+{
+"fn": "to_date",
+"args": [
+"1899/12/30 8:15:00"
+],
+"want": "1899-12-30"
+},
+{
+"fn": "to_date",
+"args": [
+"99/1/1"
+],
+"want": "2099-01-01"
+},
+{
+"fn": "to_minutes",
+"args": [
+null
+],
+"want": null
+},
+{
+"fn": "to_minutes",
+"args": [
+""
+],
+"want": null
+},
+{
+"fn": "to_minutes",
+"args": [
+"8:15"
+],
+"want": [
+8,
+15,
+0
+]
+},
+{
+"fn": "to_minutes",
+"args": [
+"08:15:30"
+],
+"want": [
+8,
+15,
+30
+]
+},
+{
+"fn": "to_minutes",
+"args": [
+"1899/12/30 8:15:00"
+],
+"want": [
+8,
+15,
+0
+]
+},
+{
+"fn": "to_minutes",
+"args": [
+"2026-10-01T08:15"
+],
+"want": [
+8,
+15,
+0
+]
+},
+{
+"fn": "to_minutes",
+"args": [
+"25:00"
+],
+"want": null
+},
+{
+"fn": "to_minutes",
+"args": [
+"8:60"
+],
+"want": null
+},
+{
+"fn": "to_minutes",
+"args": [
+"8:15 PM"
+],
+"want": [
+8,
+15,
+0
+]
+},
+{
+"fn": "to_minutes",
+"args": [
+"8:15:00.123 am"
+],
+"want": [
+8,
+15,
+0
+]
+},
+{
+"fn": "to_minutes",
+"args": [
+"１２:３０"
+],
+"want": [
+12,
+30,
+0
+]
+},
+{
+"fn": "to_minutes",
+"args": [
+"x8:15"
+],
+"want": null
+},
+{
+"fn": "to_minutes",
+"args": [
+"2026/10/02 午後 8:15:00"
+],
+"want": [
+8,
+15,
+0
+]
+},
+{
+"fn": "to_minutes",
+"args": [
+815
+],
+"want": null
+},
+{
+"fn": "to_minutes",
+"args": [
+"8:15:61"
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+null
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+""
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/01 8:15:00"
+],
+"want": "2026-10-01 08:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026-10-01"
+],
+"want": "2026-10-01"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026-10-01T08:15"
+],
+"want": "2026-10-01 08:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"20261002201500"
+],
+"want": "2026-10-02 20:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+20261002201500
+],
+"want": "2026-10-02 20:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"20261302201500"
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+"20261002241500"
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/02 午後 8:15:00"
+],
+"want": "2026-10-02 20:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/02 8:15:00 PM"
+],
+"want": "2026-10-02 20:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/02 12:15:00 AM"
+],
+"want": "2026-10-02 00:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/02 12:15:00 PM"
+],
+"want": "2026-10-02 12:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/02 13:15:00 PM"
+],
+"want": "2026-10-02 13:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026年10月2日 8:15"
+],
+"want": "2026-10-02 08:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"26/10/02 8:15"
+],
+"want": "2026-10-02 08:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/02 8:15:00.5"
+],
+"want": "2026-10-02 08:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/02/30 8:15"
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+"abc"
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/02 25:00"
+],
+"want": "2026-10-02"
+},
+{
+"fn": "to_datetime",
+"args": [
+" 2026/10/01 8:15 "
+],
+"want": "2026-10-01 08:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/01 8:15 Amazon"
+],
+"want": "2026-10-01"
+},
+{
+"fn": "to_datetime",
+"args": [
+1.0
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+true
+],
+"want": null
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/01",
+"8:15"
+],
+"want": "2026-10-01 08:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/01",
+"1899/12/30 9:30:15"
+],
+"want": "2026-10-01 09:30:15"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/01",
+"abc"
+],
+"want": "2026-10-01"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/01 7:00",
+"8:15"
+],
+"want": "2026-10-01 07:00:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026年10月1日",
+"午後 8:15:00"
+],
+"want": "2026-10-01 20:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"2026/10/01",
+"8:15 PM"
+],
+"want": "2026-10-01 20:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+"20261001",
+"8:15"
+],
+"want": "2026-10-01 08:15:00"
+},
+{
+"fn": "to_datetime",
+"args": [
+null,
+"8:15"
+],
+"want": null
+}
+]
