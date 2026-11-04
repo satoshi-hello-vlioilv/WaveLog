@@ -163,6 +163,38 @@ _FILTERS = [
 _TODAYS = ['2026-03-31', '2024-02-29', '2026-01-15']
 
 
+# ---- P1c（§9.636）: ダッシュボードの式。問いは画面との突き合わせ（test_formulaparity）の例をそのまま使う --------------
+def _formula_cases():
+    sys.path.insert(0, str(ROOT / 'tests'))
+    import test_formulaparity as tf  # 遅延: 式の領域を作るときだけ（corpus と py_answer の答えの形を共有する）
+    out = [('answer', [c['expr'], c['row']], tf.py_answer) for c in tf.corpus()]
+    # Rust の読み替え（formula.rs の translate・matches）で違いが出やすい形。画面との突き合わせの例には無い
+    extra = ["match('a<b', '\\<')", "match('a>b', 'a\\>')", "match('ab', '\\<')", "match('ab', 'b\\>')", "match('a{b', 'a{')", "match('a}b', 'a}')", "match('aaa', 'a{,2}')",
+             "match('a&b', '[&]')", "match('a~b', '[~]')", "match('a[b', '[[]')", "match('a-b', '[a-]')", "match('-', '[--z]')",
+             "extract('L0123C4', 'C(\\d)', 1.5)", "extract('L0123C4', 'C(\\d)', 0.5)", "regreplace('abxd', 'x*', '-')",
+             "regcount('abxd', 'x*')", "regreplace('a1b2', '\\d?', '#')", "match('ab', '\\Bb')", "match('a b', 'a\\b')",
+             "regreplace('tab\tx', '\\t', '_')", "match('\x0b', '\\v')", "match('é', '\\w')", "match('٣', '\\d')",
+             "extract('x123', '(?<n>\\d+)', 1)", "regreplace('ab', '(?<x>a)', '[$<x>|$<y>]')", "match('A', '\\cA')",
+             "match('a', '\\u0061')", "match('a', '\\x61')", "match('\x00', '\\0')", "regreplace('aa', 'a', '$0$10$1')"]
+    out += [('answer', [e, {'A': 'x'}], tf.py_answer) for e in extra]
+    from backend.dashboard import formula as F
+    calc = F.CalcColumns({'区分': "if([板厚(表示)] > 1, '厚', '薄')", '倍': '[重量] * 2', '倍の倍': '[倍] * 2', '重量': '[重量] + 1',
+                          '自分': '[自分]', '壊れ': '[A'}, {'板厚': '板厚(表示)'}, ['板厚', '重量'])
+
+    def calc_run(name, vals):
+        if calc.broken(name):
+            return {'broken': True}
+        run, deps = calc.runner(name)
+        return {'deps': deps, 'value': run(*vals)}
+    out += [('calc_columns', [], lambda: {'calcs': calc.calcs, 'broken': [k for k in calc.compiled if calc.broken(k)]})]
+    out += [('calc_run', [n, v], calc_run) for n, v in (('区分', [2]), ('区分', [0.5]), ('倍の倍', [10]), ('倍', [10]), ('自分', []), ('壊れ', []))]
+    out += [('sql_value', [v], F.sql_value) for v in (3.0, 2.5, 1e16, -0.0, 'x', None, 9007199254740992.0)]
+    out += [('clean_calc', [v], F.clean_calc) for v in (None, '', 'x', '{"formulas": {"a": "[b]+1", "c": " "}, "names": {"b": "B"}, "own": ["a", "z"]}',
+                                                         {'formulas': {}}, {'formulas': {'a': 1, ' ': 'x', 'b': 'y' * 2100}}, [1])]
+    out += [('check', [e], F.check) for e in ('', '   ', '[A] + 1', 'if([A] > [B], [C], [A])', '[A', 'concat([日本], [A], [日本])')]
+    return out
+
+
 def _today(s):
     return datetime.date.fromisoformat(s)
 
@@ -227,11 +259,15 @@ def cases():
                           ('', [{'column': '計', 'op': 'gt', 'value': '1'}], {'計': '(A*2)'}))] + \
          [('ignored_filter_columns', [f, _TABLE_COLS, ['計']], filter_sql.ignored_filter_columns) for f in _FILTERS]
     return {'textnorm': tn, 'flags': fl, 'datetext': dt, 'safe_regex': rx, 'num_expr': ne, 'rule_cells': rc,
-            'sort_order': so, 'filter_sql': fs}
+            'sort_order': so, 'filter_sql': fs, 'formula': _formula_cases()}
 
 
 def _plain(v):
-    """JSON に書ける形へ。組（tuple）は並び、有限でない数（inf・nan）は `{"$float": "inf"}`（JSON に無いので）。"""
+    """JSON に書ける形へ。組（tuple）は並び、有限でない数（inf・nan）は `{"$float": "inf"}`（JSON に無いので）、
+    割れたサロゲート（JS の字を UTF-16 の単位で切った物・`formula.u16slice`）を持つ字は `{"$u16": [単位…]}`（UTF-8 に書けないので）。"""
+    if isinstance(v, str) and any('\ud800' <= c <= '\udfff' for c in v):
+        b = v.encode('utf-16-le', 'surrogatepass')
+        return {'$u16': [int.from_bytes(b[i:i + 2], 'little') for i in range(0, len(b), 2)]}
     if isinstance(v, float) and v != v:
         return {'$float': 'nan'}
     if isinstance(v, float) and v in (float('inf'), float('-inf')):

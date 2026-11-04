@@ -384,9 +384,7 @@ fn stamp(p: &Parts, pattern: &str) -> Option<String> {
 fn group_thousands(s: &str) -> String {
     let (neg, rest) = s.strip_prefix('-').map_or(("", s), |r| ("-", r));
     let (head, frac) = rest.split_once('.').map_or((rest, ""), |(h, f)| (h, f));
-    let ok = !head.is_empty()
-        && head.chars().all(is_digit)
-        && (!rest.contains('.') || (!frac.is_empty() && frac.chars().all(is_digit)));
+    let ok = !head.is_empty() && head.chars().all(is_digit) && (!rest.contains('.') || (!frac.is_empty() && frac.chars().all(is_digit)));
     if !ok {
         return s.to_string();
     }

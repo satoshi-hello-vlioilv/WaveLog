@@ -18,6 +18,7 @@ pub mod statics;
 pub mod datetext;
 pub mod filter_sql;
 pub mod flags;
+pub mod formula;
 pub mod num_expr;
 pub mod pyish;
 pub mod rule_cells;
