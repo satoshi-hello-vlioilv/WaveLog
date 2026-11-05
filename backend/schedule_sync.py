@@ -741,9 +741,7 @@ def fetch_snapshot(force=False):
    finally:
     src.close()
    if _verify_integrity(tmp):
-    # 置き換え先(ローカルの作業コピー)は自分が読んでいる最中のことがある。
-    # Windowsでは開かれていると置き換えられないので粘る(§9.108)。
-    atomic_io.replace(tmp,SCHEDULE_CACHE_PATH,label='schedule.cache')
+    _settle_cache(tmp)
     mark_verified(revision=local_revision(),fetched=True,signature=sig)
     return SCHEDULE_CACHE_PATH,False
    last_error='取得結果が壊れていました(整合性チェック失敗)'
@@ -769,6 +767,35 @@ def fetch_snapshot(force=False):
  # その場で気づけるようにするため(以前は固定文言のみで原因が分からなかった)。
  detail=f'({shared}: {last_error})' if last_error else f'({shared})'
  raise ScheduleUnavailableError(f'共有データを取得できず、有効なローカルキャッシュもありません{detail}。')
+
+
+# 手元の写しを置き換える粘りの予算。尽きたら中身を写し込む（_settle_cache）ので、長く粘る意味は無い。
+_CACHE_REPLACE_BUDGET_SEC=1.0
+
+
+def _settle_cache(tmp):
+ """取り直した一時ファイル（検め済み）を手元の写しにする（§9.639）。
+
+ 置き換え先は画面の読み（GET）・見張り・書込役の見回りが開いている最中のことがあり、Windows では開かれて
+ いるファイルを置き換えられない（WinError 5・§9.108）。前は置き換えだけを5秒粘り、だめなら「共有を読めない」
+ と同じ扱い（古い写し）にしていた——共有は読めているのに書込が断られ続け、画面に「保存できませんでした」が
+ 続いた（利用者の報告・2.529.0）。置き換えられなければ **SQLite のバックアップで中身を写し込む**（開いている
+ ファイルへも書ける・読み手とは SQLite の錠で順番を守る）。どちらもできなければ例外をそのまま上げる。"""
+ try:
+  atomic_io.replace(tmp,SCHEDULE_CACHE_PATH,budget_sec=_CACHE_REPLACE_BUDGET_SEC,label='schedule.cache')
+  return
+ except OSError as e:
+  if not atomic_io.is_transient(e):raise
+  app_logger().info('手元のスケジュールの写しを置き換えられないため、中身を写し込みます（読んでいる最中・%s）',e)
+ src=connect(tmp,True,'sqlite')
+ try:
+  dst=connect(SCHEDULE_CACHE_PATH,False,'sqlite')
+  try:
+   src.backup(dst)
+  finally:
+   dst.close()
+ finally:
+  src.close()
 
 
 def _push(local_path,shared_path):
