@@ -12,6 +12,8 @@
  W3. 状態欄が空の予定の行（前の版の行）を狙うと、その前に入るか（前は一番下）
  W4. 狙った行が書く前に始まっていたら、その次の予定の前に入るか（前は一番下）
  W5. 狙った行が書く前に完了していても同じ（次の予定の前）。次の予定が無ければ一番下
+ W9. 共有は読めるのに、手元の写しを置き換えられない（Windows で読んでいる最中・WinError 5）とき、
+     書込は通り（共有へ届く）、読みも新しい中身を返すか（§9.639。前は「保存できませんでした」が続いた）
 
 **材料は自分で作る**（一時フォルダの共有ファイルと手元の写し）。サーバーは要らない（純粋な網）。
 ============================================================
@@ -118,6 +120,48 @@ try:
         c.close()
     rec('W2 版の番号を確かめられないときは書かない（ほかの PC の書込を踏まない）',
         'F' not in names2 and bool(err2), {'names': names2, 'err': err2[:120]})
+
+    # ---- W9: 共有は読めるが、手元の写しを置き換えられない（§9.639） ----
+    # Windows は開いているファイルを置き換えられない（§9.108）。画面の読み（GET）や見張りが手元の写しを開いている
+    # あいだに取り直すと、写した一時ファイルで写しを置き換えられず WinError 5 になる。Linux では起きないので、
+    # 置き換えの口を「手元の写しへの置き換えだけ失敗する」形にして同じ状態を作る。
+    real_replace = ss.atomic_io.replace
+    denied = {'n': 0}
+
+    def locked_cache(src, dst, **k):
+        if pathlib.Path(dst) == cache:
+            denied['n'] += 1
+            e = PermissionError(13, 'アクセスが拒否されました')
+            e.winerror = 5
+            raise e
+        return real_replace(src, dst, **k)
+    ss.with_write('t', 'PC-B', 'test', lambda c: add(c, 'G'))     # 別の PC が足した（手元の写しは持っていない）
+    cache.write_bytes(stale)
+    ss.atomic_io.replace = locked_cache
+    err9 = ''
+    try:
+        ss.with_write('t', 'PC-A', 'test', lambda c: add(c, 'H'))
+    except Exception as e:
+        err9 = type(e).__name__ + ': ' + str(e)
+    try:
+        cache.write_bytes(stale)
+        read_path, read_stale = ss.fetch_snapshot(force=True)
+    finally:
+        ss.atomic_io.replace = real_replace
+    c = connect(shared, True)
+    try:
+        names9 = [r[7] for r in sr.plan_rows(c, EQ)]
+    finally:
+        c.close()
+    rec('W9 手元の写しを置き換えられなくても書込は通る（別の PC の G も残る）',
+        'H' in names9 and 'G' in names9 and 'D' in names9 and not err9 and denied['n'] > 0,
+        {'names': names9, 'err': err9[:120], 'denied': denied['n']})
+    c = connect(read_path, True)
+    try:
+        read_names = [r[7] for r in sr.plan_rows(c, EQ)]
+    finally:
+        c.close()
+    rec('W9 読みも新しい中身を返す（古い写しと言わない）', not read_stale and 'H' in read_names, {'stale': read_stale, 'names': read_names})
 
     # ---- W3〜W5: 狙った行の前へ（サーバーの位置の決め方） ----
     work = tmp / 'pos.sqlite3'
