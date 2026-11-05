@@ -122,7 +122,8 @@ run('test_wipgone: 外したロットを、仕掛に無ければ一覧へ戻さ�
    /* 伏せる鍵は行の`__lotKey`（§9.612・サーバーの`lot_identity`が作る）。 */
    const row=(S.rows||[]).find(r=>{
     const v=String(r[col]||'').trim();
-    return v&&r.__lotKey&&!hidden.has(r.__lotKey);
+    /* この設備のロットだけ（§9.637: ほかの設備のロットは予定に入らない）。 */
+    return v&&r.__lotKey&&!hidden.has(r.__lotKey)&&WL.base.equipmentIsInDesignCourse('テスト設備A',pick(r,'equipment'));
    });
    const detail=row?Object.fromEntries(Object.entries(row).filter(([k,v])=>!k.startsWith('__')&&v!=null&&v!=='')):{};
    return {col,lot:row?String(row[col]).trim():'',detail,hidden:hidden.size,rows:(S.rows||[]).length};
@@ -161,6 +162,8 @@ run('test_wipgone: 外したロットを、仕掛に無ければ一覧へ戻さ�
    const src=(S.rows||[])[0];
    const clone=Object.assign({},src);
    clone[a.col]=a.lot;
+   /* 写しの行はこの設備のロットにする（先頭の行がほかの設備のこともある・§9.637）。 */
+   if('BOX設計_設備名' in clone)clone['BOX設計_設備名']='テスト設備A';
    /* 鍵はサーバーが作る（§9.612）。写しの行は予定に入れたあとで、その予定の鍵を持たせる（入れる前は誰とも同じでない）。 */
    clone.__lotKey='';clone.__wipClone=true;
    S.rows.unshift(clone);
@@ -230,6 +233,7 @@ run('test_wipgone: 外したロットを、仕掛に無ければ一覧へ戻さ�
    window.invalidateTableCache();
    const clone=Object.assign({},(S.rows||[])[0]);
    clone[a.col]=a.lot;clone.__lotKey=a.key;
+   if('BOX設計_設備名' in clone)clone['BOX設計_設備名']='テスト設備A';
    S.rows.unshift(clone);
    WL.list.renderGrid();
   },{col:real.col,lot:GONE,key:goneKey});

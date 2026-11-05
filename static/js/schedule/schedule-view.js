@@ -8614,6 +8614,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      いる場合にスケジュールを繰り上げていってほしいが、うまく機能していない」）。
      理由の型と本文はサーバーの`advance_note()`の1箇所が答える——画面は字を
      持たない。直せば繰り上がるので橙（設定要・§9.338）。 */
+  /* **ほかの設備のロット**（§9.637）。入れる口は断るので、ここに出るのは前の版で入った物か、入れた後に
+     仕掛の設計設備が変わった物。理由はサーバーの`lot_equipment`の1箇所が答える（画面は字を持たない）。
+     直す手（外す・正しい設備へ入れ直す）があるので橙（設定要・§9.338）。 */
+  if(e&&e.equipmentIssue)return `<i class="sc-row-from is-warn" data-equip-issue="1" title="${esc(e.equipmentIssue)}">設備違い</i>`;
   const adv=e&&e.advanceNote;
   if(adv&&adv.label)return `<i class="sc-row-from is-warn" data-advance="${esc(adv.code||'')}" title="${esc(adv.text||'')}">${esc(adv.label)}</i>`;
   if(!e||e.missingFromWork!==true)return '';
@@ -11575,9 +11579,24 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    parentId:parentEntry.id,reorderable:false,
   }));
  }
+ /* ---------- ほかの設備のロットを先に除く（§9.637、利用者の指示） ----------
+    「使用設備のスケジュールを組むときに使用設備外の対象のデータが組み込まれないように」。
+    **断る答えはサーバーの関門**（`lot_equipment`・仕掛の行で確かめる）。画面が先に除くのは、楽観描画の行が
+    出てから消える（一度入ったように見える）のを防ぎ、どのロットがなぜ入らないかをその場で言うため。
+    決まりは測定画面の関門と同じ`WL.base.equipmentIsInDesignCourse()`（設計設備が分からない行は通す）。 */
+ function otherEquipmentRows(rows,target){
+  return rows.filter(r=>{const d=String(pick(r,'equipment')||'').trim();return !!d&&!WL.base.equipmentIsInDesignCourse(target,d)});
+ }
+ function otherEquipmentToast(other,target){
+  if(!other.length||!showToast)return;
+  const names=other.slice(0,5).map(r=>`${pick(r,'lotNo')||'?'}（${pick(r,'equipment')}）`).join('・')+(other.length>5?` ほか${other.length-5}件`:'');
+  showToast(`${other.length}件はほかの設備のロットなので入れていません`,
+   `${target}の予定に入れられるのは、設計設備が${target}のロットだけです: ${names}`,7000);
+ }
  async function addRowToSchedule(row,equipment){
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
+  if(otherEquipmentRows([row],target).length){otherEquipmentToast([row],target);return}
   const children=await childPayloadFor(row);
   const before=(target===scState.equipment)?takeInsertBefore():'';
   if(target!==scState.equipment){
@@ -11616,6 +11635,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  async function addRowsToSchedule(rows,equipment){
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
+  const other=otherEquipmentRows(rows,target);
+  if(other.length){otherEquipmentToast(other,target);rows=rows.filter(r=>!other.includes(r));if(!rows.length)return}
   // 分割ありの行だけ子ロットを引く(§9.83)。先頭5桁が同じ親が並んでいても
   // searchByLotPrefix側でキャッシュが効くので、往復は実質1ロット1回以下。
   const childrenOf=new Map();

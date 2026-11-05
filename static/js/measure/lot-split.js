@@ -433,30 +433,11 @@
             if(v!=='')S.measure.basic[k]=v;
           });
         }
-        // 横割数(条数)・縦割数(丈割数)の初期値(BOX設計_横割数/BOX設計_縦割数)
-        // も列表示設定で一覧側から欠落し得るため、完全な生データから改めて
-        // 反映し直す。ただし測定データが既に入力されている場合
-        // (dimensionLocked)は、オペレータの入力・保存済み設定を上書きしない。
-        if(!S.measure.settings.dimensionLocked){
-          const hn=Number(pick(S.measure.source,'boxHorizontalCount'));
-          if(Number.isFinite(hn)&&hn>=1&&hn<=40){
-            const rounded=Math.round(hn);
-            if(S.measure.settings.horizontalCount!==rounded){
-              S.measure.settings.horizontalCount=rounded;
-              if($('#horizontalCount'))$('#horizontalCount').value=rounded;
-              if(typeof WL.measureView.updateCoilOptions==='function')WL.measureView.updateCoilOptions(rounded);
-            }
-          }
-          const vn=Number(pick(S.measure.source,'boxVerticalCount'));
-          if(Number.isFinite(vn)&&vn>=1&&vn<=9){
-            const rounded=Math.round(vn);
-            if(S.measure.settings.verticalCount!==rounded){
-              S.measure.settings.verticalCount=rounded;
-              if($('#verticalCount'))$('#verticalCount').value=rounded;
-              if(typeof WL.measureView.updateLengthOptions==='function')WL.measureView.updateLengthOptions(rounded);
-            }
-          }
-        }
+        /* 丈数・条数・元幅の設計値（BOX設計_縦割数・BOX設計_横割数・BOX実績_板幅）は列表示設定で一覧側から
+           欠落し得るので、完全な生データから当て直す。**答えは`WL.designFix.fromSource()`の1箇所**（§9.637）
+           ——設計値を記録に控え、**人が変えた値は上書きしない**（前はここが測定データの無い記録の条数・丈数を
+           設計値へ戻していたので、変えて保存しても開き直すと戻った）。変えていない鍵だけ設計値へそろえる。 */
+        if(WL.designFix)WL.designFix.fromSource();
         /* **後から届いた列で、等級とその基準を出し直す**(§9.204)。
            一覧の行は列が欠けていることがあり、`品質ｸﾞﾚｰﾄﾞ_切断面`が
            ここで初めて現れる場合がある。出し直さないと、基準の帯は

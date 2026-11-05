@@ -1333,7 +1333,8 @@ const RECORD_COLUMNS=[
  {k:'実績_設備ｺｰｽ',get:x=>x.basic?.course},
  {k:'残仕掛設備ｺｰｽ',get:x=>x.basic?.residualCourse},
  {k:'BOX設計_設備名',get:x=>x.basic?.equipment},
- {k:'BOX実績_板幅',get:x=>x.basic?.originalWidth},
+ /* 仕掛の列の名前の列は**仕掛の値**（測定画面で元幅を直しても、ここは取り込んだ設計値・§9.637）。 */
+ {k:'BOX実績_板幅',get:x=>x.settings?.designBase?.originalWidth??x.basic?.originalWidth},
  {k:'BOX設計_横割数',get:x=>x.basic?.boxHorizontalCount},
  {k:'BOX設計_縦割数',get:x=>x.basic?.boxVerticalCount},
  {k:'使用設備',track:'minmax(96px,.8fr)',
@@ -1342,6 +1343,9 @@ const RECORD_COLUMNS=[
  {k:'入力内容',track:'minmax(120px,.8fr)',get:x=>x.settings?.measureType},
  {k:'条数（設定）',get:x=>x.settings?.horizontalCount,
   note:'測定画面の①準備で決めた条数です。'},
+ /* 設計値を直した記録（§9.637）。字は`WL.designFix.textOf()`の1箇所（帳票の「設計値の変更」と同じ答え）。 */
+ {k:'設計値の変更',get:x=>WL.designFix?WL.designFix.textOf(x):'',
+  note:'測定画面で丈数・条数・元幅を設計（仕掛の値）から変えたときの「設計→使った値（理由）」です。'},
  {k:'NG回数',get:x=>{const n=Number(x.settings?.ngCount||0);return n>0?String(n):''},
   fmt:{kind:'text',suffix:'回'}},
  /* **通した完了は、あとからも読めること**（§9.319-A）。押した瞬間のトーストは

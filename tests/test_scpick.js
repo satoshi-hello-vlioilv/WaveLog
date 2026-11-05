@@ -89,11 +89,16 @@ run('test_scpick: まとめて予定から外す（§9.170）', async ({page,rec
 
   /* ---- 0) 入れる側（§9.5・§9.10）: チェックで複数選ぶ → まとめて投入 ----
      ここで作った行を、そのまま外す側の題材にする。**既存の行は触らない。** */
+/* 仕掛一覧で**この設備のロット**の行だけ n 件選ぶ（§9.637: ほかの設備のロットは予定に入らない。
+   フィクスチャの L0041〜L0046 はテスト設備B）。 */
+const pickRows=n=>page.evaluate(([eq,n])=>{
+ const ok=new Set((S.rows||[]).filter(r=>WL.base.equipmentIsInDesignCourse(eq,pick(r,'equipment'))).map(r=>String(pick(r,'lotNo'))));
+ [...document.querySelectorAll('#grid tbody tr')].filter(tr=>[...tr.querySelectorAll('td')].some(td=>ok.has(td.textContent.trim())))
+  .map(tr=>tr.querySelector('.plan-select-checkbox')).filter(Boolean).slice(0,n)
+  .forEach(bx=>{bx.checked=true;bx.dispatchEvent(new Event('change',{bubbles:true}))});
+},[EQ,n]);
   const had=new Set(await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id)));
-  await page.evaluate(()=>{
-   [...document.querySelectorAll('#grid tbody tr .plan-select-checkbox')].slice(0,3)
-    .forEach(bx=>{bx.checked=true;bx.dispatchEvent(new Event('change',{bubbles:true}))});
-  });
+  await pickRows(3);
   await settle();
   const addBtn=await page.evaluate(()=>{
    const b=document.getElementById('planSelectAdd');
@@ -307,10 +312,7 @@ run('test_scpick: まとめて予定から外す（§9.170）', async ({page,rec
      なる（§CLAUDE 8。同じ操作を2通りの顔で持たない）。
      **打っている最中は取らない**ことまで見る（鍵盤の事故を作らない）。 */
   const had2=new Set(await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id)));
-  await page.evaluate(()=>{
-   [...document.querySelectorAll('#grid tbody tr .plan-select-checkbox')].slice(0,2)
-    .forEach(bx=>{bx.checked=true;bx.dispatchEvent(new Event('change',{bubbles:true}))});
-  });
+  await pickRows(2);
   await settle();
   await page.click('#planSelectAdd');
   await page.waitForFunction(n=>[...document.querySelectorAll('.sc-row-line')]

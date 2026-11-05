@@ -3971,4 +3971,46 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .mt-ug:hover .mt-unit b{color:var(--teal)}
 .mt-ug:hover .mt-unit i{background:var(--teal);opacity:.4}
 @media(prefers-reduced-motion:reduce){.mt-rail .type-chip:hover{transform:none}}
+
+/* ---------- 設計値の訂正（§9.637・design-fix.js） ----------
+   「測定表の形」を 左＝表（項目｜設計（元データ）｜使う値｜差）／右＝入るかの図・一文・理由 にする（2回目の案H・87点）。
+   変えた行は見出しのセルまで1行まるごと琥珀、足りない行は赤（色だけで言わず、差の列が字で言う）。 */
+.dense-controls>label.dfx-hidden{display:none}
+.dfx{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(18em,1fr);gap:var(--space-2) var(--space-4);align-items:start}
+.dfx-cap{display:flex;justify-content:space-between;gap:var(--space-3);font-size:var(--fs-sm);color:var(--ink-2);padding:0 0 var(--space-1)}
+.dfx-who{color:var(--warn-fg);font-weight:var(--fw-ui)}
+.dfx-same{color:var(--muted)}
+.dfx-t{border-collapse:collapse;font-size:var(--fs)}
+.dfx-t th,.dfx-t td{padding:var(--space-1) var(--space-3);border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.dfx-t thead th{font-size:var(--fs-sm);color:var(--muted);font-weight:var(--fw-ui)}
+.dfx-t tbody th{font-weight:var(--fw-strong)}
+.dfx-t tr.is-chg>*{background:var(--warn-bg)}
+.dfx-t tr.is-chg .dfx-d{color:var(--warn-fg);font-weight:var(--fw-strong)}
+.dfx-t tr.is-bad>*,.dfx-t tr.is-wait>*{background:var(--danger-bg)}
+.dfx-t tr.is-bad .dfx-d,.dfx-t tr.is-wait .dfx-d{color:var(--danger);font-weight:var(--fw-strong)}
+.dfx-t tr.is-bad .dfx-in{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger)}
+.dfx-d{display:inline-block;min-width:7em}
+button.dfx-d{border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;text-decoration:underline dotted}
+.dfx-rev{height:var(--ctl-h-sm);padding:0 var(--space-2);border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm);color:var(--ink)}
+.dense-controls .dfx-t .dfx-in{width:4.5em;height:var(--ctl-h-sm);padding:0 var(--space-2);text-align:right}
+.dense-controls .dfx-t .dfx-in-w{width:6.5em}
+.dfx-t td:nth-child(3){display:table-cell}
+.dfx-t td:last-child{padding-left:var(--space-4)}
+.dfx-col{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
+.dfx-fig{box-sizing:border-box;width:100%;display:grid;gap:var(--space-1);padding:var(--space-2) var(--space-3);background:var(--surface-2);border-radius:var(--radius-md)}
+.dfx-fig-cap,.dfx-fig-say{font-size:var(--fs-sm);color:var(--ink-2)}
+.dfx-bad{color:var(--danger);white-space:nowrap}
+.dfx-track{position:relative;height:1.4em}
+.dfx-track i{position:absolute;top:0;bottom:0;left:0;display:block}
+.dfx-frame,.dfx-k-frame{border:2px solid var(--look-slate);border-radius:var(--radius-xs);background:repeating-linear-gradient(45deg,var(--surface-3) 0 .3em,var(--surface) .3em .6em)}
+.dfx-track .dfx-slit,.dfx-track .dfx-over{top:.25em;bottom:.25em}
+.dfx-slit,.dfx-k-slit{background:var(--teal)}
+.dfx-over,.dfx-k-over{background:var(--danger)}
+.dfx-legend{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);font-size:var(--fs-sm);color:var(--muted)}
+.dfx-legend span{display:inline-flex;align-items:center;gap:var(--space-1)}
+.dfx-legend i{display:inline-block;width:1.4em;height:.8em}
+.dfx-warn{margin:0;padding:var(--space-1) var(--space-3);border-left:3px solid var(--danger);background:var(--danger-bg);font-size:var(--fs-sm);color:var(--ink)}
+.dfx-reason{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2);align-items:center;font-size:var(--fs-sm);color:var(--ink-2)}
+.dfx-reason small{margin-left:var(--space-1);color:var(--muted)}
+.dfx-reason input{height:var(--ctl-h-sm)}
 }

@@ -1,4 +1,4 @@
-# 作業スケジュール（128件）
+# 作業スケジュール（130件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 予定へロットを入れる道は`_plan_add_op()`の1本。設計設備の確かめは`lot_equipment`の1箇所（仕掛の行が先） | `test_lotequip.js` | [§9.637](../../docs/decisions/9.637.md) |
+| 入っているほかの設備のロットは注意と行の`equipmentIssue`（「設備違い」）で名指す。画面は送る前に除く | `test_lotequip.js` | [§9.637](../../docs/decisions/9.637.md) |
 | 動かせる予定（固定していない・未着手の親）どうしは予定の並びで出す（`keepPlanOrder()`）。時刻で決めた席は残し、中身を配列の順で埋める | `test_scdndhold.js` | [§9.613](../../docs/decisions/9.613.md) |
 | 書込の応答と予定の読みは共有の改訂番号（`revision`）を持つ。自分が書いた番号より古い読みは当てずに読み直す（`planBehind()`・待ち切れたら字で言う） | `test_scdndhold.js` | [§9.613](../../docs/decisions/9.613.md) |
 | 書込が残っている間・掴んでいる最中に出た読みは当てない（書込の列の終わり／離したあとに読み直す） | `test_scdndhold.js` | [§9.613](../../docs/decisions/9.613.md) |
