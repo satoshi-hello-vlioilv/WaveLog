@@ -1,4 +1,4 @@
-# 測定画面（117件）
+# 測定画面（120件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 設計値（丈数・条数・元幅）は記録に控え（`designBase`）、変えた値だけ`designFix`。答えは`WL.designFix`の1箇所 | `test_designfix.js` | [§9.637](../../docs/decisions/9.637.md) |
+| 仕掛の行の取り直しは`WL.designFix.fromSource()`。人が変えた値を設計値へ戻さない | `test_designfix.js` | [§9.637](../../docs/decisions/9.637.md) |
+| 元幅を超える条数は待たせて元幅の欄へ案内する（行き止まりにしない）。屑の数は条の設計の札の1か所 | `test_designfix.js` | [§9.637](../../docs/decisions/9.637.md) |
 | 分割ロットの条の基準はいつも子ロットの寸法。幅（±）は`groupTolOf()`の1箇所（子の公差→親の公差）。見出しの札はいまの条 | `test_splitjudge.js` | [§9.617](../../docs/decisions/9.617.md) |
 | 分割ロットの条は並びの割当で判定する。割当から作り直す材料も候補と同じ形（公差は`tolData`・子ロットごとに1行） | `test_splitjudge.js` | [§9.616](../../docs/decisions/9.616.md) |
 | 欄の判定範囲は`WL.measureInput.toleranceRangeAt(key,j)`の1箇所（印・札・完了前の確認）。条の位置を必ず渡す | `test_splitjudge.js` | [§9.616](../../docs/decisions/9.616.md) |

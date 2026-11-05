@@ -283,6 +283,23 @@ def work_row(entry_detail, plan_row):
     return index.get(tuple(vals))
 
 
+def lot_row(lot_no):
+    """ロット番号**だけ**で引いた、いまの仕掛の行（全列）。1行に決まらなければ None（§9.637）。
+
+    `work_row()`は鋳造番号まで揃わないと引かない（予定の行がいつも持つ2つ）。画面から来た追加の
+    依頼は鋳造番号を書かないことがあるので、関門（`lot_equipment`）はこちらへ倒す。同じロット番号が
+    2行以上あれば推測しない。"""
+    if not WORK_DB_KEY:
+        return None
+    lot = norm_value(lot_no)
+    if not lot:
+        return None
+    index, used, err = _cached(WORK_DB_KEY, '', ['ロット番号'], UNIQUE_ROWS)
+    if err or used != ['ロット番号']:
+        return None
+    return index.get((lot,))
+
+
 # ---- 1件ぶんの判定 -----------------------------------------------------
 def _left_keys(d):
     return [str(k.get('left') or '') for k in (d.get('keys') or []) if k.get('left')]

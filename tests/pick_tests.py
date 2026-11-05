@@ -174,6 +174,8 @@ G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork',
                      'test_scfail',
                      # §9.438: 応答が届かなかった追加を、再送で二重に入れない
                      'test_plandup',
+                     # §9.637: 使用設備の予定にほかの設備のロットを入れない
+                     'test_lotequip',
                      # §9.373: 失敗を開発へ報告できる形で残す（コピー1手）
                      'test_feedback',
                      # §9.374: 掴んだまま表を送る／色と濃さの意味
@@ -232,6 +234,8 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_lateraljudge', 'test_enterm
              # §9.320-G: レールの2つのボタンを消し、DBへは裏で書く
              'test_burr', 'test_ngcard', 'test_ngdone', 'test_devdigits',
              'test_recvalues', 'test_reclayout',
+             # §9.637: 設計値（丈数・条数・元幅）の訂正
+             'test_designfix',
              # §9.317: 参照データ（品質など）が読めなくても測定は始められる
              'test_ctxfail']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density', 'test_smalltext',
@@ -337,6 +341,7 @@ RULES = [
     ('static/js/report/record-layout.js', g('実績', '列')),
     ('backend/actuals.py', g('実績', 'test_workdate', 'test_modeguard', 'test_actimes', 'test_dashperf')),
     ('static/js/measure/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
+    ('static/js/measure/design-fix.js', g('test_designfix', 'test_splitlive', 'test_msteps')),
     ('static/js/master/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
@@ -544,7 +549,8 @@ RULES = [
     # §9.324 R1: 表の列定義（CREATE・足す・読む・書く）の器。3つのRepoが乗る。
     ('backend/repositories/table_def.py', g('マスタ', '操業データ', '異常位置', 'test_rpmaster',
                                               'test_rpblocks', 'test_rbmodal', 'test_rollio')),
-    ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes', 'test_lfui')),
+    ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes', 'test_lfui', 'test_lotequip')),
+    ('backend/lot_equipment.py', g('test_lotequip', 'test_plandup', 'test_scbar')),
     # §9.502: 作業スケジュールの過去履歴（読むだけの口・組み立て）
     ('backend/routes/schedule_history.py', g('test_schedhist', 'test_schistui', 'test_routesplit')),
     # §9.588: 設備停止の挿入条件（判定表の保存・見送り）と、判定表の共通の部品
@@ -613,7 +619,7 @@ RULES = [
     ('backend/lot_identity.py', g('test_lotident', 'test_filterbarui', 'test_doneflow', 'test_actualmatch')),
     # 仕掛から消えたロットの突合（§9.364・§9.365）。
     ('backend/actual_match.py', g('test_actualmatch', 'test_finishjoin',
-                                  'test_datasource', 'test_dscap', 'test_boxactual')),
+                                  'test_datasource', 'test_dscap', 'test_boxactual', 'test_lotequip')),
     # 完了突合で当たった実績を予定へ残す（開いたとき・裏の見回り・§9.595）。
     ('backend/actual_keep.py', g('test_boxactual', 'test_actualmatch', 'test_finishjoin', 'test_donestops', 'test_doneflow')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),

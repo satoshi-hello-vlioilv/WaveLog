@@ -390,7 +390,9 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
   await go('1');
   const prep=()=>page.evaluate(()=>{
    const box=document.querySelector('.measure-shell .selectors');
-   const vis=x=>x.getBoundingClientRect().height>0;
+   /* 縦割数・横割数の欄は「設計値との違い」の表へ置き換えて伏せてある（§9.637）。**表の同じ欄が見えていれば出ている**と数える。 */
+   const vis=x=>x.getBoundingClientRect().height>0
+     ||(x.classList.contains('dfx-hidden')&&!!document.querySelector(`#designFixPanel [data-dfx-in="${x.dataset.f}"]`)?.getBoundingClientRect().height);
    const id=x=>x.querySelector('select,input')?.id||'';
    return {
     見出し:[...box.querySelectorAll('.prep-head')].filter(vis)
@@ -1121,7 +1123,9 @@ run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,
      '使う機材':['innerDiameter','spool','thicknessGauge','widthGauge']};
    const out={};
    for(const k of Object.keys(G))
-    out[k]=[...new Set(G[k].map(id=>document.getElementById(id))
+    /* 測定表の形は表の欄（§9.637）。伏せた元の欄の代わりに表の同じ欄の幅を見る。 */
+    out[k]=[...new Set(G[k].map(id=>{const el=document.getElementById(id);
+      return el&&el.getBoundingClientRect().width>0?el:document.querySelector(`#designFixPanel [data-dfx-in="${id}"]`)})
       .filter(el=>el&&el.getBoundingClientRect().width>0)
       .map(el=>Math.round(el.getBoundingClientRect().width)))];
    return out;

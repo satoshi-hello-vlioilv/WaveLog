@@ -177,6 +177,8 @@ FIELD_CATALOG = (
     ('丈位置', 'settings.lengthPos'),
     ('縦割数', 'settings.verticalCount'),
     ('横割数', 'settings.horizontalCount'),
+    # 設計値（丈数・条数・元幅）を測定画面で直したときの「設計→使う値」と理由（§9.637・design-fix.js が保存の前に書く）。
+    ('設計値の変更', 'settings.designFixText'),
     ('オペレータ', 'settings.operator'),
     ('検査員', 'settings.inspector'),
     ('作業人数', 'settings.crewSize'),

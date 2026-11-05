@@ -96,6 +96,8 @@ JS_FILES=[
  'measure/records-store.js',
  'measure/measure-tolerance.js',
  'measure/lot-split.js',
+ # §9.637: 設計値（丈数・条数・元幅）の訂正。条の設計（lot-split）の上限・屑幅を読むのでその後。
+ 'measure/design-fix.js',
  'measure/measure-progress.js',
  'measure/measure-opdata.js',
  'measure/measure-steps.js',

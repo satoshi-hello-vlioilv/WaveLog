@@ -69,6 +69,8 @@ run('test_plandup: 届かなかった応答の再送で予定が二重になら�
     const out=[];
     for(const r of rows){
      const lot=String((typeof pick==='function'?pick(r,'lotNo'):r.lotNo)||'').trim();
+     /* この設備のロットだけ（§9.637: ほかの設備のロットは予定に入らない）。 */
+     if(!WL.base.equipmentIsInDesignCourse('テスト設備A',pick(r,'equipment')))continue;
      if(lot&&!has.includes(lot)&&!out.some(x=>x.lot===lot))out.push({lot,i:rows.indexOf(r)});
      if(out.length>=3)break;
     }

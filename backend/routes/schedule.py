@@ -25,6 +25,7 @@ from flask import Blueprint, request, jsonify, g
 from .. import schedule_sync
 from .. import schedule_calc
 from .. import lot_identity
+from .. import lot_equipment
 from .. import query_join
 from .. import load_factor
 from ..repositories import schedule_repo as sr
@@ -435,7 +436,7 @@ def plan_list():
  result,stale,err=_read(_plan,timings)
  if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,entries=[],anchor=None,warnings=[])
  if err:return jsonify(error=err),503
- warnings=list(result.get('warnings') or [])
+ warnings=[w for w in list(result.get('warnings') or [])+[lot_equipment.plan_warning(equipment,result.get('entries'))] if w]  # 末尾にほかの設備のロット（§9.637）
  if stale:warnings.append('スケジュールデータの取得に失敗したため、直前のローカルキャッシュを表示しています。')
  # HITした実績を共有スケジュールへ残す(§9.364)。**書込役の端末だけ**が書く。
  note=_persist_actual_sources(result)
@@ -493,22 +494,13 @@ def plan_add():
          # この追加操作そのものの身元(§9.438)。**再送されても行は1つ**にする
          # ためだけの値で、画面が1操作につき1回だけ作る(投げ直しでは作り直さない)。
          'opId': str})
- equipment=str(x.get('equipment') or '').strip()
- kind=str(x.get('kind') or '').strip()
- if not equipment:return jsonify(error='どの設備の予定か指定してください。'),400
- def fn(c):
-  _check_session(equipment)
-  pid=sr.plan_add(c,equipment,kind,request_user_id(x),pc=request_pc_name(x),position=str(x.get('position') or 'end'),
-                   lot_no=str(x.get('lotNo') or ''),inspection_no=str(x.get('inspectionNo') or ''),
-                   casting_no=str(x.get('castingNo') or ''),title=str(x.get('title') or ''),
-                   detail=x.get('detail') or {},stop_reason_id=x.get('stopReasonId'),
-                   stop_sub_id=x.get('stopSubId'),
-                   estimate_minutes=x.get('estimateMinutes'),fixed_start=x.get('fixedStart'),
-                   remark=str(x.get('remark') or ''),
-                   children=_plan_children(x.get('children')),
-                   op_id=str(x.get('opId') or ''))
-  return {'id':pid}
- return _write_response(fn)
+ if not str(x.get('equipment') or '').strip():return jsonify(error='どの設備の予定か指定してください。'),400
+ # **1件の追加もまとめ書込の追加と同じ1本**（`_plan_add_op`）を通す（§9.637）。関門（設計設備の確かめ）・
+ # 編集セッション・身元を2か所に書き写すと、片方だけ直した抜け道ができる（前はここに写しがあった）。
+ uid=request_user_id(x);pc=request_pc_name(x)
+ op={k:x.get(k) for k in ('equipment','kind','lotNo','inspectionNo','castingNo','estimateMinutes','fixedStart','remark',
+                          'title','stopReasonId','stopSubId','position','children','detail','opId')}
+ return _write_response(lambda c:_plan_add_op(c,op,uid,pc))
 
 def _plan_children(raw):
  """分割ありの親ロットにぶら下げる子ロット(§9.83)。画面が投入時に仕掛から
@@ -645,6 +637,31 @@ def plan_delete():
 #
 # 1件失敗しても残りは適用する(従来の1件1リクエストと同じ挙動)。結果は
 # 送った順で返し、呼び出し側が成功/失敗を1件ずつ処理できるようにする。
+def _plan_add_op(c,op,uid,pc=''):
+ """予定へ1件足す（1件の追加とまとめ書込の追加が通る1本・§9.637）。"""
+ equipment=str(op.get('equipment') or '').strip()
+ if not equipment:raise ValueError('どの設備の予定か指定してください。')
+ _check_session(equipment)
+ children=_plan_children(op.get('children'))
+ # 使用設備の予定に、ほかの設備のロットを入れない（§9.637）。**答えは`lot_equipment`の1箇所**
+ # ——予定へロットが入る道（1件・まとめ書込・子ロット）はどれもここを通る。
+ why=lot_equipment.add_issue(equipment,op.get('kind'),str(op.get('lotNo') or ''),op.get('detail') or {},
+                             str(op.get('castingNo') or ''),children)
+ if why:raise ValueError(why)
+ pid=sr.plan_add(c,equipment,str(op.get('kind') or ''),uid,pc=pc,position=str(op.get('position') or 'end'),
+                  lot_no=str(op.get('lotNo') or ''),inspection_no=str(op.get('inspectionNo') or ''),
+                  casting_no=str(op.get('castingNo') or ''),title=str(op.get('title') or ''),
+                  detail=op.get('detail') or {},stop_reason_id=op.get('stopReasonId'),
+                  stop_sub_id=op.get('stopSubId'),
+                  estimate_minutes=op.get('estimateMinutes'),fixed_start=op.get('fixedStart'),
+                  remark=str(op.get('remark') or ''),
+                  children=children,
+                  # **まとめて適用するときも身元を通す**(§9.438)。まとめ書込が
+                  # 落ちると書込キューは個別経路で投げ直すので、ここを落とすと
+                  # 「まとめた1回目」と「個別の再送」が別の行になる。
+                  op_id=str(op.get('opId') or ''))
+ return {'id':pid}
+
 def _apply_plan_op(c,op,uid,pc=''):
  """1操作を適用して結果dictを返す。例外はそのまま呼び出し側へ。
 
@@ -652,23 +669,7 @@ def _apply_plan_op(c,op,uid,pc=''):
  残す**——まとめたことで残る情報が減ると、あとから「誰がどの端末で入れたか」
  を追えない行が混ざる。"""
  kind=str(op.get('op') or '').strip()
- if kind=='add':
-  equipment=str(op.get('equipment') or '').strip()
-  if not equipment:raise ValueError('どの設備の予定か指定してください。')
-  _check_session(equipment)
-  pid=sr.plan_add(c,equipment,str(op.get('kind') or ''),uid,pc=pc,position=str(op.get('position') or 'end'),
-                   lot_no=str(op.get('lotNo') or ''),inspection_no=str(op.get('inspectionNo') or ''),
-                   casting_no=str(op.get('castingNo') or ''),title=str(op.get('title') or ''),
-                   detail=op.get('detail') or {},stop_reason_id=op.get('stopReasonId'),
-                   stop_sub_id=op.get('stopSubId'),
-                   estimate_minutes=op.get('estimateMinutes'),fixed_start=op.get('fixedStart'),
-                   remark=str(op.get('remark') or ''),
-                   children=_plan_children(op.get('children')),
-                   # **まとめて適用するときも身元を通す**(§9.438)。まとめ書込が
-                   # 落ちると書込キューは個別経路で投げ直すので、ここを落とすと
-                   # 「まとめた1回目」と「個別の再送」が別の行になる。
-                   op_id=str(op.get('opId') or ''))
-  return {'id':pid}
+ if kind=='add':return _plan_add_op(c,op,uid,pc)
  if kind=='update':
   plan_id=op.get('id')
   if plan_id is None:raise ValueError('更新対象の予定IDがありません。')
