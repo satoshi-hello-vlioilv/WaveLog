@@ -303,10 +303,12 @@ run('test_scinsert: 開いたときの表示とカーソル位置への追加(§
       modal.cancel===false,JSON.stringify({cancel:modal.cancel}));
   await page.waitForSelector('#scListModal #grid tbody tr',{timeout:20000});
   /* 行のダブルクリックでその位置へ入る(位置を決めて開いたときだけ効く)。 */
+  /* 入れるのは**この設備のロット**だけ（§9.637: ほかの設備のロットは予定に入らない。L0041〜L0046 はテスト設備B）。 */
   const lot=await page.evaluate(()=>{
+   const okLot=v=>(S.rows||[]).some(r=>String(pick(r,'lotNo'))===v&&WL.base.equipmentIsInDesignCourse('テスト設備A',pick(r,'equipment')));
    const trs=[...document.querySelectorAll('#scListModal #grid tbody tr')];
    for(const tr of trs){const c=tr.querySelector('[data-col="ロット番号"]');
-    if(c&&c.textContent.trim()){tr.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));return c.textContent.trim()}}
+    if(c&&c.textContent.trim()&&okLot(c.textContent.trim())){tr.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));return c.textContent.trim()}}
    return null});
   /* 書き込みが届いたことは**サーバーの答え**で待つ（時間で待たない）。 */
   const j=lot?await W.poll(plan,x=>(x.entries||[]).some(e=>e.lotNo===lot)):await plan();
@@ -335,10 +337,11 @@ run('test_scinsert: 開いたときの表示とカーソル位置への追加(§
    try{await route.continue()}catch(e){}
   });
   const lot2=await page.evaluate(()=>{
+   const okLot=v=>(S.rows||[]).some(r=>String(pick(r,'lotNo'))===v&&WL.base.equipmentIsInDesignCourse('テスト設備A',pick(r,'equipment')));
    const trs=[...document.querySelectorAll('#scListModal #grid tbody tr')];
    for(const tr of trs){const c=tr.querySelector('[data-col="ロット番号"]');
     const v=c&&c.textContent.trim();
-    if(v){tr.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));return v}}
+    if(v&&okLot(v)){tr.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));return v}}
    return null});
   await page.waitForSelector('.sc-row-line.sc-row-pending',{timeout:8000}).catch(()=>{});
   const pend=await page.evaluate(refLot=>{

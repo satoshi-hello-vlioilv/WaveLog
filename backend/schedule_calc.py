@@ -660,20 +660,52 @@ def manual_payload(start,end,estimate_minutes,uid='',pc='',now=None):
          'endFrom':end_from,'minutes':round((en-st).total_seconds()/60.0),
          'by':str(uid or ''),'pc':str(pc or ''),'at':datetime.now().isoformat(timespec='seconds')}
 
+def _work_mark(w):
+ """始まった作業の「この時刻より後に入れた停止は、この作業より後のもの」の境（§9.638）。始まりと、その作業の行を予定へ
+ 入れた時刻の遅いほう——後から実績をさかのぼって入れた作業（停止を先に入れ、作業の行が後から入った）の前の停止は
+ 今までどおり終わった停止に数える（§9.514・網 test_sctimes）。始まりが分からなければ None。"""
+ st=entry_start_at(w)
+ if st is None:return None
+ try:made=_parse_dt(w.get('createdAt')) if w.get('createdAt') else None
+ except Exception as _e:
+  quiet('作業の登録日時を読めない（始まりだけで比べる）',_e);made=None
+ return max(st,made) if made is not None else st
+
+def _added_after(e,mark):
+ """この行が`mark`より後に予定へ入れられたか（§9.638）。どちらかが分からなければ False（今までどおり）。"""
+ if mark is None or not e.get('createdAt'):return False
+ try:return _parse_dt(e['createdAt'])>mark
+ except Exception as _e:
+  quiet('登録日時を読めない（入れた時刻が分からないとして扱う）',_e);return False
+
 def _settle_passed_stops(entries,now,minutes_of):
  """時間的に終わったはずの設備停止を完了にする（§9.514・利用者の選択「後ろの作業が始まったら」）。
 
  ・**後ろの作業が始まった（着手・完了）**なら、その前の設備停止は終わっている
  ・開始を固定した停止は、固定した開始＋見積が過ぎたら終わっている
- 並びの後ろから見ていく（「後ろに始まった作業があるか」を1回で数える）。"""
+ 並びの後ろから見ていく（「後ろに始まった作業があるか」を1回で数える）。
+
+ §9.638: **その作業が始まった後に入れた停止は「終わっている」と読まない**。作業中の行は予定の上へ並ぶ（§9.611）ので、
+ 画面では予定の先頭の前へ入れた停止が、表示順ではまだ後ろにある作業中の行の前になる——前はそれだけで完了にしており、
+ 入れた停止がすぐ完了の側へ移った（利用者の報告「位置が狙い通りに入らずズレる」・網 test_scinsertpos S2）。
+ 比べるのは停止の登録日時と、後ろの始まった作業の境（`_work_mark()`＝始まりと作業の行を入れた時刻の遅いほう）。
+ 分からなければ今までどおり。"""
  started_after=False
+ last_mark=None
+ unknown=False
  for e in reversed(entries):
   if e.get('parentId') is not None:continue
   if e['kind']=='作業':
-   if not e.get('unplanned') and e['state'] in ('着手','完了'):started_after=True
+   if not e.get('unplanned') and e['state'] in ('着手','完了'):
+    started_after=True
+    # 停止が「後ろの始まった作業より後に入れた」と言えるのは、後ろの始まった作業の**どれよりも**後に入れたとき。
+    # 1つでも境が分からない作業があれば、今までどおり終わった停止に数える（`unknown`）。
+    mk=_work_mark(e)
+    if mk is None:unknown=True
+    elif last_mark is None or mk>last_mark:last_mark=mk
    continue
   if e['kind']!='設備停止' or e['state'] in PLAN_TERMINAL_STATES or e['state']=='着手':continue   # 始まった停止は §9.611 が終える
-  if started_after:
+  if started_after and (unknown or not _added_after(e,last_mark)):
    e['state']='完了';e['autoDone']=True
    e['doneReason']='後ろの作業が始まっているので、この設備停止は終わっています。'
    continue
@@ -708,6 +740,10 @@ def _settle_stop_times(entries,minutes_of):
  for e in done:
   start=entry_start_at(e)
   prev,stops,prev_end=_strict_between(planned,e)
+  # §9.638: **このロットが始まった後に入れた停止は、あいだの停止に数えない**（これから行う停止）。数えると、予定の
+  # 先頭の前へ入れた停止が表示順では完了したロットより前なので、すぐ完了にされ、書込役の見回り（`actual_keep.persist()`）が
+  # その時刻を共有へ書いて確定させていた（利用者の報告「一回入った位置が共有で書き戻しされる」）。
+  stops=[x for x in stops if not _added_after(x,_work_mark(e))]
   if not stops:continue
   if prev is not None and (prev['state']!='完了' or entry_end_at(prev) is None):continue
   if prev_end is None or prev_end>start:

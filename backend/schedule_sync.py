@@ -859,15 +859,23 @@ def with_write(login_id,pc_name,uid,apply_fn,with_revision=False):
   # 間隔の内側に他端末が書いた変更を踏み潰すことになる。
   local_path,stale=fetch_snapshot(force=True)
   if stale:
-   app_logger().warning('スケジュールデータの最新性を確認できないまま書込を行います: %s',shared)
+   # **古い写しへ書いて共有へ戻さない**（§9.638、利用者の報告「一回入った位置が共有で書き戻しされる」）。
+   # 前は警告だけ残して書いていた——共有を読めない（同期中で開けない等）あいだに書くと、手元の写しは
+   # ほかの PC の変更を持たないので、反映（_push）が**その変更を丸ごと消す**（足した行が消える・並べた
+   # 位置が前へ戻る。網 test_scwriteback W1 で再現）。画面は503を数回送り直し、尽きたら理由を言う。
+   app_logger().warning('スケジュールデータを最新にできないため書込をやめました（古い写しで上書きしない）: %s',shared)
+   raise ScheduleUnavailableError('共有のスケジュールを読めないため、書き込みをやめました'
+                                  '（古い写しで上書きして、ほかの端末の変更を消さないため）。少し待ってからもう一度どうぞ。')
   verify_lock()
   with _local_connection(local_path) as c:
    base_revision=read_revision(c)
    result=apply_fn(c)
    c.commit()
-  # 反映直前に共有側の改訂番号を再確認する(§4.4の二次防御)。取得に失敗した
-  # 場合は、日常の書込がBoxの一時的な不調に引きずられて止まらないよう、
-  # 警告のみで続行する(ロックが一次防御として既に機能しているため)。
+  # 反映直前に共有側の改訂番号を再確認する(§4.4の二次防御)。**確かめられなければ書かない**（§9.638）。
+  # 前は「日常の書込がBoxの一時的な不調に引きずられて止まらないよう」警告だけで続けていたが、
+  # 錠はBoxのような結果整合の共有では遅れて見えることがあり一次防御として足りない——確かめないまま
+  # 反映すると、取り直した後にほかの PC が書いた変更を踏む（網 test_scwriteback W2）。
+  # 画面は503を数回送り直すので、一時的な不調なら次で通る。
   if shared.exists():
    try:
     check=connect(shared,True,'sqlite')
@@ -875,12 +883,12 @@ def with_write(login_id,pc_name,uid,apply_fn,with_revision=False):
      shared_revision=_read_revision_only(check)
     finally:
      check.close()
-    if shared_revision!=base_revision:
-     raise RevisionConflictError(shared_revision)
-   except RevisionConflictError:
-    raise
    except Exception as e:
-    app_logger().warning('反映前の改訂番号確認に失敗しました(処理は続行します): %s',e)
+    app_logger().warning('反映前の改訂番号を確かめられないため書込をやめました: %s',e)
+    raise ScheduleUnavailableError('共有のスケジュールの版を確かめられないため、書き込みをやめました'
+                                   '（ほかの端末の変更を上書きしないため）。少し待ってからもう一度どうぞ。') from e
+   if shared_revision!=base_revision:
+    raise RevisionConflictError(shared_revision)
   with _local_connection(local_path) as c:
    revision=bump_revision(c,uid)
   _push(local_path,shared)

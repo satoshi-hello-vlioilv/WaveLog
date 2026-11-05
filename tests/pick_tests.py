@@ -176,6 +176,8 @@ G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork',
                      'test_plandup',
                      # §9.637: 使用設備の予定にほかの設備のロットを入れない
                      'test_lotequip',
+                     # §9.638: 落とした位置に入る（固定した行の前・途中の行を先に流した予定）・さかのぼり「なし」
+                     'test_scinsertpos',
                      # §9.373: 失敗を開発へ報告できる形で残す（コピー1手）
                      'test_feedback',
                      # §9.374: 掴んだまま表を送る／色と濃さの意味
@@ -611,8 +613,8 @@ RULES = [
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
-    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread', 'test_donestops', 'test_doneflow')),
-    ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
+    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_scwriteback', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread', 'test_donestops', 'test_doneflow')),
+    ('backend/schedule_calc.py', g('スケジュール', 'test_scwriteback', 'test_eqstd', 'test_workdate',
                                    'test_actualmatch', 'test_finishjoin', 'test_strictstart', 'test_boxactual', 'test_donestops', 'test_doneflow',
                                    'test_lotident')),
     # ロットの見分け方（§9.612）。予定の行の鍵・一覧の行の鍵・測定の記録を時刻で配る。
@@ -629,7 +631,7 @@ RULES = [
     ('backend/schedule_owner.py', g('test_scowner', 'test_modeguard', 'test_appquit',
                                     'スケジュール')),
     ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
-    ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
+    ('backend/schedule_sync.py', g('test_scwriteback', 'test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_scdndhold', 'test_atomicio', 'test_scsession',
                                    'test_scwho', 'test_scowner')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd', 'test_lfpoints', 'test_lfui')),
