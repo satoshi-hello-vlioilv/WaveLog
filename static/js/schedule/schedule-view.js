@@ -313,7 +313,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   el.title=`済んだ行（完了・取消・計画外の実績）の出し方: ${historyLabel()}。`
    +(m.note?`\n${m.note}`:'')
    +'\nこれからの予定は、さかのぼりに関わらずすべて出ます。'
-   +'\n完了時刻が分からない行は、隠さずに常に出します。';
+   +(m.key==='none'?'\n完了時刻が分からない行（自動で完了した行など）も出しません。':'\n完了時刻が分からない行は、隠さずに常に出します。');
  }
  /* ---------- 再計算の基準時刻(§9.198、利用者の指示) ----------
     「現在時刻を5分刻みに変換して、計算の開始時刻の見栄えを良くしてほしい」。
@@ -5026,6 +5026,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   return (e.actual&&(e.actual.endAt||e.actual.startAt))||e.finishedAt||'';
  }
  function withinHistory(e){
+  /* 「済んだ行を出さない」（さかのぼりなし）は**1件も出さない**（§9.638、利用者の指示「完了後のものはさかのぼりなしに
+     した場合、自動完了分は非表示にしてください」）。前は時刻の分からない済んだ行（仕掛から消えて自動で完了した行など）を
+     どの範囲でも出していたので、「なし」でも残っていた。時刻の分からない行を出し続けるのは、範囲を決めたとき（下）だけ。 */
+  const m=historyMode();
+  if(m&&m.key==='none')return false;
   const cut=historyCutoff();
   if(cut===null)return true;
   const at=rowFinishTime(e);
@@ -6927,7 +6932,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  function insertSlotAt(clientY,edgeOnly){
   const tl=$('#scTimeline');if(!tl)return null;
-  const rows=[...tl.querySelectorAll('.sc-row-line')].filter(r=>reorderableEntry(r.dataset.id));
+  const rows=[...tl.querySelectorAll('.sc-row-line')].filter(r=>insertTargetEntry(r.dataset.id));
   if(!rows.length)return null;
   /* 一覧の下の余白(§9.292 ②)は**まるごと「いちばん後ろ」の的**。
      最後の行の下端より下（＝余白の中）はここで答える——行と行のあいだの
@@ -8567,6 +8572,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
   if(!e)return null;
   return (scState.editable&&e.reorderable&&!e.__pending&&!e.fixedStart&&!sessionBlocked())?e:null;
+ }
+ /* 「この行の前へ入れる」の相手になれる行（§9.638）。**時刻を固定した行も相手になれる**——掴んで動かせない
+    （並びを動かすと固定の意味が変わる）だけで、その前へ入れることはできる（サーバーは未着手の行の前へ入れる）。
+    前は`reorderableEntry()`で絞っており、固定した行の上端へ落とすと次の行の前＝**固定した行の後ろ**へ入った。 */
+ function insertTargetEntry(id){
+  const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(!e)return null;
+  return (scState.editable&&e.reorderable&&!e.__pending&&!sessionBlocked())?e:null;
  }
  /* **動かせない理由を字で言う**（§9.372、§CLAUDE 画面基準4「できないことは、
     できないと書く」）。掴めてしまうのに落としても戻るだけ、が

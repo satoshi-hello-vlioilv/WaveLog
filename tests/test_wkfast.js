@@ -62,7 +62,10 @@ run('test_wkfast: §9.67 作業可否フラグを予定側の保存値で即座�
  await page.waitForSelector('.plan-action-button',{timeout:20000});
  tableCalls=0;
  const t0=Date.now();
- await page.evaluate(()=>document.querySelector('.plan-action-button').click());
+ /* 押すのは**この設備のロット**の行の「＋予定」（§9.637: ほかの設備のロットは予定に入らない。L0041〜L0046 はテスト設備B）。 */
+ await page.evaluate(()=>{const okLot=v=>(S.rows||[]).some(r=>String(pick(r,'lotNo'))===v&&WL.base.equipmentIsInDesignCourse('テスト設備A',pick(r,'equipment')));
+  const b=[...document.querySelectorAll('.plan-action-button')].find(x=>okLot((x.closest('tr')?.textContent||'').match(/L\d{4,}/)?.[0]||''));
+  (b||document.querySelector('.plan-action-button')).click()});
  // 追加直後(描画1フレーム)の時点でフラグが確定しているかを見る
  await page.waitForFunction(n=>document.querySelectorAll('.sc-row-line').length>n,
    beforeRows,{timeout:10000});
@@ -88,7 +91,9 @@ run('test_wkfast: §9.67 作業可否フラグを予定側の保存値で即座�
  tableCalls=0;
  for(let i=0;i<3;i++){
   const n=await planRows();
-  await page.evaluate(()=>document.querySelector('.plan-action-button')?.click());
+  await page.evaluate(()=>{const okLot=v=>(S.rows||[]).some(r=>String(pick(r,'lotNo'))===v&&WL.base.equipmentIsInDesignCourse('テスト設備A',pick(r,'equipment')));
+   const b=[...document.querySelectorAll('.plan-action-button')].find(x=>okLot((x.closest('tr')?.textContent||'').match(/L\d{4,}/)?.[0]||''));
+   b?.click()});
   await page.waitForFunction(x=>document.querySelectorAll('.sc-row-line').length>x,n,{timeout:10000}).catch(()=>{});
  }
  await settleFlags(page);

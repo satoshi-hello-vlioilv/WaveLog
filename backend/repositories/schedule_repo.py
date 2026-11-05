@@ -225,6 +225,24 @@ def _next_plan_order(c_share,equipment):
  cur.execute('SELECT Max([表示順]) FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
  return int(cur.fetchone()[0] or 0)+1
 
+# 動かせる（未着手の）予定の状態。**状態欄が空の行も「予定」**（`derive_state()`・`plan_reorder()`と同じ読み方・§9.638）
+# ——前は位置を決める所だけが「予定」の字を求め、状態欄が空の行（前の版の行）を狙うと一番下へ落ちていた。
+_MOVABLE_STATE_SQL="([状態] IS NULL OR [状態]='' OR [状態]=?)"
+
+def _insert_order_before(cur,equipment,ref):
+ """「この行の前へ」入れる[表示順]（無ければ None＝末尾）。**答えはここ1箇所**（§9.179・§9.638）。
+ 狙った行が書く前に始まった・済んだ（ほかの端末・現場の「開始」）なら、**その次の未着手の予定の前**へ
+ （子ロットは親と同じ[表示順]なので、親子の列を見なくても親の前に入る・列の無い古い写しでも同じ）
+ ——前は末尾へ落としており、狙った所から遠い一番下に入っていた（利用者の報告）。後ろに予定が無ければ末尾。"""
+ cur.execute('SELECT [表示順],[状態] FROM [作業予定] WHERE [予定ID]=? AND [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[ref,equipment])
+ row=cur.fetchone()
+ if not row:return None
+ if str(row[1] or PLAN_REORDERABLE_STATE)==PLAN_REORDERABLE_STATE:return int(row[0] or 0)
+ cur.execute('SELECT Min([表示順]) FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0) AND '
+             +_MOVABLE_STATE_SQL+' AND [表示順]>?',[equipment,PLAN_REORDERABLE_STATE,int(row[0] or 0)])
+ n=cur.fetchone()[0]
+ return int(n) if n is not None else None
+
 def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,stop_sub_id=None,estimate_minutes=None,fixed_start=None,remark='',children=None,op_id=''):
  # §8.2。kind='作業'はdetail(仕掛行スナップショット、辞書)をそのままJSON化して
  # 持つ(サーバー側で仕掛を引き直さない。フロントが送った時点の見え方を固定)。
@@ -334,14 +352,10 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
   # 「追加できません」になる(入れたい位置が消えただけで、追加そのものは
   # したい操作)。
   ref=position.split(':',1)[1].strip()
-  order=None
-  if ref:
-   cur.execute('SELECT [表示順],[状態] FROM [作業予定] WHERE [予定ID]=? AND [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[ref,equipment])
-   row_ref=cur.fetchone()
-   if row_ref and (str(row_ref[1] or '') == PLAN_REORDERABLE_STATE):
-    order=int(row_ref[0] or 0)
-    cur.execute('UPDATE [作業予定] SET [表示順]=[表示順]+1 WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0) AND ([状態] IS NULL OR [状態]=?) AND [表示順]>=?',
-                [equipment,PLAN_REORDERABLE_STATE,order])
+  order=_insert_order_before(cur,equipment,ref) if ref else None
+  if order is not None:
+   cur.execute('UPDATE [作業予定] SET [表示順]=[表示順]+1 WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0) AND '
+               +_MOVABLE_STATE_SQL+' AND [表示順]>=?',[equipment,PLAN_REORDERABLE_STATE,order])
   if order is None:order=_next_plan_order(c_share,equipment)
  else:
   order=_next_plan_order(c_share,equipment)

@@ -71,7 +71,7 @@ test_presence test_printcore test_pyflakes test_pywarn test_quietlint \
 test_recmirror test_recsplit test_routesplit test_savechip \
 test_scsnapread test_scwatch test_shortcut test_sortpipe test_storage \
 test_tabledef test_workdate test_waitlint test_importlint test_funclen test_stopsub test_schedhist \
-test_portdep test_terminalstore test_tscheck test_strictstart test_stoprule test_listtools test_boxactual test_donestops test_doneflow test_lotident test_fieldreorder test_seedrevise \
+test_portdep test_terminalstore test_tscheck test_strictstart test_scwriteback test_stoprule test_listtools test_boxactual test_donestops test_doneflow test_lotident test_fieldreorder test_seedrevise \
 test_dashpivot test_formulaparity test_saferegex"
 # **`test_tablequery`は1段目に入れない**（§9.369）。サーバーは要らないが
 # **仕掛の実データが要る**——まっさらな取得では読み込み先が既定の共有パス
@@ -567,7 +567,7 @@ for t in test_dashboard test_dashsrc test_homenav test_acinput test_aclayout tes
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
-         test_screorder test_scdndhold test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_splitjudge test_listbarrows test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_stopflow test_stoppos test_scscrap test_scsubtotal test_sccolpanel test_schistui test_sctimes test_doneflowui test_sctimesedit test_scwarm test_scundecided test_scwatchui test_sccomment test_scframe test_scrowstyle test_schistory test_scbar test_scsave test_scwho test_scmodecols test_wipgone test_lotcopy test_scfail test_feedback test_scdragscroll test_srcsync test_plandup test_lotequip test_defectlink test_appquit test_strictmode test_strictreorder test_stoprules test_stoprulemaster; do run $NODE $t.js; done
+         test_screorder test_scdndhold test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_splitjudge test_listbarrows test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_stopflow test_stoppos test_scscrap test_scsubtotal test_sccolpanel test_schistui test_sctimes test_doneflowui test_sctimesedit test_scwarm test_scundecided test_scwatchui test_sccomment test_scframe test_scrowstyle test_schistory test_scbar test_scsave test_scwho test_scmodecols test_wipgone test_lotcopy test_scfail test_feedback test_scdragscroll test_srcsync test_plandup test_lotequip test_scinsertpos test_defectlink test_appquit test_strictmode test_strictreorder test_stoprules test_stoprulemaster; do run $NODE $t.js; done
 
 echo "--- スケジュール (scheduleモード固定) ---"
 mode schedule
@@ -577,7 +577,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 
 echo "--- サーバー側 ---"
 mode schedule
-for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
+for t in test_sclock test_scwriteback test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
          test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_lfpoints test_actualmatch test_finishjoin test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_browserdir test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_recshare test_recfresh test_reccopyreason test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers test_waitlint test_importlint test_funclen test_bladeset test_stopsub test_shortcut test_schedhist test_portdep test_sidecar test_terminalstore test_appupdate test_tscheck test_strictstart test_stoprule test_listtools test_boxactual test_donestops test_doneflow test_lotident test_modalwords test_fieldreorder test_seedrevise test_filtersaved test_dashpivot test_formulaparity test_dashapi test_dashperf test_actimes test_saferegex test_rustplan test_parity; do run python3 $t.py; done
 
 # ---- 落ちた本を単独で回し直して切り分ける（§9.356） -------------------

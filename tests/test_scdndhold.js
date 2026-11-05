@@ -124,7 +124,9 @@ run('test_scdndhold: 運んだ行が、運んだ位置に留まり続ける（§
    await fresh();
    const cur=await ids();const dst=cur[8];
    await page.waitForSelector('#grid tbody tr[draggable="true"]',{timeout:15000});
-   const tr=await page.evaluate(()=>{const t=[...document.querySelectorAll('#grid tbody tr[draggable="true"]')][0];t.scrollIntoView({block:'center'});
+   const tr=await page.evaluate(()=>{const okLot=v=>(S.rows||[]).some(r=>String(pick(r,'lotNo'))===v&&WL.base.equipmentIsInDesignCourse('テスト設備A',pick(r,'equipment')));
+    /* 掴むのは**この設備のロット**の行（§9.637: ほかの設備のロットは予定に入らない）。 */
+    const t=[...document.querySelectorAll('#grid tbody tr[draggable="true"]')].find(x=>okLot((x.textContent||'').match(/L\d{4,}/)?.[0]||''));t.scrollIntoView({block:'center'});
     const r=t.getBoundingClientRect();return {x:r.x+80,y:r.y+r.height/2,lot:(t.textContent||'').match(/L\d{4,}/)?.[0]||''}});
    await page.evaluate(b=>document.querySelector(`#scTimeline .sc-row-line[data-id="${b}"]`).scrollIntoView({block:'center'}),dst);
    await paint();
