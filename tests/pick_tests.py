@@ -269,7 +269,7 @@ G['フィルタ'] = ['test_filtersaved', 'test_filtersavedui', 'test_filter', 't
                  'test_filteractive', 'test_filterkeep', 'test_filterlock', 'test_listbar']
 # §9.316: 起動の状況をアプリから取れる（`/api/boot-report`＋ログ・診断の帯）。
 # 置き場は`paths`が解決した実物を出すので、起動まわりを触ったら一緒に回す。
-G['ログ'] = ['test_logs', 'test_logview', 'test_error', 'test_bootreport', 'test_saveio']
+G['ログ'] = ['test_logs', 'test_logview', 'test_logclean', 'test_error', 'test_bootreport', 'test_saveio']
 # §9.286 ⑦: 更新履歴の書き方（印は `**`／バッククォート）と窓の作り。
 # 説明文の印を解くのは `WL.markup()` の1箇所なので、マスタの説明文を
 # 出す画面（test_hintlint / test_maint）も一緒に回す。
@@ -524,7 +524,7 @@ RULES = [
                                                     'test_rbcatalog')),
     # §9.274: サーバーと画面が同じ例を通る（片方だけ直さないための突き合わせ）
     ('tests/fixtures/report_cells.json', g('test_rbcells')),
-    ('static/css/88-logs.css', g('見た目', 'test_logview')),
+    ('static/css/88-logs.css', g('見た目', 'test_logview', 'test_logclean')),
 
     # --- サーバー(ルート) --------------------------------------------
     # §9.628 ダッシュボード: 集計（パネルの答え）・計算列（画面の式と同じ答え）・画面

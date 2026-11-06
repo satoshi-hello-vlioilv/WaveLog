@@ -18,7 +18,9 @@
 
      ① 報告する   … 既定。書く（任意）→ コピー の2手。材料は自動で集める
      ② ログを見る … 開発・保守が読む。問題のまとめ＋時間順の一覧
-     ③ 点検と整理 … 起動の状況・接続の診断・ログの整理（**消す操作はここだけ**）
+     ③ 点検と整理 … 起動の状況・接続の診断・ログの整理（ファイルごと・世代ごとに消すのはここ）
+     ① の「報告に入るもの」の見出しの右に「片付ける…」の1つ（§9.641）——報告に入る2つ（画面の失敗・
+     いまのログのエラーと警告）を、出どころを分けた窓で選んで消す
 
    読ませ方の方針（この画面が守っていること）
    ------------------------------------------------------------
@@ -31,8 +33,8 @@
    3. **起動セッションでまとめる。** 最新の起動が上で、最初から開いている。
    4. **絞り込み・まとめ方はサーバーだけが持つ。** 画面側にも同じ判定を
       置くと、片方だけ直した状態が作れる。
-   5. **消す操作は整理の段にだけ置き、必ず確認する。** editモード以外では
-      押せなくして理由を書く（サーバーも断る・`'logs':{'edit'}`）。
+   5. **消す操作は主の動線（報告をコピー）から離し、必ず確認する。** ①は「片付ける…」の1つだけ、ファイル・
+      世代ごとの消去は③。editモード以外では押せなくして理由を書く（サーバーも断る・`'logs':{'edit'}`）。
 
    書き方の約束（§9.96 / tests/test_globallint.js の対象）
    ------------------------------------------------------------
@@ -223,12 +225,96 @@
    done.textContent=ok?`コピーしました（${num(text.length)}字）。メールやチャットへそのまま貼ってください。`
                       :'コピーできませんでした。右の「送る内容」を選んで写すか、「ファイルに保存」を使ってください。';
    done.className='lg-done '+(ok?'is-ok':'is-ng');
+   if(ok)cleanHint(done);
   }
   WL.feedback?.step?.('ログ・診断','報告をコピー');
  };
  const saveReport=()=>{
   refreshPreview();
   saveText($id('lgPreview').value,`WaveLog報告-${stamp().replace(/[-: ]/g,'').replace(/^(\d{8})/,'$1-')}.txt`);
+  const done=$id('lgReportDone');
+  if(done){done.textContent='ファイルに保存しました（「ダウンロード」フォルダ）。';done.className='lg-done is-ok';cleanHint(done)}
+ };
+ /* ---- 報告に入る記録を片付ける（§9.641、利用者の指示「アプリ内の報告ログやエラーログを消せるようにしてください」） ----
+    消す物は2つで、置き場が違う。**窓では出どころで群に分け、消した後の見通し（→ 0件）と残る物まで言う**
+    （5案×2回・別の採点者で I が91点・§9.641）。
+      ・画面の失敗 … この端末のブラウザ（`WL.feedback`・最大50件）。報告の ① に並ぶ物
+      ・ログのエラー・警告 … この PC のいまのログ（app.log・launcher.log）。報告の「ログの問題」はここから数える
+    入口は「報告に入るもの」の見出しの右の1つ（主の動線＝コピーから離す）。送った後は完了の文が場所を指し、札を1度
+    光らせるだけで、入口を増やさない。消す操作は編集モードだけ（サーバーも`'logs':{'edit'}`で断る）——画面の失敗も
+    同じ扱いにそろえる。できない端末・消す物が無いときは**札を出さず字で言う**（押しても何も起きない物を残さない）。
+    件数は窓も「報告に入るもの」も`cleanCounts()`の1つの答え（開く前に読み直して両方を描き直す）。 */
+ const CLEAN_GROUPS=[
+  {key:'fails',where:'この端末のブラウザ',what:'「保存できませんでした」などの記録（報告の ① に並ぶ物）',
+   none:'この端末に失敗の記録はありません'},
+  {key:'logs',where:'この PC のログ（app.log・launcher.log のいまのファイル）',
+   what:'いまのログを空にします。1世代前は残ります（古い世代は ③ 点検と整理で）',
+   none:'いまのログにエラー・警告はありません'},
+ ];
+ const cleanCounts=()=>{
+  const pr=(bootState.last&&bootState.last.problems)||null,c=(pr&&pr.counts)||{};
+  const logs=pr?(c.error||0)+(c.warning||0):0;
+  return {fails:failures().length,logs,
+          label:{fails:`画面の失敗 ${num(failures().length)}件`,
+                 logs:pr?`ログのエラー・警告（エラー ${num(c.error)}件・警告 ${num(c.warning)}件）`:'ログのエラー・警告'},
+          after:{fails:'0件',logs:'なし（直近の起動の記録も空に）'}};
+ };
+ const cleanable=n=>editable()&&(n.fails>0||n.logs>0);
+ const cleanHint=done=>{
+  if(!cleanable(cleanCounts()))return;
+  done.insertAdjacentHTML('beforeend','<span class="lg-done-next">送ったら、下の「報告に入るもの」の「片付ける…」で記録を消せます。</span>');
+  const b=$id('lgClean');
+  if(b){b.classList.remove('is-cue');void b.offsetWidth;b.classList.add('is-cue')}
+ };
+ const renderClean=()=>{
+  const b=$id('lgClean'),why=$id('lgCleanWhy');if(!b||!why)return;
+  const n=cleanCounts(),ok=cleanable(n);
+  b.hidden=!ok;
+  why.hidden=ok;
+  why.textContent=ok?'':!editable()
+   ?`片付けは編集モードの端末でできます（いまは${MODE_WORD[window.accessMode?.mode]||'別の'}モード）`
+   :(bootState.busy?'':'片付ける物はありません');
+ };
+ const cleanBody=n=>`<div class="lg-clean-groups">${CLEAN_GROUPS.map(g=>{
+   const none=!n[g.key];
+   return `<section class="lg-clean-group"><div class="lg-clean-where">${esc(g.where)}</div>
+    <label class="lg-clean-item${none?' is-none':''}"><input type="checkbox" data-clean="${g.key}"${none?' disabled':' checked'}>
+     <span><b>${esc(n.label[g.key])}</b> <span class="lg-clean-after" data-after="${g.key}"
+       data-to="${esc(n.after[g.key])}">${none?'消す物はありません':`→ ${esc(n.after[g.key])}`}</span>
+     <small>${esc(none?g.none:g.what)}</small></span></label></section>`;
+  }).join('')}</div>`;
+ const cleanUp=async()=>{
+  await runBoot();                         // 窓と背後の「報告に入るもの」を同じ答えで描く
+  const n=cleanCounts();
+  if(!cleanable(n)){renderClean();return}
+  const wait=confirmModal({title:'報告に入る記録を消しますか',bodyHtml:cleanBody(n),
+                           facts:[{text:'戻せません',danger:true}],confirmLabel:'削除する',danger:true});
+  const body=$id('appConfirmBody'),ok=$id('appConfirmOk');
+  const picks=()=>[...body.querySelectorAll('input[data-clean]:checked')].map(x=>x.dataset.clean);
+  /* 外した群は「→ そのまま」。何も選んでいなければ決めるボタンを押せない。 */
+  body.addEventListener('change',()=>{
+   body.querySelectorAll('input[data-clean]:not(:disabled)').forEach(x=>{
+    const t=body.querySelector(`[data-after="${x.dataset.clean}"]`);
+    if(t)t.textContent=x.checked?`→ ${t.dataset.to}`:'→ そのまま';
+   });
+   ok.disabled=!picks().length;
+  });
+  $id('appConfirmCancel')?.focus();      // Enter で消えないように
+  if(!await wait)return;
+  const keys=picks(),done=[];
+  try{
+   if(keys.includes('fails')){WL.feedback.clear();done.push(n.label.fails)}
+   if(keys.includes('logs')){
+    const files=((await api('/api/logs/files')).files||[]).filter(f=>f.current).map(f=>f.name);
+    for(const file of files)await postJson('/api/logs/clear',{file});
+    done.push('ログのエラー・警告');
+   }
+  }catch(e){showToast('消せませんでした',e.message||String(e),5200)}
+  pickState.key='';
+  if(done.length)showToast('記録を消しました',done.join('・')+(keys.includes('logs')?'（1世代前は残っています）':''),5200);
+  const msg=$id('lgReportDone');if(msg){msg.textContent='';msg.className='lg-done'}
+  await runBoot();
+  if(state.files.length)loadFiles();
  };
  const runBoot=async()=>{
   if(bootState.busy)return;
@@ -241,7 +327,7 @@
    if(body)body.innerHTML=`<div class="lg-empty">まとめられませんでした: ${esc(err.message||err)}</div>`;
   }finally{bootState.busy=false}
   if(bootState.last&&body)body.innerHTML=bootHtml(bootState.last);
-  renderFacts();refreshPreview();
+  renderFacts();renderClean();refreshPreview();
  };
 
  /* ====================================================================
@@ -619,7 +705,7 @@
   });
   document.querySelectorAll('#logPanel .lg-page').forEach(p=>{p.hidden=p.dataset.page!==key});
   if(key!=='logs')stopAuto();       // 見ていない一覧を裏で読み直さない
-  if(key==='report'){renderFacts();refreshPreview()}
+  if(key==='report'){renderFacts();renderClean();refreshPreview()}
   if(key==='logs'&&!state.logsLoaded){
    state.logsLoaded=true;
    await loadFiles();await Promise.all([load(),loadProblems()]);
@@ -642,6 +728,7 @@
   $id('lgPick').addEventListener('change',e=>{if(e.target.name==='lgPick'){pickState.key=e.target.value;refreshPreview()}});
   $id('lgReportCopy').onclick=copyReport;
   $id('lgReportSave').onclick=saveReport;
+  $id('lgClean').onclick=cleanUp;
   // ② ログを見る
   $id('lgReload').onclick=()=>{load();loadProblems()};
   $id('lgFile').onchange=()=>load();
@@ -706,7 +793,9 @@
         </div>
         <p class="lg-done" id="lgReportDone" aria-live="polite"></p></div></li>
      </ol>
-     <h4 class="lg-sub">報告に入るもの（自動で集めます）</h4>
+     <div class="lg-sub lg-sub-row"><h4>報告に入るもの（自動で集めます）</h4>
+      <span class="lg-clean-why" id="lgCleanWhy" hidden></span>
+      <button type="button" class="lg-clean" id="lgClean" hidden title="画面の失敗・ログのエラーと警告を消します（選んでから消す・戻せません）">片付ける…</button></div>
      <dl class="lg-facts" id="lgFacts"></dl>`)}
     ${card('lg-preview','送る内容',{id:'lgPreviewSize',text:''},
      '<textarea id="lgPreview" readonly spellcheck="false" aria-label="送る内容（コピーされる文章そのもの）"></textarea>')}
