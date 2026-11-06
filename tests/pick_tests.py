@@ -177,7 +177,7 @@ G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork',
                      # §9.637: 使用設備の予定にほかの設備のロットを入れない
                      'test_lotequip',
                      # §9.638: 落とした位置に入る（固定した行の前・途中の行を先に流した予定）・さかのぼり「なし」
-                     'test_scinsertpos',
+                     'test_scinsertpos','test_scscrollkeep',
                      # §9.373: 失敗を開発へ報告できる形で残す（コピー1手）
                      'test_feedback',
                      # §9.374: 掴んだまま表を送る／色と濃さの意味

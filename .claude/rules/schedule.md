@@ -1,4 +1,4 @@
-# 作業スケジュール（135件）
+# 作業スケジュール（136件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -14,6 +14,7 @@
 | 取り直した写しで手元の写しを置き換えられない（読んでいる最中）だけなら断らない。中身を写し込む（`_settle_cache()`の1箇所） | `test_scwriteback.py` | [§9.639](../../docs/decisions/9.639.md) |
 | 「この行の前」の[表示順]は`_insert_order_before()`の1箇所（空の状態も予定・狙いが始まったら次の予定の前） | `test_scwriteback.py` | [§9.638](../../docs/decisions/9.638.md) |
 | 後ろの作業が始まった後に入れた停止は「終わった」と数えない（`_added_after()`・§9.514と§9.605の両方） | `test_scwriteback.py`・`test_scinsertpos.js` | [§9.638](../../docs/decisions/9.638.md) |
+| 表を描き直す・予定の面を移すときはスクロールを`scrollMark()`／`scrollBack()`で控えて戻す（目印は見えている最初の行） | `test_scscrollkeep.js` | [§9.640](../../docs/decisions/9.640.md) |
 | 落とす先の相手は`insertTargetEntry()`（固定した行も含む）。さかのぼり「なし」は済んだ行を1件も出さない | `test_scinsertpos.js` | [§9.638](../../docs/decisions/9.638.md) |
 | 予定へロットを入れる道は`_plan_add_op()`の1本。設計設備の確かめは`lot_equipment`の1箇所（仕掛の行が先） | `test_lotequip.js` | [§9.637](../../docs/decisions/9.637.md) |
 | 入っているほかの設備のロットは注意と行の`equipmentIssue`（「設備違い」）で名指す。画面は送る前に除く | `test_lotequip.js` | [§9.637](../../docs/decisions/9.637.md) |
