@@ -1613,10 +1613,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(splitWrap)return splitWrap;
   const panel=document.getElementById('schedulePanel');
   if(!ensureGridAnchor()||!panel)return null;
+  /* 予定の面を別の親へ移すと、ブラウザは中のスクロールを先頭へ戻す（§9.640）。移す前に控えて戻す。 */
+  const mark=scrollMark($('#scTimeline'));
   splitWrap=document.createElement('div');splitWrap.className='sc-split-wrap';
   gridAnchor.parentNode.insertBefore(splitWrap,gridAnchor);
   moveGridTo(splitWrap);
   splitWrap.appendChild(panel);
+  scrollBack($('#scTimeline'),mark);
   ensureSplitDivider();
   applySplitListWidth();
   applySplitSide();
@@ -1627,8 +1630,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(!splitWrap)return;
   const panel=document.getElementById('schedulePanel');
   const main=gridAnchor.parentNode;
+  const mark=scrollMark($('#scTimeline'));   // 移すと先頭へ戻る（§9.640・ensureSplitWrap と同じ）
   returnGridHome();
   if(panel)main.insertBefore(panel,gridAnchor);
+  scrollBack($('#scTimeline'),mark);
   splitWrap.remove();
   splitWrap=null;
  }
@@ -2951,12 +2956,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   }
   renderSessionBanner();
  }
- // タブを閉じる時に保持中のセッションを解放する(以前のbase.jsの閉じた通知と
- // 同じ二重登録方針。pagehideが本来カバーする範囲の方が広いが、ブラウザ
- // 実装差の保険としてunloadでも同じ通知を送る)。
+ // タブを閉じる時に保持中のセッションを解放する。合図は pagehide の1つ（閉じる・移る・裏へ回すの全部で来る）。
+ // 前は保険に unload も登録していたが、Chromium 158 から unload は既定で許されない合図になり、登録しただけで
+ // 「Permissions policy violation: unload is not allowed」が出る（CI の煙テスト test_flows が落ちた）。
  function releaseSessionOnUnload(){if(scSessionHeldFor)releaseSessionFire(scSessionHeldFor)}
  window.addEventListener('pagehide',releaseSessionOnUnload);
- window.addEventListener('unload',releaseSessionOnUnload);
 
  /* ---------- 全体俯瞰ボード(§9.9) ----------
     設備ごとに1行、右側へ「残作業量」を色分けした帯(次24/48時間の
@@ -7145,6 +7149,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    refreshScheduledLotFilter();
    return;
   }
+  const mark=scrollMark(timeline);
   timeline.innerHTML='';
   // まとめない場合も含め、行は必ず.sc-groupコンテナへ入れる。並べ替え
   // (wireDrag/moveCard/commitDragOrder)はDOMの兄弟関係だけで動くため、
@@ -7196,11 +7201,35 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   });
   paintStopGaps(timeline);
   appendTailSpace(timeline);
+  scrollBack(timeline,mark);
   renderPickBar(timeline);
   restoreInsertGhost();
   renderUndecided();renderTimesNeeded();
   openPendingCommentEdit();
   refreshScheduledLotFilter();
+ }
+ /* ---------- 描き直してもスクロールの位置を動かさない（§9.640、利用者の指示「反映されるたびにスクロールの
+    位置が戻されるので使いづらいです。スクロールの位置を変えないように」） ----------
+    表は描き直すたびに中身を空にして組み直す。組み直しの途中で寸法を読む所（末尾の余白の測り直し等）が
+    あると、ブラウザはその時点の短い中身に合わせて位置を切り詰める——行間から設備停止を入れると、追加を
+    押すたびに先頭まで戻っていた（網 test_scscrollkeep・実測 554px→0）。
+    控えるのは**見えている最初の行と、その器の上端からの位置**（描き直しで上に行が増えても、見ていた行が
+    同じ所に残る）。その行が無くなっていたら位置の数のまま戻す。先頭に居るときは何もしない（先頭に入った
+    行がそのまま見える）。楽観の仮の行（`tmp-`）は描き直しで本物に替わるので目印にしない。 */
+ function scrollMark(tl){
+  if(!tl||(!tl.scrollTop&&!tl.scrollLeft))return null;
+  const t=tl.getBoundingClientRect().top;
+  const row=[...tl.querySelectorAll('.sc-row-line')]
+   .find(r=>!/^tmp-/.test(r.dataset.id||'')&&r.getBoundingClientRect().bottom>t);
+  return {top:tl.scrollTop,left:tl.scrollLeft,id:row?String(row.dataset.id||''):'',
+          off:row?row.getBoundingClientRect().top-t:0};
+ }
+ function scrollBack(tl,m){
+  if(!tl||!m)return;
+  tl.scrollLeft=m.left;
+  tl.scrollTop=m.top;
+  const row=m.id?tl.querySelector(`.sc-row-line[data-id="${CSS.escape(m.id)}"]`):null;
+  if(row)tl.scrollTop+=Math.round(row.getBoundingClientRect().top-tl.getBoundingClientRect().top-m.off);
  }
  /* ---------- 一覧の下の余白(§9.292 ②、利用者の指示「スケジュールの下側に
     余白を常に設けておき、スクロールで最後のスケジュールも上方向に押し上げ
@@ -7246,6 +7275,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function fitTailSpace(){
   const tl=$('#scTimeline');if(!tl)return;
   const sp=tl.querySelector('.sc-tail-space');if(!sp)return;
+  /* 測るために余白を0へ戻すと、余白の所まで送っていた位置が切り詰められる（§9.640）。測り終えたら戻す。 */
+  const top=tl.scrollTop;
+  sizeTailSpace(tl,sp);
+  if(tl.scrollTop!==top)tl.scrollTop=top;
+ }
+ function sizeTailSpace(tl,sp){
   const rows=[...tl.querySelectorAll('.sc-row-line')];
   if(!rows.length){sp.style.height='0px';return}
   /* **測る前に必ず0へ戻す**（前回入れた高さが混ざると、描くたびに伸びる）。 */
