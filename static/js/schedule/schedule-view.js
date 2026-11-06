@@ -2956,12 +2956,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   }
   renderSessionBanner();
  }
- // タブを閉じる時に保持中のセッションを解放する(以前のbase.jsの閉じた通知と
- // 同じ二重登録方針。pagehideが本来カバーする範囲の方が広いが、ブラウザ
- // 実装差の保険としてunloadでも同じ通知を送る)。
+ // タブを閉じる時に保持中のセッションを解放する。合図は pagehide の1つ（閉じる・移る・裏へ回すの全部で来る）。
+ // 前は保険に unload も登録していたが、Chromium 158 から unload は既定で許されない合図になり、登録しただけで
+ // 「Permissions policy violation: unload is not allowed」が出る（CI の煙テスト test_flows が落ちた）。
  function releaseSessionOnUnload(){if(scSessionHeldFor)releaseSessionFire(scSessionHeldFor)}
  window.addEventListener('pagehide',releaseSessionOnUnload);
- window.addEventListener('unload',releaseSessionOnUnload);
 
  /* ---------- 全体俯瞰ボード(§9.9) ----------
     設備ごとに1行、右側へ「残作業量」を色分けした帯(次24/48時間の
