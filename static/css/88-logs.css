@@ -117,6 +117,7 @@
 .lg-done{margin:0;min-height:calc(var(--fs-sm) * var(--lh));font-size:var(--fs-sm);font-weight:var(--fw-ui)}
 .lg-done.is-ok{color:var(--success)}
 .lg-done.is-ng{color:var(--danger)}
+.lg-done-next{display:block;color:var(--ink-2);font-weight:var(--fw-body)}
 /* 報告する失敗を選ぶ（§9.579）。行は「時刻・何が—なぜ・回数とHTTP」の格子で縦にそろえる。選んだ行は縁と地で言う。 */
 .lg-pick{display:grid;gap:var(--space-1);max-height:calc(var(--ctl-h) * 5);overflow:auto}
 .lg-pick-row{display:grid;grid-template-columns:auto 6.5em minmax(0,1fr) auto;align-items:center;gap:var(--space-2);
@@ -134,6 +135,26 @@
 .lg-pick-sum small{color:var(--ink-2);font-size:var(--fs-sm)}
 .lg-sub{margin:var(--space-5) 0 var(--space-2);padding-top:var(--space-3);border-top:1px solid var(--line-soft);
  color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui)}
+/* 報告に入る記録を片付ける（§9.641）。入口は見出しの右の1つ・できないときは字だけ（札を出さない）。 */
+.lg-sub-row{display:flex;align-items:center;gap:var(--gap-inline)}
+.lg-sub-row h4{margin:0;font:inherit;color:inherit}
+.lg-clean-why{margin-left:auto;color:var(--muted);font-weight:var(--fw-body)}
+.lg-panel button.lg-clean{margin-left:auto;height:var(--ctl-h-sm);padding:0 var(--space-3);border:1px solid var(--line);
+ border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:var(--fw-ui);cursor:pointer}
+.lg-panel button.lg-clean:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
+.lg-panel button.lg-clean[hidden]{display:none}
+/* 送った後に1度だけ場所を光らせる（完了の文が指す先を目で追えるように）。 */
+.lg-panel button.lg-clean.is-cue{animation:lg-clean-cue 1.6s ease-out 1}
+@keyframes lg-clean-cue{0%,40%{border-color:var(--teal);background:var(--teal-tint);color:var(--teal-dark)}100%{}}
+.lg-clean-groups{display:grid;gap:var(--space-3)}
+.lg-clean-where{margin-bottom:var(--space-1);color:var(--muted);font-size:var(--fs-sm)}
+/* 窓（#appConfirmBody）の中の欄の既定（幅いっぱい・縦積み）に負けないよう、窓の器ごと名指す。 */
+#appConfirmBody .lg-clean-item{display:flex;gap:var(--space-2);align-items:flex-start;margin:0;cursor:pointer;text-align:left}
+#appConfirmBody .lg-clean-item input{flex:none;width:auto;height:auto;margin:3px 0 0}
+#appConfirmBody .lg-clean-item small{display:block;color:var(--ink-2);font-size:var(--fs-sm)}
+#appConfirmBody .lg-clean-item.is-none{cursor:default}
+#appConfirmBody .lg-clean-item.is-none :is(b,small){color:var(--muted);font-weight:var(--fw-body)}
+.lg-clean-after{color:var(--muted);font-weight:var(--fw-body)}
 /* 送る内容。**コピーされる文章そのもの**を見せる（見たものと送るものを違えない）。 */
 #lgPreview{flex:1 1 auto;min-height:0;width:100%;margin:0;padding:var(--space-2) var(--space-3);border:0;resize:none;
  background:var(--surface-2);color:var(--ink-2);box-sizing:border-box;

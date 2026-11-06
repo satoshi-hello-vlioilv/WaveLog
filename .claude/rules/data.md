@@ -1,4 +1,4 @@
-# データの置き場と共有（94件）
+# データの置き場と共有（95件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -43,7 +43,8 @@
 | 共通設定の欄は`data-pc-field`を名乗れば保存に載る。**値は組み立てるときに入れる** | `test_shortcut.py` | [§9.433](../../docs/decisions/9.433.md) |
 | 端末に持つ設定の例（seed）は**読んだその場で保存する**。IDを時刻から作らない | `test_lotcopy.js` | [§9.400](../../docs/decisions/9.400.md) |
 | 保存された`[]`は「まだ作っていない」ではなく**「利用者が空にした」**。見分けるのは鍵の有無 | `test_lotcopy.js` | [§9.400](../../docs/decisions/9.400.md) |
-| ログ・診断は3段（報告する＝既定・いつもここで開く／ログを見る／点検と整理）。**消す操作は点検と整理の段だけ** | `test_logview.js` | [§9.510](../../docs/decisions/9.510.md) |
+| 報告に入る記録（画面の失敗・いまのログのエラーと警告）は「報告に入るもの」の見出しの右の「片付ける…」1つで消す（出どころで2群の窓・`cleanCounts()`の1つの答え） | `test_logclean.js` | [§9.641](../../docs/decisions/9.641.md) |
+| ログ・診断は3段（報告する＝既定・いつもここで開く／ログを見る／点検と整理）。【§9.641で改めた】消す操作は点検と整理の段だけ | `test_logview.js` | [§9.510](../../docs/decisions/9.510.md) |
 | 報告は1手で全部（メモ・画面の失敗・起動の状況・エラーのまとめ）。写すのは**見えているプレビューそのもの** | `test_logview.js`・`test_feedback.js` | [§9.510](../../docs/decisions/9.510.md) |
 | エラー・警告のまとめは`problem_digest()`の1箇所（数字だけ違う文は1つ・エラーが先）。置き場の「直すべきか」は`_place()`の`bad` | `test_logs.py`・`test_bootreport.js` | [§9.510](../../docs/decisions/9.510.md) |
 | ログビュワー（`backend/routes/logs.py`／`static/js/core/log-view.js`）は「1行」でなく「1件」で扱う | `test_logs.py`・`test_logview.js` | [§9.99](../../docs/decisions/9.99.md) |
