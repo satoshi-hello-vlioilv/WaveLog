@@ -275,6 +275,8 @@ _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
                            'masters.dashboard_query','masters.dashboard_fields',
                            # 測定データの写し直し(§9.619)。共有を手元へ写すだけ。
                            'measurement.records_recopy',
+                           # 帳票の左の木の日付と直(§9.642)。記録の時刻から勤務形態マスタで引くだけ。
+                           'measurement.record_dates',
                            'path_config.data_source_master_probe',
                            # クエリ結合(§9.193)。**読むだけ**——渡された鍵の値に
                            # 相手のデータを当てて返す。POSTなのはキーの組を

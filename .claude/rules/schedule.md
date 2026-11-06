@@ -1,4 +1,4 @@
-# 作業スケジュール（136件）
+# 作業スケジュール（138件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 読んで先頭への判定は`WL.lotScan.decide()`の1箇所。動かすのはドラッグ・仕掛一覧と同じ道（`commitPlanOrder()`） | `test_lotscan.js` | [§9.642](../../docs/decisions/9.642.md) |
+| 読んで先頭へは並べ替えか組み込みのできる端末だけ（`sync()`）。段は一覧の下の棚（表を覆わない）。組み込めない端末は変えず字で言う | `test_lotscan.js` | [§9.642](../../docs/decisions/9.642.md) |
 | 共有を取り直せない・版を確かめられないときは書かない（`with_write()`が503）。古い写しで共有を上書きしない | `test_scwriteback.py` | [§9.638](../../docs/decisions/9.638.md) |
 | 取り直した写しで手元の写しを置き換えられない（読んでいる最中）だけなら断らない。中身を写し込む（`_settle_cache()`の1箇所） | `test_scwriteback.py` | [§9.639](../../docs/decisions/9.639.md) |
 | 「この行の前」の[表示順]は`_insert_order_before()`の1箇所（空の状態も予定・狙いが始まったら次の予定の前） | `test_scwriteback.py` | [§9.638](../../docs/decisions/9.638.md) |

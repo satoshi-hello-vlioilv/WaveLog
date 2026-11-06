@@ -23,12 +23,12 @@ CLAUDE.md の「画面を作るときの基準」（15項目）と、それをWa
 | `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 191 |
 | 測定画面・操業データ項目・公差・条の設計 | [measure.md](measure.md) | 120 |
 | 刃組ガイダンス（`blade-*.js`）・部材・刃選択 | [bladeset.md](bladeset.md) | 266 |
-| 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 136 |
-| `print-core.js`・帳票ブロック・用紙と余白 | [report.md](report.md) | 105 |
+| 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 138 |
+| `print-core.js`・帳票ブロック・用紙と余白 | [report.md](report.md) | 107 |
 | `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 70 |
 | 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 78 |
 | テストを書く・回す・後片付け | [testing.md](testing.md) | 66 |
 | どの束にも入らないもの（ダッシュボード） | [misc.md](misc.md) | 41 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **1398件**（`ui-principles.md` は節で数える）。
+規則は合わせて **1402件**（`ui-principles.md` は節で数える）。

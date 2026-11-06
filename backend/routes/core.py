@@ -122,6 +122,8 @@ JS_FILES=[
  # 紙まわりの共通核（§9.332）。用紙の表・@page・mm換算・下限つき比例配分・
  # 刷り出しの段取りを持つ。**紙を出す3本より先に読むこと。**
  'core/print-core.js',
+ # §9.642: 帳票の左の一覧の木（日付→直→ロット）。帳票（report-dashboard.js）が描くときに呼ぶ。
+ 'report/report-tree.js',
  'report/report-dashboard.js',
  # §9.628: ダッシュボード（LotScope のグリッドのパネルの移植）。小道具 → 数の書式 → グラフ → 部品 → パネル → 組む所 → 画面の順。
  'dash/dash-kit.js',
@@ -146,6 +148,8 @@ JS_FILES=[
  # §9.368: 選んだ予定のロット番号をつないでコピーする（ICASコピー）。
  # schedule-view.js が右クリックメニューから `WL.lotCopy` を呼ぶ。
  'schedule/lot-copy.js',
+ # §9.642: バーコードで読んだロットを予定の先頭へ（無ければ仕掛から組み込む）。予定の画面の口（`WL.scheduleView`）を呼ぶ。
+ 'schedule/lot-scan.js',
  'schedule/schedule-print.js',
  # §9.514: 実際の時刻を手で入れる小窓。予定の画面（時刻を入れる）と段「履歴」（時刻を直す）の
  # 両方が`WL.scheduleTimes.open()`を呼ぶ。**履歴より先**に読む。

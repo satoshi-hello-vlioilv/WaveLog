@@ -54,35 +54,54 @@
 .rp-icon-btn--primary{background:var(--teal);border-color:var(--teal)}
 .rp-icon-btn--primary:hover:not(:disabled){background:#0a95a4;border-color:#0a95a4}
 .rp-icon-btn.active{background:#fff;border-color:#fff;color:#0d4650}
-.rp-body{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr)}
+.rp-body{flex:1;min-height:0;display:grid;grid-template-columns:var(--rp-nav-w) minmax(0,1fr)}
+.rp-panel{--rp-nav-w:280px}
 .rp-nav{display:flex;flex-direction:column;min-height:0;background:var(--surface-3);border-right:1px solid var(--line)}
-/* 検索と並び順は横1列。縦2段(102px)だった分をロット一覧の表示に回す。 */
-.rp-nav-toolbar{display:flex;align-items:center;gap:6px;padding:7px 8px}
-.rp-search{position:relative;display:flex;align-items:center;flex:1;min-width:0}
-.rp-search-icon{position:absolute;left:8px;display:flex;color:var(--muted);opacity:.75;pointer-events:none}
-.rp-search input{height:30px;width:100%;min-width:0;padding:5px 8px 5px 29px;border:1px solid var(--line);border-radius:var(--radius-lg);background:#fff}
-.rp-nav-toolbar select{height:30px;flex:none;width:92px;min-width:0;padding:4px 6px;background:#fff;font-size:var(--fs-sm)}
-.rp-lot-list{flex:1;min-height:0;overflow:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:5px}
-/* 行は「一括印刷のチェックボックス」+「プレビュー選択ボタン」の2要素。
-   button要素の中へinputをネストするのは仕様・アクセシビリティ上避けるため、
-   行自体はdiv、チェックボックスとボタンを横並びにする。 */
-.rp-lot-row{display:flex;align-items:stretch;gap:0;padding:0;border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:#fff;overflow:hidden}
-.rp-lot-row:hover{border-color:#9fc3c8;background:var(--surface-2)}
-.rp-lot-row.active{border-color:var(--teal);background:var(--teal-tint);box-shadow:0 0 0 var(--ring-gap) var(--surface),0 0 0 var(--ring-w) var(--teal)}
-.rp-lot-row.checked{border-color:#0a8993}
-.rp-lot-check{display:flex;align-items:center;padding:0 3px 0 9px;cursor:pointer;flex:none}
+/* 探す→分け方→並びの順（§9.642）。検索は1行ぶん全部（230px の横並びではプレースホルダーが「ロット・」で切れていた）。 */
+.rp-nav-toolbar{display:flex;flex-direction:column;gap:var(--space-1);padding:7px 8px;border-bottom:1px solid var(--line-soft)}
+.rp-nav-tools{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}
+.rp-search{position:relative;display:flex;align-items:center;min-width:0}
+.rp-search-icon{position:absolute;left:8px;display:flex;color:var(--muted);pointer-events:none}
+.rp-search input{height:30px;width:100%;min-width:0;padding:5px 8px 5px 29px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface)}
+.rp-nav-tools select{height:var(--ctl-h-xs);flex:none;width:92px;min-width:0;padding:0 6px;background:var(--surface);font-size:var(--fs-sm)}
+/* 木（§9.642）。**行は縮まない**——縦の flex に`overflow:hidden`の行を並べると最小の高さが0になり、80件で1行6.6pxまで潰れていた。 */
+.rp-lot-list{flex:1;min-height:0;overflow:auto;padding:0 0 8px}
+.rp-tree-note{margin:6px 8px;font-size:var(--fs-sm);color:var(--ink-2)}
+.rp-tree-note.is-bad{color:var(--warn-fg)}
+.rp-tn-head{display:flex;align-items:center;gap:var(--space-1);min-height:26px;padding-right:8px}
+.rp-tn-toggle{flex:1;min-width:0;display:flex;align-items:center;gap:6px;align-self:stretch;padding:0 4px 0 6px;
+  border:0;background:transparent;font:inherit;color:var(--ink);text-align:left;cursor:pointer}
+.rp-tn-toggle:hover{background:var(--teal-tint)}
+.rp-tn-toggle i{flex:none;width:12px;font-style:normal;color:var(--muted)}
+.rp-tn-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:var(--fw-strong);font-variant-numeric:tabular-nums}
+/* 件数は読むだけの値（枠も地も付けない＝押せそうに見せない）。右寄せでそろえる。 */
+.rp-tn-count{margin-left:auto;flex:none;min-width:3.5em;text-align:right;font-size:var(--fs-sm);color:var(--muted);font-variant-numeric:tabular-nums}
+.rp-tn-check{flex:none;margin:0;cursor:pointer}
+/* 地の3段で日／直／ロットを分ける（日＝濃い地・直＝薄い地・ロット＝白）。日と直の見出しは送っても上に残る。 */
+.rp-tn--d0>.rp-tn-head{position:sticky;top:0;z-index:2;background:var(--surface-2);border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line)}
+.rp-tn--d1>.rp-tn-head{position:sticky;top:27px;z-index:1;min-height:24px;background:var(--surface-3);border-bottom:1px solid var(--line-soft)}
+.rp-tn--d1>.rp-tn-head .rp-tn-label{font-weight:var(--fw-ui)}
+/* 木の線（どの日・直に属するか）。 */
+.rp-tn-kids{margin-left:12px;padding-left:6px;border-left:1px solid var(--line)}
+.rp-tn-kids[hidden]{display:none}
+/* ロットの行（葉）。押す物なので白い地。チェックは節と同じ右端の列。 */
+.rp-lot-row{flex:none;display:flex;align-items:center;min-height:26px;background:var(--surface);border-left:3px solid transparent;border-bottom:1px solid var(--line-soft)}
+.rp-lot-row:hover{background:var(--teal-tint)}
+.rp-lot-row.active{background:var(--teal-tint);border-left-color:var(--teal)}
+.rp-lot-check{display:flex;align-items:center;align-self:stretch;padding:0 8px 0 4px;cursor:pointer;flex:none}
 .rp-lot-check input{margin:0;cursor:pointer}
-.rp-lot-main-btn{
-  flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;
-  padding:7px 9px 7px 4px;text-align:left;cursor:pointer;font:inherit;color:inherit;
-  background:transparent;border:0;
-}
-.rp-lot-main{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}
-.rp-lot-main b{font-size:var(--fs-base-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-lot-sub{color:var(--muted);font-size:var(--fs-micro);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-lot-date{color:var(--muted);font-size:var(--fs-badge);font-variant-numeric:tabular-nums}
-.rp-status-badge{flex:0 0 auto;padding:2px 7px;border-radius:var(--radius-md);background:var(--bg);color:#526970;font-weight:var(--fw-ui);font-size:var(--fs-badge);white-space:nowrap}
+.rp-tree mark{background:var(--warn-bg);color:inherit;border-radius:var(--radius-xs)}
+.rp-lot-main-btn{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;align-self:stretch;justify-content:center;
+  padding:3px 4px 3px 6px;text-align:left;cursor:pointer;font:inherit;color:inherit;background:transparent;border:0}
+/* ロット｜時刻｜状態の3列（行ごとに位置を揺らさない）。 */
+.rp-lot-main{display:grid;grid-template-columns:minmax(0,1fr) 42px 52px;align-items:center;gap:6px;min-width:0}
+.rp-lot-main b{min-width:0;font-size:var(--fs-base-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-main time{font-size:var(--fs-sm);color:var(--muted);font-variant-numeric:tabular-nums}
+.rp-lot-main .rp-status-badge{justify-self:stretch;text-align:center;font-style:normal}
+.rp-lot-sub{color:var(--muted);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-status-badge{flex:0 0 auto;padding:2px 7px;border-radius:var(--radius-md);background:var(--bg);color:var(--ink-2);font-weight:var(--fw-ui);font-size:var(--fs-badge);white-space:nowrap}
 .rp-status-badge.done{background:var(--success-bg);color:var(--success)}
+.rp-lot-row.active .rp-status-badge{box-shadow:0 0 0 1px var(--surface)}   /* 選んだ行の淡い地に札が溶けない */
 .rp-status-badge.ng{background:var(--danger-bg);color:var(--danger)}
 /* 表示設定は左パネルの最下段へ。操作バーを1層のまま薄く保つため。 */
 .rp-nav-foot{

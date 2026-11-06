@@ -23,6 +23,7 @@ from .. import records_export
 from ..dashboard import sources as dash_sources
 from ..logging_setup import app_logger
 from .. import db_mirror
+from .. import actuals as actuals_mod
 from ..quiet import quiet
 
 bp=Blueprint('measurement',__name__)
@@ -401,6 +402,15 @@ def measurement_actuals():
  except Exception as e:
   app_logger().warning('/api/measurement/actuals で失敗: %s',e)
   return jsonify(error=f'実績データを読めませんでした: {e}'),500
+
+@bp.post('/api/measurement/record-dates')
+@api_guard('記録の日付と直を引けませんでした')
+def record_dates():
+ """帳票の左の木（§9.642）: 記録の代表時刻 → 太陽暦の日・現場歴の日・直。**読むだけ**（POSTは記録の数が多いため）。
+ 直の判定は勤務形態マスタ＝サーバーの1箇所（`actuals.date_shift()`）。画面へ写さない（§9.163）。"""
+ x=body({'items': any_})
+ items=x['items'] if isinstance(x['items'],list) else []
+ return jsonify(ok=True,dates=actuals_mod.record_dates(items[:20000]))
 
 @bp.get('/api/measurement/actuals/equipments')
 def measurement_actuals_equipments():
