@@ -165,6 +165,59 @@ def _shift_rows_for(conn, equipment, memo):
     return memo[key]
 
 
+def date_shift(conn, memo, global_rows, equipment, ref):
+    """代表時刻 `ref` から太陽暦の日・現場歴の日・直を答える（**1箇所**・§9.195）。
+
+    実績の一覧（`_with_shift`）と帳票の左の木（`record_dates`）が同じ答えを読む。
+    読めない時刻は全部空（日付を0や今日で埋めない）。直の並びは勤務形態マスタの表示順（`shiftOrder`）。"""
+    dt = None
+    if ref:
+        try:
+            dt = schedule_calc._parse_dt(ref)
+        except Exception as _e:
+            quiet('日時として読めない（直を当てない）',_e)
+            dt = None
+    if dt is None:
+        return {'calDate': None, 'workDate': None, 'shift': '', 'shiftDayOffset': 0, 'shiftOrder': None}
+    spec = _shift_rows_for(conn, equipment, memo)
+    name, off = schedule_calc.resolve_shift_info(spec, global_rows, dt)
+    rows = spec if spec else global_rows
+    order = next((i for i, r in enumerate(rows or []) if name and r[2] == name), None)
+    return {'calDate': dt.date().isoformat(),
+            'workDate': (dt + timedelta(days=int(off or 0))).date().isoformat(),
+            'shift': name or '', 'shiftDayOffset': int(off or 0), 'shiftOrder': order}
+
+
+def record_dates(items):
+    """帳票の左の木（§9.642）: 記録ごとの {id, equipment, at} → {id: 日付と直}。
+
+    記録はこの端末の保存（IndexedDB）にもあるので、時刻は画面が送る（サーバーの写しに無い記録も木に入る）。
+    代表時刻の決め方（作業開始→作業終了→更新時刻）は画面の`rpRefAt()`が持ち、ここは答えを出すだけ。"""
+    out = {}
+    conn = None
+    memo = {}
+    global_rows = []
+    try:
+        try:
+            conn = sr.config_master_conn()
+            global_rows = sr.shift_rows(conn, '')
+        except Exception as _e:
+            quiet('マスタへつなげない（直の割り当て無しで続ける）',_e)
+            conn = None
+        for it in items or []:
+            rid = str((it or {}).get('id') or '')
+            if not rid:
+                continue
+            out[rid] = date_shift(conn, memo, global_rows, str(it.get('equipment') or ''), str(it.get('at') or ''))
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as _e:
+                quiet('接続を閉じられない（この要求のあいだだけの接続なので後で片付く）',_e)
+    return out
+
+
 def _with_shift(item, conn, memo, global_rows):
     """現場日と直を足す。**代表時刻は作業開始→作業終了→更新時刻の順**。
 
@@ -180,27 +233,15 @@ def _with_shift(item, conn, memo, global_rows):
         if value:
             ref, src = value, name
             break
-    dt = None
-    if ref:
-        try:
-            dt = schedule_calc._parse_dt(ref)
-        except Exception as _e:
-            quiet('日時として読めない（直を当てない）',_e)
-            dt = None
     item['durationMin'] = _duration_min(item.get('workStart'), item.get('workEnd'))
-    if dt is None:
-        item['workDate'] = None
-        item['calDate'] = None
-        item['shift'] = ''
-        item['shiftDayOffset'] = 0
+    ds = date_shift(conn, memo, global_rows, item.get('equipment'), ref)
+    item['workDate'] = ds['workDate']
+    item['calDate'] = ds['calDate']
+    item['shift'] = ds['shift']
+    item['shiftDayOffset'] = ds['shiftDayOffset']
+    if ds['calDate'] is None:
         item['workDateFrom'] = ''
         return item
-    spec = _shift_rows_for(conn, item.get('equipment'), memo)
-    name, off = schedule_calc.resolve_shift_info(spec, global_rows, dt)
-    item['shift'] = name or ''
-    item['shiftDayOffset'] = int(off or 0)
-    item['calDate'] = dt.date().isoformat()
-    item['workDate'] = (dt + timedelta(days=int(off or 0))).date().isoformat()
     item['workDateFrom'] = src
     item['refAt'] = ref
     return item

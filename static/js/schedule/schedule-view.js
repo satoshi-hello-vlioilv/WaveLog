@@ -2321,6 +2321,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard||inHist;
   const cmtBtn=$('#scCommentBtn');if(cmtBtn)cmtBtn.hidden=!scState.fullControl||inBoard||inHist;
   const frmBtn=$('#scFrameBtn');if(frmBtn)frmBtn.hidden=!scState.fullControl||inBoard||inHist;
+  syncScanBtn();
   if(inBoard)closeRowStylePop();
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
   updateSplitToggleUi();
@@ -2345,6 +2346,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     「現場段取り可 かつ 現場段取り対象設備 == この設備」でのみ許可する。
     権限はあるのに対象設備が違う/未設定のときは、黙って無効にせず理由を出す
     (マスタ管理で直せる内容なので、何を直せばよいか分かる文言にする)。 */
+ /* 「読んで先頭へ」（§9.642）は1設備の予定の段だけ。出すかどうか（できる端末か）は`WL.lotScan.sync()`が答える。 */
+ function syncScanBtn(){
+  const m=scState.boardMode;
+  WL.lotScan?.sync(!!scState.equipment&&m!=='board'&&m!=='blade'&&m!=='history');
+ }
  function applyFieldReorderPermission(){
   // 対象設備は複数指定・「すべての設備」('*')も書ける。判定はaccess-mode.jsの
   // 共通関数へ寄せる(サーバー側のfield_reorder_equipment_allowsと同じ規則)。
@@ -2352,6 +2358,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    &&(WL.fieldReorderAllows?.(scState.fieldReorderTarget,scState.equipment)??false);
   scState.fieldReorderOnly=matched;
   scState.editable=scState.fullControl||matched;
+  syncScanBtn();   // 読んで先頭へは並べ替えできる端末の物（§9.642）
   const note=$('#scFieldReorderNote');
   if(!note)return;
   if(matched){
@@ -9199,8 +9206,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     +'「再計算」で読み直してからやり直してください。',7000);
    return;
   }
+  commitPlanOrder(movableDom,previousEntries);
+ }
+ /* 動かせる行（予定・固定していない）の新しい並びから予定順を組み立てて送る（ドラッグとバーコードの先頭へ・§9.642 の1本）。
+    固定した行は予定順の位置に据え置き、動かせる行だけを差し替える（`plan_reorder`は全件の並びを要るので固定行も含める）。 */
+ function commitPlanOrder(movableInOrder,previousEntries){
+  const planOrder=scState.entries.filter(e=>e.reorderable);
   let mi=0;
-  const nextPlan=planOrder.map(e=>e.fixedStart?e:movableDom[mi++]);
+  const nextPlan=planOrder.map(e=>e.fixedStart?e:movableInOrder[mi++]);
   const ids=nextPlan.map(e=>e.id);
   // 画面をブロックしないよう、ローカルの並びも先に更新しておく(§9.11)。
   // 並べ替え対象の位置(スロット)はそのままに、中身だけ新しい順序へ差し替える。
@@ -11641,12 +11654,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   showToast(`${other.length}件はほかの設備のロットなので入れていません`,
    `${target}の予定に入れられるのは、設計設備が${target}のロットだけです: ${names}`,7000);
  }
- async function addRowToSchedule(row,equipment){
+ /* `opt.before`＝入れる位置（予定の行のID）。渡さなければ今までどおり差し込みの札の位置か末尾（§9.179）。 */
+ async function addRowToSchedule(row,equipment,opt){
   const target=equipment||scState.equipment;
   if(!target){showToast&&showToast('設備を選択してください','',3200);return}
   if(otherEquipmentRows([row],target).length){otherEquipmentToast([row],target);return}
   const children=await childPayloadFor(row);
-  const before=(target===scState.equipment)?takeInsertBefore():'';
+  const before=(target===scState.equipment)?((opt&&opt.before!==undefined)?opt.before:takeInsertBefore()):'';
   if(target!==scState.equipment){
    // 今開いていない設備への追加(§9.5): 楽観描画の対象タイムラインが無い
    // ため従来どおり即時反映する。
@@ -11771,6 +11785,35 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      **別の物へ丸ごと差し替わる**ので、「いま入れた」が参照ではなくIDで
      生きているかを見ていることを、網が**同じ口を通して**確かめられる。 */
   reloadPlan:()=>loadPlan(true),
+  /* ---------- バーコードで先頭へ（§9.642・`WL.lotScan`） ----------
+     判定は`WL.lotScan.decide()`（純粋な関数）が持つ。ここは材料（いまの予定・できること）を渡し、
+     決まった手（並べ替え・仕掛から入れる）を**ドラッグ・仕掛一覧と同じ1本の道**で行う。 */
+  scanContext:()=>({equipment:scState.equipment||'',entries:(scState.entries||[]).slice(),
+   canReorder:!!scState.editable,reorderWhy:reorderDeniedWhy(),canAdd:!!scState.fullControl,
+   blocked:sessionBlocked(),blockedWhy:sessionBlocked()?sessionHolderMessage():''}),
+  /* 動かせる行の先頭へ（固定した行は据え置き・§9.38）。 */
+  bringToTop:id=>{
+   const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
+   if(!e||!e.reorderable||e.fixedStart)return false;
+   const prev=scState.entries.slice();
+   const movable=scState.entries.filter(x=>x.reorderable&&!x.fixedStart);
+   commitPlanOrder([e,...movable.filter(x=>x!==e)],prev);
+   renderTimeline();
+   return true;
+  },
+  /* 仕掛の行を動かせる行の先頭の前へ入れる（無ければ末尾＝予定の先頭）。 */
+  addRowAtTop:row=>{
+   const head=(scState.entries||[]).find(x=>x.reorderable&&!x.fixedStart);
+   return addRowToSchedule(row,scState.equipment,{before:head?String(head.id):''});
+  },
+  otherEquipment:row=>otherEquipmentRows([row],scState.equipment).length>0,
+  /* 読んだロットの行を見える所へ送り、一時的に光らせる（結果を図でも確かめる）。行がまだ描かれていなければ描かれたときに。 */
+  flashLot:lot=>{
+   const find=()=>[...document.querySelectorAll('#scTimeline .sc-row-line')].find(r=>{const e=(scState.entries||[]).find(x=>String(x.id)===String(r.dataset.id));return e&&WL.base.normalizedLot(e.lotNo)===lot});
+   let n=0;const go=()=>{const row=find();if(!row){if(++n<20)setTimeout(go,150);return}   // 楽観描画の行が出るまで（最大3秒）
+    row.scrollIntoView({block:'nearest'});row.classList.remove('sc-row-flash');void row.offsetWidth;row.classList.add('sc-row-flash')};
+   go();
+  },
   /* 予定を書いたほかの口（時刻の窓・開始の関門）が、返ってきた改訂番号を渡す（§9.613）。 */
   noteWriteRevision:r=>noteWriteRevision(r),
   /* 元データの取り込み（§9.375）の状態。**答えは1箇所**——網も報告も

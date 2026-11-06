@@ -1,4 +1,4 @@
-# 帳票と紙（105件）
+# 帳票と紙（107件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 帳票の左の一覧は「日付 →（現場歴なら直）→ ロット」の木（`WL.reportTree`）。組み立ては`build()`の1箇所、行は縮まない（`flex:none`） | `test_rptree.js` | [§9.642](../../docs/decisions/9.642.md) |
+| 現場歴の日と直はサーバーが答える（`actuals.date_shift()`の1箇所）。代表時刻は作業開始→作業終了→更新時刻 | `test_rptree.js` | [§9.642](../../docs/decisions/9.642.md) |
 | 一括印刷の器は測るあいだも組む（画面の外で紙と同じ箱・`@media print`の中だけに見せる規則を置かない） | `test_rpbulk.js` | [§9.626](../../docs/decisions/9.626.md) |
 | 紙の字送りは画素にそろえない（紙の根に`text-rendering:geometricPrecision`） | `test_rpmetric.js` | [§9.625](../../docs/decisions/9.625.md) |
 | 紙は描いたあとも中身の器の大きさを見張り、変わったら測り直す（`rpWatchFit()`・道は描いた直後と同じ） | `test_rprefit.js` | [§9.624](../../docs/decisions/9.624.md) |

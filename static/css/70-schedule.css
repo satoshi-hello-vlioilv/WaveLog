@@ -2582,6 +2582,16 @@ div.sc-view-row{cursor:default}
  #scToolsAdd .sc-ico-btn>span{display:none}
  #scToolsAdd .sc-ico-btn{padding:0 var(--ctl-pad-x-xs)}
 }
+/* 「読んで先頭へ」（§9.642）。帯に「追加」の塊があるとき（組み込める端末＝帯がいちばん混む）だけ、幅が足りなければ
+   絵だけにし、意味の重なる「追加」の見出し2文字を先に落とす（4つのボタンの字は残す・test_scbar）。
+   測った値（test_lotscan S9）: 1728px・中＝器107.6em で、字つきのままだと「読込」のチップの字がはみ出した。 */
+@container schead (max-width: 118em){
+ .sc-head-right:has(#scListModalBtn:not([hidden])) [data-tools="scan"] .sc-ico-btn>span{display:none}
+ .sc-head-right:has(#scListModalBtn:not([hidden])) [data-tools="scan"] .sc-ico-btn{padding:0 var(--ctl-pad-x-xs)}
+}
+@container schead (max-width: 110em){
+ .sc-head-right:has(#scScanBtn:not([hidden])) #scToolsAdd .sc-tools-label{display:none}
+}
 @container schead (max-width: 89em){
  /* 次に**塊の見出しと文字**を落としてアイコンだけにする。意味は`title`が持っているので、
     押す前に読める手立ては残る。§9.505で測り直した「追加」の字を落としたあとに要る幅は
@@ -3013,4 +3023,44 @@ div.sc-view-row{cursor:default}
 .sc-sg-btn:hover{border-color:var(--teal);color:var(--teal-ink)}
 .sc-sg-btn.is-primary{background:var(--teal);border-color:var(--teal);color:#fff}
 .sc-sg-btn.is-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
+}
+@layer component {
+/* ---------- 読んで先頭へ（§9.642・`WL.lotScan`） ----------
+   一覧の下の知らせの棚の1段（浮かせない＝表の行と「開始」を覆わない）。列は固定（名前｜読む欄｜結果｜閉じる）——
+   結果の長さで読む欄の位置を動かさない。結果は 札（印＋色）・結論（大きく）・理由・次の一手（太字）。 */
+.sc-scan-bar{display:grid;grid-template-columns:auto 15em minmax(0,1fr) auto;align-items:center;gap:var(--space-3);
+  padding:var(--space-2) var(--space-3);background:var(--surface);border-bottom:1px solid var(--line);margin-bottom:var(--space-2)}
+.sc-scan-bar[hidden]{display:none}
+.sc-scan-title{display:flex;align-items:center;gap:var(--space-2);white-space:nowrap;font-size:var(--fs-base-sm);font-weight:var(--fw-strong);color:var(--ink)}
+.sc-scan-input{height:44px;min-width:0;padding:0 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+  font-size:var(--fs-lg);font-weight:var(--fw-strong);text-align:center;font-variant-numeric:tabular-nums;letter-spacing:.12em}
+.sc-scan-input::placeholder{font-size:var(--fs-base-sm);font-weight:var(--fw-body);letter-spacing:0}
+.sc-scan-input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 var(--ring-w) var(--teal-tint)}
+.sc-scan-say{display:flex;align-items:center;gap:var(--space-3);min-height:44px;margin:0;padding:var(--space-1) var(--space-3);
+  border-radius:var(--radius-sm);border-left:4px solid var(--line);background:var(--surface-2);color:var(--ink)}
+.sc-scan-tag{flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:var(--radius-round);
+  background:var(--line);color:var(--surface);font-size:var(--fs-base-sm)}
+.sc-scan-text{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0;font-size:var(--fs-title);line-height:1.45}
+.sc-scan-text>b{font-size:var(--fs-lg);font-weight:var(--fw-strong);line-height:1.25}
+.sc-scan-text>strong{font-weight:var(--fw-strong)}
+.sc-scan-say[data-tone="ok"]{background:var(--success-bg);border-left-color:var(--success)}
+.sc-scan-say[data-tone="ok"] .sc-scan-tag{background:var(--success)}
+.sc-scan-say[data-tone="add"]{background:var(--teal-tint);border-left-color:var(--teal)}
+.sc-scan-say[data-tone="add"] .sc-scan-tag{background:var(--teal)}
+.sc-scan-say[data-tone="info"] .sc-scan-tag{background:var(--ink-2)}
+.sc-scan-say[data-tone="warn"]{background:var(--surface-2);border-left-color:var(--warn-solid)}
+.sc-scan-say[data-tone="warn"] .sc-scan-tag{background:var(--warn-solid)}
+.sc-scan-say[data-tone="warn"] .sc-scan-text>b{color:var(--warn-fg)}
+.sc-scan-say[data-tone="bad"]{background:var(--surface-2);border-left-color:var(--danger)}
+.sc-scan-say[data-tone="bad"] .sc-scan-tag{background:var(--danger)}
+.sc-scan-say[data-tone="bad"] .sc-scan-text>b{color:var(--danger)}
+.sc-scan-say[data-tone="idle"] .sc-scan-tag{background:transparent;color:var(--ink-2)}
+.sc-scan-see{flex:none;height:30px;padding:0 var(--space-3);font-weight:var(--fw-ui);border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink);font-size:var(--fs-base-sm);cursor:pointer}
+.sc-scan-see:hover{background:var(--teal-tint)}
+.sc-scan-close{display:grid;place-items:center;width:30px;height:30px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--ink-2);cursor:pointer}
+.sc-scan-close:hover{background:var(--surface-2);color:var(--ink)}
+/* 読んだロットの行を一時的に光らせる（§9.642）。 */
+@keyframes wl-sc-row-flash{0%,60%{background:var(--teal-tint);box-shadow:inset 4px 0 0 var(--teal)}100%{background:transparent;box-shadow:none}}
+.sc-row-line.sc-row-flash{animation:wl-sc-row-flash 2.4s ease-out}
 }

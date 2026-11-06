@@ -176,6 +176,8 @@ G['スケジュール'] = ['test_screport', 'test_doneflowui', 'test_startwork',
                      'test_plandup',
                      # §9.637: 使用設備の予定にほかの設備のロットを入れない
                      'test_lotequip',
+                     # §9.642: バーコードで読んだロットを予定の先頭へ（無ければ仕掛から組み込む）
+                     'test_lotscan',
                      # §9.638: 落とした位置に入る（固定した行の前・途中の行を先に流した予定）・さかのぼり「なし」
                      'test_scinsertpos','test_scscrollkeep',
                      # §9.373: 失敗を開発へ報告できる形で残す（コピー1手）
@@ -341,7 +343,9 @@ RULES = [
     ('static/js/report/actuals-view.js', g('実績', 'モーダル', '列', 'test_recperm', 'test_nav')),
     ('static/js/report/opsheet-print.js', g('実績', 'モーダル', '列')),
     ('static/js/report/record-layout.js', g('実績', '列')),
-    ('backend/actuals.py', g('実績', 'test_workdate', 'test_modeguard', 'test_actimes', 'test_dashperf')),
+    ('static/js/report/report-tree.js', g('test_rptree', 'test_rpfresh', 'test_screport')),
+    ('static/js/schedule/lot-scan.js', g('test_lotscan')),
+    ('backend/actuals.py', g('実績', 'test_rptree', 'test_workdate', 'test_modeguard', 'test_actimes', 'test_dashperf')),
     ('static/js/measure/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
     ('static/js/measure/design-fix.js', g('test_designfix', 'test_splitlive', 'test_msteps')),
     ('static/js/master/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
@@ -410,6 +414,8 @@ RULES = [
                                         'test_rppaper',
                                         # §9.623: 帳票は同じ記録IDの新しい版（手元・共有）で描く
                                         'test_rpfresh',
+                                        # §9.642: 帳票の左の一覧を日付・直・ロットの木にする
+                                        'test_rptree',
                                         # §9.624: 描いたあとに字の幅が変わっても紙を測り直す
                                         'test_rprefit',
                                         # §9.625: 紙の字の幅は字の描き方の設定（ヒンティング）で変わらない

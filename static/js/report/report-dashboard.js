@@ -105,13 +105,17 @@
    </header>
    <div class="rp-body">
     <nav class="rp-nav" aria-label="ロット一覧">
+     <!-- 探す→分け方→並びの順（§9.642）。検索は1行ぶん全部（プレースホルダーが切れていた）。 -->
      <div class="rp-nav-toolbar">
-      <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">${icon('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')}</span><input id="reportSearch" type="search" placeholder="ロット・設備で絞り込み" aria-label="ロット検索" autocomplete="off"></label>
-      <select id="reportSort" aria-label="並び順">
-       <option value="updated-desc">新しい順</option>
-       <option value="updated-asc">古い順</option>
-       <option value="lot-asc">ロット順</option>
-      </select>
+      <label class="rp-search"><span class="rp-search-icon" aria-hidden="true">${icon('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')}</span><input id="reportSearch" type="search" placeholder="ロット・検査番号で探す" aria-label="ロット検索" autocomplete="off"></label>
+      <div class="rp-nav-tools">
+       <div class="mm-seg" id="reportBasis" role="group" aria-label="日付の分け方">${Object.entries(WL.reportTree.BASES).map(([k,b])=>`<button type="button" data-basis="${k}" title="${esc(b.hint)}">${esc(b.label)}</button>`).join('')}</div>
+       <select id="reportSort" aria-label="並び順">
+        <option value="updated-desc">新しい順</option>
+        <option value="updated-asc">古い順</option>
+        <option value="lot-asc">ロット順</option>
+       </select>
+      </div>
      </div>
      <div class="rp-lot-list" id="reportLotList"></div>
      <!-- 出していない塊の置き場（§9.217／§9.276 ①、利用者の指示
@@ -166,6 +170,7 @@
   WL.columnLayout.load(rpTarget()).catch(WL.quiet('列の設定を取れない（既定の並びで出す）'));
   const search=$id('reportSearch');if(search)search.oninput=()=>{rpState.query=search.value;renderLotList()};
   const sort=$id('reportSort');if(sort)sort.onchange=()=>{rpState.sort=sort.value;renderLotList()};
+  panel.querySelectorAll('#reportBasis [data-basis]').forEach(b=>b.onclick=()=>{WL.reportTree.setBasis(b.dataset.basis);renderLotList()});
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
   $id('reportBack').onclick=backToRecordList;
   $id('reportLabelToggle').onclick=()=>{rpRepeatLabels=!rpRepeatLabels;updateLabelToggle();const cur=rpState.items.find(i=>i.id===rpState.selectedId);if(cur)renderReport(cur)};
@@ -492,34 +497,29 @@
    selectAll.indeterminate=checkedInView>0&&checkedInView<items.length;
   }else if(selectAll){selectAll.checked=false;selectAll.indeterminate=false}
  }
+ /* 左の一覧は「日付 →（直）→ ロット」の木（§9.642・`WL.reportTree`）。ここは絞った記録と選びを渡すだけ。
+    現場歴の日と直はサーバーが答えるので、届いていない記録があれば先に描いてから引き、届いたら描き直す。 */
  function renderLotList(){
   const list=$id('reportLotList');if(!list)return;
   const items=sortedFiltered();
+  const basis=WL.reportTree.basis();
+  document.querySelectorAll('#reportBasis [data-basis]').forEach(b=>{const on=b.dataset.basis===basis;b.classList.toggle('is-on',on);b.setAttribute('aria-pressed',String(on))});
   if(!items.length){
    list.innerHTML=rpState.items.length?'<div class="rp-empty"><b>検索条件に一致するロットがありません。</b><button id="rpEmptyClearSearch" type="button">検索条件を解除</button></div>':'<div class="rp-empty">端末に保存されたロットがありません。測定画面で保存すると一覧に表示されます。</div>';
    const clearBtn=$id('rpEmptyClearSearch');
    if(clearBtn)clearBtn.onclick=()=>{rpState.query='';const search=$id('reportSearch');if(search)search.value='';renderLotList()};
    updateBulkPrintButton();return;
   }
-  const frag=document.createDocumentFragment();
-  items.forEach(x=>{
-   const equipment=x.settings?.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
-   /* 一括印刷用のチェックボックスと、プレビュー選択用のボタンを分ける
-      (ボタンの中へinputをネストするのはアクセシビリティ・仕様上避ける)。 */
-   const row=document.createElement('div');row.className='rp-lot-row'+(x.id===rpState.selectedId?' active':'');
-   const checked=rpSelectedIds.has(x.id);
-   row.innerHTML=`<label class="rp-lot-check" title="一括印刷の対象に含めます" onclick="event.stopPropagation()"><input type="checkbox"${checked?' checked':''}></label><button type="button" class="rp-lot-main-btn"><span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${WL.base.statusClass(x.status)}">${esc(WL.base.statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span></button>`;
-   row.querySelector('.rp-lot-check input').onchange=e=>{
-    if(e.target.checked)rpSelectedIds.add(x.id);else rpSelectedIds.delete(x.id);
-    row.classList.toggle('checked',e.target.checked);updateBulkPrintButton();
-   };
-   const mainBtn=row.querySelector('.rp-lot-main-btn');
-   mainBtn.onclick=()=>selectLot(x.id);
-   mainBtn.ondblclick=e=>{e.preventDefault();e.stopPropagation();if(typeof WL.records.resumeRecordFromList==='function')WL.records.resumeRecordFromList(x)()};
-   frag.append(row);
-  });
-  list.innerHTML='';list.append(frag);
+  WL.reportTree.render(list,{items,basis,newestFirst:rpState.sort!=='updated-asc',selectedId:rpState.selectedId,
+   picked:rpSelectedIds,query:String(rpState.query||'').trim(),
+   statusLabel:x=>WL.base.statusLabel(x.status),statusClass:x=>WL.base.statusClass(x.status),
+   onSelect:x=>selectLot(x.id),
+   onOpen:x=>{if(typeof WL.records.resumeRecordFromList==='function')WL.records.resumeRecordFromList(x)()},
+   onPick:(ids,on)=>{const byId=new Map(rpState.items.map(x=>[String(x.id),x.id]));
+    ids.forEach(id=>{const k=byId.get(String(id));if(k===undefined)return;if(on)rpSelectedIds.add(k);else rpSelectedIds.delete(k)});
+    renderLotList()}});
   updateBulkPrintButton();
+  WL.reportTree.fetchDates(rpState.items).then(changed=>{if(changed)renderLotList()}).catch(WL.quiet('日付と直を引けない（暦の日付で並べたまま）'));
  }
  /* ---------- 帳票の一括印刷 ----------
     選択した複数ロットをまとめて1回の印刷ダイアログで出力する。既存の
@@ -4903,6 +4903,7 @@ ${rpEdVisRow(k)}`;
  }
  function selectLot(id){
   rpState.selectedId=id;renderLotList();
+  const list=$id('reportLotList');if(list)WL.reportTree.reveal(list,id);
   const x=rpState.items.find(i=>i.id===id);if(!x)return;
   /* 描いてから共有の版を確かめ、新しければ描き直す（一覧から選ぶたびに待たせない）。 */
   rpFreshen(id).then(changed=>{if(changed&&rpState.selectedId===id)selectLot(id)});
@@ -5151,6 +5152,7 @@ ${rpEdVisRow(k)}`;
    const viewMode=window.accessMode&&window.accessMode.mode!=='edit';
    const all=viewMode&&typeof window.loadViewModeRecords==='function'?await window.loadViewModeRecords():await WL.records.reliableAll();
    rpState={items:all,query:'',sort:$id('reportSort')?.value||'updated-desc',selectedId:''};
+   WL.reportTree.forgetFailed();   // 前に引けなかった日付と直は開き直したら引き直す（§9.642）
    const search=$id('reportSearch');if(search)search.value='';
    renderLotList();
   }catch(e){listEl.innerHTML=`<div class="rp-empty">一覧を読み込めませんでした: ${esc(e.message)}</div>`}

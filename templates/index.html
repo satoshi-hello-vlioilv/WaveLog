@@ -512,6 +512,11 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
            未設定のときだけ、その設備名と直す場所を書く(§4)。 -->
       <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden></span>
      </div>
+     <!-- バーコードで読んで先頭へ（§9.642）。今から作業するロットを読む。並べ替えも組み込みもできない端末には出さない（`WL.lotScan.sync()`）。 -->
+     <div class="sc-tools" data-tools="scan">
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scScanBtn" hidden aria-expanded="false" aria-controls="scScanBar"
+        title="今から作業するロットのバーコードを読むと、予定のそのロットを先頭へ並べ替えます。&#10;・予定に無ければこの設備の仕掛から探して、組み込める端末なら予定の先頭へ組み込みます"><i class="fa-solid fa-barcode" aria-hidden="true"></i><span>読んで先頭へ</span></button>
+     </div>
      <div class="sc-tools" data-tools="add" id="scToolsAdd">
       <span class="sc-tools-label" title="予定へ足す（共有スケジュールに書き込みます）">追加</span>
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します"><i class="fa-solid fa-table-list" aria-hidden="true"></i><span>仕掛一覧</span></button>
@@ -673,6 +678,8 @@ setTimeout(function(){var r=document.documentElement;r.classList.remove('app-boo
 
         ※この骨組みは HTML に置いてある（§9.522）。Jinja が描くので、波かっこを2つ続けて書かないこと。 -->
    <div class="sc-notices" id="scNotices">
+    <!-- 読んで先頭へ（§9.642）。帯の「読んで先頭へ」で開く段。浮かせない（表の行と「開始」を覆わない）。中身は`WL.lotScan`が組む。 -->
+    <div class="sc-scan-bar" id="scScanBar" role="region" aria-label="読んで先頭へ" hidden></div>
     <div class="sc-session-banner" id="scSessionBanner" hidden></div>
     <!-- 他のPCが共有を書き換えたときの案内(§9.188)。**触っている最中は
          勝手に読み直さない**——並べ替えの途中で行が入れ替わると、掴んで
